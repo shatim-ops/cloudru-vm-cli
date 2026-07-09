@@ -980,6 +980,80 @@ func (s *Server) registerTools() {
 			}),
 		},
 		{
+			Name:        "cert_list",
+			Description: "Certificate Manager — list TLS certificates in the project (read-only). Filter by name/dns_name/common_name/type/state. Use to find a cert for an HTTPS load balancer / site.",
+			InputSchema: objSchema(map[string]any{
+				"name":        strProp("Name or part of the certificate name (optional)."),
+				"dns_name":    strProp("One of the certificate's DNS names, e.g. shkrbkv.ru (optional)."),
+				"common_name": strProp("Partial common-name (CN) filter (optional)."),
+				"type":        strProp("CERTIFICATE_TYPE_IMPORTED | CERTIFICATE_TYPE_SELF_SIGNED | CERTIFICATE_TYPE_LETS_ENCRYPT (optional)."),
+				"state":       strProp("CERTIFICATE_STATE_ACTIVE | CERTIFICATE_STATE_EXPIRED (optional)."),
+			}),
+		},
+		{
+			Name:        "cert_get",
+			Description: "Certificate Manager — get one certificate by id (metadata, primary version, expiry, status). Read-only.",
+			InputSchema: objSchema(map[string]any{"id": strProp("Certificate id. Required.")}, "id"),
+		},
+		{
+			Name:        "cert_issue_le",
+			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). This is the path for HTTPS on a site (e.g. shkrbkv.ru): issue → bind to the LB listener. ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true.",
+			InputSchema: objSchema(map[string]any{
+				"name":        strProp("Display name for the certificate. Required."),
+				"dns_names":   strProp("Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"] (array or comma-separated). Required."),
+				"description": strProp("Optional description."),
+			}, "name", "dns_names"),
+		},
+		{
+			Name:        "cert_import",
+			Description: "Certificate Manager — import a user-managed certificate (bring-your-own). server_certificate and private_key are Base64-encoded PEM.",
+			InputSchema: objSchema(map[string]any{
+				"name":                     strProp("Display name. Required."),
+				"server_certificate":       strProp("Public cert, Base64-encoded PEM. Required."),
+				"private_key":              strProp("Private key, Base64-encoded PEM. Required."),
+				"intermediate_certificate": strProp("Intermediate chain, Base64-encoded PEM (optional)."),
+				"description":              strProp("Optional description."),
+			}, "name", "server_certificate", "private_key"),
+		},
+		{
+			Name:        "cert_renew",
+			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id.",
+			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required.")}, "certificate_id"),
+		},
+		{
+			Name:        "cert_delete",
+			Description: "Certificate Manager — permanently delete a certificate. Gated: requires confirmed=true. If bound to a load balancer, deletion can break HTTPS (use force=true to delete anyway).",
+			InputSchema: objSchema(map[string]any{
+				"id":        strProp("Certificate id. Required."),
+				"confirmed": boolProp("Must be true — set only after the captain approves."),
+				"force":     boolProp("Delete even if the certificate is in use by other services (default false)."),
+			}, "id"),
+		},
+		{
+			Name:        "cert_usage",
+			Description: "Certificate Manager — list resources (load balancers/listeners) that USE a certificate. Check this before deleting. Read-only.",
+			InputSchema: objSchema(map[string]any{"id": strProp("Certificate id. Required.")}, "id"),
+		},
+		{
+			Name:        "cert_versions",
+			Description: "Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry). Read-only.",
+			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required.")}, "certificate_id"),
+		},
+		{
+			Name:        "cert_private_key",
+			Description: "Certificate Manager — return the SECRET private key (decoded PEM) for a version. Gated: requires confirmed=true (returns plaintext key material).",
+			InputSchema: objSchema(map[string]any{
+				"certificate_id": strProp("Certificate id. Required."),
+				"version_id":     intProp("Version number; 0 or omitted = latest version."),
+				"confirmed":      boolProp("Must be true — returns the plaintext private key."),
+			}, "certificate_id"),
+		},
+		{
+			Name:        "cert_operation",
+			Description: "Certificate Manager — poll an async operation (issue/renew) by id until done=true. Read-only.",
+			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation id from cert_issue_le/cert_renew. Required.")}, "operation_id"),
+		},
+		{
 			Name:        "s3_buckets",
 			Description: "List Object Storage (S3) buckets. Read-only. s3.cloud.ru (S3-compatible).",
 			InputSchema: objSchema(map[string]any{}),
@@ -1192,6 +1266,16 @@ func (s *Server) registerTools() {
 		"metrics_history":      s.handleMetricsHistory,
 		"metrics_scrape":       s.handleMetricsScrape,
 		"audit_events":         s.handleAuditEvents,
+		"cert_list":            s.handleCertList,
+		"cert_get":             s.handleCertGet,
+		"cert_issue_le":        s.handleCertIssueLE,
+		"cert_import":          s.handleCertImport,
+		"cert_renew":           s.handleCertRenew,
+		"cert_delete":          s.handleCertDelete,
+		"cert_usage":           s.handleCertUsage,
+		"cert_versions":        s.handleCertVersions,
+		"cert_private_key":     s.handleCertPrivateKey,
+		"cert_operation":       s.handleCertOperation,
 		"s3_buckets":           s.handleS3Buckets,
 		"s3_ls":                s.handleS3Ls,
 		"s3_get":               s.handleS3Get,
@@ -1859,6 +1943,33 @@ func stringArg(args map[string]any, key string) string {
 		return v
 	}
 	return ""
+}
+
+// stringSliceArg reads a string-array argument. Accepts a JSON array of strings
+// or a single comma-separated string (tolerant of both MCP client styles).
+func stringSliceArg(args map[string]any, key string) []string {
+	var out []string
+	switch v := args[key].(type) {
+	case []any:
+		for _, x := range v {
+			if s, ok := x.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimSpace(s))
+			}
+		}
+	case []string:
+		for _, s := range v {
+			if strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimSpace(s))
+			}
+		}
+	case string:
+		for _, s := range strings.Split(v, ",") {
+			if strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimSpace(s))
+			}
+		}
+	}
+	return out
 }
 
 // intArg reads an integer argument. JSON numbers decode as float64.

@@ -1,0 +1,207 @@
+package mcp
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/dzhechko/cloudru-vm-cli/internal/certmanager"
+)
+
+// certClient builds an authenticated Certificate Manager client.
+func (s *Server) certClient(ctx context.Context) (*certmanager.Client, error) {
+	eng, err := s.newEngine(nil)
+	if err != nil {
+		return nil, err
+	}
+	tok, err := eng.Auth.Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return certmanager.New(tok.Value, eng.Config.ProjectID, ""), nil
+}
+
+func (s *Server) handleCertList(ctx context.Context, args map[string]any) (string, bool) {
+	cli, err := s.certClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	certs, err := cli.List(ctx, certmanager.ListOptions{
+		Name:       stringArg(args, "name"),
+		Type:       stringArg(args, "type"),
+		DNSName:    stringArg(args, "dns_name"),
+		CommonName: stringArg(args, "common_name"),
+		State:      stringArg(args, "state"),
+	})
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(map[string]any{"project": cli.ProjectID(), "count": len(certs), "certificates": certs}), false
+}
+
+func (s *Server) handleCertGet(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "id")
+	if id == "" {
+		return errResult(fmt.Errorf("'id' is required")), true
+	}
+	cli, err := s.certClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	c, err := cli.Get(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(c), false
+}
+
+func (s *Server) handleCertIssueLE(ctx context.Context, args map[string]any) (string, bool) {
+	name := stringArg(args, "name")
+	dnsNames := stringSliceArg(args, "dns_names")
+	if name == "" || len(dnsNames) == 0 {
+		return errResult(fmt.Errorf("'name' and 'dns_names' (non-empty) are required")), true
+	}
+	cli, err := s.certClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	op, err := cli.IssueLetsEncrypt(ctx, name, stringArg(args, "description"), dnsNames)
+	if err != nil {
+		return errResult(err), true
+	}
+	// Async: return the operation; the caller polls cert_operation until done.
+	return toJSON(map[string]any{"status": "issuing", "note": "Let's Encrypt issuance is async — poll cert_operation with this operation id until done=true. Domains must have delegated zones in Evolution DNS.", "operation": op}), false
+}
+
+func (s *Server) handleCertImport(ctx context.Context, args map[string]any) (string, bool) {
+	name := stringArg(args, "name")
+	server := stringArg(args, "server_certificate")
+	key := stringArg(args, "private_key")
+	if name == "" || server == "" || key == "" {
+		return errResult(fmt.Errorf("'name', 'server_certificate' (base64 PEM) and 'private_key' (base64 PEM) are required")), true
+	}
+	cli, err := s.certClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	body := map[string]any{"name": name, "serverCertificate": server, "privateKey": key}
+	if v := stringArg(args, "intermediate_certificate"); v != "" {
+		body["intermediateCertificate"] = v
+	}
+	if v := stringArg(args, "description"); v != "" {
+		body["description"] = v
+	}
+	c, err := cli.Import(ctx, body)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(map[string]any{"status": "imported", "certificate": c}), false
+}
+
+func (s *Server) handleCertRenew(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "certificate_id")
+	if id == "" {
+		return errResult(fmt.Errorf("'certificate_id' is required")), true
+	}
+	cli, err := s.certClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	op, err := cli.Renew(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(map[string]any{"status": "renewing", "operation": op}), false
+}
+
+func (s *Server) handleCertDelete(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "id")
+	if id == "" {
+		return errResult(fmt.Errorf("'id' is required")), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": fmt.Sprintf("cert_delete permanently deletes certificate %q. If it is bound to a load balancer/listener, deletion can break HTTPS. Get the captain's approval, then call again with confirmed=true (add force=true to delete despite active usage).", id),
+		}), true
+	}
+	cli, err := s.certClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	force, _ := args["force"].(bool)
+	if err := cli.Delete(ctx, id, force); err != nil {
+		return errResult(err), true
+	}
+	return toJSON(map[string]any{"status": "deleted", "id": id, "force": force}), false
+}
+
+func (s *Server) handleCertUsage(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "id")
+	if id == "" {
+		return errResult(fmt.Errorf("'id' is required")), true
+	}
+	cli, err := s.certClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	u, err := cli.Usage(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(u), false
+}
+
+func (s *Server) handleCertVersions(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "certificate_id")
+	if id == "" {
+		return errResult(fmt.Errorf("'certificate_id' is required")), true
+	}
+	cli, err := s.certClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	v, err := cli.Versions(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(v), false
+}
+
+func (s *Server) handleCertPrivateKey(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "certificate_id")
+	if id == "" {
+		return errResult(fmt.Errorf("'certificate_id' is required")), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": "cert_private_key returns the SECRET private key in plaintext. Only fetch it with the captain's explicit approval; call again with confirmed=true.",
+		}), true
+	}
+	cli, err := s.certClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	ver := int64(pgInt(args, "version_id", 0))
+	pk, err := cli.PrivateKey(ctx, id, ver)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(pk), false
+}
+
+func (s *Server) handleCertOperation(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "operation_id")
+	if id == "" {
+		return errResult(fmt.Errorf("'operation_id' is required")), true
+	}
+	cli, err := s.certClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	op, err := cli.GetOperation(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(op), false
+}
