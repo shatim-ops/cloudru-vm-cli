@@ -1,0 +1,54 @@
+package sizer
+
+import (
+	"math"
+	"sort"
+
+	"github.com/dzhechko/cloudru-vm-cli/internal/compose"
+	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
+)
+
+const headroomFactor = 1.3 // 30% headroom
+
+// FlavorMatch is the result of auto-sizing.
+type FlavorMatch struct {
+	Flavor   provision.Flavor
+	Headroom float64 // e.g., 1.3 = 30% headroom applied
+}
+
+// Match selects the smallest flavor that satisfies the resource requirements
+// (with 30% headroom). Returns the first sufficient flavor from the sorted list.
+// If no flavor is sufficient, it returns nil.
+func Match(resources compose.Resources, flavors []provision.Flavor) *FlavorMatch {
+	// Apply minimum defaults when no limits are specified.
+	cpuCores := resources.CPUCores
+	memMB := resources.MemoryMB
+	if cpuCores <= 0 && memMB <= 0 {
+		cpuCores = 1.0
+		memMB = 1024
+	}
+
+	// Apply headroom.
+	requiredCPU := int(math.Ceil(cpuCores * headroomFactor))
+	requiredMemMB := int(math.Ceil(float64(memMB) * headroomFactor))
+
+	// Sort flavors by VCPUs ascending, then RAMGB ascending.
+	sorted := make([]provision.Flavor, len(flavors))
+	copy(sorted, flavors)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].VCPUs != sorted[j].VCPUs {
+			return sorted[i].VCPUs < sorted[j].VCPUs
+		}
+		return sorted[i].RAMGB < sorted[j].RAMGB
+	})
+
+	for _, f := range sorted {
+		if f.VCPUs >= requiredCPU && f.RAMGB*1024 >= requiredMemMB {
+			return &FlavorMatch{
+				Flavor:   f,
+				Headroom: headroomFactor,
+			}
+		}
+	}
+	return nil
+}

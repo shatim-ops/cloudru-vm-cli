@@ -1,0 +1,39 @@
+package output
+
+import (
+	"os"
+
+	"golang.org/x/term"
+)
+
+// ANSI color codes
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorCyan   = "\033[36m"
+	colorBold   = "\033[1m"
+	colorDim    = "\033[2m"
+)
+
+// IsTTY returns true if the given file descriptor is a terminal.
+func IsTTY(fd int) bool {
+	return term.IsTerminal(fd)
+}
+
+// ColorEnabled returns true if color output should be used.
+// Disabled by: NO_COLOR env var, TERM=dumb, no TTY, or explicit noColor flag.
+func ColorEnabled(noColor bool) bool {
+	if noColor {
+		return false
+	}
+	if _, ok := os.LookupEnv("NO_COLOR"); ok {
+		return false
+	}
+	if os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	return IsTTY(int(os.Stdout.Fd()))
+}

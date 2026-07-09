@@ -1,0 +1,645 @@
+// Package stack is a crank-driven, disk-persisted orchestrator for multi-resource
+// Cloud.ru "stacks" (PG + VM + NLB + secrets + S3 in one declarative manifest).
+//
+// WHY: an agent that creates 8 services by calling ~20 tools in ONE reasoning
+// turn accumulates the whole tool-call history in its context and blows the
+// per-turn trajectory/context limit ("couldn't generate a response") — worse on
+// small-context LLMs. This module moves the execution loop OUT of the agent: the
+// agent submits a manifest (stack_apply) and then polls a COMPACT status
+// (stack_status). The agent's context stays O(1) regardless of stack size.
+//
+// The MCP server is spawned per stdio call (no daemon), so the orchestrator is a
+// RESUMABLE STATE MACHINE persisted to disk: each stack_status call is one "crank"
+// that loads state, advances as far as it can (poll in-flight async ops, start
+// ready steps), saves, and returns. State lives on disk, so it survives agent
+// context loss (/new, compaction, a different LLM) — just re-poll the job_id.
+package stack
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// --- Manifest (desired state) ---
+
+type Manifest struct {
+	Name     string        `json:"name"`
+	VPC      *VPCSpec      `json:"vpc,omitempty"`
+	Postgres *PGSpec       `json:"postgres,omitempty"`
+	Kafka    *KafkaSpec    `json:"kafka,omitempty"`
+	Redis    *RedisSpec    `json:"redis,omitempty"`
+	K8s      *K8sSpec      `json:"k8s,omitempty"`
+	Registry *RegistrySpec `json:"registry,omitempty"`
+	SNAT     *SNATSpec     `json:"snat,omitempty"`
+	VM       *VMSpec       `json:"vm,omitempty"`
+	NLB      *NLBSpec      `json:"nlb,omitempty"`
+	DNS      *DNSSpec      `json:"dns,omitempty"`
+	Secrets  []SecretSpec  `json:"secrets,omitempty"`
+	S3       []S3Spec      `json:"s3,omitempty"`
+}
+
+// VPCSpec creates a Virtual Private Cloud (free). Async.
+type VPCSpec struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// K8sSpec creates a Managed Kubernetes cluster (billable, ~10-20 min). Async;
+// readiness = k8s_get status RUNNING. cluster_sa_id/subnet auto-resolve.
+type K8sSpec struct {
+	Name            string `json:"name"`
+	Version         string `json:"version,omitempty"`
+	Flavor          string `json:"flavor,omitempty"` // control-plane flavor
+	CPU             int    `json:"cpu,omitempty"`
+	RAM             int    `json:"ram_gb,omitempty"`
+	MasterCount     int    `json:"master_count,omitempty"` // 1|3|5
+	KubeAPIInternet bool   `json:"kube_api_internet,omitempty"`
+}
+
+// KafkaSpec creates a Managed Kafka cluster (billable, async; ready = READY).
+type KafkaSpec struct {
+	Name       string `json:"name"`
+	VersionID  string `json:"version_id,omitempty"`
+	SpecID     string `json:"specification_id,omitempty"`
+	CPU        int    `json:"cpu,omitempty"`
+	RAM        int    `json:"ram,omitempty"`
+	StorageGiB int    `json:"storage_gib,omitempty"`
+	Brokers    int    `json:"brokers,omitempty"`
+	UIEnabled  bool   `json:"ui_enabled,omitempty"`
+}
+
+// RedisSpec creates a Managed Redis cluster (billable, async; ready = READY).
+type RedisSpec struct {
+	Name      string `json:"name"`
+	VersionID string `json:"version_id,omitempty"`
+	SpecID    string `json:"specification_id,omitempty"`
+	CPU       int    `json:"cpu,omitempty"`
+	RAM       int    `json:"ram,omitempty"`
+	StorageGB int    `json:"storage_gb,omitempty"`
+	Shards    int    `json:"shards,omitempty"`
+	Replicas  int    `json:"replicas,omitempty"`
+	Type      string `json:"type,omitempty"` // STANDALONE | MASTER_REPLICA
+}
+
+// RegistrySpec creates an Artifact Registry (billable). Async.
+type RegistrySpec struct {
+	Name   string `json:"name"`
+	Type   string `json:"registry_type,omitempty"` // DOCKER default
+	Public bool   `json:"public,omitempty"`
+	Tariff string `json:"tariff,omitempty"`
+}
+
+// SNATSpec creates a SNAT gateway (billable) so private-subnet nodes get
+// outbound internet. Synchronous.
+type SNATSpec struct {
+	Name string `json:"name"`
+	Zone string `json:"zone,omitempty"` // default = configured region
+}
+
+// DNSSpec points a domain record at the stack's load balancer (or an explicit
+// value). If Target=="lb" (default), the record value is the LB's external IP,
+// resolved at run time — giving partners a URL instead of a raw IP.
+type DNSSpec struct {
+	ZoneID     string `json:"zone_id"`               // public zone id (from dns_zones)
+	Name       string `json:"name"`                  // record name / subdomain
+	RecordType string `json:"record_type,omitempty"` // default "a"
+	Target     string `json:"target,omitempty"`      // "lb" (default) → LB external IP, else literal value
+	TTL        int    `json:"ttl,omitempty"`
+}
+
+type PGSpec struct {
+	Name          string `json:"name"`
+	SpecID        string `json:"specification_id,omitempty"`
+	CPU           int    `json:"cpu,omitempty"`
+	RAM           int    `json:"ram,omitempty"`
+	StorageGB     int    `json:"storage_gb,omitempty"`
+	NoBackup      bool   `json:"no_backup,omitempty"`
+	InitialDBName string `json:"initial_database,omitempty"`
+}
+
+type VMSpec struct {
+	Name    string `json:"name"`
+	Private bool   `json:"private,omitempty"` // no public IP → regular interface (NLB target)
+	Flavor  string `json:"flavor,omitempty"`
+}
+
+type NLBSpec struct {
+	Name       string `json:"name"`
+	Port       int    `json:"port"`
+	TargetPort int    `json:"target_port,omitempty"`
+	External   bool   `json:"external,omitempty"`
+	// Target is a logical ref to a step in this manifest, e.g. "vm".
+	Target string `json:"target,omitempty"`
+}
+
+type SecretSpec struct {
+	Path  string `json:"path"`
+	Value string `json:"value"`
+}
+
+type S3Spec struct {
+	Bucket  string `json:"bucket"`
+	Key     string `json:"key"`
+	Content string `json:"content"`
+}
+
+// --- Job (runtime state, persisted) ---
+
+// Step is one unit of work. Args may contain "$stepkey" string placeholders that
+// the runner substitutes from Outputs at execution time (e.g. tg's vm_id="$vm").
+type Step struct {
+	Key       string         `json:"key"`  // unique: postgres, vm, tg, lb, secret:0, s3:0
+	Tool      string         `json:"tool"` // handler name to invoke
+	Args      map[string]any `json:"args"`
+	DependsOn []string       `json:"depends_on,omitempty"`
+	// async handling
+	PollTool  string `json:"poll_tool,omitempty"`  // operation-poll tool for ReadyKind "op" (lb_operation/vpc_operation/…)
+	ReadyKind string `json:"ready_kind,omitempty"` // "" (sync) | "op" (poll operation) | "status" (poll a get tool for a ready status)
+	FindTool  string `json:"find_tool,omitempty"`  // list tool to resolve id by name (tg_list/lb_list/…)
+	FindField string `json:"find_field,omitempty"` // array field in the list result (target_groups/clusters/…)
+	FindName  string `json:"find_name,omitempty"`  // name to match
+	// ReadyKind "status": poll StatusTool({StatusArg: id}) until StatusField contains ReadyValue
+	StatusTool  string `json:"status_tool,omitempty"`  // pg_get / k8s_get
+	StatusArg   string `json:"status_arg,omitempty"`   // id arg name: cluster_id
+	StatusField string `json:"status_field,omitempty"` // "status"
+	ReadyValue  string `json:"ready_value,omitempty"`  // "READY" / "RUNNING" (substring match)
+	// runtime
+	Status     string         `json:"status"` // pending|running|waiting|done|error
+	OpID       string         `json:"op_id,omitempty"`
+	ResourceID string         `json:"resource_id,omitempty"`
+	Attempts   int            `json:"attempts,omitempty"`  // create retries used (transient-error tolerance)
+	FindArgs   map[string]any `json:"find_args,omitempty"` // extra args for the find-by-name list call (e.g. dns zone_id)
+	Detail     string         `json:"detail,omitempty"`
+}
+
+type Job struct {
+	ID       string            `json:"id"`
+	Manifest Manifest          `json:"manifest"`
+	Status   string            `json:"status"` // running|done|error|destroying|destroyed
+	Steps    []*Step           `json:"steps"`
+	Outputs  map[string]string `json:"outputs"` // stepkey -> resource id; plus extras like lb_external_ip
+	Error    string            `json:"error,omitempty"`
+}
+
+// --- Persistence ---
+
+func jobsDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".cloudru-vm", "stack-jobs")
+}
+
+func newID() string {
+	b := make([]byte, 5)
+	_, _ = rand.Read(b)
+	return "stk-" + hex.EncodeToString(b)
+}
+
+// OrphanRef summarizes a prior stack job of the same name that still holds
+// created resources (used to warn about duplicate-billing risk at plan time).
+type OrphanRef struct {
+	JobID     string   `json:"job_id"`
+	Status    string   `json:"status"`
+	Resources []string `json:"resources"`
+}
+
+// FindResourcefulJobs scans persisted jobs for OTHER jobs of the same stack name
+// that still hold created resources (status != destroyed). Re-planning while one
+// exists risks duplicate billable resources (a failed job leaves e.g. a Postgres
+// cluster; a fresh apply creates a second) — the caller surfaces these so the
+// captain can stack_destroy the old job first.
+func FindResourcefulJobs(name, excludeID string) []OrphanRef {
+	entries, err := os.ReadDir(jobsDir())
+	if err != nil {
+		return nil
+	}
+	var out []OrphanRef
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(e.Name(), ".json")
+		if id == excludeID {
+			continue
+		}
+		j, err := LoadJob(id)
+		if err != nil || j.Manifest.Name != name || j.Status == "destroyed" {
+			continue
+		}
+		var res []string
+		for _, st := range j.Steps {
+			if st.ResourceID != "" {
+				res = append(res, st.Key+"="+st.ResourceID)
+			}
+		}
+		if len(res) > 0 {
+			out = append(out, OrphanRef{JobID: id, Status: j.Status, Resources: res})
+		}
+	}
+	return out
+}
+
+// Save persists a job to disk.
+func (j *Job) Save() error {
+	dir := jobsDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(j, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, j.ID+".json"), data, 0o600)
+}
+
+// LoadJob reads a job from disk.
+func LoadJob(id string) (*Job, error) {
+	data, err := os.ReadFile(filepath.Join(jobsDir(), id+".json"))
+	if err != nil {
+		return nil, fmt.Errorf("job %s not found: %w", id, err)
+	}
+	var j Job
+	if err := json.Unmarshal(data, &j); err != nil {
+		return nil, fmt.Errorf("parse job %s: %w", id, err)
+	}
+	return &j, nil
+}
+
+// --- Planning: manifest → ordered steps ---
+
+// Plan builds a Job (steps + deps) from a manifest. Nothing is created yet.
+func Plan(m Manifest) *Job {
+	j := &Job{ID: newID(), Manifest: m, Status: "planned", Outputs: map[string]string{}}
+
+	if pg := m.Postgres; pg != nil {
+		args := map[string]any{"name": pg.Name, "confirmed": true}
+		if pg.SpecID != "" {
+			args["specification_id"] = pg.SpecID
+		}
+		if pg.CPU > 0 {
+			args["cpu"] = pg.CPU
+		}
+		if pg.RAM > 0 {
+			args["ram"] = pg.RAM
+		}
+		if pg.StorageGB > 0 {
+			args["storage_gb"] = pg.StorageGB
+		}
+		if pg.NoBackup {
+			args["no_backup"] = true
+		}
+		if pg.InitialDBName != "" {
+			args["initial_database"] = pg.InitialDBName
+		}
+		j.Steps = append(j.Steps, &Step{
+			Key: "postgres", Tool: "pg_create", Args: args,
+			ReadyKind: "status", Status: "pending",
+			FindTool: "pg_list", FindField: "clusters", FindName: pg.Name,
+			StatusTool: "pg_get", StatusArg: "cluster_id", StatusField: "status", ReadyValue: "READY",
+		})
+	}
+
+	if k := m.Kafka; k != nil {
+		args := map[string]any{"name": k.Name, "confirmed": true}
+		if k.VersionID != "" {
+			args["version_id"] = k.VersionID
+		}
+		if k.SpecID != "" {
+			args["specification_id"] = k.SpecID
+		}
+		if k.CPU > 0 {
+			args["cpu"] = k.CPU
+		}
+		if k.RAM > 0 {
+			args["ram"] = k.RAM
+		}
+		if k.StorageGiB > 0 {
+			args["storage_gib"] = k.StorageGiB
+		}
+		if k.Brokers > 0 {
+			args["brokers"] = k.Brokers
+		}
+		if k.UIEnabled {
+			args["ui_enabled"] = true
+		}
+		j.Steps = append(j.Steps, &Step{
+			Key: "kafka", Tool: "kafka_create", Args: args,
+			ReadyKind: "status", Status: "pending",
+			FindTool: "kafka_list", FindField: "clusters", FindName: k.Name,
+			StatusTool: "kafka_get", StatusArg: "cluster_id", StatusField: "status", ReadyValue: "READY",
+		})
+	}
+
+	if r := m.Redis; r != nil {
+		args := map[string]any{"name": r.Name, "confirmed": true}
+		if r.VersionID != "" {
+			args["version_id"] = r.VersionID
+		}
+		if r.SpecID != "" {
+			args["specification_id"] = r.SpecID
+		}
+		if r.CPU > 0 {
+			args["cpu"] = r.CPU
+		}
+		if r.RAM > 0 {
+			args["ram"] = r.RAM
+		}
+		if r.StorageGB > 0 {
+			args["storage_gb"] = r.StorageGB
+		}
+		if r.Shards > 0 {
+			args["shards"] = r.Shards
+		}
+		if r.Replicas > 0 {
+			args["replicas"] = r.Replicas
+		}
+		if r.Type != "" {
+			args["type"] = r.Type
+		}
+		j.Steps = append(j.Steps, &Step{
+			Key: "redis", Tool: "redis_create", Args: args,
+			ReadyKind: "status", Status: "pending",
+			FindTool: "redis_list", FindField: "clusters", FindName: r.Name,
+			StatusTool: "redis_get", StatusArg: "cluster_id", StatusField: "status", ReadyValue: "READY",
+		})
+	}
+
+	if v := m.VPC; v != nil {
+		args := map[string]any{"name": v.Name, "confirmed": true}
+		if v.Description != "" {
+			args["description"] = v.Description
+		}
+		j.Steps = append(j.Steps, &Step{
+			Key: "vpc", Tool: "vpc_create", Args: args,
+			ReadyKind: "op", PollTool: "vpc_operation",
+			FindTool: "vpc_list", FindField: "vpcs", FindName: v.Name,
+			Status: "pending",
+		})
+	}
+
+	if k := m.K8s; k != nil {
+		args := map[string]any{"name": k.Name, "confirmed": true}
+		if k.Version != "" {
+			args["version"] = k.Version
+		}
+		if k.Flavor != "" {
+			args["flavor"] = k.Flavor
+		}
+		if k.CPU > 0 {
+			args["cpu"] = k.CPU
+		}
+		if k.RAM > 0 {
+			args["ram_gb"] = k.RAM
+		}
+		if k.MasterCount > 0 {
+			args["master_count"] = k.MasterCount
+		}
+		if k.KubeAPIInternet {
+			args["kube_api_internet"] = true
+		}
+		// k8s_create returns cluster_id directly; readiness = k8s_get status RUNNING.
+		j.Steps = append(j.Steps, &Step{
+			Key: "k8s", Tool: "k8s_create", Args: args,
+			ReadyKind: "status", Status: "pending",
+			FindTool: "k8s_list", FindField: "clusters", FindName: k.Name,
+			StatusTool: "k8s_get", StatusArg: "cluster_id", StatusField: "status", ReadyValue: "RUNNING",
+		})
+	}
+
+	if r := m.Registry; r != nil {
+		args := map[string]any{"name": r.Name, "confirmed": true}
+		if r.Type != "" {
+			args["registry_type"] = r.Type
+		}
+		if r.Public {
+			args["public"] = true
+		}
+		if r.Tariff != "" {
+			args["tariff"] = r.Tariff
+		}
+		j.Steps = append(j.Steps, &Step{
+			Key: "registry", Tool: "ar_create", Args: args,
+			ReadyKind: "op", PollTool: "ar_operation",
+			FindTool: "ar_list", FindField: "registries", FindName: r.Name,
+			Status: "pending",
+		})
+	}
+
+	if sn := m.SNAT; sn != nil {
+		args := map[string]any{"name": sn.Name, "confirmed": true}
+		if sn.Zone != "" {
+			args["zone"] = sn.Zone
+		}
+		// snat_create is synchronous (returns id immediately).
+		j.Steps = append(j.Steps, &Step{
+			Key: "snat", Tool: "snat_create", Args: args,
+			ReadyKind: "", Status: "pending",
+		})
+	}
+
+	for i, sc := range m.Secrets {
+		j.Steps = append(j.Steps, &Step{
+			Key:       fmt.Sprintf("secret:%d", i),
+			Tool:      "secret_create",
+			Args:      map[string]any{"path": sc.Path, "value": sc.Value, "confirmed": true},
+			ReadyKind: "", Status: "pending",
+		})
+	}
+
+	for i, s3 := range m.S3 {
+		j.Steps = append(j.Steps, &Step{
+			Key:       fmt.Sprintf("s3:%d", i),
+			Tool:      "s3_put",
+			Args:      map[string]any{"bucket": s3.Bucket, "key": s3.Key, "content": s3.Content},
+			ReadyKind: "", Status: "pending",
+		})
+	}
+
+	if vm := m.VM; vm != nil {
+		args := map[string]any{"name": vm.Name}
+		if vm.Private {
+			args["no_public_ip"] = true
+		}
+		if vm.Flavor != "" {
+			args["flavor"] = vm.Flavor
+		}
+		// provision is synchronous (waits for active), returns vm_id.
+		j.Steps = append(j.Steps, &Step{
+			Key: "vm", Tool: "provision", Args: args, ReadyKind: "", Status: "pending",
+		})
+	}
+
+	if nlb := m.NLB; nlb != nil {
+		target := nlb.Target
+		if target == "" {
+			target = "vm"
+		}
+		// tg_create auto-resolves interface_id from vm_id.
+		j.Steps = append(j.Steps, &Step{
+			Key: "tg", Tool: "tg_create",
+			Args:      map[string]any{"name": nlb.Name + "-tg", "vm_id": "$" + target, "confirmed": true},
+			DependsOn: []string{target},
+			PollTool:  "lb_operation", ReadyKind: "op",
+			FindTool: "tg_list", FindField: "target_groups", FindName: nlb.Name + "-tg",
+			Status: "pending",
+		})
+		lbArgs := map[string]any{
+			"name": nlb.Name, "target_group_id": "$tg", "port": nlb.Port,
+			"external": nlb.External, "confirmed": true,
+		}
+		if nlb.TargetPort > 0 {
+			lbArgs["target_port"] = nlb.TargetPort
+		}
+		j.Steps = append(j.Steps, &Step{
+			Key: "lb", Tool: "lb_create", Args: lbArgs,
+			DependsOn: []string{"tg"},
+			PollTool:  "lb_operation", ReadyKind: "op",
+			FindTool: "lb_list", FindField: "load_balancers", FindName: nlb.Name,
+			Status: "pending",
+		})
+	}
+
+	if d := m.DNS; d != nil {
+		rtype := d.RecordType
+		if rtype == "" {
+			rtype = "a"
+		}
+		ttl := d.TTL
+		if ttl == 0 {
+			ttl = 300
+		}
+		// value = the LB's external IP (resolved from outputs at run time) unless
+		// an explicit literal target is given.
+		value := d.Target
+		deps := []string(nil)
+		if value == "" || value == "lb" {
+			value = "$lb_external_ip"
+			deps = []string{"lb"}
+		}
+		j.Steps = append(j.Steps, &Step{
+			Key: "dns", Tool: "dns_record_create",
+			Args: map[string]any{
+				"zone_id": d.ZoneID, "name": d.Name, "record_type": rtype,
+				"value": value, "ttl": ttl, "confirmed": true,
+			},
+			DependsOn: deps,
+			PollTool:  "dns_operation", ReadyKind: "op",
+			FindTool: "dns_records", FindField: "records", FindName: d.Name,
+			FindArgs: map[string]any{"zone_id": d.ZoneID},
+			Status:   "pending",
+		})
+	}
+
+	return j
+}
+
+// Rate-card monthly estimates (RUB) — NOT a bill; exact cost via billing_finops
+// after apply. Overridable later via config if needed.
+const (
+	rateNLBMonthly      = 2900.0
+	rateVMLowMonthly    = 800.0  // lowcost 1 vCPU
+	rateVMDefault       = 1700.0 // ~2 vCPU
+	ratePGvCPUMonthly   = 4900.0 // per vCPU, standard tier w/ backups
+	rateDNSZoneMonthly  = 0.0    // a record in an existing zone ~ free
+	rateK8sMonthly      = 5000.0 // small control plane + a node
+	rateKafkaMonthly    = 4900.0 // small cluster
+	rateRedisMonthly    = 3000.0 // small standalone
+	rateRegistryMonthly = 500.0  // BASIC tariff
+	rateSNATMonthly     = 1000.0
+	rateVPCMonthly      = 0.0 // VPC itself is free
+)
+
+// EstimateCost returns a rough rate-card monthly estimate for a manifest.
+func EstimateCost(m Manifest) map[string]any {
+	var total float64
+	comps := []map[string]any{}
+	add := func(name string, rub float64) {
+		comps = append(comps, map[string]any{"component": name, "monthly_rub": rub})
+		total += rub
+	}
+	if pg := m.Postgres; pg != nil {
+		cpu := pg.CPU
+		if cpu <= 0 {
+			cpu = 1
+		}
+		add("postgres", ratePGvCPUMonthly*float64(cpu))
+	}
+	if vm := m.VM; vm != nil {
+		c := rateVMDefault
+		if vm.Flavor == "" || (len(vm.Flavor) >= 12 && vm.Flavor[:12] == "lowcost10-1-") {
+			c = rateVMLowMonthly
+		}
+		add("vm", c)
+	}
+	if m.NLB != nil {
+		add("nlb", rateNLBMonthly)
+	}
+	if m.VPC != nil {
+		add("vpc", rateVPCMonthly)
+	}
+	if k := m.K8s; k != nil {
+		c := rateK8sMonthly
+		if k.CPU > 2 {
+			c += ratePGvCPUMonthly * 0 // control-plane scaling folded into base for a rough estimate
+		}
+		add("k8s", c)
+	}
+	if m.Kafka != nil {
+		add("kafka", rateKafkaMonthly)
+	}
+	if m.Redis != nil {
+		add("redis", rateRedisMonthly)
+	}
+	if m.Registry != nil {
+		add("registry", rateRegistryMonthly)
+	}
+	if m.SNAT != nil {
+		add("snat", rateSNATMonthly)
+	}
+	if m.DNS != nil {
+		add("dns", rateDNSZoneMonthly)
+	}
+	for range m.Secrets {
+		add("secret", 0)
+	}
+	for range m.S3 {
+		add("s3", 0)
+	}
+	return map[string]any{
+		"currency":          "RUB",
+		"total_monthly_rub": total,
+		"by_component":      comps,
+		"note":              "rate-card estimate (не биллинг); точное — billing_finops после apply",
+	}
+}
+
+// Compact returns a small status view for the agent (no per-step payloads).
+func (j *Job) Compact() map[string]any {
+	var done, pending, running []string
+	for _, s := range j.Steps {
+		switch s.Status {
+		case "done":
+			done = append(done, s.Key)
+		case "running", "waiting":
+			running = append(running, s.Key)
+		default:
+			pending = append(pending, s.Key)
+		}
+	}
+	out := map[string]any{
+		"job_id":  j.ID,
+		"status":  j.Status,
+		"done":    done,
+		"running": running,
+		"pending": pending,
+		"outputs": j.Outputs,
+	}
+	if j.Error != "" {
+		out["error"] = j.Error
+	}
+	return out
+}

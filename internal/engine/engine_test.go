@@ -1,0 +1,567 @@
+package engine
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/dzhechko/cloudru-vm-cli/internal/auth"
+	"github.com/dzhechko/cloudru-vm-cli/internal/config"
+	"github.com/dzhechko/cloudru-vm-cli/internal/deploy"
+	"github.com/dzhechko/cloudru-vm-cli/internal/output"
+	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
+	"github.com/dzhechko/cloudru-vm-cli/internal/state"
+)
+
+// --- Mocks ---
+
+type mockTokenProvider struct {
+	token auth.Token
+	err   error
+}
+
+func (m *mockTokenProvider) Token(_ context.Context) (auth.Token, error) {
+	return m.token, m.err
+}
+
+type mockCloudAPI struct {
+	// Embed the interface so the mock satisfies CloudAPI even as new methods
+	// are added; only the methods explicitly defined below are exercised (any
+	// unimplemented one would panic if called, surfacing a missing stub).
+	provision.CloudAPI
+
+	mu sync.Mutex
+
+	createVMFn    func(ctx context.Context, req provision.CreateVMRequest) (*provision.VM, error)
+	getVMFn       func(ctx context.Context, id string) (*provision.VM, error)
+	deleteVMFn    func(ctx context.Context, id string) error
+	listVMsFn     func(ctx context.Context) ([]*provision.VM, error)
+	listFlavorsFn             func(ctx context.Context) ([]*provision.Flavor, error)
+	listAvailabilityZonesFn func(ctx context.Context) ([]*provision.AvailabilityZone, error)
+	listImagesFn            func(ctx context.Context) ([]*provision.Image, error)
+	getImageFn              func(ctx context.Context, id string) (*provision.ImageDetail, error)
+	getVMDetailFn           func(ctx context.Context, id string) (*provision.VMDetail, error)
+	createFloatingIPFn      func(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error)
+	getFloatingIPFn         func(ctx context.Context, id string) (*provision.FloatingIP, error)
+
+	token        string
+	createCalled bool
+	getCalls     int
+}
+
+func (m *mockCloudAPI) SetToken(t string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.token = t
+}
+
+func (m *mockCloudAPI) CreateVM(ctx context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
+	m.mu.Lock()
+	m.createCalled = true
+	m.mu.Unlock()
+	if m.createVMFn != nil {
+		return m.createVMFn(ctx, req)
+	}
+	return &provision.VM{
+		ID:       "vm-123",
+		Status:   "build",
+		PublicIP: "127.0.0.1",
+	}, nil
+}
+
+func (m *mockCloudAPI) GetVM(ctx context.Context, id string) (*provision.VM, error) {
+	m.mu.Lock()
+	m.getCalls++
+	m.mu.Unlock()
+	if m.getVMFn != nil {
+		return m.getVMFn(ctx, id)
+	}
+	return &provision.VM{
+		ID:       id,
+		Status:   "active",
+		PublicIP: "127.0.0.1",
+	}, nil
+}
+
+func (m *mockCloudAPI) DeleteVM(ctx context.Context, id string) error {
+	if m.deleteVMFn != nil {
+		return m.deleteVMFn(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockCloudAPI) ListVMs(ctx context.Context) ([]*provision.VM, error) {
+	if m.listVMsFn != nil {
+		return m.listVMsFn(ctx)
+	}
+	return nil, nil
+}
+
+func (m *mockCloudAPI) ListFlavors(ctx context.Context) ([]*provision.Flavor, error) {
+	if m.listFlavorsFn != nil {
+		return m.listFlavorsFn(ctx)
+	}
+	return []*provision.Flavor{
+		{ID: "f-small", Name: "small", VCPUs: 2, RAMGB: 2},
+		{ID: "f-medium", Name: "medium", VCPUs: 4, RAMGB: 4},
+	}, nil
+}
+
+func (m *mockCloudAPI) ListAvailabilityZones(ctx context.Context) ([]*provision.AvailabilityZone, error) {
+	if m.listAvailabilityZonesFn != nil {
+		return m.listAvailabilityZonesFn(ctx)
+	}
+	return []*provision.AvailabilityZone{
+		{ID: "az-1", Name: "ru-moscow-1"},
+		{ID: "az-2", Name: "ru-moscow-2"},
+	}, nil
+}
+
+func (m *mockCloudAPI) ListImages(ctx context.Context) ([]*provision.Image, error) {
+	if m.listImagesFn != nil {
+		return m.listImagesFn(ctx)
+	}
+	return []*provision.Image{
+		{ID: "img-1", Name: "Ubuntu 22.04", OS: "linux", Status: "active"},
+	}, nil
+}
+
+func (m *mockCloudAPI) GetImage(ctx context.Context, id string) (*provision.ImageDetail, error) {
+	if m.getImageFn != nil {
+		return m.getImageFn(ctx, id)
+	}
+	return &provision.ImageDetail{
+		ID:   id,
+		Name: "Ubuntu 22.04",
+		OS:   "linux",
+		MetadataFields: []provision.ImageMetadataField{
+			{ID: "mf-1", Name: "ssh_key", Required: true, MandatoryGroup: "ssh"},
+			{ID: "mf-2", Name: "hostname", Required: false},
+		},
+	}, nil
+}
+
+func (m *mockCloudAPI) GetVMDetail(ctx context.Context, id string) (*provision.VMDetail, error) {
+	if m.getVMDetailFn != nil {
+		return m.getVMDetailFn(ctx, id)
+	}
+	return &provision.VMDetail{
+		ID:    id,
+		Name:  "test-vm",
+		State: "running",
+		Interfaces: []provision.VMInterface{
+			{ID: "iface-1", IPAddress: "10.0.0.8", Primary: true},
+		},
+	}, nil
+}
+
+func (m *mockCloudAPI) CreateFloatingIP(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	if m.createFloatingIPFn != nil {
+		return m.createFloatingIPFn(ctx, req)
+	}
+	return &provision.FloatingIP{
+		ID:        "fip-1",
+		Name:      req.Name,
+		IPAddress: "203.0.113.42",
+		State:     "in_use",
+	}, nil
+}
+
+func (m *mockCloudAPI) GetFloatingIP(ctx context.Context, id string) (*provision.FloatingIP, error) {
+	if m.getFloatingIPFn != nil {
+		return m.getFloatingIPFn(ctx, id)
+	}
+	return &provision.FloatingIP{
+		ID:        id,
+		IPAddress: "203.0.113.42",
+		State:     "in_use",
+	}, nil
+}
+
+type mockDeployer struct {
+	mu sync.Mutex
+
+	connectErr      error
+	uploadErr       error
+	execResults     map[string]string
+	execErr         error
+	hostFingerprint string
+	connectCalled   bool
+	uploadCalled    bool
+	execCalls       []string
+	closeCalled     bool
+	uploadedFiles   []deploy.FileEntry
+}
+
+func newMockDeployer() *mockDeployer {
+	return &mockDeployer{
+		execResults: map[string]string{
+			"docker compose version": "Docker Compose version v2.24.0",
+		},
+	}
+}
+
+func (m *mockDeployer) Connect(_ context.Context, host string, port int, user string, keyPEM []byte, knownHostKey string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.connectCalled = true
+	return m.connectErr
+}
+
+func (m *mockDeployer) HostKeyFingerprint() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.hostFingerprint == "" {
+		return "SHA256:testfingerprint"
+	}
+	return m.hostFingerprint
+}
+
+func (m *mockDeployer) Upload(_ context.Context, files []deploy.FileEntry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.uploadCalled = true
+	m.uploadedFiles = append(m.uploadedFiles, files...)
+	return m.uploadErr
+}
+
+func (m *mockDeployer) Exec(_ context.Context, cmd string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.execCalls = append(m.execCalls, cmd)
+	if m.execErr != nil {
+		return "", m.execErr
+	}
+	if result, ok := m.execResults[cmd]; ok {
+		return result, nil
+	}
+	return "", nil
+}
+
+func (m *mockDeployer) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.closeCalled = true
+	return nil
+}
+
+// --- Helpers ---
+
+var testComposeContent = `services:
+  web:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+  db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+`
+
+func writeComposeFile(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "docker-compose.yml")
+	if err := os.WriteFile(path, []byte(testComposeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func composeHash() string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(testComposeContent)))
+}
+
+func newTestEngine(t *testing.T, cloud *mockCloudAPI, deployer *mockDeployer) (*Engine, string) {
+	t.Helper()
+	tmpDir := t.TempDir()
+
+	var buf bytes.Buffer
+	printer := output.NewWithWriter(&buf, output.ModePlain, false)
+
+	return &Engine{
+		Config: config.Config{
+			ProjectID: "00000000-0000-0000-0000-000000000001",
+			ImageID:   "00000000-0000-0000-0000-000000000002",
+			DiskSize:  10,
+		},
+		Auth:      &mockTokenProvider{token: auth.Token{Value: "test-token", ExpiresAt: time.Now().Add(time.Hour)}},
+		Cloud:     cloud,
+		Deployer:  deployer,
+		Printer:   printer,
+		SSHKeyPEM: []byte("fake-key-pem"),
+		SSHPubKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest test@test",
+		StateDir:  tmpDir,
+	}, tmpDir
+}
+
+// --- Tests ---
+
+func TestDeploy_NewDeploy(t *testing.T) {
+	cloud := &mockCloudAPI{}
+	dep := newMockDeployer()
+	eng, tmpDir := newTestEngine(t, cloud, dep)
+
+	composePath := writeComposeFile(t, tmpDir)
+
+	opts := DeployOptions{
+		ComposeFile:    composePath,
+		Flavor:         "small",
+		Region:         "ru-moscow-1",
+		NonInteractive: true,
+	}
+
+	err := eng.Deploy(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Deploy returned error: %v", err)
+	}
+
+	// Verify stages were called.
+	if !cloud.createCalled {
+		t.Error("expected CreateVM to be called")
+	}
+	cloud.mu.Lock()
+	gotToken := cloud.token
+	cloud.mu.Unlock()
+	if gotToken != "test-token" {
+		t.Errorf("expected token 'test-token', got %q", gotToken)
+	}
+
+	dep.mu.Lock()
+	connectCalled := dep.connectCalled
+	uploadCalled := dep.uploadCalled
+	execCalls := append([]string{}, dep.execCalls...)
+	closeCalled := dep.closeCalled
+	dep.mu.Unlock()
+
+	if !connectCalled {
+		t.Error("expected SSH Connect to be called")
+	}
+	if !uploadCalled {
+		t.Error("expected Upload to be called")
+	}
+	if !closeCalled {
+		t.Error("expected Close to be called")
+	}
+
+	// Verify docker compose version check and compose up were called.
+	foundVersion := false
+	foundUp := false
+	for _, cmd := range execCalls {
+		if cmd == "docker compose version" {
+			foundVersion = true
+		}
+		if cmd == "cd /opt/app && docker compose -f docker-compose.yml up -d" {
+			foundUp = true
+		}
+	}
+	if !foundVersion {
+		t.Error("expected 'docker compose version' exec call")
+	}
+	if !foundUp {
+		t.Errorf("expected 'docker compose up -d' exec call, got: %v", execCalls)
+	}
+
+	// Verify state was written.
+	statePath := state.DefaultPath(tmpDir)
+	sf, err := state.Read(statePath)
+	if err != nil {
+		t.Fatalf("failed to read state: %v", err)
+	}
+	if len(sf.Deployments) == 0 {
+		t.Fatal("expected at least one deployment in state")
+	}
+	if sf.Deployments[0].Status != "running" {
+		t.Errorf("expected status 'running', got %q", sf.Deployments[0].Status)
+	}
+	if sf.Deployments[0].VMID != "vm-123" {
+		t.Errorf("expected VMID 'vm-123', got %q", sf.Deployments[0].VMID)
+	}
+}
+
+func TestDeploy_UpdateDeploy(t *testing.T) {
+	cloud := &mockCloudAPI{}
+	dep := newMockDeployer()
+	eng, tmpDir := newTestEngine(t, cloud, dep)
+
+	composePath := writeComposeFile(t, tmpDir)
+
+	// Write existing state with a different hash.
+	statePath := state.DefaultPath(tmpDir)
+	existingState := &state.File{
+		Version: 1,
+		Deployments: []state.DeploymentRecord{
+			{
+				ID:          "vm-existing",
+				VMID:        "vm-existing",
+				VMIP:        "127.0.0.1",
+				VMFlavor:    "small",
+				Region:      "ru-moscow-1",
+				Status:      "running",
+				ComposeHash: "oldhash-different-from-current",
+				CreatedAt:   time.Now().Add(-time.Hour),
+				UpdatedAt:   time.Now().Add(-time.Hour),
+			},
+		},
+	}
+	if err := state.Write(statePath, existingState); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := DeployOptions{
+		ComposeFile:    composePath,
+		Flavor:         "small",
+		Region:         "ru-moscow-1",
+		NonInteractive: true,
+	}
+
+	err := eng.Deploy(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Deploy returned error: %v", err)
+	}
+
+	// Provision should NOT have been called — reusing existing VM.
+	if cloud.createCalled {
+		t.Error("expected CreateVM NOT to be called on update deploy")
+	}
+
+	// SSH and deploy should have been called.
+	dep.mu.Lock()
+	uploadCalled := dep.uploadCalled
+	dep.mu.Unlock()
+	if !uploadCalled {
+		t.Error("expected Upload to be called on update deploy")
+	}
+
+	// State should now reflect the new hash.
+	sf, err := state.Read(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := sf.ActiveDeployment()
+	if active == nil {
+		t.Fatal("expected active deployment")
+	}
+	if active.ComposeHash == "oldhash-different-from-current" {
+		t.Error("expected compose hash to be updated")
+	}
+	if active.Status != "running" {
+		t.Errorf("expected status 'running', got %q", active.Status)
+	}
+}
+
+func TestDeploy_NoChanges(t *testing.T) {
+	cloud := &mockCloudAPI{}
+	dep := newMockDeployer()
+	eng, tmpDir := newTestEngine(t, cloud, dep)
+
+	composePath := writeComposeFile(t, tmpDir)
+
+	// Pre-write state with the same hash as the compose file.
+	statePath := state.DefaultPath(tmpDir)
+	existingState := &state.File{
+		Version: 1,
+		Deployments: []state.DeploymentRecord{
+			{
+				ID:          "vm-existing",
+				VMID:        "vm-existing",
+				VMIP:        "127.0.0.1",
+				VMFlavor:    "small",
+				Region:      "ru-moscow-1",
+				Status:      "running",
+				ComposeHash: composeHash(),
+				CreatedAt:   time.Now().Add(-time.Hour),
+				UpdatedAt:   time.Now().Add(-time.Hour),
+			},
+		},
+	}
+	if err := state.Write(statePath, existingState); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := DeployOptions{
+		ComposeFile:    composePath,
+		Flavor:         "small",
+		Region:         "ru-moscow-1",
+		NonInteractive: true,
+	}
+
+	err := eng.Deploy(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Deploy returned error: %v", err)
+	}
+
+	// Nothing should have been called.
+	if cloud.createCalled {
+		t.Error("expected CreateVM NOT to be called when no changes")
+	}
+	dep.mu.Lock()
+	connectCalled := dep.connectCalled
+	dep.mu.Unlock()
+	if connectCalled {
+		t.Error("expected SSH Connect NOT to be called when no changes")
+	}
+}
+
+func TestDeploy_ForceRedeploy(t *testing.T) {
+	cloud := &mockCloudAPI{}
+	dep := newMockDeployer()
+	eng, tmpDir := newTestEngine(t, cloud, dep)
+
+	composePath := writeComposeFile(t, tmpDir)
+
+	// Pre-write state with the same hash.
+	statePath := state.DefaultPath(tmpDir)
+	existingState := &state.File{
+		Version: 1,
+		Deployments: []state.DeploymentRecord{
+			{
+				ID:          "vm-existing",
+				VMID:        "vm-existing",
+				VMIP:        "127.0.0.1",
+				VMFlavor:    "small",
+				Region:      "ru-moscow-1",
+				Status:      "running",
+				ComposeHash: composeHash(),
+				CreatedAt:   time.Now().Add(-time.Hour),
+				UpdatedAt:   time.Now().Add(-time.Hour),
+			},
+		},
+	}
+	if err := state.Write(statePath, existingState); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := DeployOptions{
+		ComposeFile:    composePath,
+		Flavor:         "small",
+		Region:         "ru-moscow-1",
+		Force:          true,
+		NonInteractive: true,
+	}
+
+	err := eng.Deploy(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Force deploy returned error: %v", err)
+	}
+
+	// Should NOT create a new VM (existing is reused), but should deploy.
+	if cloud.createCalled {
+		t.Error("expected CreateVM NOT to be called on force redeploy (VM exists)")
+	}
+	dep.mu.Lock()
+	uploadCalled := dep.uploadCalled
+	connectCalled := dep.connectCalled
+	dep.mu.Unlock()
+	if !connectCalled {
+		t.Error("expected SSH Connect to be called on force redeploy")
+	}
+	if !uploadCalled {
+		t.Error("expected Upload to be called on force redeploy")
+	}
+}

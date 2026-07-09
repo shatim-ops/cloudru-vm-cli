@@ -1,0 +1,245 @@
+package mcp
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/dzhechko/cloudru-vm-cli/internal/dns"
+)
+
+// dnsClient builds an authenticated Evolution DNS client (standalone → newEngine token).
+func (s *Server) dnsClient(ctx context.Context) (*dns.Client, error) {
+	eng, err := s.newEngine(nil)
+	if err != nil {
+		return nil, err
+	}
+	tok, err := eng.Auth.Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return dns.New(tok.Value, eng.Config.ProjectID, ""), nil
+}
+
+func dnsVisibility(args map[string]any) string {
+	if v := stringArg(args, "type"); v == "private" {
+		return "private"
+	}
+	return "public"
+}
+
+// --- Zones ---
+
+func (s *Server) handleDnsZones(ctx context.Context, args map[string]any) (string, bool) {
+	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	out := make([]map[string]any, 0)
+	for _, vis := range []string{"public", "private"} {
+		zones, e := cli.ListZones(ctx, vis)
+		if e != nil {
+			return errResult(e), true
+		}
+		for _, z := range zones {
+			out = append(out, map[string]any{
+				"id": z["id"], "name": firstNonNil(z["name"], z["domain"]),
+				"domain": z["domain"], "visibility": vis,
+				"valid": z["valid"], "delegated": z["delegated"],
+			})
+		}
+	}
+	return toJSON(map[string]any{"zones": out}), false
+}
+
+func (s *Server) handleDnsZoneGet(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "id")
+	if id == "" {
+		return errResult(fmt.Errorf("'id' is required (from dns_zones)")), true
+	}
+	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	m, err := cli.GetZone(ctx, dnsVisibility(args), id)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(m), false
+}
+
+func (s *Server) handleDnsZoneCreate(ctx context.Context, args map[string]any) (string, bool) {
+	domain := stringArg(args, "domain")
+	if domain == "" {
+		return errResult(fmt.Errorf("'domain' is required (FQDN, e.g. 'example.com.')")), true
+	}
+	vis := dnsVisibility(args)
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": fmt.Sprintf("dns_zone_create creates a %s DNS zone for %q (async). A public zone needs domain-ownership delegation to serve traffic. Call again with confirmed=true.", vis, domain),
+		}), true
+	}
+	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	name := stringArg(args, "name")
+	if name == "" {
+		name = domain
+	}
+	body := map[string]any{"project_id": cli.ProjectID(), "name": name, "domain": domain}
+	if d := stringArg(args, "description"); d != "" {
+		body["description"] = d
+	}
+	op, err := cli.CreateZone(ctx, vis, body)
+	if err != nil {
+		return errResult(fmt.Errorf("create zone: %w", err)), true
+	}
+	return toJSON(map[string]any{"status": "creating", "visibility": vis, "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id); then dns_zones for the id (public zones return a verification_token to delegate)."}), false
+}
+
+func (s *Server) handleDnsZoneDelete(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "id")
+	if id == "" {
+		return errResult(fmt.Errorf("'id' is required (from dns_zones)")), true
+	}
+	vis := dnsVisibility(args)
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("dns_zone_delete PERMANENTLY deletes %s zone %s and its records (async). Call again with confirmed=true.", vis, id)}), true
+	}
+	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	op, err := cli.DeleteZone(ctx, vis, id)
+	if err != nil {
+		return errResult(fmt.Errorf("delete zone: %w", err)), true
+	}
+	return toJSON(map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID}), false
+}
+
+// --- Operations ---
+
+func (s *Server) handleDnsOperation(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "operation_id")
+	if id == "" {
+		return errResult(fmt.Errorf("'operation_id' is required")), true
+	}
+	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	op, err := cli.GetOperation(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(op), false
+}
+
+// --- Records ---
+
+// recordValues collects values from a `values` array and/or a single `value`.
+func recordValues(args map[string]any) []string {
+	var vals []string
+	if raw, ok := args["values"].([]any); ok {
+		for _, v := range raw {
+			if s, ok := v.(string); ok && s != "" {
+				vals = append(vals, s)
+			}
+		}
+	}
+	if v := stringArg(args, "value"); v != "" {
+		vals = append(vals, v)
+	}
+	return vals
+}
+
+func (s *Server) handleDnsRecords(ctx context.Context, args map[string]any) (string, bool) {
+	zoneID := stringArg(args, "zone_id")
+	if zoneID == "" {
+		return errResult(fmt.Errorf("'zone_id' is required (from dns_zones)")), true
+	}
+	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	items, err := cli.ListRecords(ctx, dnsVisibility(args), zoneID)
+	if err != nil {
+		return errResult(err), true
+	}
+	out := make([]map[string]any, 0, len(items))
+	for _, m := range items {
+		out = append(out, map[string]any{"id": m["id"], "name": m["name"], "type": m["type"], "values": m["values"], "ttl": m["ttl"]})
+	}
+	return toJSON(map[string]any{"records": out}), false
+}
+
+func (s *Server) handleDnsRecordGet(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "record_id")
+	if id == "" {
+		return errResult(fmt.Errorf("'record_id' is required (from dns_records)")), true
+	}
+	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	m, err := cli.GetRecord(ctx, dnsVisibility(args), id)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(m), false
+}
+
+func (s *Server) handleDnsRecordCreate(ctx context.Context, args map[string]any) (string, bool) {
+	zoneID := stringArg(args, "zone_id")
+	name := stringArg(args, "name")
+	rtype := stringArg(args, "record_type")
+	vals := recordValues(args)
+	if zoneID == "" || name == "" || rtype == "" || len(vals) == 0 {
+		return errResult(fmt.Errorf("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required")), true
+	}
+	ttl := pgInt(args, "ttl", 300)
+	vis := dnsVisibility(args)
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": fmt.Sprintf("dns_record_create adds a %s %s-record %q → %v (ttl %d) in %s zone %s (async). Call again with confirmed=true.", vis, rtype, name, vals, ttl, vis, zoneID),
+		}), true
+	}
+	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	body := map[string]any{
+		dns.ZoneIDParam(vis): zoneID,
+		"name":               name,
+		"type":               rtype,
+		"values":             vals,
+		"ttl":                ttl,
+	}
+	op, err := cli.CreateRecord(ctx, vis, body)
+	if err != nil {
+		return errResult(fmt.Errorf("create record: %w", err)), true
+	}
+	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id)."}), false
+}
+
+func (s *Server) handleDnsRecordDelete(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "record_id")
+	if id == "" {
+		return errResult(fmt.Errorf("'record_id' is required (from dns_records)")), true
+	}
+	vis := dnsVisibility(args)
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("dns_record_delete deletes %s record %s (async). Call again with confirmed=true.", vis, id)}), true
+	}
+	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	op, err := cli.DeleteRecord(ctx, vis, id)
+	if err != nil {
+		return errResult(fmt.Errorf("delete record: %w", err)), true
+	}
+	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+}

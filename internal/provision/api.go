@@ -1,0 +1,50 @@
+package provision
+
+import "context"
+
+// CloudAPI abstracts Cloud.ru Compute API operations.
+type CloudAPI interface {
+	SetToken(token string)
+	CreateVM(ctx context.Context, req CreateVMRequest) (*VM, error)
+	GetVM(ctx context.Context, id string) (*VM, error)
+	DeleteVM(ctx context.Context, id string) error
+	ListVMs(ctx context.Context) ([]*VM, error)
+	ListFlavors(ctx context.Context) ([]*Flavor, error)
+	ListAvailabilityZones(ctx context.Context) ([]*AvailabilityZone, error)
+	ListImages(ctx context.Context) ([]*Image, error)
+	GetImage(ctx context.Context, id string) (*ImageDetail, error)
+	GetVMDetail(ctx context.Context, id string) (*VMDetail, error)
+	CreateFloatingIP(ctx context.Context, req CreateFloatingIPRequest) (*FloatingIP, error)
+	GetFloatingIP(ctx context.Context, id string) (*FloatingIP, error)
+
+	// Project-scoped discovery (Cloud.ru requires project_id on these endpoints).
+	ListDiskTypes(ctx context.Context, projectID string) ([]*DiskType, error)
+	ListSubnets(ctx context.Context, projectID string) ([]*Subnet, error)
+	ListSecurityGroups(ctx context.Context, projectID string) ([]*SecurityGroup, error)
+	ListFloatingIPs(ctx context.Context, projectID string) ([]*FloatingIP, error)
+	// AttachFloatingIP binds an existing floating IP to a VM interface (PUT).
+	AttachFloatingIP(ctx context.Context, fipID, projectID, interfaceID, name string) (*FloatingIP, error)
+	// DeleteFloatingIP releases (deletes) a floating IP by ID.
+	DeleteFloatingIP(ctx context.Context, fipID, projectID string) error
+
+	// Project-scoped VM ops (the /vms endpoint requires project_id here).
+	ListVMsInProject(ctx context.Context, projectID string) ([]*VM, error)
+	DeleteVMInProject(ctx context.Context, id, projectID string) error
+
+	// AddSecurityGroupRule adds one ingress/egress rule to a security group.
+	AddSecurityGroupRule(ctx context.Context, sgID, projectID string, rule SGRule) error
+
+	// NAT (SNAT) gateways — outbound internet egress for private subnets
+	// (e.g. mk8s worker nodes). Zone-level resource on the Compute API.
+	ListNATGateways(ctx context.Context, projectID string) ([]map[string]any, error)
+	CreateNATGateway(ctx context.Context, req CreateNATGatewayRequest) (map[string]any, error)
+	DeleteNATGateway(ctx context.Context, id, projectID string) error
+
+	// Disks (block storage) — create/attach/detach/delete + list.
+	ListDisks(ctx context.Context, projectID string) ([]map[string]any, error)
+	CreateDisk(ctx context.Context, req CreateDiskReq) (map[string]any, error)
+	AttachDisk(ctx context.Context, diskID, vmID, projectID string) (map[string]any, error)
+	DetachDisk(ctx context.Context, diskID, vmID, projectID string) (map[string]any, error)
+	ResizeDisk(ctx context.Context, diskID string, sizeGB int, projectID string) (map[string]any, error)
+	DeleteDisk(ctx context.Context, diskID, projectID string) error
+}

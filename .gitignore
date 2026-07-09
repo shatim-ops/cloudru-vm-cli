@@ -1,0 +1,4 @@
+/cloudru-vm
+/cloudru-vm-*
+*.bak-*
+.DS_Store

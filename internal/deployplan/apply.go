@@ -1,0 +1,396 @@
+package deployplan
+
+import (
+	"context"
+	"crypto/rand"
+	"fmt"
+	"math/big"
+	"net"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
+)
+
+const (
+	pollInterval = 10 * time.Second
+	pollTimeout  = 7 * time.Minute // Cloud.ru VMs take 2-5 min; protocol v5 minimum
+)
+
+// ApplyResult is the compact result returned to the agent after a deploy.
+type ApplyResult struct {
+	VMID       string `json:"vm_id"`
+	Status     string `json:"status"`
+	PublicIP   string `json:"public_ip,omitempty"`
+	SSH        string `json:"ssh,omitempty"`
+	Password   string `json:"password,omitempty"` // shown ONCE; not persisted
+	ElapsedSec int    `json:"elapsed_sec"`
+	Note       string `json:"note,omitempty"`
+}
+
+// Apply executes a resolved plan. It is idempotent: if a VM with the plan's name
+// already exists, it adopts that VM instead of creating a duplicate.
+func Apply(ctx context.Context, cloud provision.CloudAPI, plan *Plan) (*ApplyResult, error) {
+	start := time.Now()
+
+	// --- Idempotency: adopt an existing VM with the same name ---
+	if existing := findVMByName(ctx, cloud, plan.VM.Name); existing != nil {
+		if existing.Status == "error" {
+			return &ApplyResult{
+				VMID:   existing.ID,
+				Status: "error",
+				Note:   "a VM with this name already exists in error state; destroy it first, then retry",
+			}, nil
+		}
+		ip, fipNote := ensureFloatingIP(ctx, cloud, plan, existing.ID)
+		return &ApplyResult{
+			VMID:       existing.ID,
+			Status:     "running",
+			PublicIP:   ip,
+			SSH:        sshString(plan.SSH.Login, ip),
+			ElapsedSec: int(time.Since(start).Seconds()),
+			Note:       joinNotes("VM already existed — adopted (idempotent), nothing recreated", fipNote),
+		}, nil
+	}
+
+	// --- Build image_metadata (password generated here, never persisted) ---
+	// Start from the image's required defaults (copied verbatim), then fill the
+	// dynamic fields. Omitting the defaults yields image_metadata_fields_missing.
+	meta := map[string]string{}
+	for k, v := range plan.MetaStatic {
+		meta[k] = v
+	}
+	password := ""
+	for _, f := range plan.MetaFields {
+		switch f {
+		case "name":
+			meta["name"] = plan.SSH.Login
+		case "hostname":
+			meta["hostname"] = plan.VM.Name
+		case "linux_password":
+			password = generatePassword(16)
+			meta["linux_password"] = password
+		case "public_key":
+			if plan.PublicKey != "" {
+				meta["public_key"] = plan.PublicKey
+			}
+		}
+	}
+
+	// --- Build the create request (mirrors the proven v1.1 body) ---
+	iface := provision.InterfaceReq{
+		Type:                     "regular",
+		SubnetID:                 plan.Network.SubnetID,
+		InterfaceSecurityEnabled: true,
+	}
+	if plan.Network.SecurityGroupID != "" {
+		iface.SecurityGroups = []string{plan.Network.SecurityGroupID}
+	}
+	if plan.Network.FloatingIP && plan.Network.AttachFIPID != "" {
+		iface.AttachExternalIPID = plan.Network.AttachFIPID // variant A
+	}
+
+	req := provision.CreateVMRequest{
+		ProjectID:          plan.ProjectID,
+		Name:               plan.VM.Name,
+		FlavorName:         plan.VM.Flavor.Name,
+		ImageName:          plan.VM.Image.Name,
+		AvailabilityZoneID: plan.VM.Zone.ID,
+		Disks: []provision.DiskReq{{
+			Name:         plan.VM.Name + "-disk",
+			Size:         plan.VM.Disk.SizeGB,
+			DiskTypeName: firstNonEmpty(plan.VM.Disk.Type, "SSD"),
+		}},
+		Interfaces: []provision.InterfaceReq{iface},
+	}
+	if len(meta) > 0 {
+		req.ImageMetadata = meta
+	}
+
+	vm, err := cloud.CreateVM(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("create VM: %w", err)
+	}
+
+	// --- Poll until running (7 min) ---
+	status := "building"
+	deadline := time.After(pollTimeout)
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+poll:
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-deadline:
+			return &ApplyResult{
+				VMID: vm.ID, Status: "timeout", Password: password,
+				ElapsedSec: int(time.Since(start).Seconds()),
+				Note:       fmt.Sprintf("VM did not reach running within %s; check status later with the status tool", pollTimeout),
+			}, nil
+		case <-ticker.C:
+			cur, e := cloud.GetVM(ctx, vm.ID)
+			if e != nil {
+				continue
+			}
+			switch cur.Status {
+			case "running", "active":
+				status = "running"
+				break poll
+			case "error":
+				return &ApplyResult{
+					VMID: vm.ID, Status: "error", Password: password,
+					ElapsedSec: int(time.Since(start).Seconds()),
+					Note:       "VM entered error state; destroy it and retry",
+				}, nil
+			}
+		}
+	}
+
+	// --- Floating IP ---
+	ip, fipNote := ensureFloatingIP(ctx, cloud, plan, vm.ID)
+
+	// --- Wait until SSH (port 22) is actually reachable, so the agent's very
+	// first ssh attempt succeeds instead of hitting a boot-time timeout (which
+	// has been misread as a "security group blocks 22" problem). Bounded so the
+	// tool call stays well under the MCP timeout. ---
+	sshNote := ""
+	if ip != "" {
+		if waitForSSHPort(ctx, ip, 120*time.Second) {
+			sshNote = "SSH port 22 is open — connect now with the ssh command above."
+		} else {
+			sshNote = "VM is up but SSH port 22 was not reachable yet — wait ~1 min and retry the same ssh command. The VM is still booting; do NOT blame security groups, do NOT recreate the VM."
+		}
+	}
+
+	// --- Open the product's ports in the security group (auto). ---
+	portNote := ""
+	if len(plan.Ports) > 0 && plan.Network.SecurityGroupID != "" {
+		portNote = openPorts(ctx, cloud, plan)
+	}
+
+	return &ApplyResult{
+		VMID:       vm.ID,
+		Status:     status,
+		PublicIP:   ip,
+		SSH:        sshString(plan.SSH.Login, ip),
+		Password:   password,
+		ElapsedSec: int(time.Since(start).Seconds()),
+		Note:       joinNotes(fipNote, sshNote, portNote),
+	}, nil
+}
+
+// openPorts adds ingress tcp rules for the plan's ports to the VM's security
+// group, skipping ports that are already open. Returns a human summary.
+func openPorts(ctx context.Context, cloud provision.CloudAPI, plan *Plan) string {
+	sgID := plan.Network.SecurityGroupID
+	existing := map[string]bool{}
+	if sgs, err := cloud.ListSecurityGroups(ctx, plan.ProjectID); err == nil {
+		for _, sg := range sgs {
+			if sg.ID == sgID {
+				for _, r := range sg.Rules {
+					if r.Direction == "ingress" && r.PortRange != "" {
+						existing[r.PortRange] = true
+					}
+				}
+				break
+			}
+		}
+	}
+
+	var opened, skipped, failed []string
+	for _, p := range plan.Ports {
+		pr := fmt.Sprintf("%d:%d", p, p)
+		if existing[pr] {
+			skipped = append(skipped, strconv.Itoa(p))
+			continue
+		}
+		rule := provision.SGRule{
+			Direction:      "ingress",
+			EtherType:      "IPv4",
+			IPProtocol:     "tcp",
+			PortRange:      pr,
+			RemoteIPPrefix: "0.0.0.0/0",
+			Description:    fmt.Sprintf("auto: %s port %d", plan.Product, p),
+		}
+		if err := cloud.AddSecurityGroupRule(ctx, sgID, plan.ProjectID, rule); err != nil {
+			failed = append(failed, strconv.Itoa(p))
+		} else {
+			opened = append(opened, strconv.Itoa(p))
+		}
+	}
+
+	var parts []string
+	if len(opened) > 0 {
+		parts = append(parts, "opened ports "+strings.Join(opened, ","))
+	}
+	if len(skipped) > 0 {
+		parts = append(parts, "already open "+strings.Join(skipped, ","))
+	}
+	if len(failed) > 0 {
+		parts = append(parts, "FAILED to open "+strings.Join(failed, ",")+" — open them manually in the console")
+	}
+	return strings.Join(parts, "; ")
+}
+
+// waitForSSHPort polls TCP port 22 on ip until it accepts a connection or the
+// timeout elapses. Returns true if the port became reachable.
+func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return false
+		default:
+		}
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "22"), 5*time.Second)
+		if err == nil {
+			_ = conn.Close()
+			return true
+		}
+		time.Sleep(5 * time.Second)
+	}
+	return false
+}
+
+// ensureFloatingIP returns the VM's public IP plus a human note describing what
+// happened. It attaches a floating IP if the plan asked for one: variant A id
+// (attached at creation), then variant B (reuse an existing free FIP), then
+// create a new FIP. If the FIP quota is exhausted, it does NOT fail — the VM
+// stays up without a public IP and the note explains how to fix it.
+func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vmID string) (string, string) {
+	if !plan.Network.FloatingIP {
+		return "", ""
+	}
+	// Variant A: FIP id was attached at creation — just read its address.
+	if plan.Network.AttachFIPID != "" {
+		if f, err := cloud.GetFloatingIP(ctx, plan.Network.AttachFIPID); err == nil && f.IPAddress != "" {
+			return f.IPAddress, "public IP attached (existing floating IP)"
+		}
+	}
+
+	detail, err := cloud.GetVMDetail(ctx, vmID)
+	if err != nil || len(detail.Interfaces) == 0 {
+		return "", "could not read the VM interface yet — attach a floating IP later via the Cloud.ru console"
+	}
+	ifaceID := detail.Interfaces[0].ID
+	for _, in := range detail.Interfaces {
+		if in.Primary {
+			ifaceID = in.ID
+			break
+		}
+	}
+
+	// Variant B: attach an existing available FIP.
+	if fips, e := cloud.ListFloatingIPs(ctx, plan.ProjectID); e == nil {
+		for _, f := range fips {
+			if f.Available() {
+				if _, ae := cloud.AttachFloatingIP(ctx, f.ID, plan.ProjectID, ifaceID, plan.VM.Name+"-fip"); ae == nil {
+					return f.IPAddress, "public IP attached (reused a free floating IP)"
+				}
+			}
+		}
+	}
+
+	// No free FIP: request a new one. Quota exhaustion is reported, not fatal.
+	f, e := cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
+		Name:               plan.VM.Name + "-fip",
+		ProjectID:          plan.ProjectID,
+		InterfaceID:        ifaceID,
+		AvailabilityZoneID: plan.VM.Zone.ID,
+	})
+	if e == nil {
+		return f.IPAddress, "public IP attached (created a new floating IP)"
+	}
+	if isQuotaError(e) {
+		return "", "⚠️ Floating-IP quota exhausted — the VM was created WITHOUT a public IP. Increase the floating-IP quota in the Cloud.ru console, then attach an IP to this VM manually."
+	}
+	return "", "could not attach a floating IP (" + e.Error() + ") — the VM was created without a public IP; attach one via the console"
+}
+
+// isQuotaError reports whether an error looks like a Cloud.ru quota rejection.
+func isQuotaError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "quota") || strings.Contains(s, "organization_quota_exceeded")
+}
+
+// joinNotes concatenates non-empty notes with "; ".
+func joinNotes(notes ...string) string {
+	var parts []string
+	for _, n := range notes {
+		if n != "" {
+			parts = append(parts, n)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
+func findVMByName(ctx context.Context, cloud provision.CloudAPI, name string) *provision.VM {
+	vms, err := cloud.ListVMs(ctx)
+	if err != nil {
+		return nil
+	}
+	for _, v := range vms {
+		if v.Name == name {
+			return v
+		}
+	}
+	return nil
+}
+
+func sshString(login, ip string) string {
+	if ip == "" {
+		return ""
+	}
+	return fmt.Sprintf("ssh %s@%s", firstNonEmpty(login, "user1"), ip)
+}
+
+// generatePassword returns a random password of n chars that is GUARANTEED to
+// contain at least one lowercase, one uppercase, one digit and one special
+// character. Cloud.ru rejects passwords without a digit
+// ("the password must contain at least one number"), so a purely random draw is
+// not safe — we seed one char from each class, then fill and shuffle.
+// Ambiguous characters (0/O/1/l/I) are avoided.
+func generatePassword(n int) string {
+	if n < 8 {
+		n = 8
+	}
+	const (
+		lower   = "abcdefghijkmnpqrstuvwxyz"
+		upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+		digits  = "23456789"
+		special = "!@#%-_+="
+	)
+	all := lower + upper + digits + special
+
+	pw := make([]byte, 0, n)
+	pw = append(pw, pickChar(lower), pickChar(upper), pickChar(digits), pickChar(special))
+	for len(pw) < n {
+		pw = append(pw, pickChar(all))
+	}
+	// Fisher-Yates shuffle so the seeded classes aren't in fixed positions.
+	for i := len(pw) - 1; i > 0; i-- {
+		j := randIntn(i + 1)
+		pw[i], pw[j] = pw[j], pw[i]
+	}
+	return string(pw)
+}
+
+func pickChar(set string) byte {
+	return set[randIntn(len(set))]
+}
+
+func randIntn(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	v, err := rand.Int(rand.Reader, big.NewInt(int64(n)))
+	if err != nil {
+		return 0
+	}
+	return int(v.Int64())
+}
