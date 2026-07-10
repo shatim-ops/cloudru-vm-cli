@@ -100,9 +100,9 @@ func (s *Server) handleSnatCreate(ctx context.Context, args map[string]any) (str
 		return errResult(fmt.Errorf("create SNAT gateway: %w", err)), true
 	}
 	return toJSON(map[string]any{
-		"status":       "created",
-		"nat_gateway":  gw,
-		"note":         "SNAT gateway created — private-subnet nodes in this zone now have outbound internet. Delete it with snat_delete when no longer needed (it's billable).",
+		"status":      "created",
+		"nat_gateway": gw,
+		"note":        "SNAT gateway created — private-subnet nodes in this zone now have outbound internet. Delete it with snat_delete when no longer needed (it's billable).",
 	}), false
 }
 
