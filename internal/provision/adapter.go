@@ -211,9 +211,24 @@ func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*Availabi
 	return nil, clierrors.New(clierrors.CodeAPIError, "failed to decode availability zones response", "API returned unexpected format — run with --verbose to debug")
 }
 
-// ListImages lists available boot images via GET /api/v1/images.
+// ListImages lists boot images via GET /api/v1/images. A bare call returns only
+// the shared catalogue, and only its first page — images built inside a project
+// are invisible there. ListImagesInProject exists for those.
 func (a *CloudRuAdapter) ListImages(ctx context.Context) ([]*Image, error) {
-	resp, err := a.doWithRetry(ctx, http.MethodGet, "/api/v1/images", nil)
+	return a.listImages(ctx, "/api/v1/images?limit=200")
+}
+
+// ListImagesInProject returns the images owned by one project — the ones
+// image_create makes.
+func (a *CloudRuAdapter) ListImagesInProject(ctx context.Context, projectID string) ([]*Image, error) {
+	if projectID == "" {
+		return nil, nil
+	}
+	return a.listImages(ctx, "/api/v1/images?limit=200&project_id="+projectID)
+}
+
+func (a *CloudRuAdapter) listImages(ctx context.Context, path string) ([]*Image, error) {
+	resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}

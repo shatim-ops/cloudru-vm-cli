@@ -38,11 +38,11 @@ type mockCloudAPI struct {
 
 	mu sync.Mutex
 
-	createVMFn    func(ctx context.Context, req provision.CreateVMRequest) (*provision.VM, error)
-	getVMFn       func(ctx context.Context, id string) (*provision.VM, error)
-	deleteVMFn    func(ctx context.Context, id string) error
-	listVMsFn     func(ctx context.Context) ([]*provision.VM, error)
-	listFlavorsFn             func(ctx context.Context) ([]*provision.Flavor, error)
+	createVMFn              func(ctx context.Context, req provision.CreateVMRequest) (*provision.VM, error)
+	getVMFn                 func(ctx context.Context, id string) (*provision.VM, error)
+	deleteVMFn              func(ctx context.Context, id string) error
+	listVMsFn               func(ctx context.Context) ([]*provision.VM, error)
+	listFlavorsFn           func(ctx context.Context) ([]*provision.Flavor, error)
 	listAvailabilityZonesFn func(ctx context.Context) ([]*provision.AvailabilityZone, error)
 	listImagesFn            func(ctx context.Context) ([]*provision.Image, error)
 	getImageFn              func(ctx context.Context, id string) (*provision.ImageDetail, error)
@@ -130,6 +130,10 @@ func (m *mockCloudAPI) ListImages(ctx context.Context) ([]*provision.Image, erro
 	return []*provision.Image{
 		{ID: "img-1", Name: "Ubuntu 22.04", OS: "linux", Status: "active"},
 	}, nil
+}
+
+func (m *mockCloudAPI) ListImagesInProject(ctx context.Context, projectID string) ([]*provision.Image, error) {
+	return m.ListImages(ctx)
 }
 
 func (m *mockCloudAPI) GetImage(ctx context.Context, id string) (*provision.ImageDetail, error) {

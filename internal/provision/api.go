@@ -12,6 +12,7 @@ type CloudAPI interface {
 	ListFlavors(ctx context.Context) ([]*Flavor, error)
 	ListAvailabilityZones(ctx context.Context) ([]*AvailabilityZone, error)
 	ListImages(ctx context.Context) ([]*Image, error)
+	ListImagesInProject(ctx context.Context, projectID string) ([]*Image, error)
 	GetImage(ctx context.Context, id string) (*ImageDetail, error)
 	// CreateImage builds an image from a bootable disk; DeleteImage removes one.
 	CreateImage(ctx context.Context, req CreateImageReq) (map[string]any, error)

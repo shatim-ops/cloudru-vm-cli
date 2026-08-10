@@ -1936,7 +1936,24 @@ func (s *Server) handleListImages(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(err), true
 	}
-	return toJSON(map[string]any{"images": images}), false
+	// The shared catalogue does not contain images built inside the project, so
+	// they are fetched separately and merged — otherwise a freshly built image
+	// is missing from the very list used to find it.
+	seen := make(map[string]bool, len(images))
+	for _, img := range images {
+		seen[img.ID] = true
+	}
+	own, ownErr := eng.Cloud.ListImagesInProject(ctx, eng.Config.ProjectID)
+	for _, img := range own {
+		if !seen[img.ID] {
+			images = append(images, img)
+		}
+	}
+	res := map[string]any{"images": images}
+	if ownErr != nil {
+		res["warning"] = "не удалось получить образы проекта: " + ownErr.Error()
+	}
+	return toJSON(res), false
 }
 
 // --- helpers ---
