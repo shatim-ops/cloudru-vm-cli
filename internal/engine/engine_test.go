@@ -147,6 +147,14 @@ func (m *mockCloudAPI) GetImage(ctx context.Context, id string) (*provision.Imag
 	}, nil
 }
 
+func (m *mockCloudAPI) CreateImage(ctx context.Context, req provision.CreateImageReq) (map[string]any, error) {
+	return map[string]any{"id": "img-new", "name": req.Name, "disk_id": req.DiskID}, nil
+}
+
+func (m *mockCloudAPI) DeleteImage(ctx context.Context, imageID, projectID string) error {
+	return nil
+}
+
 func (m *mockCloudAPI) GetVMDetail(ctx context.Context, id string) (*provision.VMDetail, error) {
 	if m.getVMDetailFn != nil {
 		return m.getVMDetailFn(ctx, id)

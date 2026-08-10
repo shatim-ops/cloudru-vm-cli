@@ -13,6 +13,9 @@ type CloudAPI interface {
 	ListAvailabilityZones(ctx context.Context) ([]*AvailabilityZone, error)
 	ListImages(ctx context.Context) ([]*Image, error)
 	GetImage(ctx context.Context, id string) (*ImageDetail, error)
+	// CreateImage builds an image from a bootable disk; DeleteImage removes one.
+	CreateImage(ctx context.Context, req CreateImageReq) (map[string]any, error)
+	DeleteImage(ctx context.Context, imageID, projectID string) error
 	GetVMDetail(ctx context.Context, id string) (*VMDetail, error)
 	CreateFloatingIP(ctx context.Context, req CreateFloatingIPRequest) (*FloatingIP, error)
 	GetFloatingIP(ctx context.Context, id string) (*FloatingIP, error)

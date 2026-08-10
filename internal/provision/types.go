@@ -145,11 +145,44 @@ type Image struct {
 
 // ImageDetail contains full image info including required metadata fields.
 type ImageDetail struct {
-	ID             string               `json:"id"`
-	Name           string               `json:"name"`
-	OS             string               `json:"os"`
-	Status         string               `json:"status"`
-	MetadataFields []ImageMetadataField `json:"image_metadata"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+	OS          string `json:"os"`
+	Status      string `json:"status"`
+	MinCPU      int    `json:"min_cpu"`
+	MinRAM      int    `json:"min_ram"`
+	MinDisk     int    `json:"min_disk"`
+	// UserDataTemplate is the cloud-init template the platform renders when a
+	// VM is created from this image; MetadataFields declares the values it
+	// substitutes.
+	UserDataTemplate string               `json:"user_data_template"`
+	MetadataFields   []ImageMetadataField `json:"image_metadata"`
+	// AvailZones carries the real build state: the top-level Status is often
+	// empty, and an image is usable only once a zone reports "created".
+	AvailZones []ImageAvailZone `json:"availability_zones"`
+}
+
+// ImageAvailZone is an image's per-zone build state and size.
+type ImageAvailZone struct {
+	AvailabilityZoneID   string `json:"availability_zone_id"`
+	AvailabilityZoneName string `json:"availability_zone_name"`
+	State                string `json:"state"`
+	Size                 int64  `json:"size"`
+	Uploaded             bool   `json:"uploaded"`
+	Default              bool   `json:"default"`
+	Enabled              bool   `json:"enabled"`
+}
+
+// Ready reports whether the image finished building in at least one zone.
+func (i *ImageDetail) Ready() bool {
+	for _, az := range i.AvailZones {
+		if az.State == "created" {
+			return true
+		}
+	}
+	return false
 }
 
 // ImageMetadataField describes a metadata field required by an image.

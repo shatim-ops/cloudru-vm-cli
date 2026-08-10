@@ -93,6 +93,56 @@ func (s *Server) registerTools() {
 			InputSchema: objSchema(nil),
 		},
 		{
+			Name: "image_create",
+			Description: "Create a reusable VM image FROM A BOOTABLE DISK — the final step of producing a distributable image (e.g. a Marketplace product): provision a VM, install the product, clean it up, stop the VM, then capture its boot disk here. " +
+				"The disk must be bootable AND detached — power the VM off, detach the boot disk with disk_detach, and wait until disk_list reports state 'available'. Stopping the VM is not enough: while the disk is attached the API answers invalid_disk_state_to_create_image. " +
+				"For a Marketplace image also pass user_data_template (cloud-init Jinja) plus image_metadata declaring every {{ var }} the template uses — that is how a buyer's SSH key or password reaches the guest. " +
+				"Building is asynchronous (~0.7 GB/min): poll list_images for state. Mutation (billable storage): requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"name":               strProp("Image name (technical, unique in the project)."),
+				"disk_id":            strProp("UUID of the bootable source disk (from disk_list)."),
+				"display_name":       strProp("Human-readable name shown in the console."),
+				"description":        strProp("Free-text description, MAX 255 characters (the API rejects longer with too_long). Keep it to product, pinned version and digest; legal disclaimers belong in the Marketplace listing, not here."),
+				"zone":               strProp("Availability zone name or UUID to build the image in (default: configured region). Must match the disk's zone."),
+				"min_cpu":            intProp("Minimum vCPUs a VM needs to boot this image."),
+				"min_ram":            intProp("Minimum RAM in GB."),
+				"min_disk":           intProp("Minimum boot disk in GB — must be >= the image size, or VMs cannot be created from it."),
+				"user_data_template": strProp("cloud-init template (Jinja) rendered when a VM is created from this image. Required for Marketplace images."),
+				"image_metadata": map[string]any{
+					"type":  "array",
+					"items": map[string]any{"type": "object"},
+					"description": "Fields the buyer fills in, substituted into user_data_template. Every {{ var }} in the template must be declared here. " +
+						"Each entry: {name, display_name, display_position, field_type, default_value, sensitive, mandatory_group} — display_name and display_position are REQUIRED, and 'id'/'is_required' are rejected (the write schema differs from what image_get returns). " +
+						"field_type uses the platform's typed values (public_key, linux_password, linux_login, hostname, flag); put public_key and linux_password in the same mandatory_group ('authentication') so either satisfies access.",
+				},
+				"confirmed": boolProp("Must be true — set only after the captain approved."),
+			}, "name", "disk_id"),
+		},
+		{
+			Name:        "fip_attach",
+			Description: "Bind an existing FREE floating IP to a VM's primary interface, giving it a public address. Use when a VM has no public_ip — e.g. provisioning from a large custom image outran the wizard's wait and it returned before assigning one. Pick a free address from list_floating_ips. Mutation: requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"fip":       strProp("Floating IP address (e.g. '213.171.24.210') or its UUID, from list_floating_ips."),
+				"vm":        strProp("VM name or UUID to attach it to."),
+				"confirmed": boolProp("Must be true — set only after the captain approved."),
+			}, "fip", "vm"),
+		},
+		{
+			Name:        "image_get",
+			Description: "Get one VM image with its full spec — including the cloud-init user_data_template the platform renders when a VM is created from it, and the image_metadata fields a buyer fills in. Read-only. Use it to poll an image build until it reports state 'created', and to inspect how existing Marketplace images are structured.",
+			InputSchema: objSchema(map[string]any{
+				"image_id": strProp("Image UUID (from list_images)."),
+			}, "image_id"),
+		},
+		{
+			Name:        "image_delete",
+			Description: "Delete a VM image. Running VMs keep working, but no new VM can be created from it. Mutation: requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"image_id":  strProp("Image UUID (from list_images)."),
+				"confirmed": boolProp("Must be true — set only after the captain approved."),
+			}, "image_id"),
+		},
+		{
 			Name:        "deploy_plan",
 			Description: "STEP 1 of the deploy wizard (read-only, creates nothing). Resolves a full VM configuration — flavor, image, zone, disk, network, SSH — and returns it together with a MONTHLY COST estimate and a plan_id. In 'auto' mode pass the product's requirements (cpu/ram_gb/disk_gb from its README) and defaults fill the rest; in 'manual' mode pass explicit choices (flavor/zone/image/disk_type). Show the returned plan + cost to the captain for approval, then call deploy_apply with the plan_id.",
 			InputSchema: objSchema(map[string]any{
@@ -1155,6 +1205,10 @@ func (s *Server) registerTools() {
 		"destroy":              s.handleDestroy,
 		"list_zones":           s.handleListZones,
 		"list_images":          s.handleListImages,
+		"image_create":         s.handleImageCreate,
+		"image_get":            s.handleImageGet,
+		"fip_attach":           s.handleFipAttach,
+		"image_delete":         s.handleImageDelete,
 		"deploy_plan":          s.handleDeployPlan,
 		"deploy_apply":         s.handleDeployApply,
 		"list_flavors":         s.handleListFlavors,

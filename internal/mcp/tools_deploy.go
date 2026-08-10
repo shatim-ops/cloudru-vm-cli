@@ -22,6 +22,9 @@ func (s *Server) authedEngine(ctx context.Context, overrides map[string]any) (*e
 	if err != nil {
 		return nil, err
 	}
+	if eng == nil {
+		return nil, fmt.Errorf("engine unavailable")
+	}
 	tok, err := eng.Auth.Token(ctx)
 	if err != nil {
 		return nil, err

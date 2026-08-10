@@ -3,16 +3,19 @@ package mcp
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/dzhechko/cloudru-vm-cli/internal/engine"
 )
 
-// nilFactory is an EngineFactory that fails — used for protocol-level tests that
-// never actually reach a handler that needs a working engine.
+// nilFactory is an EngineFactory that fails — used for tests that must not
+// reach the cloud. It returns an error rather than a nil engine so a handler
+// that skips its confirmation gate surfaces that as a plain error instead of a
+// nil-pointer panic.
 func nilFactory(map[string]any) (*engine.Engine, error) {
-	return nil, nil
+	return nil, errors.New("no engine in tests")
 }
 
 func newTestServer() *Server {
