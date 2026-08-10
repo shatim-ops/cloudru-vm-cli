@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/dzhechko/cloudru-vm-cli/internal/engine"
 	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
 )
 
@@ -31,6 +32,26 @@ func (s *Server) resolveZoneID(ctx context.Context, ref, fallback string) (strin
 		}
 	}
 	return "", fmt.Errorf("zone %q not found", ref)
+}
+
+// zoneOfDisk returns the availability zone UUID the given disk lives in.
+func (s *Server) zoneOfDisk(ctx context.Context, eng *engine.Engine, diskID string) (string, error) {
+	disks, err := eng.Cloud.ListDisks(ctx, eng.Config.ProjectID)
+	if err != nil {
+		return "", err
+	}
+	for _, d := range disks {
+		if id, _ := d["id"].(string); id != diskID {
+			continue
+		}
+		if az, ok := d["availability_zone"].(map[string]any); ok {
+			if zid, _ := az["id"].(string); zid != "" {
+				return zid, nil
+			}
+		}
+		return "", fmt.Errorf("disk %s reports no availability zone; pass 'zone' explicitly", diskID)
+	}
+	return "", fmt.Errorf("disk %s not found in project %s", diskID, eng.Config.ProjectID)
 }
 
 // handleImageCreate builds a VM image from a bootable disk — the last step of
@@ -92,7 +113,18 @@ func (s *Server) handleImageCreate(ctx context.Context, args map[string]any) (st
 	}
 	req.ProjectID = eng.Config.ProjectID
 
-	zoneID, err := s.resolveZoneID(ctx, zoneRef, eng.Config.Region)
+	// An image belongs in the zone of the disk it is made from, so that disk is
+	// the default when neither an explicit zone nor a configured one exists.
+	// Without this the request went out with an empty availability_zone_id and
+	// the platform answered 422.
+	fallback := eng.Config.Region
+	if zoneRef == "" && fallback == "" {
+		fallback, err = s.zoneOfDisk(ctx, eng, diskID)
+		if err != nil {
+			return errResult(err), true
+		}
+	}
+	zoneID, err := s.resolveZoneID(ctx, zoneRef, fallback)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -123,8 +155,8 @@ func (s *Server) handleFipAttach(ctx context.Context, args map[string]any) (stri
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "fip_attach gives the VM a public address. Approve, then call again with confirmed=true.",
+			"status":      "confirmation_required",
+			"message":     "fip_attach gives the VM a public address. Approve, then call again with confirmed=true.",
 			"will_attach": map[string]any{"fip": fipRef, "vm": vmRef},
 		}), true
 	}
@@ -214,8 +246,8 @@ func (s *Server) handleImageDelete(ctx context.Context, args map[string]any) (st
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "image_delete permanently removes the image. VMs already running keep working, but no new VM can be created from it. Approve, then confirmed=true.",
+			"status":      "confirmation_required",
+			"message":     "image_delete permanently removes the image. VMs already running keep working, but no new VM can be created from it. Approve, then confirmed=true.",
 			"will_delete": map[string]any{"image_id": imageID},
 		}), true
 	}
