@@ -91,7 +91,10 @@ func (s *Server) handleImageCreate(ctx context.Context, args map[string]any) (st
 
 	// The gate comes before authentication so an unapproved call never reaches
 	// the cloud at all — the same order every other mutating tool uses. The zone
-	// is therefore echoed as asked for, not as resolved.
+	// is therefore echoed as asked for, not as resolved. When none was asked
+	// for, the preview states the rule rather than naming a source it cannot
+	// check here: claiming "configured region" is wrong whenever no region is
+	// configured, and this preview is what an operator approves a paid action on.
 	zoneRef := stringArg(args, "zone")
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -99,7 +102,7 @@ func (s *Server) handleImageCreate(ctx context.Context, args map[string]any) (st
 			"message": "image_create makes a billable image from a disk. Approve, then call again with confirmed=true.",
 			"will_create": map[string]any{
 				"name": name, "from_disk": diskID,
-				"zone":    firstNonEmptyStr(zoneRef, "configured region"),
+				"zone":    firstNonEmptyStr(zoneRef, "not given: configured region, else the source disk's zone"),
 				"min_cpu": req.MinCPU, "min_ram": req.MinRAM, "min_disk": req.MinDisk,
 				"has_user_data_template": req.UserDataTemplate != "",
 				"metadata_fields":        len(req.ImageMetadata),
@@ -235,7 +238,29 @@ func (s *Server) handleImageGet(ctx context.Context, args map[string]any) (strin
 	if err != nil {
 		return errResult(fmt.Errorf("get image: %w", err)), true
 	}
-	return toJSON(map[string]any{"image": img}), false
+	// The platform leaves the top-level status empty and keeps the real build
+	// state per zone, so a caller reading "status" sees "" on a perfectly ready
+	// image. Answer the question directly instead of making every caller learn
+	// that quirk.
+	out := map[string]any{
+		"image":       img,
+		"ready":       img.Ready(),
+		"zone_states": zoneStates(img),
+	}
+	return toJSON(out), false
+}
+
+// zoneStates maps each zone name to the image's build state there.
+func zoneStates(img *provision.ImageDetail) map[string]string {
+	states := make(map[string]string, len(img.AvailZones))
+	for _, az := range img.AvailZones {
+		name := az.AvailabilityZoneName
+		if name == "" {
+			name = az.AvailabilityZoneID
+		}
+		states[name] = az.State
+	}
+	return states
 }
 
 // handleImageDelete removes an image. Mutation: requires confirmed=true.

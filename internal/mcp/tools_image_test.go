@@ -51,6 +51,68 @@ func TestImageCreateAsksConfirmationBeforeCloud(t *testing.T) {
 	}
 }
 
+// Превью — это то, на основании чего оператор одобряет платное действие, и оно
+// не должно называть источник зоны, которого может не быть: регион в конфиге
+// задан не всегда, и тогда зона берётся с исходного диска.
+func TestImageCreatePreviewDoesNotPromiseConfiguredRegion(t *testing.T) {
+	s := newTestServer()
+
+	got := callTool(t, s.handleImageCreate, map[string]any{
+		"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000",
+	})
+	will, _ := got["will_create"].(map[string]any)
+	zone, _ := will["zone"].(string)
+	if zone == "configured region" {
+		t.Fatal("превью обещает настроенный регион, хотя его может не быть")
+	}
+	if !strings.Contains(zone, "disk") {
+		t.Fatalf("превью не упоминает запасной вариант — зону диска: %q", zone)
+	}
+
+	// Явно заданная зона должна возвращаться как есть.
+	got = callTool(t, s.handleImageCreate, map[string]any{
+		"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000",
+		"zone": "ru.AZ-2",
+	})
+	will, _ = got["will_create"].(map[string]any)
+	if will["zone"] != "ru.AZ-2" {
+		t.Fatalf("запрошенная зона искажена в превью: %v", will["zone"])
+	}
+}
+
+// Платформа оставляет верхнеуровневый status пустым и держит настоящее
+// состояние сборки по зонам. Ответ обязан отвечать на вопрос «образ готов?»
+// сам, иначе каждый вызывающий обязан знать эту причуду — и ошибётся.
+func TestZoneStatesSummarisesBuildState(t *testing.T) {
+	img := &provision.ImageDetail{
+		Status: "",
+		AvailZones: []provision.ImageAvailZone{
+			{AvailabilityZoneName: "ru.AZ-2", State: "created"},
+			{AvailabilityZoneID: "az-3-uuid", State: "creating"},
+		},
+	}
+
+	if !img.Ready() {
+		t.Fatal("образ со зоной created обязан считаться готовым")
+	}
+	got := zoneStates(img)
+	if got["ru.AZ-2"] != "created" {
+		t.Errorf("состояние зоны по имени потеряно: %v", got)
+	}
+	// У зоны без имени остаётся идентификатор — молча терять её нельзя.
+	if got["az-3-uuid"] != "creating" {
+		t.Errorf("зона без имени выпала из сводки: %v", got)
+	}
+
+	none := &provision.ImageDetail{}
+	if none.Ready() {
+		t.Error("образ без единой зоны не может быть готовым")
+	}
+	if len(zoneStates(none)) != 0 {
+		t.Error("для образа без зон сводка должна быть пустой")
+	}
+}
+
 func TestImageDeleteAsksConfirmation(t *testing.T) {
 	s := newTestServer()
 	got := callTool(t, s.handleImageDelete, map[string]any{"image_id": "img-1"})

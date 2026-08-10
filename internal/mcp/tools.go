@@ -103,7 +103,7 @@ func (s *Server) registerTools() {
 				"disk_id":            strProp("UUID of the bootable source disk (from disk_list)."),
 				"display_name":       strProp("Human-readable name shown in the console."),
 				"description":        strProp("Free-text description, MAX 255 characters (the API rejects longer with too_long). Keep it to product, pinned version and digest; legal disclaimers belong in the Marketplace listing, not here."),
-				"zone":               strProp("Availability zone name or UUID to build the image in (default: configured region). Must match the disk's zone."),
+				"zone":               strProp("Availability zone name or UUID to build the image in. Defaults to the configured region, and to the source disk's own zone when no region is configured. Must match the disk's zone."),
 				"min_cpu":            intProp("Minimum vCPUs a VM needs to boot this image."),
 				"min_ram":            intProp("Minimum RAM in GB."),
 				"min_disk":           intProp("Minimum boot disk in GB — must be >= the image size, or VMs cannot be created from it."),
