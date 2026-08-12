@@ -70,10 +70,10 @@ func Parse(path string) (*Project, error) {
 	sort.Strings(names)
 
 	var (
-		services  []Service
-		portSet   = make(map[int]struct{})
-		totalCPU  float64
-		totalMem  int
+		services []Service
+		portSet  = make(map[int]struct{})
+		totalCPU float64
+		totalMem int
 	)
 
 	for _, name := range names {

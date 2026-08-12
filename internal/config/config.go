@@ -19,7 +19,7 @@ type Config struct {
 
 	// Deploy
 	ProjectID string `yaml:"project_id" env:"CLOUDRU_PROJECT_ID"` // required UUID
-	Region    string `yaml:"region" env:"CLOUDRU_REGION"`          // availability_zone_id UUID
+	Region    string `yaml:"region" env:"CLOUDRU_REGION"`         // availability_zone_id UUID
 	Flavor    string `yaml:"flavor" env:"CLOUDRU_FLAVOR"`
 	ImageID   string `yaml:"image_id" env:"CLOUDRU_IMAGE_ID"` // boot image UUID
 	DiskSize  int    `yaml:"disk_size" env:"CLOUDRU_DISK_SIZE"`

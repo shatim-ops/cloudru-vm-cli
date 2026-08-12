@@ -19,15 +19,15 @@ import (
 )
 
 const (
-	totalSteps         = 5
-	vmPollInterval     = 5 * time.Second
-	vmPollTimeout      = 5 * time.Minute
-	sshRetryInterval   = 5 * time.Second
-	sshMaxRetries      = 60
-	sshDefaultUser     = "user1"
-	remoteComposeDir   = "/opt/app"
-	remoteComposeFile  = "/opt/app/docker-compose.yml"
-	verifyTimeout      = 10 * time.Second
+	totalSteps        = 5
+	vmPollInterval    = 5 * time.Second
+	vmPollTimeout     = 5 * time.Minute
+	sshRetryInterval  = 5 * time.Second
+	sshMaxRetries     = 60
+	sshDefaultUser    = "user1"
+	remoteComposeDir  = "/opt/app"
+	remoteComposeFile = "/opt/app/docker-compose.yml"
+	verifyTimeout     = 10 * time.Second
 )
 
 // Deploy orchestrates the full deploy lifecycle.
@@ -331,8 +331,8 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		ImageMetadata:      imgMeta,
 		Disks: []provision.DiskReq{
 			{
-				Name:         fmt.Sprintf("cloudru-vm-%s-boot", projectName),
-				Size:         diskSize,
+				Name:       fmt.Sprintf("cloudru-vm-%s-boot", projectName),
+				Size:       diskSize,
 				DiskTypeID: "a859e3dc-6b14-42a8-9bcc-890fde0ba6d0",
 			},
 		},

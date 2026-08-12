@@ -3,7 +3,7 @@ package errors
 // Error code constants defined in ADR-007.
 const (
 	CodeAuthRequired      = "AUTH_REQUIRED"
-	CodeAuthExpired        = "AUTH_EXPIRED"
+	CodeAuthExpired       = "AUTH_EXPIRED"
 	CodeAPIUnreachable    = "API_UNREACHABLE"
 	CodeAPIRateLimited    = "API_RATE_LIMITED"
 	CodeAPIError          = "API_ERROR"

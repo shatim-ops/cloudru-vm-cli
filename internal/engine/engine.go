@@ -15,9 +15,9 @@ type Engine struct {
 	Cloud     provision.CloudAPI
 	Deployer  deploy.Deployer
 	Printer   *output.Printer
-	SSHKeyPEM []byte  // Ed25519 private key for SSH
-	SSHPubKey string  // Ed25519 public key for cloud-init
-	StateDir  string  // project root (for state file)
+	SSHKeyPEM []byte // Ed25519 private key for SSH
+	SSHPubKey string // Ed25519 public key for cloud-init
+	StateDir  string // project root (for state file)
 }
 
 // DeployOptions holds parameters for the deploy command.

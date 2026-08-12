@@ -22,7 +22,7 @@ type KeyringStore interface {
 type KeyringProvider struct {
 	store   KeyringStore
 	env     *EnvVarProvider // delegates token exchange to EnvVarProvider
-	service string         // keyring service name, e.g. "cloudru-vm"
+	service string          // keyring service name, e.g. "cloudru-vm"
 }
 
 // NewKeyringProvider creates a KeyringProvider backed by the given keyring store.

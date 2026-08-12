@@ -51,8 +51,8 @@ type ImageMetadataInput struct {
 	DisplayName string `json:"display_name"`
 	// DisplayPosition orders the fields in the create-VM form; required.
 	DisplayPosition int    `json:"display_position"`
-	FieldType    string `json:"field_type,omitempty"`
-	DefaultValue string `json:"default_value,omitempty"`
+	FieldType       string `json:"field_type,omitempty"`
+	DefaultValue    string `json:"default_value,omitempty"`
 	// Sensitive has no omitempty on purpose: the API requires the key to be
 	// present, and omitempty would drop it whenever it is false.
 	Sensitive bool `json:"sensitive"`

@@ -25,7 +25,7 @@ type Service struct {
 // Project represents a parsed docker-compose.yml.
 type Project struct {
 	Services  []Service
-	Ports     []int    // deduplicated host ports
+	Ports     []int     // deduplicated host ports
 	Resources Resources // aggregated across all services
-	Hash      string   // SHA-256 of raw file content
+	Hash      string    // SHA-256 of raw file content
 }
