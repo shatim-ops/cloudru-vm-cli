@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/dbaas"
-	"github.com/dzhechko/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/dbaas"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 )
 
 const redisHost = "https://redis.api.cloud.ru"

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	clerrors "github.com/dzhechko/cloudru-vm-cli/internal/errors"
-	"github.com/dzhechko/cloudru-vm-cli/internal/state"
+	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
 // LogsOptions holds parameters for the logs command.

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	clierrors "github.com/dzhechko/cloudru-vm-cli/internal/errors"
+	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
 // listProjectScoped fetches a project-scoped list endpoint and decodes either a

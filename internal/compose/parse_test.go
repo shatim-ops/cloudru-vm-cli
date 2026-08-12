@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	clierr "github.com/dzhechko/cloudru-vm-cli/internal/errors"
+	clierr "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
 func writeTempCompose(t *testing.T, content string) string {

@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/pricing"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/pricing"
 )
 
 // planTTL bounds how long a plan_id stays valid between plan and apply.

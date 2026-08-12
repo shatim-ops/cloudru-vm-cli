@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/engine"
-	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
 )
 
 // resolveZoneID turns a zone name or UUID into a zone UUID, falling back to the

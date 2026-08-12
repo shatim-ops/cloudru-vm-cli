@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/engine"
-	"github.com/dzhechko/cloudru-vm-cli/internal/output"
-	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
-	"github.com/dzhechko/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
 // registerTools defines the advertised tools and wires their handlers.

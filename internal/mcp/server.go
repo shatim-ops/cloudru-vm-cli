@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 )
 
 // defaultProtocolVersion is the MCP protocol version advertised when the client

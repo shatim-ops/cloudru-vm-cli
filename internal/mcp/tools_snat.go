@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
 )
 
 // resolveSnatZone turns an optional zone name / explicit availability_zone_id

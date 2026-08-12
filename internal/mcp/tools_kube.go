@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/kubetools"
-	"github.com/dzhechko/cloudru-vm-cli/internal/mk8s"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/kubetools"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/mk8s"
 )
 
 // kubeconfigForCluster fetches a cluster's kubeconfig with an embedded bearer

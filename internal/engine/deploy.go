@@ -9,13 +9,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/compose"
-	"github.com/dzhechko/cloudru-vm-cli/internal/deploy"
-	clerrors "github.com/dzhechko/cloudru-vm-cli/internal/errors"
-	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
-	"github.com/dzhechko/cloudru-vm-cli/internal/sizer"
-	"github.com/dzhechko/cloudru-vm-cli/internal/state"
-	"github.com/dzhechko/cloudru-vm-cli/internal/verify"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/compose"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
+	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/sizer"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/verify"
 )
 
 const (

@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/engine"
-	"github.com/dzhechko/cloudru-vm-cli/internal/postgresql"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/postgresql"
 )
 
 // specMenuCap caps how many specifications the need_specification menu returns.

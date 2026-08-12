@@ -3,8 +3,8 @@ package sizer
 import (
 	"testing"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/compose"
-	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/compose"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
 )
 
 var testFlavors = []provision.Flavor{

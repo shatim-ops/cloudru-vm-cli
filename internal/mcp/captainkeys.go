@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/deploy"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
 )
 
 // Captain SSH access used to be a manual post-install step ("append their

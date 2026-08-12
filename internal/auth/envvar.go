@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	clerrors "github.com/dzhechko/cloudru-vm-cli/internal/errors"
+	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
 // IAMEndpoint is the Cloud.ru IAM token exchange URL.

@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/auth"
-	"github.com/dzhechko/cloudru-vm-cli/internal/config"
-	"github.com/dzhechko/cloudru-vm-cli/internal/deploy"
-	"github.com/dzhechko/cloudru-vm-cli/internal/output"
-	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
-	"github.com/dzhechko/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/auth"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
 // --- Mocks ---

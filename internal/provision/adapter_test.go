@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	clierrors "github.com/dzhechko/cloudru-vm-cli/internal/errors"
+	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
 func setupTestServer(handler http.HandlerFunc) (*httptest.Server, *CloudRuAdapter) {

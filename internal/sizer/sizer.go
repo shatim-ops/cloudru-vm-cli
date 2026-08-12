@@ -4,8 +4,8 @@ import (
 	"math"
 	"sort"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/compose"
-	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/compose"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
 )
 
 const headroomFactor = 1.3 // 30% headroom

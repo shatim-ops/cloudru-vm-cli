@@ -9,16 +9,16 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/auth"
-	"github.com/dzhechko/cloudru-vm-cli/internal/config"
-	"github.com/dzhechko/cloudru-vm-cli/internal/deploy"
-	"github.com/dzhechko/cloudru-vm-cli/internal/engine"
-	clerrors "github.com/dzhechko/cloudru-vm-cli/internal/errors"
-	"github.com/dzhechko/cloudru-vm-cli/internal/mcp"
-	"github.com/dzhechko/cloudru-vm-cli/internal/output"
-	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
-	"github.com/dzhechko/cloudru-vm-cli/internal/state"
-	"github.com/dzhechko/cloudru-vm-cli/internal/verify"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/auth"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
+	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/mcp"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/verify"
 )
 
 var version = "0.1.0"
@@ -432,7 +432,7 @@ func newInitCmd() *cobra.Command {
 			}
 
 			content := `# cloudru-vm configuration
-# See: https://github.com/dzhechko/cloudru-vm-cli
+# See: https://github.com/shatim-ops/cloudru-vm-cli
 
 # Availability zone (cloudru-vm list-zones)
 region: 7c99a597-8516-494f-a2c7-d7377048681e  # ru.AZ-1

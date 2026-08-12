@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/vpc"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/vpc"
 )
 
 // vpcClient builds an authenticated VPC client (standalone → newEngine token is enough).

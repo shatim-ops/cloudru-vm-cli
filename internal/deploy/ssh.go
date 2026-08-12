@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	clerrors "github.com/dzhechko/cloudru-vm-cli/internal/errors"
+	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
 // SSHDeployer implements Deployer using real SSH connections.

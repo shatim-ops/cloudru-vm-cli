@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	clierrors "github.com/dzhechko/cloudru-vm-cli/internal/errors"
+	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
 const testSSHKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKeyForUnitTests user@test"

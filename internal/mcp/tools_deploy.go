@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/deployplan"
-	"github.com/dzhechko/cloudru-vm-cli/internal/engine"
-	"github.com/dzhechko/cloudru-vm-cli/internal/pricing"
-	"github.com/dzhechko/cloudru-vm-cli/internal/provision"
-	"github.com/dzhechko/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/deployplan"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/pricing"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
 // authedEngine builds an engine and sets a fresh bearer token on its cloud

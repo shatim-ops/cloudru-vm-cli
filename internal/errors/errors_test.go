@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	clierrors "github.com/dzhechko/cloudru-vm-cli/internal/errors"
+	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
 func TestNew(t *testing.T) {

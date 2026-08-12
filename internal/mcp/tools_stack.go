@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/stack"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/stack"
 )
 
 // --- stack orchestrator: crank-driven, disk-persisted multi-resource deploys ---

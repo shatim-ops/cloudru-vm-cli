@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	clierr "github.com/dzhechko/cloudru-vm-cli/internal/errors"
+	clierr "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
 // DefaultPath returns ".cloudru-vm/state.json" relative to the given project root.

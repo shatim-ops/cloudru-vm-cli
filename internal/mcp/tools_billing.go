@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/billing"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/billing"
 )
 
 // maxBreakdown caps how many service line-items a billing tool returns. A tenant

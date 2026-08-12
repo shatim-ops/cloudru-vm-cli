@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/audit"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/audit"
 )
 
 // auditClient builds an authenticated Audit Logging client.

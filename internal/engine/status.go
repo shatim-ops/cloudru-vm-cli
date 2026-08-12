@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
 // Status displays the current deployment status.

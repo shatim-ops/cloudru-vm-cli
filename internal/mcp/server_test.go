@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 )
 
 // nilFactory is an EngineFactory that fails — used for tests that must not

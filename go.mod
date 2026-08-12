@@ -1,4 +1,4 @@
-module github.com/dzhechko/cloudru-vm-cli
+module github.com/shatim-ops/cloudru-vm-cli
 
 go 1.25.0
 

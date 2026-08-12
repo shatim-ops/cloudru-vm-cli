@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/containerapp"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/containerapp"
 )
 
 // caClient builds an authenticated Container Apps client.

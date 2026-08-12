@@ -7,7 +7,7 @@ import (
 	"os"
 	"unicode/utf8"
 
-	"github.com/dzhechko/cloudru-vm-cli/internal/s3"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/s3"
 )
 
 // s3Client builds an S3 client from the env vars exported by the MCP wrapper
