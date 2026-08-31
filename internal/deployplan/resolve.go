@@ -76,7 +76,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	warnings = append(warnings, fwarn...)
 
 	// --- Image ---
-	image, err := selectImage(ctx, cloud, p.Image)
+	image, err := selectImage(ctx, cloud, projectID, p.Image)
 	if err != nil {
 		return nil, err
 	}
@@ -252,8 +252,18 @@ func selectFlavor(flavors []*provision.Flavor, p Params) (provision.Flavor, []st
 	return provision.Flavor{}, warnings, fmt.Errorf("no usable flavor available")
 }
 
-// selectImage resolves an image by name (or default Ubuntu 24.04 non-GPU).
-func selectImage(ctx context.Context, cloud provision.CloudAPI, want string) (provision.Image, error) {
+// selectImage resolves an image by name or UUID (or default Ubuntu 24.04 non-GPU).
+//
+// An explicit choice is looked up in TWO places. A bare /api/v1/images call
+// returns only the shared catalogue: images built inside the project — exactly
+// the ones image_create produces — are invisible there (see the comment on
+// CloudRuAdapter.ListImages). Without the second lookup the engine cannot
+// deploy what it has itself just built, and it says "not found" about an image
+// that list_images plainly shows.
+//
+// The default branch deliberately stays on the shared catalogue: it guesses a
+// base OS, and a project's own product images have no business being guessed.
+func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want string) (provision.Image, error) {
 	images, err := cloud.ListImages(ctx)
 	if err != nil {
 		return provision.Image{}, fmt.Errorf("list images: %w", err)
@@ -264,7 +274,19 @@ func selectImage(ctx context.Context, cloud provision.CloudAPI, want string) (pr
 				return *img, nil
 			}
 		}
-		return provision.Image{}, fmt.Errorf("image %q not found (use the list_images tool to see options)", want)
+		// Ошибка выборки по проекту глотается намеренно: у токена может не быть
+		// прав на проектные образы, и тогда честный ответ — «такого образа нет»,
+		// а не «не удалось прочитать проект».
+		if own, e := cloud.ListImagesInProject(ctx, projectID); e == nil {
+			for _, img := range own {
+				if img.Name == want || img.ID == want {
+					return *img, nil
+				}
+			}
+		}
+		return provision.Image{}, fmt.Errorf(
+			"image %q not found in the shared catalogue or in project %s (use the list_images tool to see options)",
+			want, projectID)
 	}
 	// Default: prefer ubuntu 24.04 non-gpu.
 	for _, img := range images {
