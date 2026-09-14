@@ -82,6 +82,9 @@ func (s *Server) handleS3Put(ctx context.Context, args map[string]any) (string, 
 	if bucket == "" || key == "" {
 		return errResult(fmt.Errorf("'bucket' and 'key' are required")), true
 	}
+	if err := проверитьКлючS3(key); err != nil {
+		return errResult(err), true
+	}
 	// Body from inline text (content) or base64 (content_base64).
 	var data []byte
 	if b64 := stringArg(args, "content_base64"); b64 != "" {
@@ -146,6 +149,9 @@ func (s *Server) handleS3PutFile(ctx context.Context, args map[string]any) (stri
 	if bucket == "" || key == "" || path == "" {
 		return errResult(fmt.Errorf("'bucket', 'key' and 'path' are required")), true
 	}
+	if err := проверитьКлючS3(key); err != nil {
+		return errResult(err), true
+	}
 	fi, err := os.Stat(path)
 	if err != nil {
 		return errResult(fmt.Errorf("cannot read %s: %w", path, err)), true
@@ -183,7 +189,10 @@ func (s *Server) handleS3Presign(ctx context.Context, args map[string]any) (stri
 	if bucket == "" || key == "" {
 		return errResult(fmt.Errorf("'bucket' and 'key' are required")), true
 	}
-	secs := pgInt(args, "expires_seconds", 604800) // 7 days, the SigV4 maximum
+	secs := pgInt(args, "expires_seconds", СрокСсылкиМакс)
+	if err := проверитьСрокСсылки(secs); err != nil {
+		return errResult(err), true
+	}
 	cli, err := s.s3Client()
 	if err != nil {
 		return errResult(err), true

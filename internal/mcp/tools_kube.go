@@ -63,15 +63,15 @@ func (s *Server) handleK8sKubectl(ctx context.Context, args map[string]any) (str
 		return errResult(fmt.Errorf("'args' is required, e.g. \"get pods -A\"")), true
 	}
 	fields := strings.Fields(raw)
-	verb := ""
-	if len(fields) > 0 {
-		verb = fields[0]
+	нуженГейт, err := проверитьАргументыKubectl(fields)
+	if err != nil {
+		return errResult(err), true
 	}
-	if !readOnlyKubectl[verb] {
+	if нуженГейт {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return toJSON(map[string]any{
 				"status":  "confirmation_required",
-				"message": fmt.Sprintf("kubectl %q changes the cluster. Get the captain's approval, then call again with confirmed=true. (Read-only verbs run without confirmation.)", verb),
+				"message": fmt.Sprintf("kubectl %q changes the cluster. Get the captain's approval, then call again with confirmed=true. (Read-only verbs run without confirmation.)", strings.Join(fields[:min(2, len(fields))], " ")),
 			}), true
 		}
 	}
@@ -149,6 +149,14 @@ func (s *Server) handleK8sHelm(ctx context.Context, args map[string]any) (string
 	clusterID := stringArg(args, "cluster_id")
 	if clusterID == "" && !helmLocal[action] {
 		return errResult(fmt.Errorf("cluster_id is required for %s (only lint/template run without a cluster)", action)), true
+	}
+	// Проверка имён идёт ДО гейта: превью, которое показывают оператору, должно
+	// описывать то, что действительно исполнится.
+	if err := проверитьИменаHelm(
+		stringArg(args, "release"), stringArg(args, "namespace"),
+		stringArg(args, "chart"), stringArg(args, "chart_path"), stringArg(args, "values_file"),
+	); err != nil {
+		return errResult(err), true
 	}
 	if helmMutating[action] {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
