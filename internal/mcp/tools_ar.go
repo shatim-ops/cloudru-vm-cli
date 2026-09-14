@@ -32,12 +32,31 @@ func (s *Server) handleArList(ctx context.Context, args map[string]any) (string,
 	}
 	out := make([]map[string]any, 0, len(items))
 	for _, m := range items {
-		out = append(out, map[string]any{
+		e := map[string]any{
 			"id": m["id"], "name": m["name"], "type": m["registryType"],
 			"status": m["status"], "public": m["isPublic"], "tariff": m["tariff"],
-		})
+		}
+		if u := registryURL(m); u != "" {
+			e["registry_url"] = u
+		}
+		out = append(out, e)
 	}
 	return toJSON(map[string]any{"registries": out}), false
+}
+
+// registryURL is the host you docker login / docker push to. The API does not
+// return it, so it is derived from the registry name by the platform's
+// convention — spelled out here rather than left for each caller to guess,
+// because guessing it wrong means pushing a product image nowhere.
+func registryURL(m map[string]any) string {
+	if u, _ := m["url"].(string); u != "" {
+		return u
+	}
+	name, _ := m["name"].(string)
+	if name == "" {
+		return ""
+	}
+	return name + ".cr.cloud.ru"
 }
 
 func (s *Server) handleArGet(ctx context.Context, args map[string]any) (string, bool) {
@@ -52,6 +71,9 @@ func (s *Server) handleArGet(ctx context.Context, args map[string]any) (string, 
 	m, err := cli.GetRegistry(ctx, id)
 	if err != nil {
 		return errResult(err), true
+	}
+	if u := registryURL(m); u != "" && m["registry_url"] == nil {
+		m["registry_url"] = u
 	}
 	return toJSON(m), false
 }
@@ -91,7 +113,9 @@ func (s *Server) handleArCreate(ctx context.Context, args map[string]any) (strin
 	}
 	return toJSON(map[string]any{
 		"status": "creating", "operation_id": op.ID,
-		"note": "Async — poll ar_operation(operation_id) until done=true; then ar_list for the id/status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key).",
+		"registry_url": name + ".cr.cloud.ru",
+		"note": "Async — poll ar_operation(operation_id) until done=true; then ar_list for the id/status ACTIVE. " +
+			"Push images to registry_url: `docker login " + name + ".cr.cloud.ru` with the service-account key id/secret, then docker push.",
 	}), false
 }
 

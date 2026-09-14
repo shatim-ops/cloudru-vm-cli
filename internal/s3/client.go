@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -133,6 +134,80 @@ func (c *Client) PutObject(ctx context.Context, bucket, key string, data []byte,
 		return 0, fmt.Errorf("put object: %w", err)
 	}
 	return info.Size, nil
+}
+
+// Stat returns an object's metadata. The boolean reports existence: a missing
+// key is NOT an error here, because the callers use this to decide whether a
+// write would overwrite something.
+func (c *Client) Stat(ctx context.Context, bucket, key string) (Object, bool, error) {
+	info, err := c.mc.StatObject(ctx, bucket, key, minio.StatObjectOptions{})
+	if err != nil {
+		if minio.ToErrorResponse(err).StatusCode == 404 {
+			return Object{}, false, nil
+		}
+		return Object{}, false, fmt.Errorf("stat object: %w", err)
+	}
+	return Object{Key: info.Key, Size: info.Size, LastModified: info.LastModified.Format(time.RFC3339)}, true, nil
+}
+
+// PutFile uploads a file from disk. minio-go streams it and switches to
+// multipart on its own, so this is the only path that can carry a product
+// artifact (a RAW image is tens of gigabytes and cannot go through the MCP
+// arguments as text or base64).
+func (c *Client) PutFile(ctx context.Context, bucket, key, path, contentType string) (int64, string, error) {
+	if contentType == "" {
+		contentType = contentTypeFor(path)
+	}
+	info, err := c.mc.FPutObject(ctx, bucket, key, path, minio.PutObjectOptions{ContentType: contentType})
+	if err != nil {
+		return 0, "", fmt.Errorf("upload %s: %w", path, err)
+	}
+	return info.Size, info.ETag, nil
+}
+
+// PresignGet mints a time-limited download URL. SigV4 caps the lifetime at 7
+// days; anything longer is rejected by the service, so it is rejected here with
+// a clear message instead.
+//
+// The URL is a bearer credential: whoever holds it can download the object
+// until it expires. It does not belong in git, in a ticket, or in a chat that
+// outlives the link.
+func (c *Client) PresignGet(ctx context.Context, bucket, key string, expires time.Duration) (string, error) {
+	if expires <= 0 {
+		expires = 7 * 24 * time.Hour
+	}
+	if expires > 7*24*time.Hour {
+		return "", fmt.Errorf("presigned URLs live at most 7 days (604800s), got %s", expires)
+	}
+	u, err := c.mc.PresignedGetObject(ctx, bucket, key, expires, nil)
+	if err != nil {
+		return "", fmt.Errorf("presign %s/%s: %w", bucket, key, err)
+	}
+	return u.String(), nil
+}
+
+// contentTypeFor guesses a MIME type from the file extension. The default is
+// deliberately application/octet-stream: a wrong text/* type would make some
+// clients mangle a binary artifact.
+func contentTypeFor(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".json":
+		return "application/json"
+	case ".txt", ".md", ".sha256":
+		return "text/plain; charset=utf-8"
+	case ".yaml", ".yml":
+		return "application/yaml"
+	case ".tar":
+		return "application/x-tar"
+	case ".gz", ".tgz":
+		return "application/gzip"
+	case ".zip":
+		return "application/zip"
+	case ".svg":
+		return "image/svg+xml"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 // RemoveObject deletes bucket/key.
