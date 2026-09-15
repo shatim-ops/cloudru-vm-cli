@@ -47,6 +47,43 @@ func (s *Server) registerTools() {
 			}),
 		},
 		{
+			Name: "vm_exec",
+			Description: "Run a shell script ON a VM over SSH. This is how anything beyond a compose deploy gets done: installing packages, baking a Marketplace image, wiping state before a snapshot. " +
+				"DETACHED by default (wait=false): the script is uploaded as a file, started with setsid and survives a dropped connection, so a 20-minute image build is safe. Returns a run_id; poll vm_exec_status for the exit code and log. " +
+				"Set wait=true to block until it finishes (timeout_sec, default 1800). The VM must have a public address. " +
+				"Runs code as the login user (the script may use sudo): requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":       strProp("VM UUID (see list / provision result)."),
+				"name":        strProp("VM name (alternative to vm_id)."),
+				"script":      strProp("The script body. Uploaded as a file and run with bash; nothing is interpolated into a command line."),
+				"login":       strProp("SSH login (default: the login recorded for this VM in local state)."),
+				"wait":        boolProp("Block until the script finishes (default false: return a run_id immediately)."),
+				"timeout_sec": intProp("How long to wait when wait=true (default 1800, max 7200). On timeout the script keeps running on the VM."),
+				"confirmed":   boolProp("Must be true — set only after the captain approved the script."),
+			}),
+		},
+		{
+			Name:        "vm_exec_status",
+			Description: "Report on a script started by vm_exec: whether it is still running, its exit code once finished, and the tail of its output. Read-only; poll this instead of holding a connection open.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":  strProp("VM UUID."),
+				"name":   strProp("VM name (alternative to vm_id)."),
+				"run_id": strProp("The run_id returned by vm_exec."),
+				"login":  strProp("SSH login (default: the login recorded for this VM in local state)."),
+			}),
+		},
+		{
+			Name:        "vm_upload",
+			Description: "Write files onto a VM over SFTP. Use for build inputs that are not scripts: config files, systemd units, a compose file. Paths are relative to the login user's home; move them into place with vm_exec so the privilege is explicit. Mutation: requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":     strProp("VM UUID."),
+				"name":      strProp("VM name (alternative to vm_id)."),
+				"files":     strProp("Array of {path, content, mode?} objects. path is relative to the home directory; mode is octal, e.g. \"0755\"."),
+				"login":     strProp("SSH login (default: the login recorded for this VM in local state)."),
+				"confirmed": boolProp("Must be true — set only after the captain approved."),
+			}),
+		},
+		{
 			Name:        "status",
 			Description: "Show the current deployment status, including VM ID, public IP, flavor, region, health state and exposed ports. Reads local state; no API call.",
 			InputSchema: objSchema(nil),
@@ -1224,6 +1261,9 @@ func (s *Server) registerTools() {
 	s.handlers = map[string]toolHandler{
 		"deploy":               s.handleDeploy,
 		"provision":            s.handleProvision,
+		"vm_exec":              s.handleVMExec,
+		"vm_exec_status":       s.handleVMExecStatus,
+		"vm_upload":            s.handleVMUpload,
 		"status":               s.handleStatus,
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,
