@@ -197,8 +197,19 @@ func classifyDialError(err error) *clerrors.CLIError {
 		return clerrors.Wrap(clerrors.CodeSSHTimeout, "SSH connection timed out", "Check that the host is reachable and the port is open.", err)
 	}
 
-	if strings.Contains(msg, "unable to authenticate") || strings.Contains(msg, "no supported methods remain") || strings.Contains(msg, "handshake failed") {
+	// Order matters: x/crypto/ssh prefixes an authentication failure with
+	// "ssh: handshake failed: ..." as well, so the auth-specific phrases must be
+	// tested first. A bare handshake failure is a different event — the host
+	// accepted the TCP connection but never completed the SSH protocol — and
+	// labelling it "authentication failed" sends the operator to check keys and
+	// logins while the real cause is an sshd that is not up yet. That exact
+	// mislabel cost two wrong diagnoses on the first live image build.
+	if strings.Contains(msg, "unable to authenticate") || strings.Contains(msg, "no supported methods remain") {
 		return clerrors.Wrap(clerrors.CodeSSHAuthFailed, "SSH authentication failed", "Check your SSH key and username.", err)
+	}
+	if strings.Contains(msg, "handshake failed") {
+		return clerrors.Wrap(clerrors.CodeSSHHandshakeFailed, "SSH handshake failed",
+			"The host accepted the connection but did not complete the SSH protocol: sshd may not be up yet (the system may still be booting), or something else is listening on the port. Retry later.", err)
 	}
 
 	// Check for host key mismatch errors (already a CLIError from our callback).
