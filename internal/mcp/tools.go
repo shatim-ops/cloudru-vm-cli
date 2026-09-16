@@ -1777,8 +1777,12 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 		return errResult(fmt.Errorf("create VM: %w", err)), true
 	}
 
-	// Poll until active
-	pollTimeout := 5 * time.Minute
+	// Poll until active.
+	//
+	// Восемь минут, не пять: под нагрузкой (восемь одновременных сборок)
+	// Cloud.ru выводит ВМ в running за шесть-семь минут. Потолок держим ниже
+	// таймаута вызова у оркестратора (десять минут), иначе ответ не дойдёт.
+	pollTimeout := 8 * time.Minute
 	deadline := time.After(pollTimeout)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -1786,11 +1790,17 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 	for {
 		select {
 		case <-deadline:
+			// НЕ ошибка. ВМ создана и тарифицируется; если ответить ошибкой,
+			// вызывающая сторона обрывается на провале и идентификатор ВМ
+			// теряется — машина остаётся в облаке, и снести её автоматически
+			// нечем (16.09.2026 так потерялась selenium-grid-build). Отдаём
+			// идентификатор: ждать активности и выдавать адрес умеет
+			// вызывающая сторона (wait_active + fip_attach).
 			return toJSON(map[string]any{
 				"status":  "timeout",
 				"vm_id":   vm.ID,
-				"message": fmt.Sprintf("VM %s created but did not become active within %s", vm.ID, pollTimeout),
-			}), true
+				"message": fmt.Sprintf("VM %s created but did not become active within %s; ждите активности и выдайте адрес через fip_attach", vm.ID, pollTimeout),
+			}), false
 		case <-ticker.C:
 			updated, err := eng.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
