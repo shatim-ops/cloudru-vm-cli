@@ -1681,7 +1681,11 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 	if len(subnets) == 0 {
 		return errResult(fmt.Errorf("no subnets in project — cannot attach a network interface")), true
 	}
-	subnetID := subnets[0].ID
+	// Подсеть берётся ТОЛЬКО из целевой зоны. Прежний запасной вариант
+	// «первая в проекте» подсовывал подсеть AZ-2 машине в AZ-1, и платформа
+	// отвечала не отказом, а error_creating без причины — ловушка, описанная
+	// ниже для групп, работала и здесь. Отказ с внятным текстом дешевле.
+	subnetID := ""
 	if zoneName != "" {
 		for _, sn := range subnets {
 			if strings.Contains(sn.Name, zoneName) {
@@ -1690,19 +1694,32 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 			}
 		}
 	}
+	if subnetID == "" && stringArg(args, "subnet_id") == "" {
+		if zoneName == "" {
+			subnetID = subnets[0].ID
+		} else {
+			return errResult(fmt.Errorf("no subnet in zone %s: create one (e.g. Default_%s) or pass subnet_id", zoneName, zoneName)), true
+		}
+	}
 	if v := stringArg(args, "subnet_id"); v != "" {
 		subnetID = v
 	}
 	var sgIDs []string
 	if sgs, e := eng.Cloud.ListSecurityGroups(ctx, projectID); e == nil && len(sgs) > 0 {
-		chosen := sgs[0].ID
-		if zoneName != "" {
-			for _, g := range sgs {
-				if strings.Contains(g.Name, zoneName) {
-					chosen = g.ID
-					break
-				}
+		chosen := ""
+		for _, g := range sgs {
+			if zoneName != "" && strings.Contains(g.Name, zoneName) {
+				chosen = g.ID
+				break
 			}
+		}
+		if chosen == "" && zoneName == "" {
+			chosen = sgs[0].ID
+		}
+		if chosen == "" {
+			// Та же ловушка, что с подсетью: группа из чужой зоны — это
+			// error_creating без причины, а не отказ API.
+			return errResult(fmt.Errorf("no security group in zone %s: create one (e.g. SSH-access_%s)", zoneName, zoneName)), true
 		}
 		sgIDs = []string{chosen}
 	}
