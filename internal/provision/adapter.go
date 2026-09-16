@@ -121,7 +121,7 @@ func (a *CloudRuAdapter) DeleteVM(ctx context.Context, id string) error {
 
 // ListVMs lists all virtual machines via GET /api/v1/vms.
 func (a *CloudRuAdapter) ListVMs(ctx context.Context) ([]*VM, error) {
-	resp, err := a.doWithRetry(ctx, http.MethodGet, "/api/v1/vms", nil)
+	resp, err := a.doWithRetry(ctx, http.MethodGet, "/api/v1/vms?limit=200", nil) // list is paginated (50 by default)
 	if err != nil {
 		return nil, err
 	}
@@ -150,20 +150,30 @@ func (a *CloudRuAdapter) ListFlavors(ctx context.Context) ([]*Flavor, error) {
 	}
 	a.mu.RUnlock()
 
-	resp, err := a.doWithRetry(ctx, http.MethodGet, "/api/v1/flavors", nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var page paginatedResponse[Flavor]
-	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode flavors response", "API returned unexpected format", err)
-	}
-
-	flavors := make([]*Flavor, len(page.Items))
-	for i := range page.Items {
-		flavors[i] = &page.Items[i]
+	// The endpoint is PAGINATED: 78 flavors, 50 per page by default. Reading
+	// one page made provision reject "gen-2-4" as non-existent while the
+	// platform happily created VMs with it — and sent the image recipes on a
+	// false "invented flavor" hunt (2026-09-16). Walk every page.
+	var flavors []*Flavor
+	for offset := 0; ; {
+		path := fmt.Sprintf("/api/v1/flavors?limit=100&offset=%d", offset)
+		resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
+		}
+		var page paginatedResponse[Flavor]
+		decodeErr := json.NewDecoder(resp.Body).Decode(&page)
+		resp.Body.Close()
+		if decodeErr != nil {
+			return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode flavors response", "API returned unexpected format", decodeErr)
+		}
+		for i := range page.Items {
+			flavors = append(flavors, &page.Items[i])
+		}
+		offset += len(page.Items)
+		if len(page.Items) == 0 || offset >= page.Total {
+			break
+		}
 	}
 
 	a.mu.Lock()
