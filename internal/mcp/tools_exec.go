@@ -213,7 +213,15 @@ func (s *Server) handleVMExec(ctx context.Context, args map[string]any) (string,
 		"cd %s && setsid bash -c 'bash script.sh > out.log 2>&1; echo $? > rc' < /dev/null > /dev/null 2>&1 & echo started",
 		shellQuoteMCP(dir))
 	if _, err := d.Exec(ctx, start); err != nil {
-		return errResult(fmt.Errorf("starting the script: %w", err)), true
+		// The acknowledgement can be lost even though the run is detached and
+		// going: setsid survives the session, so a dead SSH channel says
+		// nothing about the script. Reporting an error here loses the run id,
+		// and the caller marks a step failed while the work completes on the
+		// VM unnoticed — seen twice on the first live Gitea build.
+		// So: ask the VM whether the run exists before deciding.
+		if !runStarted(ctx, target, dir) {
+			return errResult(fmt.Errorf("starting the script: %w", err)), true
+		}
 	}
 
 	if !wait {
@@ -430,4 +438,30 @@ func headLines(s string, n int) string {
 		return strings.Join(lines[:n], "\n") + fmt.Sprintf("\n… (%d more lines)", len(lines)-n)
 	}
 	return s
+}
+
+// runStarted answers whether a detached run actually got going, for the case
+// where the SSH acknowledgement of the start command was lost. The run
+// directory alone is not proof — vm_exec creates it when uploading script.sh,
+// before starting anything. Proof is out.log or rc: both are created by the
+// detached shell itself.
+//
+// A fresh connection is used on purpose: the one that timed out is suspect.
+func runStarted(ctx context.Context, t execTarget, dir string) bool {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	d, err := connectTarget(ctx, t)
+	if err != nil {
+		return false
+	}
+	defer d.Close()
+
+	out, err := d.Exec(ctx, fmt.Sprintf(
+		"test -e %s/out.log -o -e %s/rc && echo yes || echo no",
+		shellQuoteMCP(dir), shellQuoteMCP(dir)))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(out, "yes")
 }
