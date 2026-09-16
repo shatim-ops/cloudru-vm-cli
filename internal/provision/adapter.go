@@ -108,6 +108,22 @@ func (a *CloudRuAdapter) GetVM(ctx context.Context, id string) (*VM, error) {
 	return &vm, nil
 }
 
+// SetPower switches a VM's power state via POST /api/v1/vms/{id}/set-power.
+// Valid states: power_on, power_off, reboot. The platform answers 204.
+func (a *CloudRuAdapter) SetPower(ctx context.Context, id, state string) error {
+	path := fmt.Sprintf("/api/v1/vms/%s/set-power", id)
+	body, err := json.Marshal(map[string]string{"state": state})
+	if err != nil {
+		return err
+	}
+	resp, err := a.doWithRetry(ctx, http.MethodPost, path, body)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 // DeleteVM deletes a virtual machine by ID via DELETE /api/v1/vms/{id}.
 func (a *CloudRuAdapter) DeleteVM(ctx context.Context, id string) error {
 	path := fmt.Sprintf("/api/v1/vms/%s", id)

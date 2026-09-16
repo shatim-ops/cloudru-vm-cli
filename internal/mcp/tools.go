@@ -166,6 +166,15 @@ func (s *Server) registerTools() {
 			}, "fip", "vm"),
 		},
 		{
+			Name:        "vm_power",
+			Description: "Switch a VM on or off through the platform, without asking the guest OS. Use when a VM will not shut itself down — a cleanup script that deletes its own user and then calls `poweroff --no-block` can leave the machine running forever, stalling any step that waits for it to stop. Valid states: power_on, power_off, reboot. Mutation: requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":     strProp("VM UUID."),
+				"state":     strProp("power_on, power_off or reboot."),
+				"confirmed": boolProp("Must be true — set only after the captain approved."),
+			}, "vm_id", "state"),
+		},
+		{
 			Name:        "image_get",
 			Description: "Get one VM image with its full spec — including the cloud-init user_data_template the platform renders when a VM is created from it, and the image_metadata fields a buyer fills in. Read-only. Use it to poll an image build until it reports state 'created', and to inspect how existing Marketplace images are structured.",
 			InputSchema: objSchema(map[string]any{
@@ -1275,6 +1284,7 @@ func (s *Server) registerTools() {
 		"image_create":         s.handleImageCreate,
 		"image_get":            s.handleImageGet,
 		"fip_attach":           s.handleFipAttach,
+		"vm_power":             s.handleVMPower,
 		"image_delete":         s.handleImageDelete,
 		"deploy_plan":          s.handleDeployPlan,
 		"deploy_apply":         s.handleDeployApply,
