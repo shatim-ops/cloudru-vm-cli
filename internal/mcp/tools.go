@@ -1782,9 +1782,25 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 		return string(b), false
 	}
 
-	vm, err := eng.Cloud.CreateVM(ctx, req)
-	if err != nil {
-		return errResult(fmt.Errorf("create VM: %w", err)), true
+	// Имя освобождается не сразу. Удаление ВМ на стороне платформы идёт
+	// асинхронно, и пересборка сразу после сноса упирается в 409
+	// vm_with_this_data_already_exists по полю name — при том что ВМ в списке
+	// проекта уже нет. 16.09.2026 сборка redmine встала так трижды подряд.
+	// Ждём, пока имя освободится: полминуты между попытками, всего до трёх.
+	var vm *provision.VM
+	for попытка := 1; ; попытка++ {
+		vm, err = eng.Cloud.CreateVM(ctx, req)
+		if err == nil {
+			break
+		}
+		if попытка >= 3 || !strings.Contains(err.Error(), "vm_with_this_data_already_exists") {
+			return errResult(fmt.Errorf("create VM: %w", err)), true
+		}
+		select {
+		case <-ctx.Done():
+			return errResult(fmt.Errorf("create VM: ожидание освобождения имени %q прервано: %w", vmName, ctx.Err())), true
+		case <-time.After(30 * time.Second):
+		}
 	}
 
 	// Poll until active.
