@@ -1799,10 +1799,24 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 			if updated.Status == "active" || updated.Status == "running" {
 				// Assign a floating (public) IP unless a private VM was requested.
 				publicIP := ""
+				var fipWarn string
 				if !noPublicIP {
 					ip, fipErr := engine.AssignFloatingIP(ctx, eng.Cloud, vm.ID, projectID, region)
-					_ = fipErr
 					publicIP = ip
+					if fipErr != nil || publicIP == "" {
+						// Отказ выдачи адреса ПРОГЛАТЫВАЛСЯ, и provision отвечал
+						// успехом с пустым public_ip. Правда вскрывалась через
+						// пятнадцать минут на первом обращении по SSH — «VM has no
+						// public IP». 16.09.2026 так прошла квота на адреса
+						// (network.ip.quantity): ВМ создана, платится, войти нельзя.
+						// ВМ не сносим: она создана и учтена, а адрес можно выдать
+						// отдельно (fip_attach) — но молчать об этом нельзя.
+						fipWarn = "ВМ создана, но публичный адрес не выдан"
+						if fipErr != nil {
+							fipWarn += ": " + fipErr.Error()
+						}
+						fipWarn += ". Освободите адрес или квоту и выполните fip_attach — по SSH ВМ сейчас недоступна."
+					}
 				}
 
 				// Save state
@@ -1831,6 +1845,7 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 				return toJSON(map[string]any{
 					"status":   "ok",
 					"vm_id":    vm.ID,
+					"warning":  fipWarn,
 					"vm_ip":    publicIP,
 					"private":  noPublicIP,
 					"ssh_user": sshUser,
