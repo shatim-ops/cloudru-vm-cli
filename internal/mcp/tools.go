@@ -43,6 +43,7 @@ func (s *Server) registerTools() {
 				"image_id":     strProp("Boot image UUID (see list_images)."),
 				"disk_size":    intProp("Boot disk size in GB (default: 10)."),
 				"subnet_id":    strProp("Subnet UUID for the interface (default: a subnet in the target zone)."),
+				"disk_type":    strProp("Boot disk type name, e.g. 'SSD' (default) or 'HDD' (see list_disk_types). A zone short on one type still serves the other: creating a VM on an exhausted type fails with error_creating and no readable reason."),
 				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
 			}),
 		},
@@ -1514,6 +1515,16 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 		diskSize = 10
 	}
 
+	// Тип диска выбирается, а не зашивается. Ёмкость по типам расходится
+	// неравномерно, и зона может временно не отдавать SSD, продолжая отдавать
+	// HDD: 16.09.2026 в ru.AZ-2 именно так — создание ВМ падает в
+	// error_creating, и причина не видна ниоткуда. Для одноразовой сборочной
+	// ВМ тип безразличен, а образ с неё покупатель развернёт на своём диске.
+	diskTypeName := stringArg(args, "disk_type")
+	if diskTypeName == "" {
+		diskTypeName = "SSD"
+	}
+
 	// Resolve flavor: name -> UUID, "auto" -> smallest lowcost, UUID passthrough.
 	// Free-tier is limited to 1 VM (usually already in use), so auto skips it.
 	flavorID := eng.Config.Flavor
@@ -1725,7 +1736,7 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 			{
 				Name:         vmName + "-boot",
 				Size:         diskSize,
-				DiskTypeName: "SSD",
+				DiskTypeName: diskTypeName,
 			},
 		},
 		Interfaces: []provision.InterfaceReq{
