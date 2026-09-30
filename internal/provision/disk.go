@@ -18,6 +18,12 @@ type CreateDiskReq struct {
 	DiskTypeID         string `json:"disk_type_id,omitempty"`
 	AvailabilityZoneID string `json:"availability_zone_id"`
 	ProjectID          string `json:"project_id"`
+	// ImageID — создать диск с содержимым образа, а не пустой. Поле в
+	// документации API не описано, но принимается: диск приезжает
+	// загрузочным, с той же разметкой, что у образа. Без него единственный
+	// способ прочитать содержимое образа — поднять из него ВМ, а это лишняя
+	// машина, лишние деньги и лишний повод сломаться.
+	ImageID string `json:"image_id,omitempty"`
 }
 
 // ListDisks lists disks (volumes) in a project.

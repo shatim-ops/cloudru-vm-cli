@@ -171,15 +171,51 @@ func (d *SSHDeployer) buildHostKeyCallback(knownHostKey string) ssh.HostKeyCallb
 
 // uploadFile uploads a single file to the remote host using base64 encoding to
 // handle arbitrary binary content safely.
+// uploadChunk is how much base64 text goes into a single command line.
+//
+// A file is written by a shell command, not by SFTP, and the whole command
+// travels as one string: the remote shell has to parse it, and a multi-megabyte
+// line either dies on argument limits or times out mid-flight. 512 KiB keeps
+// every command small and predictable; a build distributive of tens of
+// megabytes then costs a few dozen appends instead of one impossible write.
+// Found on 19.09.2026: uploading a 5.4 MiB part failed with SSH_TIMEOUT, which
+// named neither the size nor the line as the cause.
+const uploadChunk = 512 * 1024
+
 func (d *SSHDeployer) uploadFile(ctx context.Context, f FileEntry) error {
 	// Ensure parent directory exists, then decode base64 content into the target file.
 	dir := parentDir(f.RemotePath)
 	encoded := base64.StdEncoding.EncodeToString(f.Content)
-	cmd := fmt.Sprintf("mkdir -p %s && echo '%s' | base64 -d > %s", shellQuote(dir), encoded, shellQuote(f.RemotePath))
+	target := shellQuote(f.RemotePath)
 
-	_, err := d.Exec(ctx, cmd)
-	if err != nil {
-		return clerrors.Wrap(clerrors.CodeSSHTimeout, fmt.Sprintf("failed to upload %s", f.RemotePath), "Check remote path permissions and disk space.", err)
+	if _, err := d.Exec(ctx, fmt.Sprintf("mkdir -p %s", shellQuote(dir))); err != nil {
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, fmt.Sprintf("failed to create directory for %s", f.RemotePath), "Check remote path permissions.", err)
+	}
+
+	// The first chunk truncates, the rest append: a half-written file from an
+	// interrupted previous attempt must not survive into this one.
+	redirect := ">"
+	tmp := shellQuote(f.RemotePath + ".b64part")
+	for start := 0; start < len(encoded) || start == 0; start += uploadChunk {
+		end := start + uploadChunk
+		if end > len(encoded) {
+			end = len(encoded)
+		}
+		cmd := fmt.Sprintf("printf '%%s' %s %s %s", shellQuote(encoded[start:end]), redirect, tmp)
+		if _, err := d.Exec(ctx, cmd); err != nil {
+			return clerrors.Wrap(clerrors.CodeSSHTimeout, fmt.Sprintf("failed to upload %s", f.RemotePath), "Check remote path permissions and disk space.", err)
+		}
+		redirect = ">>"
+		if end == len(encoded) {
+			break
+		}
+	}
+
+	// Decoding is a separate step on purpose: a file that failed to assemble
+	// must not end up looking like a valid, merely truncated, upload.
+	cmd := fmt.Sprintf("base64 -d < %s > %s && rm -f %s", tmp, target, tmp)
+	if _, err := d.Exec(ctx, cmd); err != nil {
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, fmt.Sprintf("failed to decode uploaded %s", f.RemotePath), "Check remote disk space.", err)
 	}
 	return nil
 }

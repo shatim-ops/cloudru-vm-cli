@@ -398,12 +398,13 @@ func (s *Server) registerTools() {
 		},
 		{
 			Name:        "disk_create",
-			Description: "Create a block-storage disk. Pass attach_to=<VM name/uuid> to create it in that VM's zone and (with confirmed) attach it in one step — disks must be in the SAME zone as the VM. NB: attaching adds a NEW block device; it does NOT grow the VM's existing filesystem (you then partition/format/mount it on the VM). Resizing the boot disk in place is NOT available via this API (console-only). Mutation (billable): requires confirmed=true.",
+			Description: "Create a block-storage disk, empty or from an image (image_id). Pass attach_to=<VM name/uuid> to create it in that VM's zone and (with confirmed) attach it in one step — disks must be in the SAME zone as the VM. NB: attaching adds a NEW block device; it does NOT grow the VM's existing filesystem (you then partition/format/mount it on the VM). Resizing the boot disk in place is NOT available via this API (console-only). Mutation (billable): requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"name":      strProp("Disk name."),
 				"size_gb":   intProp("Disk size in GB (required)."),
 				"disk_type": strProp("Disk type name (e.g. from list_disk_types) or UUID. Default: an SSD type."),
 				"attach_to": strProp("VM name or UUID to create-in-zone and auto-attach to (e.g. 'vm-712c44')."),
+				"image_id":  strProp("Create the disk FROM this image (UUID) instead of empty: the disk comes bootable, with the image's own partitions. size_gb must be >= the image size. Creation takes far longer than an empty disk (tens of minutes)."),
 				"zone":      strProp("Availability zone name or UUID (alternative to attach_to; default: configured region)."),
 				"confirmed": boolProp("Must be true — set only after the captain approved."),
 			}, "name", "size_gb"),

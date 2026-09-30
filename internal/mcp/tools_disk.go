@@ -111,7 +111,7 @@ func (s *Server) handleDiskCreate(ctx context.Context, args map[string]any) (str
 	}
 
 	// Resolve disk type (name or id); default to an SSD type.
-	req := provision.CreateDiskReq{Name: name, Size: sizeGB, AvailabilityZoneID: zoneID, ProjectID: pid}
+	req := provision.CreateDiskReq{Name: name, Size: sizeGB, AvailabilityZoneID: zoneID, ProjectID: pid, ImageID: stringArg(args, "image_id")}
 	if dt := stringArg(args, "disk_type"); dt != "" {
 		if looksUUID(dt) {
 			req.DiskTypeID = dt
@@ -136,7 +136,7 @@ func (s *Server) handleDiskCreate(ctx context.Context, args map[string]any) (str
 			"message": "disk_create makes a billable disk. Approve, then call again with confirmed=true.",
 			"will_create": map[string]any{
 				"name": name, "size_gb": sizeGB, "disk_type": firstNonEmptyStr(req.DiskTypeName, req.DiskTypeID),
-				"zone_id": zoneID, "attach_to": attachTo,
+				"zone_id": zoneID, "attach_to": attachTo, "image_id": req.ImageID,
 			},
 		}), true
 	}
