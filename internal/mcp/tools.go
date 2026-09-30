@@ -73,6 +73,18 @@ func (s *Server) registerTools() {
 			}),
 		},
 		{
+			Name:        "vm_download",
+			Description: "Bring files back from a VM over SSH. Made for scan reports: the factory's vulnerability scan writes its results on the build VM and the cleanup step wipes that machine, so the results must be pulled first or they never existed. Files land under out_dir on the engine's machine, named by their base name. Read-only on the VM; no confirmation needed. Size-capped (max_bytes, default 32 MiB).",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":     strProp("VM UUID."),
+				"name":      strProp("VM name (alternative to vm_id)."),
+				"paths":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Absolute paths of files on the VM to download."},
+				"out_dir":   strProp("Existing local directory to write the files into."),
+				"login":     strProp("SSH login (default: the login recorded for this VM in local state)."),
+				"max_bytes": intProp("Per-file size cap in bytes (default 33554432, hard max 134217728)."),
+			}),
+		},
+		{
 			Name:        "vm_upload",
 			Description: "Write files onto a VM over SFTP. Use for build inputs that are not scripts: config files, systemd units, a compose file. Paths are relative to the login user's home; move them into place with vm_exec so the privilege is explicit. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
@@ -1264,6 +1276,7 @@ func (s *Server) registerTools() {
 		"vm_exec":              s.handleVMExec,
 		"vm_exec_status":       s.handleVMExecStatus,
 		"vm_upload":            s.handleVMUpload,
+		"vm_download":          s.handleVMDownload,
 		"status":               s.handleStatus,
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,

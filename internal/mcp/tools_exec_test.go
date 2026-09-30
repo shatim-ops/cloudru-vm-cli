@@ -149,7 +149,7 @@ func TestНовыеТулыОбъявлены(t *testing.T) {
 	for _, tl := range s.ListTools() {
 		есть[tl.Name] = true
 	}
-	for _, имя := range []string{"vm_exec", "vm_exec_status", "vm_upload"} {
+	for _, имя := range []string{"vm_exec", "vm_exec_status", "vm_upload", "vm_download"} {
 		if !есть[имя] {
 			t.Errorf("тул %s не объявлен", имя)
 		}
