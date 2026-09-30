@@ -8,6 +8,10 @@ type CloudAPI interface {
 	CreateVM(ctx context.Context, req CreateVMRequest) (*VM, error)
 	GetVM(ctx context.Context, id string) (*VM, error)
 	DeleteVM(ctx context.Context, id string) error
+	// SetPower switches a VM on or off through the platform, without asking the
+	// guest. A build VM that shuts itself down can hang: the cleanup script
+	// deletes the very user running it and then calls poweroff --no-block.
+	SetPower(ctx context.Context, id, state string) error
 	ListVMs(ctx context.Context) ([]*VM, error)
 	ListFlavors(ctx context.Context) ([]*Flavor, error)
 	ListAvailabilityZones(ctx context.Context) ([]*AvailabilityZone, error)

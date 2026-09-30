@@ -3,6 +3,7 @@ package deployplan
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -49,7 +50,10 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	// key — fall back to a generated password.
 
 	// --- Zone ---
-	zoneInput := firstNonEmpty(p.Zone, "ru.AZ-2")
+	// Зона по умолчанию — из конфигурации (CLOUDRU_REGION), а не зашитая:
+	// 16.09.2026 в ru.AZ-2 кончились диски, и все инструменты пришлось
+	// переводить на AZ-1. Буквальная «ru.AZ-2» здесь была единственной в движке.
+	zoneInput := firstNonEmpty(p.Zone, os.Getenv("CLOUDRU_REGION"), "ru.AZ-2")
 	zone := provision.AvailabilityZone{ID: zoneInput, Name: zoneInput}
 	zones, zErr := cloud.ListAvailabilityZones(ctx)
 	if zErr == nil {

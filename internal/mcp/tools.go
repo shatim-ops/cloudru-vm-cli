@@ -43,6 +43,7 @@ func (s *Server) registerTools() {
 				"image_id":     strProp("Boot image UUID (see list_images)."),
 				"disk_size":    intProp("Boot disk size in GB (default: 10)."),
 				"subnet_id":    strProp("Subnet UUID for the interface (default: a subnet in the target zone)."),
+				"disk_type":    strProp("Boot disk type name, e.g. 'SSD' (default) or 'HDD' (see list_disk_types). A zone short on one type still serves the other: creating a VM on an exhausted type fails with error_creating and no readable reason."),
 				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
 			}),
 		},
@@ -175,6 +176,15 @@ func (s *Server) registerTools() {
 				"vm":        strProp("VM name or UUID to attach it to."),
 				"confirmed": boolProp("Must be true — set only after the captain approved."),
 			}, "fip", "vm"),
+		},
+		{
+			Name:        "vm_power",
+			Description: "Switch a VM on or off through the platform, without asking the guest OS. Use when a VM will not shut itself down — a cleanup script that deletes its own user and then calls `poweroff --no-block` can leave the machine running forever, stalling any step that waits for it to stop. Valid states: power_on, power_off, reboot. Mutation: requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":     strProp("VM UUID."),
+				"state":     strProp("power_on, power_off or reboot."),
+				"confirmed": boolProp("Must be true — set only after the captain approved."),
+			}, "vm_id", "state"),
 		},
 		{
 			Name:        "image_get",
@@ -1287,6 +1297,7 @@ func (s *Server) registerTools() {
 		"image_create":         s.handleImageCreate,
 		"image_get":            s.handleImageGet,
 		"fip_attach":           s.handleFipAttach,
+		"vm_power":             s.handleVMPower,
 		"image_delete":         s.handleImageDelete,
 		"deploy_plan":          s.handleDeployPlan,
 		"deploy_apply":         s.handleDeployApply,
@@ -1527,6 +1538,16 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 		diskSize = 10
 	}
 
+	// Тип диска выбирается, а не зашивается. Ёмкость по типам расходится
+	// неравномерно, и зона может временно не отдавать SSD, продолжая отдавать
+	// HDD: 16.09.2026 в ru.AZ-2 именно так — создание ВМ падает в
+	// error_creating, и причина не видна ниоткуда. Для одноразовой сборочной
+	// ВМ тип безразличен, а образ с неё покупатель развернёт на своём диске.
+	diskTypeName := stringArg(args, "disk_type")
+	if diskTypeName == "" {
+		diskTypeName = "SSD"
+	}
+
 	// Resolve flavor: name -> UUID, "auto" -> smallest lowcost, UUID passthrough.
 	// Free-tier is limited to 1 VM (usually already in use), so auto skips it.
 	flavorID := eng.Config.Flavor
@@ -1683,7 +1704,11 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 	if len(subnets) == 0 {
 		return errResult(fmt.Errorf("no subnets in project — cannot attach a network interface")), true
 	}
-	subnetID := subnets[0].ID
+	// Подсеть берётся ТОЛЬКО из целевой зоны. Прежний запасной вариант
+	// «первая в проекте» подсовывал подсеть AZ-2 машине в AZ-1, и платформа
+	// отвечала не отказом, а error_creating без причины — ловушка, описанная
+	// ниже для групп, работала и здесь. Отказ с внятным текстом дешевле.
+	subnetID := ""
 	if zoneName != "" {
 		for _, sn := range subnets {
 			if strings.Contains(sn.Name, zoneName) {
@@ -1692,19 +1717,32 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 			}
 		}
 	}
+	if subnetID == "" && stringArg(args, "subnet_id") == "" {
+		if zoneName == "" {
+			subnetID = subnets[0].ID
+		} else {
+			return errResult(fmt.Errorf("no subnet in zone %s: create one (e.g. Default_%s) or pass subnet_id", zoneName, zoneName)), true
+		}
+	}
 	if v := stringArg(args, "subnet_id"); v != "" {
 		subnetID = v
 	}
 	var sgIDs []string
 	if sgs, e := eng.Cloud.ListSecurityGroups(ctx, projectID); e == nil && len(sgs) > 0 {
-		chosen := sgs[0].ID
-		if zoneName != "" {
-			for _, g := range sgs {
-				if strings.Contains(g.Name, zoneName) {
-					chosen = g.ID
-					break
-				}
+		chosen := ""
+		for _, g := range sgs {
+			if zoneName != "" && strings.Contains(g.Name, zoneName) {
+				chosen = g.ID
+				break
 			}
+		}
+		if chosen == "" && zoneName == "" {
+			chosen = sgs[0].ID
+		}
+		if chosen == "" {
+			// Та же ловушка, что с подсетью: группа из чужой зоны — это
+			// error_creating без причины, а не отказ API.
+			return errResult(fmt.Errorf("no security group in zone %s: create one (e.g. SSH-access_%s)", zoneName, zoneName)), true
 		}
 		sgIDs = []string{chosen}
 	}
@@ -1738,7 +1776,7 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 			{
 				Name:         vmName + "-boot",
 				Size:         diskSize,
-				DiskTypeName: "SSD",
+				DiskTypeName: diskTypeName,
 			},
 		},
 		Interfaces: []provision.InterfaceReq{
@@ -1757,13 +1795,33 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 		return string(b), false
 	}
 
-	vm, err := eng.Cloud.CreateVM(ctx, req)
-	if err != nil {
-		return errResult(fmt.Errorf("create VM: %w", err)), true
+	// Имя освобождается не сразу. Удаление ВМ на стороне платформы идёт
+	// асинхронно, и пересборка сразу после сноса упирается в 409
+	// vm_with_this_data_already_exists по полю name — при том что ВМ в списке
+	// проекта уже нет. 16.09.2026 сборка redmine встала так трижды подряд.
+	// Ждём, пока имя освободится: полминуты между попытками, всего до трёх.
+	var vm *provision.VM
+	for попытка := 1; ; попытка++ {
+		vm, err = eng.Cloud.CreateVM(ctx, req)
+		if err == nil {
+			break
+		}
+		if попытка >= 3 || !strings.Contains(err.Error(), "vm_with_this_data_already_exists") {
+			return errResult(fmt.Errorf("create VM: %w", err)), true
+		}
+		select {
+		case <-ctx.Done():
+			return errResult(fmt.Errorf("create VM: ожидание освобождения имени %q прервано: %w", vmName, ctx.Err())), true
+		case <-time.After(30 * time.Second):
+		}
 	}
 
-	// Poll until active
-	pollTimeout := 5 * time.Minute
+	// Poll until active.
+	//
+	// Восемь минут, не пять: под нагрузкой (восемь одновременных сборок)
+	// Cloud.ru выводит ВМ в running за шесть-семь минут. Потолок держим ниже
+	// таймаута вызова у оркестратора (десять минут), иначе ответ не дойдёт.
+	pollTimeout := 8 * time.Minute
 	deadline := time.After(pollTimeout)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -1771,11 +1829,17 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 	for {
 		select {
 		case <-deadline:
+			// НЕ ошибка. ВМ создана и тарифицируется; если ответить ошибкой,
+			// вызывающая сторона обрывается на провале и идентификатор ВМ
+			// теряется — машина остаётся в облаке, и снести её автоматически
+			// нечем (16.09.2026 так потерялась selenium-grid-build). Отдаём
+			// идентификатор: ждать активности и выдавать адрес умеет
+			// вызывающая сторона (wait_active + fip_attach).
 			return toJSON(map[string]any{
 				"status":  "timeout",
 				"vm_id":   vm.ID,
-				"message": fmt.Sprintf("VM %s created but did not become active within %s", vm.ID, pollTimeout),
-			}), true
+				"message": fmt.Sprintf("VM %s created but did not become active within %s; ждите активности и выдайте адрес через fip_attach", vm.ID, pollTimeout),
+			}), false
 		case <-ticker.C:
 			updated, err := eng.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
@@ -1784,10 +1848,24 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 			if updated.Status == "active" || updated.Status == "running" {
 				// Assign a floating (public) IP unless a private VM was requested.
 				publicIP := ""
+				var fipWarn string
 				if !noPublicIP {
 					ip, fipErr := engine.AssignFloatingIP(ctx, eng.Cloud, vm.ID, projectID, region)
-					_ = fipErr
 					publicIP = ip
+					if fipErr != nil || publicIP == "" {
+						// Отказ выдачи адреса ПРОГЛАТЫВАЛСЯ, и provision отвечал
+						// успехом с пустым public_ip. Правда вскрывалась через
+						// пятнадцать минут на первом обращении по SSH — «VM has no
+						// public IP». 16.09.2026 так прошла квота на адреса
+						// (network.ip.quantity): ВМ создана, платится, войти нельзя.
+						// ВМ не сносим: она создана и учтена, а адрес можно выдать
+						// отдельно (fip_attach) — но молчать об этом нельзя.
+						fipWarn = "ВМ создана, но публичный адрес не выдан"
+						if fipErr != nil {
+							fipWarn += ": " + fipErr.Error()
+						}
+						fipWarn += ". Освободите адрес или квоту и выполните fip_attach — по SSH ВМ сейчас недоступна."
+					}
 				}
 
 				// Save state
@@ -1816,6 +1894,7 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 				return toJSON(map[string]any{
 					"status":   "ok",
 					"vm_id":    vm.ID,
+					"warning":  fipWarn,
 					"vm_ip":    publicIP,
 					"private":  noPublicIP,
 					"ssh_user": sshUser,

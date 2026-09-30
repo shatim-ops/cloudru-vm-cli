@@ -285,3 +285,34 @@ func (s *Server) handleImageDelete(ctx context.Context, args map[string]any) (st
 	}
 	return toJSON(map[string]any{"status": "deleted", "image_id": imageID}), false
 }
+
+// handleVMPower switches a VM's power state through the platform.
+//
+// The guest cannot always be trusted to shut itself down: the build cleanup
+// script deletes the very user whose session is running it and then asks for
+// `systemctl poweroff --no-block`, which returns immediately and can leave the
+// job unfinished. 16.09.2026 the gitlab-runner build VM stayed up for twelve
+// minutes that way and nearly burned its step's whole budget.
+func (s *Server) handleVMPower(ctx context.Context, args map[string]any) (string, bool) {
+	vmID, _ := args["vm_id"].(string)
+	state, _ := args["state"].(string)
+	if vmID == "" || state == "" {
+		return errResult(fmt.Errorf("vm_id and state are required")), true
+	}
+	switch state {
+	case "power_on", "power_off", "reboot":
+	default:
+		return errResult(fmt.Errorf("state must be power_on, power_off or reboot, got %q", state)), true
+	}
+	if ok, _ := args["confirmed"].(bool); !ok {
+		return errResult(fmt.Errorf("confirmed=true is required: this changes a running VM")), true
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	if err := eng.Cloud.SetPower(ctx, vmID, state); err != nil {
+		return errResult(fmt.Errorf("set power %s: %w", state, err)), true
+	}
+	return toJSON(map[string]any{"status": "ok", "vm_id": vmID, "state": state}), false
+}
