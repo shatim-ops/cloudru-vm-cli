@@ -298,6 +298,12 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 		if i >= len(args) {
 			break
 		}
+		if args[i] == "" && !p.optional {
+			label := strings.ReplaceAll(strings.Join(p.names, "|"), "_", "-")
+			return nil, clerrors.New(clerrors.CodeUsage,
+				fmt.Sprintf("%s: <%s> is empty", cmd.CommandPath(), label),
+				fmt.Sprintf("Run '%s --help'.", cmd.CommandPath()))
+		}
 		switch {
 		case p.rest:
 			out[p.names[0]] = strings.Join(args[i:], " ")
