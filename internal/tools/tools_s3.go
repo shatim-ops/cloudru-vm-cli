@@ -134,6 +134,12 @@ func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any
 	if bucket == "" {
 		return errResult(fmt.Errorf("'bucket' is required (the new bucket name)")), true
 	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": fmt.Sprintf("s3_bucket_create creates bucket %q (billable storage). Call again with confirmed=true after the captain approves.", bucket),
+		}), true
+	}
 	cli, err := s.s3Client()
 	if err != nil {
 		return errResult(err), true

@@ -129,10 +129,10 @@ func TestToolsCall_Confirmation(t *testing.T) {
 	}
 }
 
-// s3_bucket_create has no gate of its own; the CLI asks anyway.
+// s3_bucket_create asks for confirmation (its own gate since the MCP QA).
 func TestToolsCall_MutatingWithoutGateAsks(t *testing.T) {
 	_, errOut, code := execCLI(t, "tools", "call", "s3_bucket_create", "--arg", "bucket=b1")
-	if code != clerrors.ExitConfirmationRequired || !strings.Contains(errOut, "bucket: b1") {
+	if code != clerrors.ExitConfirmationRequired || !strings.Contains(errOut, `bucket "b1"`) {
 		t.Errorf("exit %d, err %q", code, errOut)
 	}
 }

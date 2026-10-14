@@ -48,6 +48,26 @@ var readOnlyKubectl = map[string]bool{
 	"rollout": true, "diff": true, "wait": true, // rollout status/history are reads
 }
 
+// readOnlySubcommands narrows the verbs above whose subcommands may also
+// write: "rollout restart|undo|pause|resume" and "auth reconcile" change the
+// cluster, so only these subcommands of them run without confirmation.
+var readOnlySubcommands = map[string]map[string]bool{
+	"rollout": {"status": true, "history": true},
+	"auth":    {"can-i": true, "whoami": true},
+}
+
+// kubectlReadOnly reports whether kubectl args (verb first) only read.
+func kubectlReadOnly(fields []string) bool {
+	if len(fields) == 0 || !readOnlyKubectl[fields[0]] {
+		return false
+	}
+	subs, ok := readOnlySubcommands[fields[0]]
+	if !ok {
+		return true
+	}
+	return len(fields) > 1 && subs[fields[1]]
+}
+
 // handleK8sKubectl runs ANY kubectl command against a cluster (uses an
 // auto-embedded token — no cloudlogin needed). Read verbs run freely; verbs
 // that mutate the cluster require confirmed=true. This is the general escape
@@ -67,7 +87,7 @@ func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (s
 	if len(fields) > 0 {
 		verb = fields[0]
 	}
-	if !readOnlyKubectl[verb] {
+	if !kubectlReadOnly(fields) {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return toJSON(map[string]any{
 				"status":  "confirmation_required",
@@ -121,6 +141,14 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	action := strings.ToLower(stringArg(args, "action"))
 	if clusterID == "" || action == "" {
 		return errResult(fmt.Errorf("cluster_id and action are required (install|upgrade|uninstall|list|status)")), true
+	}
+	// release and chart go to helm as positional arguments: a value starting
+	// with '-' would be parsed as a flag (--post-renderer runs a program on
+	// the server's host).
+	for _, k := range []string{"release", "chart", "namespace", "version"} {
+		if strings.HasPrefix(stringArg(args, k), "-") {
+			return errResult(fmt.Errorf("'%s' must not start with '-'", k)), true
+		}
 	}
 	mutating := map[string]bool{"install": true, "upgrade": true, "uninstall": true, "delete": true}
 	if mutating[action] {
