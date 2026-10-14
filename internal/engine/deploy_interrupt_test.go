@@ -26,6 +26,15 @@ func (c *interruptCloud) GetImage(context.Context, string) (*provision.ImageDeta
 	return &provision.ImageDetail{}, nil
 }
 
+// The preview looks names up best effort; failing lookups must not stop it.
+func (c *interruptCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
+	return nil, stderrors.New("not in this test")
+}
+
+func (c *interruptCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
+	return nil, stderrors.New("not in this test")
+}
+
 func (c *interruptCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
 	return &provision.VM{ID: "vm-new", Status: "creating"}, nil
 }
@@ -55,7 +64,7 @@ func provisionInterrupted(t *testing.T, nonInteractive bool) (*interruptCloud, *
 
 	statePath := state.DefaultPath(dir)
 	sf := &state.File{Version: 1}
-	_, err := e.provisionVM(ctx, DeployOptions{NonInteractive: nonInteractive}, sf, statePath,
+	_, err := e.provisionVM(ctx, DeployOptions{NonInteractive: nonInteractive, Yes: true}, sf, statePath,
 		&compose.Project{Hash: "h"}, "flavor", "az")
 	return cloud, e, &stderr, err
 }

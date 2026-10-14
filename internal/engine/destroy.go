@@ -1,32 +1,20 @@
 package engine
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
-	"os"
-	"strings"
 	"time"
 
-	"golang.org/x/term"
-
+	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
 // DestroyOptions holds parameters for the destroy command.
 type DestroyOptions struct {
-	Force bool // skip confirmation prompt
+	Force  bool // skip confirmation prompt (--force / --yes)
+	DryRun bool // show what would be deleted and stop
 }
-
-// promptStdin is where confirmation answers (destroy, deploy interrupt) are
-// read from; promptStdinIsTTY tells whether a human can answer at all.
-// Variables so tests can replace them.
-var (
-	promptStdin      io.Reader = os.Stdin
-	promptStdinIsTTY           = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
-)
 
 // Destroy tears down the active deployment.
 func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
@@ -37,19 +25,6 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 
 	active := stateFile.ActiveDeployment()
-
-	// Without a terminal nobody can answer the prompt: reading stdin would
-	// hit EOF and look like a refusal. Fail loudly instead of exiting 0.
-	if !opts.Force && !promptStdinIsTTY() {
-		target := "the deployment"
-		if active != nil {
-			target = "VM " + active.VMID
-		}
-		return clerrors.New(clerrors.CodeConfirmationRequired,
-			fmt.Sprintf("refusing to destroy %s: confirmation required and stdin is not a terminal", target),
-			"Re-run with --force to destroy without a prompt.")
-	}
-
 	if active == nil {
 		e.Printer.Success("No active deployment to destroy.")
 		return nil
@@ -58,18 +33,14 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	e.Printer.Step(1, 3, "Reading deployment info...")
 	e.Printer.StepDone(fmt.Sprintf("VM %s (%s) in %s", active.VMID, active.VMIP, active.Region))
 
-	if !opts.Force {
-		e.Printer.Warning(fmt.Sprintf("This will permanently delete VM %s and all data on it.", active.VMID))
-		fmt.Fprintf(e.Printer.ErrWriter(), "Type 'yes' to confirm: ")
-		answer, err := readAnswer(ctx, promptStdin)
-		if err != nil {
-			return err
-		}
-		if answer != "yes" {
-			return clerrors.New(clerrors.CodeConfirmationRequired,
-				"destruction cancelled: confirmation not given",
-				"Type 'yes' at the prompt, or re-run with --force.")
-		}
+	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
+	// instead of reading EOF as a refusal and exiting 0.
+	proceed, err := confirm.Ask(ctx, destroyPreview(active), e.confirmOptions(opts.Force, opts.DryRun, false))
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		return nil // --dry-run
 	}
 
 	// Auth.
@@ -131,20 +102,4 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	e.Printer.Success("Deployment destroyed successfully.")
 	return nil
-}
-
-// readAnswer reads one line from r, giving up when ctx is cancelled
-// (Ctrl-C at the prompt).
-func readAnswer(ctx context.Context, r io.Reader) (string, error) {
-	ch := make(chan string, 1)
-	go func() {
-		line, _ := bufio.NewReader(r).ReadString('\n')
-		ch <- strings.TrimSpace(line)
-	}()
-	select {
-	case answer := <-ch:
-		return answer, nil
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
 }

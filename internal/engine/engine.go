@@ -35,5 +35,7 @@ type DeployOptions struct {
 	Flavor         string // "auto" or explicit flavor name
 	Region         string
 	Force          bool // force redeploy even if hash unchanged
-	NonInteractive bool
+	NonInteractive bool // never prompt; creating a VM then needs Yes
+	Yes            bool // consent to create the VM given in advance (--yes)
+	DryRun         bool // show what would be created and its cost, then stop
 }

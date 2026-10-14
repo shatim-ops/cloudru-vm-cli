@@ -21,7 +21,7 @@ func (s *Server) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires Cloud.ru credentials (CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments.",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires Cloud.ru credentials (CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the captain approves; without it returns a preview only.",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
 				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),
@@ -30,11 +30,12 @@ func (s *Server) registerTools() {
 				"image_id":     strProp("Boot image UUID (see list_images)."),
 				"disk_size":    intProp("Boot disk size in GB (default: 10)."),
 				"force":        boolProp("Redeploy even if the compose hash is unchanged."),
+				"confirmed":    boolProp("Must be true — set only after the captain approved. Omit for a preview."),
 			}),
 		},
 		{
 			Name:        "provision",
-			Description: "Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). For docker-compose deployments, use 'deploy' instead.",
+			Description: "Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the captain approves; without it returns a preview only.",
 			InputSchema: objSchema(map[string]any{
 				"name":         strProp("VM name (e.g. 'hermes-agent')."),
 				"flavor":       strProp("VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier)."),
@@ -44,6 +45,7 @@ func (s *Server) registerTools() {
 				"disk_size":    intProp("Boot disk size in GB (default: 10)."),
 				"subnet_id":    strProp("Subnet UUID for the interface (default: a subnet in the target zone)."),
 				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
+				"confirmed":    boolProp("Must be true — set only after the captain approved. Omit for a preview."),
 			}),
 		},
 		{
@@ -418,13 +420,13 @@ func (s *Server) registerTools() {
 		},
 		{
 			Name:        "ca_start",
-			Description: "Start a stopped Container App.",
-			InputSchema: objSchema(map[string]any{"name": strProp("Container app name.")}, "name"),
+			Description: "Start a stopped Container App (it is billed while running). Mutation: requires confirmed=true after the captain approves.",
+			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": boolProp("Must be true — set only after the captain approved.")}, "name"),
 		},
 		{
 			Name:        "ca_stop",
-			Description: "Stop a running Container App.",
-			InputSchema: objSchema(map[string]any{"name": strProp("Container app name.")}, "name"),
+			Description: "Stop a running Container App (it stops serving requests). Mutation: requires confirmed=true after the captain approves.",
+			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": boolProp("Must be true — set only after the captain approved.")}, "name"),
 		},
 		{
 			Name:        "iam_service_accounts",
@@ -1048,28 +1050,30 @@ func (s *Server) registerTools() {
 		},
 		{
 			Name:        "cert_issue_le",
-			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). This is the path for HTTPS on a site (e.g. shkrbkv.ru): issue → bind to the LB listener. ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true.",
+			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). This is the path for HTTPS on a site (e.g. shkrbkv.ru): issue → bind to the LB listener. ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true. Mutation: requires confirmed=true after the captain approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Display name for the certificate. Required."),
 				"dns_names":   strProp("Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"] (array or comma-separated). Required."),
 				"description": strProp("Optional description."),
+				"confirmed":   boolProp("Must be true — set only after the captain approved."),
 			}, "name", "dns_names"),
 		},
 		{
 			Name:        "cert_import",
-			Description: "Certificate Manager — import a user-managed certificate (bring-your-own). server_certificate and private_key are Base64-encoded PEM.",
+			Description: "Certificate Manager — import a user-managed certificate (bring-your-own). server_certificate and private_key are Base64-encoded PEM. Mutation: requires confirmed=true after the captain approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":                     strProp("Display name. Required."),
 				"server_certificate":       strProp("Public cert, Base64-encoded PEM. Required."),
 				"private_key":              strProp("Private key, Base64-encoded PEM. Required."),
 				"intermediate_certificate": strProp("Intermediate chain, Base64-encoded PEM (optional)."),
 				"description":              strProp("Optional description."),
+				"confirmed":                boolProp("Must be true — set only after the captain approved."),
 			}, "name", "server_certificate", "private_key"),
 		},
 		{
 			Name:        "cert_renew",
-			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id.",
-			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required.")}, "certificate_id"),
+			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Mutation: requires confirmed=true after the captain approves.",
+			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": boolProp("Must be true — set only after the captain approved.")}, "certificate_id"),
 		},
 		{
 			Name:        "cert_delete",
@@ -1128,13 +1132,14 @@ func (s *Server) registerTools() {
 		},
 		{
 			Name:        "s3_put",
-			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists).",
+			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the captain approves.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":         strProp("Bucket name. Required."),
 				"key":            strProp("Object key. Required."),
 				"content":        strProp("Inline text content to upload."),
 				"content_base64": strProp("Base64-encoded binary content (alternative to content)."),
 				"content_type":   strProp("MIME type (default application/octet-stream)."),
+				"confirmed":      boolProp("Must be true — set only after the captain approved."),
 			}, "bucket", "key"),
 		},
 		{
@@ -1348,6 +1353,13 @@ func (s *Server) registerTools() {
 // --- handlers ---
 
 func (s *Server) handleDeploy(ctx context.Context, args map[string]any) (string, bool) {
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":      "confirmation_required",
+			"message":     "deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the captain's approval, then call again with confirmed=true.",
+			"will_deploy": previewArgs(args, "compose_file", "flavor", "region", "project_id", "image_id", "disk_size", "force"),
+		}), true
+	}
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
 		"compose_file": "ComposeFile",
@@ -1376,6 +1388,7 @@ func (s *Server) handleDeploy(ctx context.Context, args map[string]any) (string,
 		Region:         eng.Config.Region,
 		Force:          force,
 		NonInteractive: true,
+		Yes:            true, // confirmed above
 	}
 
 	deployErr := eng.Deploy(ctx, opts)
@@ -1396,6 +1409,16 @@ func (s *Server) handleDeploy(ctx context.Context, args map[string]any) (string,
 }
 
 func (s *Server) handleProvision(ctx context.Context, args map[string]any) (string, bool) {
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		noPublicIP, _ := args["no_public_ip"].(bool)
+		will := previewArgs(args, "name", "flavor", "region", "project_id", "image_id", "disk_size", "subnet_id")
+		will["public_ip"] = !noPublicIP
+		return toJSON(map[string]any{
+			"status":      "confirmation_required",
+			"message":     "provision creates a billable VM (and a public floating IP unless no_public_ip=true). For a costed preview use deploy_plan or list_flavors. Get the captain's approval, then call again with confirmed=true.",
+			"will_create": will,
+		}), true
+	}
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
 		"flavor":     "Flavor",
@@ -2060,6 +2083,21 @@ func intArg(args map[string]any, key string, def int) int {
 }
 
 // toJSON marshals v to an indented JSON string for tool output.
+// previewArgs echoes the given arguments for a confirmation preview; an
+// argument that was not passed is shown as coming from the defaults
+// (env/config or auto).
+func previewArgs(args map[string]any, keys ...string) map[string]any {
+	out := make(map[string]any, len(keys))
+	for _, k := range keys {
+		if v, ok := args[k]; ok && v != nil && v != "" {
+			out[k] = v
+		} else {
+			out[k] = "default (env/config or auto)"
+		}
+	}
+	return out
+}
+
 func toJSON(v any) string {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {

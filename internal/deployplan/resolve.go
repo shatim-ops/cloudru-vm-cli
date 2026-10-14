@@ -146,13 +146,18 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		warnings = append(warnings, "could not read image metadata template: "+sErr.Error())
 	}
 
-	// --- Cost ---
-	cost := pricing.EstimateFor(flavor.Name, flavor.VCPUs, flavor.RAMGB, diskGB, diskName)
-
 	name := p.Name
 	if name == "" {
 		base := firstNonEmpty(p.Product, "vm")
 		name = sanitizeName(base) + "-" + time.Now().Format("20060102-1504")
+	}
+
+	vm := VMSpec{
+		Name:   name,
+		Flavor: FlavorSpec{ID: flavor.ID, Name: flavor.Name, VCPUs: flavor.VCPUs, RAMGB: flavor.RAMGB},
+		Image:  RefSpec{ID: image.ID, Name: image.Name},
+		Zone:   RefSpec{ID: zone.ID, Name: zone.Name},
+		Disk:   DiskSpec{SizeGB: diskGB, Type: diskName, TypeID: diskID},
 	}
 
 	now := time.Now()
@@ -163,13 +168,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		Product:   p.Product,
 		Mode:      firstNonEmpty(p.Mode, "auto"),
 		ProjectID: projectID,
-		VM: VMSpec{
-			Name:   name,
-			Flavor: FlavorSpec{ID: flavor.ID, Name: flavor.Name, VCPUs: flavor.VCPUs, RAMGB: flavor.RAMGB},
-			Image:  RefSpec{ID: image.ID, Name: image.Name},
-			Zone:   RefSpec{ID: zone.ID, Name: zone.Name},
-			Disk:   DiskSpec{SizeGB: diskGB, Type: diskName, TypeID: diskID},
-		},
+		VM:        vm,
 		Network: NetworkSpec{
 			SubnetID:        subnetID,
 			SecurityGroupID: sgID,
@@ -178,7 +177,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		},
 		Ports:           p.Ports,
 		SSH:             SSHSpec{Login: login, KeyName: keyName},
-		Cost:            cost,
+		Cost:            EstimateVM(vm),
 		Warnings:        warnings,
 		ComposeRequired: p.ComposeFile != "",
 		ComposeFile:     p.ComposeFile,
@@ -188,6 +187,12 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		SourceParams:    p,
 	}
 	return plan, nil
+}
+
+// EstimateVM is the cost estimate for a resolved VM. deploy_plan and the
+// CLI deploy preview both use it, so they never disagree about the price.
+func EstimateVM(vm VMSpec) pricing.Estimate {
+	return pricing.EstimateFor(vm.Flavor.Name, vm.Flavor.VCPUs, vm.Flavor.RAMGB, vm.Disk.SizeGB, vm.Disk.Type)
 }
 
 // selectFlavor validates an explicit flavor by name, or auto-sizes from CPU/RAM,
