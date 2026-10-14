@@ -93,15 +93,17 @@ func zoneText(name, id string) string {
 	return id
 }
 
-// openPorts adds tcp ingress rules for the compose ports to the VM's
-// security group, skipping ports already open. The group is shared by every
-// VM placed in it — the deploy preview says so before anything is created.
-// Failures are reported, not fatal: the VM exists and the ports can be
-// opened in the console.
-func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, ports []int) {
-	if sgID == "" || len(ports) == 0 {
+// openPorts adds ingress rules for the compose ports (tcp and udp) to the
+// VM's security group, skipping ports already open for that protocol. The
+// group is shared by every VM placed in it — the deploy preview says so
+// before anything is created. Failures are reported, not fatal: the VM
+// exists and the ports can be opened in the console.
+func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp []int) {
+	if sgID == "" || len(tcp)+len(udp) == 0 {
 		return
 	}
+	// Keyed by protocol and range: a udp rule on 53 does not open tcp 53. A
+	// rule without a protocol (or "any") covers both.
 	existing := map[string]bool{}
 	if sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID); err == nil {
 		for _, sg := range sgs {
@@ -109,30 +111,47 @@ func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, ports []
 				continue
 			}
 			for _, r := range sg.Rules {
-				if r.Direction == "ingress" && r.PortRange != "" {
-					existing[r.PortRange] = true
+				if r.Direction != "ingress" || r.PortRange == "" {
+					continue
+				}
+				switch proto := strings.ToLower(r.IPProtocol); proto {
+				case "", "any":
+					existing["tcp "+r.PortRange] = true
+					existing["udp "+r.PortRange] = true
+				default:
+					existing[proto+" "+r.PortRange] = true
 				}
 			}
 		}
 	}
 	var opened, failed []string
-	for _, p := range ports {
-		pr := fmt.Sprintf("%d:%d", p, p)
-		if existing[pr] {
-			continue
-		}
-		rule := provision.SGRule{
-			Direction:      "ingress",
-			EtherType:      "IPv4",
-			IPProtocol:     "tcp",
-			PortRange:      pr,
-			RemoteIPPrefix: "0.0.0.0/0",
-			Description:    fmt.Sprintf("cloudru-vm: port %d", p),
-		}
-		if err := e.Cloud.AddSecurityGroupRule(ctx, sgID, projectID, rule); err != nil {
-			failed = append(failed, strconv.Itoa(p))
-		} else {
-			opened = append(opened, strconv.Itoa(p))
+	for _, set := range []struct {
+		proto string
+		ports []int
+	}{{"tcp", tcp}, {"udp", udp}} {
+		for _, p := range set.ports {
+			pr := fmt.Sprintf("%d:%d", p, p)
+			if existing[set.proto+" "+pr] {
+				continue
+			}
+			existing[set.proto+" "+pr] = true
+			label := strconv.Itoa(p)
+			if set.proto != "tcp" {
+				label += "/" + set.proto
+			}
+			rule := provision.SGRule{
+				Direction:      "ingress",
+				EtherType:      "IPv4",
+				IPProtocol:     set.proto,
+				PortRange:      pr,
+				RemoteIPPrefix: "0.0.0.0/0",
+				Description:    fmt.Sprintf("cloudru-vm: port %s", label),
+			}
+			if err := e.Cloud.AddSecurityGroupRule(ctx, sgID, projectID, rule); err != nil {
+				failed = append(failed, label)
+			} else {
+				opened = append(opened, label)
+			}
 		}
 	}
 	if len(opened) > 0 {

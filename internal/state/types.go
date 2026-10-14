@@ -10,7 +10,7 @@ type DeploymentRecord struct {
 	FloatingIPID          string    `json:"floating_ip_id,omitempty"` // released by destroy
 	VMFlavor              string    `json:"vm_flavor"`
 	Region                string    `json:"region"`
-	Status                string    `json:"status"` // creating, running, ssh_timeout, destroying, destroyed
+	Status                string    `json:"status"` // creating, provisioned, deploying, running, ssh_timeout, docker_failed, destroying, destroyed
 	ComposeHash           string    `json:"compose_hash"`
 	SSHUser               string    `json:"ssh_user,omitempty"`
 	SSHKeyFingerprint     string    `json:"ssh_key_fingerprint,omitempty"`

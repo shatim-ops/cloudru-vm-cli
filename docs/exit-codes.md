@@ -7,7 +7,7 @@
 | Код | Значение | Типичные причины (внутренний код ошибки) |
 |---|---|---|
 | `0` | успех; также `--dry-run` | |
-| `1` | прочая ошибка, в том числе неизвестная команда или флаг | `USAGE`, `SSH_TIMEOUT`, `SSH_AUTH_FAILED`, `VM_PROVISION_FAILED`, `COMPOSE_INVALID`, `COMPOSE_NOT_FOUND`, `API_UNREACHABLE`; `verify`: сервис не отвечает (`UNHEALTHY`) |
+| `1` | прочая ошибка, в том числе неизвестная команда или флаг | `USAGE`, `SSH_TIMEOUT`, `SSH_AUTH_FAILED`, `VM_PROVISION_FAILED`, `COMPOSE_INVALID`, `COMPOSE_NOT_FOUND`, `API_UNREACHABLE`, `STATE_CORRUPTED` (битый или более новый state), `STATE_LOCKED` (в каталоге уже идёт `deploy`/`destroy`); `verify`: сервис не отвечает (`UNHEALTHY`) |
 | `2` | ошибка аутентификации или конфигурации | `AUTH_REQUIRED` (нет ключа), `AUTH_FAILED` (IAM отверг ключ), `AUTH_EXPIRED`, `CONFIG_INVALID` (нет профиля, битый YAML, не задан `MCP_BEARER_TOKEN`) |
 | `3` | нужно подтверждение, а его нет | `CONFIRMATION_REQUIRED`: нет терминала и нет `--yes`, `--non-interactive`, ответ не «y» |
 | `4` | объект не найден | `VM_NOT_FOUND`, `NOT_FOUND` |
@@ -21,8 +21,9 @@
   другая ошибка инструмента; `2`, если ошибка — про креды.
 - `doctor`: `2`, если сломаны конфигурация или ключ; `1`, если упали только
   проверки сети.
-- `403` от API сервиса (compute, vpc, …) сейчас даёт `5`, а не `2`: права
-  сервисного аккаунта проверяются сервисом, а не при обмене ключа.
+- `401`/`403` от compute API (ВМ, диски, `deploy`, `destroy`) дают `2`
+  (`AUTH_EXPIRED` / `AUTH_FAILED`). От других сервисов (vpc, dns, …) `403`
+  пока даёт `5`: их клиенты статус не различают.
 - Прерванный `deploy` после создания ВМ выходит с `130` и пишет, какая ВМ
   осталась и как её удалить.
 

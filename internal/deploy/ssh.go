@@ -1,8 +1,8 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -19,6 +19,10 @@ type SSHDeployer struct {
 	client          *ssh.Client
 	hostFingerprint string
 	connectTimeout  time.Duration // per-attempt timeout (default 10s)
+
+	// keepAliveInterval is how often the connection is probed; after
+	// keepAliveMissed unanswered probes it is closed. Zero means 15 s.
+	keepAliveInterval time.Duration
 
 	// newStreamSession opens the session ExecStream runs in; nil means a real
 	// session on client. Tests substitute a fake.
@@ -81,7 +85,48 @@ func (d *SSHDeployer) Connect(ctx context.Context, host string, port int, user s
 			return classifyDialError(res.err)
 		}
 		d.client = res.client
+		every := d.keepAliveInterval
+		if every <= 0 {
+			every = defaultKeepAlive
+		}
+		go keepAlive(res.client, every)
 		return nil
+	}
+}
+
+const (
+	defaultKeepAlive = 15 * time.Second
+	keepAliveMissed  = 3
+)
+
+// keepAlive probes the connection the way OpenSSH's ServerAliveInterval
+// does and closes it when the server stops answering. Without it a link that
+// dies without a RST (NAT timeout, lost Wi-Fi) left ExecStream blocked in
+// Wait for hours during `docker compose up` or `logs -f`. Ends when the
+// client is closed.
+func keepAlive(c *ssh.Client, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	missed := 0
+	for range t.C {
+		reply := make(chan error, 1)
+		go func() {
+			_, _, err := c.SendRequest("keepalive@openssh.com", true, nil)
+			reply <- err
+		}()
+		select {
+		case err := <-reply:
+			if err != nil {
+				return // closed
+			}
+			missed = 0
+		case <-time.After(every):
+			missed++
+			if missed >= keepAliveMissed {
+				_ = c.Close()
+				return
+			}
+		}
 	}
 }
 
@@ -111,6 +156,11 @@ func (d *SSHDeployer) Upload(ctx context.Context, files []FileEntry) error {
 
 // Exec runs a command on the remote host and returns combined output.
 func (d *SSHDeployer) Exec(ctx context.Context, cmd string) (string, error) {
+	return d.exec(ctx, cmd, nil)
+}
+
+// exec is Exec with stdin for the remote command (nil: none).
+func (d *SSHDeployer) exec(ctx context.Context, cmd string, stdin []byte) (string, error) {
 	if d.client == nil {
 		return "", clerrors.New(clerrors.CodeSSHTimeout, "not connected", "Call Connect before Exec.")
 	}
@@ -120,6 +170,9 @@ func (d *SSHDeployer) Exec(ctx context.Context, cmd string) (string, error) {
 		return "", clerrors.Wrap(clerrors.CodeSSHTimeout, "failed to create SSH session", "The SSH connection may have been lost.", err)
 	}
 	defer session.Close()
+	if stdin != nil {
+		session.Stdin = bytes.NewReader(stdin)
+	}
 
 	type execResult struct {
 		output []byte
@@ -233,15 +286,15 @@ func (d *SSHDeployer) buildHostKeyCallback(knownHostKey string) ssh.HostKeyCallb
 	}
 }
 
-// uploadFile uploads a single file to the remote host using base64 encoding to
-// handle arbitrary binary content safely.
+// uploadFile writes one file on the remote host. The content goes on stdin,
+// not in the command: a command argument is capped by the remote execve
+// (128 KiB per argument on Linux) and by the SSH packet size, and is visible
+// to every user in ps — compose files carry passwords in environment:.
 func (d *SSHDeployer) uploadFile(ctx context.Context, f FileEntry) error {
-	// Ensure parent directory exists, then decode base64 content into the target file.
 	dir := parentDir(f.RemotePath)
-	encoded := base64.StdEncoding.EncodeToString(f.Content)
-	cmd := fmt.Sprintf("mkdir -p %s && echo '%s' | base64 -d > %s", shellQuote(dir), encoded, shellQuote(f.RemotePath))
+	cmd := fmt.Sprintf("mkdir -p %s && cat > %s", shellQuote(dir), shellQuote(f.RemotePath))
 
-	_, err := d.Exec(ctx, cmd)
+	_, err := d.exec(ctx, cmd, f.Content)
 	if err != nil {
 		return clerrors.Wrap(clerrors.CodeSSHTimeout, fmt.Sprintf("failed to upload %s", f.RemotePath), "Check remote path permissions and disk space.", err)
 	}
@@ -257,18 +310,22 @@ func fingerprintKey(key ssh.PublicKey) string {
 func classifyDialError(err error) *clerrors.CLIError {
 	msg := err.Error()
 
+	// A host key mismatch is a CLIError from our callback, wrapped by
+	// "ssh: handshake failed: %w": check it before the message patterns.
+	var cliErr *clerrors.CLIError
+	if ok := errorAs(err, &cliErr); ok && cliErr.Code == clerrors.CodeSSHHostKeyChanged {
+		return cliErr
+	}
+
 	if isTimeoutError(err) {
 		return clerrors.Wrap(clerrors.CodeSSHTimeout, "SSH connection timed out", "Check that the host is reachable and the port is open.", err)
 	}
 
-	if strings.Contains(msg, "unable to authenticate") || strings.Contains(msg, "no supported methods remain") || strings.Contains(msg, "handshake failed") {
+	// Only a rejected key is an auth failure. Any other "handshake failed"
+	// (EOF, connection reset from an sshd that is still starting) is
+	// retryable: deploy stops retrying on SSH_AUTH_FAILED.
+	if strings.Contains(msg, "unable to authenticate") || strings.Contains(msg, "no supported methods remain") {
 		return clerrors.Wrap(clerrors.CodeSSHAuthFailed, "SSH authentication failed", "Check your SSH key and username.", err)
-	}
-
-	// Check for host key mismatch errors (already a CLIError from our callback).
-	var cliErr *clerrors.CLIError
-	if ok := errorAs(err, &cliErr); ok && cliErr.Code == clerrors.CodeSSHHostKeyChanged {
-		return cliErr
 	}
 
 	return clerrors.Wrap(clerrors.CodeSSHTimeout, "SSH connection failed", "Check host, port, and network connectivity.", err)
