@@ -22,6 +22,7 @@
 - [06] Ожидания `Destroy` (30 с / 3 с) не внедряемы, тестов на `Destroy` нет · internal/engine/destroy.go:73 · файл переписывают этапы с исправлением destroy; внедрить через `Engine.Timings` вместе с первым тестом
 - [06] Жёсткие ожидания в MCP и deployplan: poll 5 с, 8 с, 10 с, `time.Sleep(5s)` · internal/mcp/tools.go:1687, internal/mcp/tools_stack.go:494, internal/mcp/captainkeys.go:79, internal/deployplan/apply.go:17,252 · текущие тесты эти пути не проходят; внедрить, когда появятся тесты
 - [06] `go test -race` тратит ≈1 с на каждый пакет: race-рантайм спит `atexit_sleep_ms=1000` при выходе · все пакеты · с ростом числа пакетов с тестами упрёмся в 10 с; тогда `GORACE=atexit_sleep_ms=0` в CI и документацию для разработчика
-- [06] `actions/checkout@v4` и `actions/setup-go@v5` на Node.js 20, runner предупреждает о депрекации · .github/workflows/ci.yml · пока их принудительно запускают на Node 24; поднять мажорные версии экшенов вместе с этапом 7 (релизный workflow)
 - [01] Compute API 401/403 даёт `API_ERROR` (код 5), а не код 2 · internal/provision/adapter.go `doWithRetry`, ветка default · в adapter.go этап 1 меняет только http.Client: параллельно идёт этап 6
 - [01] MCP-обработчики получают `context.Background()` и не отменяются по сигналу; `Server.Run` без контекста (в `main` обёрнут) · internal/mcp/server.go:216 · MCP — этап 3
+- [07] SBOM (syft) и SLSA provenance в релизе · .goreleaser.yaml · бриф не требует; подпись cosign уже закрывает целостность
+- [07] `install.ps1` для Windows (скачать zip, sha256, PATH) · корень репозитория · пока инструкция в README, раздел «Установка»
