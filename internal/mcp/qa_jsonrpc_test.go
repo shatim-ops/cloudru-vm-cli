@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
 )
 
 // runLines feeds the lines to the stdio transport and returns the decoded
@@ -172,8 +174,11 @@ func TestQA_ToolPanicDoesNotKillServer(t *testing.T) {
 		t.Fatalf("panic must become a tool error: %v", got[0])
 	}
 
+	// Through the registry: the HTTP policy re-reads every handler from it.
 	hs := newTestServer()
-	hs.handlers["status"] = func(context.Context, map[string]any) (string, bool) { panic("boom") }
+	hs.wrapHandler("status", func(tools.Handler) tools.Handler {
+		return func(context.Context, map[string]any) (string, bool) { panic("boom") }
+	})
 	h := NewHTTPHandler(hs, HTTPOptions{BearerToken: testToken})
 	ts := newServerFor(t, h)
 	resp := post(t, ts, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status"}}`,
