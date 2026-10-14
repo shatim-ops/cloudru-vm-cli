@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -359,6 +360,27 @@ func (a *CloudRuAdapter) GetFloatingIP(ctx context.Context, id string) (*Floatin
 	return &fip, nil
 }
 
+// maxErrorBody bounds how much of an error response is read into a message.
+const maxErrorBody = 64 << 10
+
+// StatusError is the HTTP status of a failed API call; it is the cause
+// wrapped in the CLIError the adapter returns.
+type StatusError struct {
+	Status int
+	Body   string
+}
+
+func (e *StatusError) Error() string { return fmt.Sprintf("HTTP %d: %s", e.Status, e.Body) }
+
+// HTTPStatus returns the HTTP status behind err, or 0.
+func HTTPStatus(err error) int {
+	var se *StatusError
+	if errors.As(err, &se) {
+		return se.Status
+	}
+	return 0
+}
+
 // firstBackoff returns the delay before the first retry.
 func (a *CloudRuAdapter) firstBackoff() time.Duration {
 	if a.Backoff > 0 {
@@ -390,7 +412,28 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 
 		resp, err := a.client.Do(req)
 		if err != nil {
-			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, "cannot reach Cloud.ru API", "Check your network connection and try again", err)
+			if ctx.Err() != nil {
+				return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, "request cancelled", "The operation was cancelled.", err)
+			}
+			// A dropped connection is common (about 1 call in 3 from some
+			// networks). GET and DELETE are safe to repeat — a repeated
+			// DELETE answers 404, which callers read as "already gone";
+			// POST/PUT are not: the server may have applied them.
+			idempotent := method == http.MethodGet || method == http.MethodDelete
+			if idempotent && attempt < maxRetries {
+				select {
+				case <-ctx.Done():
+					return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, "request cancelled during retry backoff", "The operation was cancelled.", ctx.Err())
+				case <-time.After(backoff):
+				}
+				backoff *= backoffMultiplier
+				continue
+			}
+			hint := "Check your network connection and try again"
+			if !idempotent {
+				hint = "The request may have reached Cloud.ru before the connection broke: check the Cloud.ru console for a resource it created before retrying."
+			}
+			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, "cannot reach Cloud.ru API", hint, err)
 		}
 
 		switch {
@@ -408,6 +451,17 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			case <-time.After(backoff):
 			}
 			backoff *= backoffMultiplier
+
+		case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+			resp.Body.Close()
+			cause := &StatusError{Status: resp.StatusCode, Body: string(respBody)}
+			if resp.StatusCode == http.StatusUnauthorized {
+				return nil, clierrors.Wrap(clierrors.CodeAuthExpired, "Cloud.ru API rejected the token (401)",
+					"Check the access key with 'cloudru-vm doctor', or run 'cloudru-vm configure' again.", cause)
+			}
+			return nil, clierrors.Wrap(clierrors.CodeAuthFailed, fmt.Sprintf("access denied (403) for %s %s: %s", method, path, respBody),
+				"The service account lacks a role for this operation in the project.", cause)
 
 		case resp.StatusCode == http.StatusNotFound:
 			resp.Body.Close()
@@ -433,10 +487,15 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			backoff *= backoffMultiplier
 
 		default:
-			respBody, _ := io.ReadAll(resp.Body)
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 			resp.Body.Close()
 			msg := fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(respBody))
-			return nil, clierrors.New(clierrors.CodeAPIError, msg, "Check Cloud.ru status page or try again later")
+			hint := "Check Cloud.ru status page or try again later"
+			if resp.StatusCode < 500 {
+				// 400/409/422: this request is refused; waiting will not help.
+				hint = "Cloud.ru rejected the request; the message above says why."
+			}
+			return nil, clierrors.Wrap(clierrors.CodeAPIError, msg, hint, &StatusError{Status: resp.StatusCode, Body: string(respBody)})
 		}
 	}
 
