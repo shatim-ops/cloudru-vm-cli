@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/mk8s"
@@ -325,7 +324,7 @@ func (s *Server) handleK8sKubeconfig(ctx context.Context, args map[string]any) (
 	if !embed {
 		return toJSON(map[string]any{"kubeconfig": plain, "auth": "cloudlogin exec-plugin (must be installed)"}), false
 	}
-	keyID, secret := os.Getenv("CLOUDRU_KEY_ID"), os.Getenv("CLOUDRU_SECRET")
+	keyID, secret := s.accessKey()
 	if keyID == "" || secret == "" {
 		return toJSON(map[string]any{
 			"kubeconfig": plain,

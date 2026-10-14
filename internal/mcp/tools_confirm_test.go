@@ -71,12 +71,9 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 			if strings.Contains(out, "confirmation_required") {
 				t.Fatalf("confirmed call still asks for confirmation: %s", out)
 			}
-			if c.tool == "s3_put" {
-				if !strings.Contains(out, "S3 credentials not configured") {
-					t.Fatalf("confirmed s3_put did not proceed to the client: %s", out)
-				}
-				return
-			}
+			// s3_put reads its credentials from the profile through the
+			// engine, like every other gated tool: reaching the engine
+			// factory is reaching the action.
 			if engines == 0 {
 				t.Fatalf("confirmed call did not proceed to the action: %s", out)
 			}

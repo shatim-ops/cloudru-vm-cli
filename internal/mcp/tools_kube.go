@@ -27,7 +27,7 @@ func (s *Server) kubeconfigForCluster(ctx context.Context, clusterID string) (st
 	if b, e := base64.StdEncoding.DecodeString(cfg); e == nil && len(b) > 0 {
 		plain = string(b)
 	}
-	keyID, secret := os.Getenv("CLOUDRU_KEY_ID"), os.Getenv("CLOUDRU_SECRET")
+	keyID, secret := s.accessKey()
 	if keyID == "" || secret == "" {
 		return "", fmt.Errorf("CLOUDRU_KEY_ID/CLOUDRU_SECRET not set — cannot mint a kube token")
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/auth"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
@@ -42,6 +41,7 @@ var (
 	flagJSON    bool
 	flagVerbose bool
 	flagNoColor bool
+	flagProfile string
 	flagYes     bool
 	flagDryRun  bool
 )
@@ -115,6 +115,7 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output in JSON format")
 	cmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Enable verbose logging")
 	cmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
+	cmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Credentials profile (default: $CLOUDRU_PROFILE or \"default\")")
 	cmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Confirm operations that create paid resources or delete data, without a prompt")
 	cmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "Show what would be created or deleted (with a cost estimate) and exit")
 
@@ -129,6 +130,9 @@ func newRootCmd() *cobra.Command {
 		newListZonesCmd(),
 		newListImagesCmd(),
 		newMCPCmd(),
+		newConfigureCmd(),
+		newWhoamiCmd(),
+		newDoctorCmd(),
 	)
 
 	return cmd
@@ -150,8 +154,8 @@ all human-readable output is suppressed (stdout is reserved for the protocol).
 Add it to Claude Code with:
   claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
 
-Credentials and project parameters are read from the environment / .cloudru-vm.yaml
-exactly as for the regular CLI commands.`,
+Credentials and project parameters are resolved exactly as for the regular CLI
+commands (flags, environment, .cloudru-vm.yaml, profile from 'cloudru-vm configure').`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			srv := mcp.New(func(overrides map[string]any) (*engine.Engine, error) {
 				if overrides == nil {
@@ -179,13 +183,11 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 	flagOverrides["Verbose"] = flagVerbose
 	flagOverrides["NoColor"] = flagNoColor
 
-	cfgPath := defaultConfigPath()
-	cfg, err := config.Load(cfgPath, flagOverrides)
+	printer := output.New(flagJSON, flagNoColor)
+	cfg, err := resolveConfig(printer, flagOverrides)
 	if err != nil {
 		return nil, err
 	}
-
-	printer := output.New(cfg.JSON, cfg.NoColor)
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -199,7 +201,7 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 
 	return &engine.Engine{
 		Config:    cfg,
-		Auth:      auth.NewEnvVarProvider(httpClient),
+		Auth:      tokenProvider(cfg),
 		Cloud:     provision.NewCloudRuAdapter(httpClient, ""),
 		Deployer:  deploy.NewSSHDeployer(),
 		Printer:   printer,
@@ -243,17 +245,10 @@ func loadOrGenerateSSHKey(projectDir string) (privPEM []byte, pubKey string, err
 	return privPEM, pubKey, nil
 }
 
-func defaultConfigPath() string {
-	// Check current directory first, then home directory.
-	local := ".cloudru-vm.yaml"
-	if _, err := os.Stat(local); err == nil {
-		return local
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".cloudru-vm.yaml")
+// projectConfigPath is the project file with per-project overrides. User
+// settings and secrets live in the profile (see 'cloudru-vm configure').
+func projectConfigPath() string {
+	return ".cloudru-vm.yaml"
 }
 
 // handleError prints err to the printer's error writer: as text with the
