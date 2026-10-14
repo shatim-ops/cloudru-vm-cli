@@ -1,0 +1,58 @@
+name: release
+
+# Тег v* → те же проверки, что в ci, → goreleaser: 6 бинарей, архивы,
+# checksums.txt, подпись cosign keyless, GitHub Release. Как выпускать —
+# docs/RELEASING.md.
+on:
+  push:
+    tags: ["v*"]
+
+# По умолчанию ничего; права выдаются по job.
+permissions: {}
+
+jobs:
+  # Тот же workflow, что на каждом push/PR: build, vet, gofmt, test -race на
+  # трёх ОС, govulncheck, goreleaser check. Релиз не собирается, пока он
+  # не зелёный.
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  goreleaser:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      # Создать Release и загрузить в него файлы.
+      contents: write
+      # OIDC-токен для cosign keyless: Fulcio выдаёт по нему сертификат
+      # с identity этого workflow.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Changelog строится по коммитам от предыдущего тега.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          # Та же версия, что в ci.yml: ниже не опускать без govulncheck.
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - uses: sigstore/cosign-installer@v4.1.2
+
+      - name: goreleaser check
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          # Зафиксирована, как govulncheck в ci.yml; поднимать вручную в обоих.
+          version: v2.18.3
+          args: check
+
+      - name: goreleaser release
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: v2.18.3
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

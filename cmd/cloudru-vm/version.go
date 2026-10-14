@@ -1,0 +1,78 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"runtime"
+	"runtime/debug"
+	"strings"
+
+	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
+)
+
+// The MCP server reports the same version string in initialize.serverInfo,
+// so the fallback is applied to the variables themselves, before main runs.
+func init() {
+	info, _ := debug.ReadBuildInfo()
+	version, commit, date = resolveVersion(version, commit, date, info)
+}
+
+// resolveVersion keeps values set through -ldflags and replaces the defaults
+// with what the toolchain embedded: the module version for
+// "go install …@v1.2.3" (a pseudo-version, "+dirty" for a changed tree, for
+// a local build), vcs.revision and vcs.time for a build from a checkout.
+// Without either the defaults stay.
+func resolveVersion(v, c, d string, info *debug.BuildInfo) (string, string, string) {
+	if info == nil {
+		return v, c, d
+	}
+	if v == "dev" {
+		if mv := info.Main.Version; mv != "" && mv != "(devel)" {
+			v = strings.TrimPrefix(mv, "v")
+		}
+	}
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			if c == "none" && s.Value != "" {
+				c = s.Value
+			}
+		case "vcs.time":
+			if d == "unknown" && s.Value != "" {
+				d = s.Value
+			}
+		}
+	}
+	return v, c, d
+}
+
+// versionInfo is the payload of "cloudru-vm version --json".
+type versionInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+	Go      string `json:"go"`
+	OS      string `json:"os"`
+	Arch    string `json:"arch"`
+}
+
+func currentVersion() versionInfo {
+	return versionInfo{
+		Version: version,
+		Commit:  commit,
+		Date:    date,
+		Go:      runtime.Version(),
+		OS:      runtime.GOOS,
+		Arch:    runtime.GOARCH,
+	}
+}
+
+// printVersion writes v as text or, with jsonMode, as one JSON object.
+func printVersion(w io.Writer, jsonMode bool, v versionInfo) error {
+	if jsonMode {
+		return output.NewWithWriter(w, output.ModeJSON, false).JSON(v)
+	}
+	_, err := fmt.Fprintf(w, "cloudru-vm %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
+		v.Version, v.Commit, v.Date, v.Go, v.OS, v.Arch)
+	return err
+}
