@@ -3,6 +3,8 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/kubetools"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
@@ -17,9 +19,10 @@ var binaryAvailable = kubetools.Available
 //
 //   - k8s_kubectl, k8s_apply, k8s_helm when kubectl/helm is not installed
 //     (the Docker image ships without them);
-//   - k8s_kubeconfig with an embedded token and cert_private_key, unless
-//     allowSecretExport: over HTTP the secret would leave the host that
-//     holds the Cloud.ru credentials.
+//   - k8s_kubeconfig with an embedded token, k8s_kubectl config (it prints
+//     the same token) and cert_private_key, unless allowSecretExport: over
+//     HTTP the secret would leave the host that holds the Cloud.ru
+//     credentials.
 //
 // Wrapping the handlers (not the tools/call dispatch) also covers calls the
 // stack orchestrator makes in-process.
@@ -53,6 +56,19 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 					"k8s_kubeconfig with an embedded token is disabled over HTTP: the token grants access to the cluster. " +
 						"Call it with embed_token=false (kubeconfig with the cloudlogin exec plugin, no credentials inside), " +
 						"or start the server with --allow-secret-export")), true
+			}
+			return next(ctx, args)
+		}
+	})
+	// k8s_kubectl runs on a kubeconfig with the same embedded token, and
+	// "kubectl config view --raw" prints it.
+	s.wrapHandler("k8s_kubectl", func(next tools.Handler) tools.Handler {
+		return func(ctx context.Context, args map[string]any) (string, bool) {
+			kargs, _ := args["args"].(string)
+			if slices.Contains(strings.Fields(kargs), "config") {
+				return tools.ErrResult(fmt.Errorf(
+					"k8s_kubectl config is disabled over HTTP: the kubeconfig holds the cluster token. " +
+						"Start the server with --allow-secret-export to enable it")), true
 			}
 			return next(ctx, args)
 		}
