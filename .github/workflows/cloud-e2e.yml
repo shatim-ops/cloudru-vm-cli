@@ -21,7 +21,7 @@ on:
         description: "Image name"
         default: "ubuntu-22.04"
   push:
-    branches: ["e2e/**", "claude/e2e-cloud"]
+    branches: ["e2e/**"]
 
 concurrency:
   group: cloud-e2e
