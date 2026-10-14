@@ -33,6 +33,37 @@ API сами — они зовут движок.
 ca, certmanager, ar, image, snat, stack, deploy, monitoring, audit, billing,
 admin). Тонкий клиент к нему лежит в сборщике: `image-factory/go/cmd/mcpcall`.
 
+## Установка
+
+Готовые бинари — в GitHub Releases: linux, macOS, Windows × amd64/arm64,
+`checksums.txt` (sha256) и подписи cosign keyless (`*.sigstore.json`).
+
+**Linux, macOS** — скрипт качает архив, сверяет sha256 и, если есть
+`cosign`, подпись; кладёт бинарь в `~/.local/bin` (под root — в
+`/usr/local/bin`, иначе — `INSTALL_DIR=…`):
+
+    curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | sh
+    curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | CLOUDRU_VM_VERSION=v1.0.0-rc.1 sh
+
+**Windows** — скачать `cloudru-vm_<версия>_windows_amd64.zip` (или `_arm64`)
+и `checksums.txt`, сверить хэш (`Get-FileHash .\cloudru-vm_*.zip`), распаковать
+`cloudru-vm.exe`, например, в `%LOCALAPPDATA%\Programs\cloudru-vm` и добавить
+этот каталог в `Path` пользователя (Параметры → Система → О программе →
+Дополнительные параметры системы → Переменные среды). Проверка:
+`cloudru-vm version`.
+
+Проверка подписи вручную — `docs/RELEASING.md`, шаг 4.
+
+### Gatekeeper и SmartScreen
+
+Бинари подписаны cosign, но не нотаризованы Apple и не подписаны
+Authenticode. После `install.sh` macOS их не блокирует (curl не ставит
+атрибут карантина). Если архив скачан браузером, macOS скажет «не удаётся
+проверить разработчика» — снять карантин после проверки sha256:
+`xattr -d com.apple.quarantine ~/.local/bin/cloudru-vm`. Windows SmartScreen
+может показать «Windows защитила ваш компьютер» — «Подробнее» →
+«Выполнить в любом случае»; или до запуска: `Unblock-File .\cloudru-vm.exe`.
+
 ## Сборка
 
     go build -o bin/cloudru-vm ./cmd/cloudru-vm

@@ -1,0 +1,80 @@
+# Релизная сборка: бинари под 6 платформ, архивы, checksums.txt, подпись
+# cosign keyless. Запускается из .github/workflows/release.yml на тег v*.
+# Локальная проверка без публикации и подписи:
+#   goreleaser check
+#   goreleaser release --snapshot --clean --skip=sign
+# Как выпускать релиз — docs/RELEASING.md.
+version: 2
+
+project_name: cloudru-vm
+
+builds:
+  - id: cloudru-vm
+    main: ./cmd/cloudru-vm
+    # Имя бинаря меняется здесь одной строкой (этап 10).
+    binary: cloudru-vm
+    env:
+      # Статический бинарь: без libc на машине пользователя и без
+      # кросс-компилятора C на CI.
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .FullCommit }}
+      - -X main.date={{ .CommitDate }}
+    # Время файлов = время коммита: одна и та же ревизия даёт те же байты.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # cloudru-vm_1.0.0_linux_amd64.tar.gz — install.sh собирает то же имя.
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE*
+      - NOTICE*
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# Keyless: сертификат выдаёт Fulcio на OIDC-токен GitHub Actions, запись
+# ложится в Rekor. Ключей хранить не нужно; проверка — по identity workflow
+# (команда в docs/RELEASING.md). Бандл .sigstore.json содержит подпись,
+# сертификат и доказательство включения в журнал.
+signs:
+  - id: checksum
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args: ["sign-blob", "--bundle=${signature}", "${artifact}", "--yes"]
+  - id: archive
+    cmd: cosign
+    artifacts: archive
+    signature: "${artifact}.sigstore.json"
+    args: ["sign-blob", "--bundle=${signature}", "${artifact}", "--yes"]
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge "
+
+release:
+  github:
+    owner: shatim-ops
+    name: cloudru-vm-cli
+  # v1.0.0-rc.1 и подобные помечаются как pre-release.
+  prerelease: auto
