@@ -82,6 +82,32 @@ func (r *Registry) Lookup(name string) (Tool, bool) {
 	return Tool{}, false
 }
 
+// Wrap replaces the handler of the named tool with wrap(current handler).
+// Every caller sees the new handler: transports, Tools/Lookup, and the
+// in-process calls the stack orchestrator makes. It reports whether the
+// tool exists. Transport policies (MCP over HTTP) use it; the CLI builds its
+// own registry and is not affected.
+func (r *Registry) Wrap(name string, wrap func(next Handler) Handler) bool {
+	next, ok := r.handlers[name]
+	if !ok {
+		return false
+	}
+	h := wrap(next)
+	r.handlers[name] = h
+	for i := range r.tools {
+		if r.tools[i].Name == name {
+			r.tools[i].Handler = h
+		}
+	}
+	return true
+}
+
+// ErrResult formats an error as a JSON tool result, as the handlers do.
+func ErrResult(err error) string { return errResult(err) }
+
+// BoolArg reads a boolean argument, def when it is absent.
+func BoolArg(args map[string]any, key string, def bool) bool { return boolArg(args, key, def) }
+
 // Groups returns the group names in alphabetical order.
 func Groups() []string {
 	seen := map[string]bool{}

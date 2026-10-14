@@ -151,3 +151,17 @@ func TestNew_LoggerOutputSanitized(t *testing.T) {
 		t.Fatalf("expected sanitized bearer in slog output: %s", got)
 	}
 }
+
+func TestSanitize_EnvSecrets(t *testing.T) {
+	var buf bytes.Buffer
+	sw := &sanitizeWriter{w: &buf}
+
+	input := `MCP_BEARER_TOKEN=t CLOUDRU_SECRET=s3cr3t "CLOUDRU_S3_SECRET_KEY=abc" CLOUDRU_KEY_ID=visible`
+	if _, err := sw.Write([]byte(input)); err != nil {
+		t.Fatal(err)
+	}
+	want := `MCP_BEARER_TOKEN=**** CLOUDRU_SECRET=**** "CLOUDRU_S3_SECRET_KEY=****" CLOUDRU_KEY_ID=visible`
+	if got := buf.String(); got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+}

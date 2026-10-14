@@ -62,7 +62,7 @@ func run(ctx context.Context, kubeconfig, stdin string, timeout time.Duration, n
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, resolve(name), args...)
-	cmd.Env = append(os.Environ(), "KUBECONFIG="+f.Name())
+	cmd.Env = append(childEnv(os.Environ()), "KUBECONFIG="+f.Name())
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}
@@ -71,6 +71,21 @@ func run(ctx context.Context, kubeconfig, stdin string, timeout time.Duration, n
 		return string(out), fmt.Errorf("%s timed out after %s", name, timeout)
 	}
 	return string(out), err
+}
+
+// childEnv drops the server's own secrets from env: kubectl and helm (and
+// their plugins) get the cluster token through KUBECONFIG and need neither
+// the Cloud.ru access key nor the MCP bearer token.
+func childEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(name, "CLOUDRU_") || name == "MCP_BEARER_TOKEN" {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }
 
 // Kubectl runs a kubectl command; stdin optional (for `apply -f -`).

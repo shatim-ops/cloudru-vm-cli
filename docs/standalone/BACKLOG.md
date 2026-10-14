@@ -8,14 +8,14 @@
 - [audit] OS keyring (Keychain / Credential Manager / Secret Service) · internal/auth · файл 0600 достаточен для v1.0; **v1.1** (заглушка `KeyringProvider` удалена на этапе 2)
 - [audit] Настоящий `Authorization: Api-Key` Cloud.ru · internal/auth · не все сервисы поддерживают
 - [audit] OAuth 2.1 для MCP over HTTP · internal/mcp · ждать требований платформы AI Agents
-- [audit] `--verbose` → `internal/log` с санитайзером · cmd, internal/log · P2
+- [audit] `--verbose` → `internal/log` с санитайзером · cmd, internal/log · P2 (этап 8 подключил логгер только в `mcp --http`; остальные команды и stdio-MCP — нет)
 - [audit] Тесты для 16 пакетов без тестов и для cmd/cloudru-vm · P2
 - [audit] `deploy`: `.env`, `build:`, несколько compose-файлов, файлы из volumes · internal/engine/deploy.go:156
 - [audit] Переопределение базовых URL API через env (стенды, прокси) · все `*/client.go`
 - [audit] Первоклассные деревья команд для kafka, redis, dns, nlb, certmanager, ar, ca, stack, monitoring, audit, billing, admin, snat
 - [audit] Homebrew tap, scoop, нотаризация macOS, Authenticode
 - [audit] Проверка обновлений (`version --check`), man-страницы
-- [audit] `kubetools`: не передавать `CLOUDRU_*` в дочерние процессы (`kubetools.go:65`), пути поиска для Windows — **поднять в этап 5 или 8, если останется время: это утечка секрета**
+- [audit] `kubetools`: ~~не передавать `CLOUDRU_*` в дочерние процессы (`kubetools.go:65`)~~ — **сделано на этапе 8** (`childEnv`, заодно `MCP_BEARER_TOKEN`); пути поиска для Windows — остаются
 - [audit] ~~`id.cloud.ru/auth/system/openid/token` (mk8s kubeconfig) не найден в документации~~ — **проверено вживую 2026-10-14**: и `id.cloud.ru`, и `auth.iam.cloud.ru` (`/auth/system/openid/token`) отвечают 200 на `grant_type=access_key`; вопрос закрыт
 - [audit] Хост billing API и `CLOUDRU_AGREEMENT_ID`: документация хоста не называет; подтвердить
 - [audit] Публичный API цен Cloud.ru отсутствует; `internal/pricing` — оценка по зашитой карте. Для внешнего продукта нужен источник или явный disclaimer в каждом превью
@@ -38,6 +38,11 @@
 - [05/приёмка] `deployplan.pickSubnet` выбирает подсеть по `availability_zone_id`, а API отдаёт его пустым (проверено 2026-10-14) — в зоне, отличной от первой подсети, MCP `deploy_plan` возьмёт подсеть чужой зоны · internal/deployplan/resolve.go:363 · перейти на совпадение по имени, как `engine.resolveNetwork`
 - [05/приёмка] Повтор при транспортных обрывах есть у IAM (этап 2), но не у compute: `list zones` из контейнера падал с API_UNREACHABLE ~1 раз из 3 · internal/provision/adapter.go `doWithRetry` · повторять идемпотентные GET при обрыве соединения
 - [05/приёмка] `deploy --dry-run` создаёт SSH-ключ в `./.cloudru-vm/` (ленивость ключа не учитывает dry-run) · internal/engine/deploy.go · создавать ключ после подтверждения
+- [08] `secret_value` по HTTP отдаёт расшифрованный секрет без `--allow-secret-export`: бриф называет только `k8s_kubeconfig` и `cert_private_key` · internal/mcp/http_policy.go · решение владельца: добавить в тот же список одной строкой
+- [08] HTTP-сервер однопользовательский: все клиенты делят креды Cloud.ru, рабочий каталог (`.cloudru-vm/` — state, SSH-ключ) и подтверждения `confirmed=true` · internal/mcp/http.go · изоляция по клиенту — вместе с OAuth 2.1, когда платформа AI Agents назовёт требования
+- [08] Образ только linux/amd64; arm64 — `docker buildx --platform linux/amd64,linux/arm64` · .github/workflows/release.yml (job `image`) · Marketplace требований к arm64 не называет
+- [08] Подпись образа cosign и SBOM для Artifact Registry · .github/workflows/release.yml · бинари уже подписаны; поддерживает ли AR хранение подписей OCI — не проверено
+- [08] README: раздел «MCP по HTTP / Docker» (`MCP_BEARER_TOKEN`, `--auth`, `--allow-secret-export`, секреты `CLOUDRU_AR_*`) · README.md · этап 9; пока — `cloudru-vm mcp --help` и комментарии в Dockerfile/release.yml
 - [04] MCP `s3_bucket_create` создаёт бакет без `confirmed` (единственная изменяющая операция без гейта) · internal/tools/tools_s3.go `handleS3BucketCreate` · этап 4 переносит реестр без изменения поведения MCP; CLI (`tools call`) спрашивает подтверждение сам
 - [04] Строки BACKLOG [06], [02], [03] ссылаются на `internal/mcp/tools*.go`, `captainkeys.go`, `opwait.go` — после этапа 4 эти файлы в `internal/tools/` (номера строк те же) · docs/standalone/BACKLOG.md · чужие строки не правлю
 - [04] `vm_list` / `vm list` без flavor и публичного IP: `provision.VM` не разбирает вложенные `flavor` и FIP ответа `GET /api/v1/vms` (поле `flavor_id` приходило пустым — из вывода убрано) · internal/provision/types.go `VM` · чужой пакет; IP одной ВМ отдаёт `vm get`
