@@ -1,122 +1,133 @@
-# cloudru-vm — движок инфраструктуры Cloud.ru
+# cloudru-vm
 
-Единственный путь, которым система трогает облако. Через него идут все
-изменения инфраструктуры: создание и удаление ВМ, диски, сети, кластеры,
-образы, секреты, сертификаты, S3. Ни сборщик, ни inspector не ходят в облачное
-API сами — они зовут движок.
+Командная строка и MCP-сервер для [Cloud.ru Evolution](https://cloud.ru):
+виртуальные машины, диски, сети, Managed Kubernetes, PostgreSQL, Object
+Storage, Secret Manager — и развёртывание `docker-compose`-проекта на ВМ одной
+командой.
 
-Отсюда следует главное свойство: **если движок ошибается, ошибка происходит в
-чужой инфраструктуре и стоит денег.** Поэтому все изменяющие операции закрыты
-подтверждением (см. ниже), а не полагаются на осторожность вызывающего.
-
-Место в системе:
-
-    радар ──заявка──▶ сборщик ──MCP──▶ ДВИЖОК ──API──▶ Cloud.ru
-                         │                ▲
-                    inspector ────────────┘
-
-## Два режима
-
-**CLI** — для человека:
-
-    cloudru-vm init            завести конфиг проекта
-    cloudru-vm deploy          развернуть docker-compose на ВМ
-    cloudru-vm status          что развёрнуто
-    cloudru-vm logs            логи контейнеров с ВМ
-    cloudru-vm verify          проверки живости приложения
-    cloudru-vm destroy         снести ВМ и всё, что к ней заведено
-    cloudru-vm list-images     доступные образы
-    cloudru-vm list-zones      зоны доступности
-
-**MCP** (`cloudru-vm mcp`) — для агентов: stdio JSON-RPC, 146 инструментов по
-23 группам (vm, disk, vpc, dns, nlb, k8s, kube, pg, kafka, redis, s3, secret,
-ca, certmanager, ar, image, snat, stack, deploy, monitoring, audit, billing,
-admin). Тонкий клиент к нему лежит в сборщике: `image-factory/go/cmd/mcpcall`.
+- **CLI для человека и скриптов**: `cloudru-vm vm list`, `cloudru-vm deploy`,
+  `cloudru-vm k8s kubeconfig …`; у каждой команды есть `--json` и
+  [стабильные коды выхода](docs/exit-codes.md).
+- **MCP-сервер для AI-агентов** (Claude Code, Cursor и др.): `cloudru-vm mcp`
+  по stdio или Streamable HTTP, в том числе из Docker-образа. Те же
+  инструменты доступны из CLI: `cloudru-vm tools list|describe|call`.
+- **Ничего платного без согласия**: создание ресурсов и удаление данных
+  показывают превью (с оценкой цены, где она есть) и ждут подтверждения —
+  одинаково у человека и у агента ([модель подтверждений](#подтверждения)).
 
 ## Установка
 
-Готовые бинари — в GitHub Releases: linux, macOS, Windows × amd64/arm64,
-`checksums.txt` (sha256) и подписи cosign keyless (`*.sigstore.json`).
+Linux и macOS:
 
-**Linux, macOS** — скрипт качает архив, сверяет sha256 и, если есть
-`cosign`, подпись; кладёт бинарь в `~/.local/bin` (под root — в
-`/usr/local/bin`, иначе — `INSTALL_DIR=…`):
+```sh
+curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | sh
+cloudru-vm version
+```
 
-    curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | sh
-    curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | CLOUDRU_VM_VERSION=v1.0.0-rc.1 sh
+Скрипт проверяет sha256 архива и, если установлен `cosign`, подпись релиза.
+Windows, ручная установка, проверка подписи, Gatekeeper и SmartScreen —
+[docs/install.md](docs/install.md).
 
-**Windows** — скачать `cloudru-vm_<версия>_windows_amd64.zip` (или `_arm64`)
-и `checksums.txt`, сверить хэш (`Get-FileHash .\cloudru-vm_*.zip`), распаковать
-`cloudru-vm.exe`, например, в `%LOCALAPPDATA%\Programs\cloudru-vm` и добавить
-этот каталог в `Path` пользователя (Параметры → Система → О программе →
-Дополнительные параметры системы → Переменные среды). Проверка:
-`cloudru-vm version`.
+## Быстрый старт
 
-Проверка подписи вручную — `docs/RELEASING.md`, шаг 4.
+Нужен ключ доступа сервисного аккаунта (Key ID и Key Secret) и UUID проекта —
+как их получить, в [docs/auth.md](docs/auth.md).
 
-### Gatekeeper и SmartScreen
+```sh
+cloudru-vm configure          # ключ и проект → профиль "default"
+cloudru-vm whoami             # ключ принят IAM, какой проект выбран
+cloudru-vm doctor             # конфиг, права файлов, доступность API
+cloudru-vm vm list            # ВМ проекта
 
-Бинари подписаны cosign, но не нотаризованы Apple и не подписаны
-Authenticode. После `install.sh` macOS их не блокирует (curl не ставит
-атрибут карантина). Если архив скачан браузером, macOS скажет «не удаётся
-проверить разработчика» — снять карантин после проверки sha256:
-`xattr -d com.apple.quarantine ~/.local/bin/cloudru-vm`. Windows SmartScreen
-может показать «Windows защитила ваш компьютер» — «Подробнее» →
-«Выполнить в любом случае»; или до запуска: `Unblock-File .\cloudru-vm.exe`.
+cd my-app                     # каталог с docker-compose.yml
+cloudru-vm init               # .cloudru-vm.yaml: зона и образ из API
+cloudru-vm deploy --dry-run   # что будет создано и сколько стоит; ничего не создаёт
+cloudru-vm deploy             # ВМ + публичный IP + docker compose up -d
+cloudru-vm verify             # порты приложения отвечают
+cloudru-vm logs -f            # логи контейнеров
+cloudru-vm destroy            # удалить ВМ и освободить IP
+```
 
-## Сборка
+Для `deploy` машине, с которой он запускается, нужен исходящий доступ к
+порту 22 созданной ВМ (SSH). Зону лучше выбрать явно: подробности и другие
+известные ограничения — в [docs/troubleshooting.md](docs/troubleshooting.md).
 
-    go build -o bin/cloudru-vm ./cmd/cloudru-vm
+## Что ещё умеет
 
-Тесты, статика и проверка уязвимостей:
+| Команда | Что делает |
+|---|---|
+| `vm`, `disk`, `vpc` | ВМ, диски, сети, подсети, группы безопасности, floating IP |
+| `k8s` | кластеры Managed Kubernetes, node pool'ы, kubeconfig, `kubectl`/`helm` |
+| `pg` | кластеры PostgreSQL, базы, пользователи, бэкапы |
+| `s3` | бакеты и объекты Object Storage |
+| `secret` | Secret Manager |
+| `tools list` / `describe` / `call` | любой из ~150 инструментов MCP-сервера, включая DNS, балансировщики, Kafka, Redis, Artifact Registry, сертификаты, мониторинг, биллинг |
+| `deploy`, `status`, `logs`, `verify`, `destroy` | сценарий «compose → ВМ» |
+| `configure`, `whoami`, `doctor` | профили, проверка ключа и окружения |
+| `mcp` | MCP-сервер для агентов |
 
-    gofmt -l . && go vet ./... && go test -race ./... && govulncheck ./...
+Полная справка по всем командам и флагам — [docs/commands.md](docs/commands.md)
+(генерируется из бинаря). Справка самого CLI (`--help`) — на английском.
 
-То же самое гоняет CI при каждом push (`.github/workflows/ci.yml`). Проверка
-уязвимостей там не для галочки: 12.08.2026 govulncheck нашёл пять достижимых
-дыр в `x/crypto/ssh` — включая обход физического подтверждения FIDO/U2F, — и
-все они пришли обновлением зависимости, а не правкой кода. Такое ловит только
-регулярный прогон.
+## Подтверждения
 
-## Окружение
+Команды, которые создают платные ресурсы или удаляют данные (`deploy`,
+`destroy`, `vm create`, `disk delete`, `tools call` изменяющих инструментов…),
+сначала показывают, что произойдёт. В терминале спрашивают `[y/N]`; `--yes`
+(`-y`) — согласие заранее; `--dry-run` — только превью, код выхода `0`. Без
+терминала и без `--yes` команда ничего не делает и выходит с кодом `3`, а с
+`--json` печатает в stdout `{"status":"confirmation_required","preview":{…}}`.
+MCP-сервер держит ту же границу: изменяющий инструмент без `confirmed=true`
+возвращает `status: confirmation_required` и превью, действие выполняется
+только повторным вызовом с `confirmed=true` — после согласия человека.
 
-    CLOUDRU_KEY_ID        идентификатор сервисного аккаунта
-    CLOUDRU_SECRET        его секрет
-    CLOUDRU_API_KEY       ключ API (альтернатива паре выше)
-    CLOUDRU_AGREEMENT_ID  договор, если их несколько
+```sh
+cloudru-vm disk delete 1b2c… --dry-run   # что будет удалено
+cloudru-vm disk delete 1b2c… --yes       # удалить без вопроса (скрипт, CI)
+cloudru-vm disk delete 1b2c… </dev/null; echo $?   # 3: без терминала и без --yes ничего не удалено
+```
 
-Обычно лежат в `~/.cloudru.env` с правами `0600`. Рабочее состояние — в
-`.cloudru-vm/` рядом с конфигом проекта: там `state.json` и **приватный ключ
-доступа к созданным ВМ**. Каталог закрыт в `.gitignore`; утёкший ключ — это
-доступ к чужим машинам, а не неудобство.
+Цена в превью — **оценка** по встроенной таблице тарифов, а не счёт: публичного
+API цен у Cloud.ru нет.
 
-## Подтверждение изменяющих операций
+## Документация
 
-19 групп инструментов не выполняют действие с первого вызова: они возвращают
-`status: confirmation_required` и описание того, что произойдёт. Действие идёт
-только на повторный вызов с `confirmed=true`.
+| | |
+|---|---|
+| [docs/install.md](docs/install.md) | установка на Linux, macOS, Windows; проверка подписи; kubectl/helm |
+| [docs/auth.md](docs/auth.md) | сервисный аккаунт и ключ, роли, профили, все переменные окружения, что хранится на диске, ротация ключа |
+| [docs/mcp.md](docs/mcp.md) | MCP по stdio и HTTP, конфиги Claude Code и Cursor, Docker-образ |
+| [docs/commands.md](docs/commands.md) | справка по всем командам |
+| [docs/exit-codes.md](docs/exit-codes.md) | коды выхода и формат ошибок `--json` |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | типовые ошибки и что приложить к обращению |
+| [docs/RELEASING.md](docs/RELEASING.md) | для сопровождающих: выпуск релиза |
 
-Это не диалоговое удобство, а граница: агент, который «сам решил» удалить
-секрет или снести кластер, упирается в неё до обращения в облако. Клиент
-`mcpcall` различает исход отдельным кодом возврата (`3`), чтобы сборочный
-скрипт на bash не принял превью за выполненную работу.
+**Переход со старых версий:** файл `~/.cloudru-vm.yaml` больше не читается —
+ключ и проект живут в профиле (`cloudru-vm configure`), а настройки проекта —
+в `./.cloudru-vm.yaml`. `cloudru-vm doctor` предупреждает, если старый файл
+остался. `CLOUDRU_API_KEY=keyId:secret` пока работает, но устарел: используйте
+`CLOUDRU_KEY_ID` и `CLOUDRU_SECRET`.
 
-CLI держит ту же границу. `deploy` (перед созданием ВМ — с оценкой цены по
-`internal/pricing`: это оценка, не счёт) и `destroy` показывают превью и
-спрашивают `[y/N]`, если stdin — терминал. Без терминала они не делают ничего и
-выходят с кодом `3`; с `--json` в stdout уходит
-`{"status":"confirmation_required","preview":{…}}`. `--yes` (`-y`) — согласие
-заранее, превью всё равно печатается одной строкой в stderr; `--dry-run` —
-только превью, код `0`.
+## Поддержка
 
-## Про историю репозитория
+Ошибки и вопросы — в [Issues](https://github.com/shatim-ops/cloudru-vm-cli/issues)
+этого репозитория. Приложите вывод `cloudru-vm doctor --json` и
+`cloudru-vm version` (секретов в них нет) — подробнее в
+[docs/troubleshooting.md](docs/troubleshooting.md#обращение-в-поддержку).
 
-История начинается с версии 0.3.0: база (0.1–0.2) писалась до того, как код
-завели под git, и её коммитов здесь нет. Путь модуля до 12.08.2026 указывал на
-`github.com/dzhechko/cloudru-vm-cli` — это остаток от рабочего окружения, а не
-чужой проект; такого репозитория в публичном GitHub не существует. Путь
-приведён к настоящему месту кода.
+## Сборка из исходников
+
+```sh
+go build -o bin/cloudru-vm ./cmd/cloudru-vm
+gofmt -l . && go vet ./... && go test -race ./... && govulncheck ./...
+```
+
+Нужен Go из `go.mod`; CI гоняет то же на Linux, macOS и Windows
+(`.github/workflows/ci.yml`). После изменения команд или флагов обновите
+справку: `go test ./cmd/cloudru-vm -run TestCommandsDoc -update-docs`.
+Внутренние планы и история проекта — `docs/internal/`.
 
 ## Лицензия
 
-Лицензия: Apache-2.0 (см. `LICENSE` и `NOTICE`). Правообладатель — ООО «Облачные технологии» (Cloud.ru).
+Apache-2.0 (см. `LICENSE` и `NOTICE`). Правообладатель — ООО «Облачные
+технологии» (Cloud.ru).

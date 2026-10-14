@@ -4,7 +4,7 @@
 **minor** — новые команды и инструменты; **patch** — исправления;
 ломающие изменения CLI (команды, флаги, коды возврата, формат `--json`) — только в **major**.
 
-1. `main` зелёный в CI; локально `goreleaser check` и, по желанию,
+1. `main` зелёный в CI (в том числе `TestCommandsDoc`: `docs/commands.md` совпадает с бинарём); локально `goreleaser check` и, по желанию,
    `goreleaser release --snapshot --clean --skip=sign` — в `dist/` 6 бинарей и `checksums.txt`.
 2. `git tag -a v1.2.3 -m v1.2.3 && git push origin v1.2.3` — тег ставится на коммит в `main`.
 3. `release.yml` гоняет весь `ci.yml`, затем goreleaser: архивы, `checksums.txt`,
@@ -21,3 +21,31 @@
 5. Неудачный релиз: удалить Release и тег (`git push --delete origin v1.2.3`), исправить, выпустить следующий patch — опубликованный номер не переиспользовать.
 
 Версия goreleaser зафиксирована в `ci.yml` и `release.yml` (`v2.18.3`); поднимать в обоих сразу.
+
+## Docker-образ MCP-сервера
+
+Job `image` в `release.yml` после `ci` собирает образ, гоняет smoke-тест
+(`initialize` по HTTP, версия сервера = тег) и публикует его в Artifact
+Registry Cloud.ru: `<реестр>/cloudru-vm:<версия>`, для стабильных тегов ещё и
+`:latest` (`-rc.N` его не двигает). Нужны секреты репозитория
+(Settings → Secrets and variables → Actions):
+
+| Секрет | Что это |
+|---|---|
+| `CLOUDRU_AR_REGISTRY` | имя реестра (`<имя>` → `<имя>.cr.cloud.ru`) или полный хост |
+| `CLOUDRU_AR_KEY_ID`, `CLOUDRU_AR_SECRET` | ключ доступа с правом push в этот реестр |
+
+Без них job пишет notice «Образ не опубликован» и не падает: бинари
+выпускаются всё равно. Образ только `linux/amd64`, не подписан cosign.
+
+## Документация
+
+Справка по командам `docs/commands.md` генерируется из дерева команд;
+после изменения команд, флагов или описаний инструментов:
+
+```
+go test ./cmd/cloudru-vm -run TestCommandsDoc -update-docs
+```
+
+`TestAuthDoc_ListsEveryEnvVar` падает, если код читает переменную окружения,
+не упомянутую в `docs/auth.md`.

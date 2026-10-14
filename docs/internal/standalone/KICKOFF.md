@@ -9,13 +9,13 @@
 Ты выполняешь этап N плана превращения cloudru-vm в самостоятельный инструмент.
 
 Прочитай ровно три файла и больше ничего до начала работы:
-1. docs/standalone/00-audit.md — только разделы 1 и 2
-2. docs/standalone/DECISIONS.md
-3. docs/standalone/stages/<NN-name>.md — твой бриф
+1. docs/internal/standalone/00-audit.md — только разделы 1 и 2
+2. docs/internal/standalone/DECISIONS.md
+3. docs/internal/standalone/stages/<NN-name>.md — твой бриф
 
 Правила:
 - Работай строго в Scope брифа. Всё, что заметил вне scope, допиши одной строкой
-  в docs/standalone/BACKLOG.md в формате файла — не чини.
+  в docs/internal/standalone/BACKLOG.md в формате файла — не чини.
 - Ветка: claude/stage-NN-<name> от актуального origin/main. Один PR в main.
 - Перед каждым пушем: gofmt -l . && go vet ./... && go test -race -count=1 ./...
   Все три должны быть чистыми. Если тест падает не из-за тебя — остановись и опиши.
@@ -64,7 +64,7 @@ B — настраиваемый backoff. Конфликт тривиален; �
 ```
 ## Этап NN — <название>
 
-Бриф: docs/standalone/stages/NN-<name>.md
+Бриф: docs/internal/standalone/stages/NN-<name>.md
 
 ### Критерии приёмки
 | Критерий | Команда | Результат | Статус |
