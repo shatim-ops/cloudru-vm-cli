@@ -1,0 +1,37 @@
+# MCP-сервер cloudru-vm для Marketplace Cloud.ru (Streamable HTTP).
+#
+#   docker build -t cloudru-vm:dev .
+#   docker run -e MCP_BEARER_TOKEN=... -e CLOUDRU_KEY_ID=... -e CLOUDRU_SECRET=... \
+#     -e CLOUDRU_PROJECT_ID=... -p 8080:8080 cloudru-vm:dev
+#
+# Без MCP_BEARER_TOKEN сервер не стартует. kubectl и helm в образе нет:
+# k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой «недоступно в этом режиме».
+
+# Та же версия Go, что в ci.yml и release.yml; поднимать вместе.
+ARG GO_VERSION=1.26.9
+
+FROM golang:${GO_VERSION} AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+ARG COMMIT=none
+ARG DATE=unknown
+# Статический бинарь, как в .goreleaser.yaml: distroless/static без libc.
+RUN CGO_ENABLED=0 go build -trimpath \
+      -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
+      -o /out/cloudru-vm ./cmd/cloudru-vm
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/cloudru-vm /usr/local/bin/cloudru-vm
+# HOME=/home/nonroot: туда ложится кэш IAM-токена (~/.config/cloudru-vm);
+# рабочий каталог — для локального состояния deploy/provision.
+WORKDIR /home/nonroot
+USER nonroot:nonroot
+EXPOSE 8080
+# В distroless нет ни shell, ни curl: бинарь сам опрашивает /healthz.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD ["/usr/local/bin/cloudru-vm", "mcp", "healthcheck"]
+ENTRYPOINT ["/usr/local/bin/cloudru-vm"]
+CMD ["mcp", "--http", ":8080"]

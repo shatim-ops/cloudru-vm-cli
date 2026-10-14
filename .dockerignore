@@ -1,0 +1,9 @@
+.git
+.github
+.claude
+.cloudru-vm
+dist
+docs
+specs
+*.md
+!README.md
