@@ -19,7 +19,7 @@ var errLocked = errors.New("locked")
 // away with the process, so a crash or kill -9 leaves nothing stale.
 func Lock(path string) (unlock func(), err error) {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil { // .cloudru-vm/ also holds the SSH key
 		return nil, clierr.Wrap(clierr.CodeStateCorrupted, "failed to create state directory",
 			"Check write permissions for "+dir, err)
 	}

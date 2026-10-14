@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/auth"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
@@ -213,14 +214,30 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 
 // loadOrGenerateSSHKey loads an existing SSH key pair from .cloudru-vm/ or
 // generates a new one and persists it for future use.
+//
+// .cloudru-vm/ may come with someone else's repository. A symlink there
+// (the directory itself, or a key file pointing at ~/.ssh/authorized_keys or
+// a file another user owns) is refused instead of followed: writing through
+// it would overwrite that file with our key, or hand the private key to the
+// owner of the target.
 func loadOrGenerateSSHKey(projectDir string) (privPEM []byte, pubKey string, err error) {
 	keyDir := filepath.Join(projectDir, ".cloudru-vm")
 	privPath := filepath.Join(keyDir, "id_ed25519")
 	pubPath := filepath.Join(keyDir, "id_ed25519.pub")
 
+	if err := ensureKeyDir(keyDir); err != nil {
+		return nil, "", err
+	}
+	ignoreInGit(keyDir)
+
 	// Try loading existing key pair.
-	privPEM, errPriv := os.ReadFile(privPath)
-	pubBytes, errPub := os.ReadFile(pubPath)
+	privPEM, errPriv := readKeyFile(privPath)
+	pubBytes, errPub := readKeyFile(pubPath)
+	for _, e := range []error{errPriv, errPub} {
+		if e != nil && !os.IsNotExist(e) {
+			return nil, "", e
+		}
+	}
 	if errPriv == nil && errPub == nil && len(privPEM) > 0 && len(pubBytes) > 0 {
 		return privPEM, string(pubBytes), nil
 	}
@@ -231,18 +248,67 @@ func loadOrGenerateSSHKey(projectDir string) (privPEM []byte, pubKey string, err
 		return nil, "", err
 	}
 
-	// Persist to disk.
-	if err := os.MkdirAll(keyDir, 0700); err != nil {
-		return nil, "", fmt.Errorf("create key directory: %w", err)
-	}
-	if err := os.WriteFile(privPath, privPEM, 0600); err != nil {
+	// Persist to disk: temporary file 0600 + rename, so the key is never
+	// readable by others and an existing file or symlink lends nothing.
+	if err := config.WriteFilePrivate(privPath, privPEM); err != nil {
 		return nil, "", fmt.Errorf("write private key: %w", err)
 	}
-	if err := os.WriteFile(pubPath, []byte(pubKey), 0644); err != nil {
+	if err := config.WriteFileAtomic(pubPath, []byte(pubKey), 0o644); err != nil {
 		return nil, "", fmt.Errorf("write public key: %w", err)
 	}
 
 	return privPEM, pubKey, nil
+}
+
+// ensureKeyDir creates the key directory 0700, or checks that the existing
+// one is a real directory and tightens it to 0700.
+func ensureKeyDir(dir string) error {
+	st, err := os.Lstat(dir)
+	switch {
+	case os.IsNotExist(err):
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("create key directory: %w", err)
+		}
+		return nil
+	case err != nil:
+		return fmt.Errorf("key directory: %w", err)
+	case !st.IsDir():
+		return clerrors.New(clerrors.CodeConfigInvalid,
+			fmt.Sprintf("%s is not a directory (a symlink?); refusing to keep the SSH key there", dir),
+			"Remove it (it may have come with the repository) and run the command again")
+	}
+	if config.PermissionsEnforced() && config.LooseMode(st.Mode()) {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return fmt.Errorf("restrict key directory: %w", err)
+		}
+	}
+	return nil
+}
+
+// ignoreInGit puts a .gitignore with "*" into dir, so "git add ." in the
+// project never picks up the private key, whatever the project's own
+// .gitignore says. Best effort; an existing file (or symlink) is left alone.
+func ignoreInGit(dir string) {
+	f, err := os.OpenFile(filepath.Join(dir, ".gitignore"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	_, _ = f.WriteString("*\n")
+	_ = f.Close()
+}
+
+// readKeyFile reads a key file that must be a regular file, not a symlink.
+func readKeyFile(path string) ([]byte, error) {
+	st, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() {
+		return nil, clerrors.New(clerrors.CodeConfigInvalid,
+			fmt.Sprintf("%s is not a regular file (a symlink?); refusing to use it as the SSH key", path),
+			"Remove it (it may have come with the repository) and run the command again: a new key is created")
+	}
+	return os.ReadFile(path)
 }
 
 // projectConfigPath is the project file with per-project overrides. User

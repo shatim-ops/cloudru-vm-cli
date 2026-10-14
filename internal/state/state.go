@@ -72,7 +72,7 @@ func Read(path string) (*File, error) {
 // Creates parent directory if needed.
 func Write(path string, f *File) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil { // .cloudru-vm/ also holds the SSH key
 		return clierr.Wrap(
 			clierr.CodeStateCorrupted,
 			"failed to create state directory",
