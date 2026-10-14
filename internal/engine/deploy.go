@@ -67,6 +67,14 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	existing := stateFile.ActiveDeployment()
 	isNewDeploy := existing == nil
 
+	// A destroy that stopped half-way (VM deleted, floating IP not yet
+	// released) keeps the record for its retry; there is no VM to reuse.
+	if !isNewDeploy && existing.Status == "destroying" {
+		return clerrors.New(clerrors.CodeVMProvisionFailed,
+			fmt.Sprintf("deployment %s is being destroyed", existing.ID),
+			"Run 'cloudru-vm destroy' to finish it, then deploy again.")
+	}
+
 	// Skip only a deployment that finished: after an SSH or Docker failure the
 	// hash is already recorded, and a plain re-run must retry.
 	if !isNewDeploy && existing.ComposeHash == project.Hash && existing.Status == "running" && !opts.Force {

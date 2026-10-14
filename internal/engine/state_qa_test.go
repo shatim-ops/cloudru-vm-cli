@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	stderrors "errors"
+	"strings"
 	"testing"
 
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
@@ -41,6 +42,30 @@ func TestDeploy_RefusedWhileAnotherHoldsTheState(t *testing.T) {
 	opts.DryRun = true
 	if err := eng.Deploy(context.Background(), opts); err != nil {
 		t.Fatalf("dry run while locked: %v", err)
+	}
+}
+
+// destroy deleted the VM but not its floating IP: the record stays
+// "destroying" for a retry. deploy used to "reuse" that deleted VM and spin
+// on SSH to an address with nothing behind it.
+func TestDeploy_HalfDestroyedRecordIsNotReused(t *testing.T) {
+	cloud := &mockCloudAPI{}
+	dep := newMockDeployer()
+	eng, dir := newTestEngine(t, cloud, dep)
+	rec := runningRecord()
+	rec.Status = "destroying"
+	sf := &state.File{Version: 1}
+	sf.UpsertDeployment(rec)
+	if err := state.Write(state.DefaultPath(dir), sf); err != nil {
+		t.Fatal(err)
+	}
+	err := eng.Deploy(context.Background(), newDeployOpts(t, dir))
+	var ce *clerrors.CLIError
+	if !stderrors.As(err, &ce) || !strings.Contains(ce.Hint, "cloudru-vm destroy") {
+		t.Fatalf("Deploy = %v, want an error pointing to destroy", err)
+	}
+	if dep.connectCalls != 0 || cloud.createCalled {
+		t.Fatalf("deploy went on: connects=%d create=%v", dep.connectCalls, cloud.createCalled)
 	}
 }
 
