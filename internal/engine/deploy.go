@@ -48,6 +48,16 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 
 	statePath := state.DefaultPath(e.StateDir)
 
+	// One deploy or destroy per directory at a time: the state read here is
+	// written back minutes later.
+	if !opts.DryRun {
+		unlock, err := state.Lock(statePath)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+	}
+
 	// Stage 2: Size — check existing state.
 	stateFile, err := state.Read(statePath)
 	if err != nil {

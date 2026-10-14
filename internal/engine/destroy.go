@@ -20,6 +20,13 @@ type DestroyOptions struct {
 // Destroy tears down the active deployment.
 func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	statePath := state.DefaultPath(e.StateDir)
+	if !opts.DryRun {
+		unlock, err := state.Lock(statePath)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+	}
 	stateFile, err := state.Read(statePath)
 	if err != nil {
 		return err
