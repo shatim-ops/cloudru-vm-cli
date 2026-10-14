@@ -303,7 +303,8 @@ func TestConnectionError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	adapter := NewCloudRuAdapter(srv.Client(), srv.URL)
 	adapter.SetToken("test-token")
-	srv.Close() // close immediately to simulate unreachable
+	adapter.Backoff = time.Millisecond // GET is retried before giving up
+	srv.Close()                        // close immediately to simulate unreachable
 
 	_, err := adapter.GetVM(context.Background(), "vm-unreach")
 	if err == nil {

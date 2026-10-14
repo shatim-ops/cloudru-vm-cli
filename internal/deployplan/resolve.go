@@ -106,7 +106,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if err != nil {
 		return nil, fmt.Errorf("list subnets: %w", err)
 	}
-	subnetID := pickSubnet(subnets, zone.ID)
+	subnetID := pickSubnet(subnets, zone.ID, zone.Name)
 	if subnetID == "" {
 		return nil, fmt.Errorf("no subnet found for project/zone %s — create a network+subnet in the Cloud.ru console first", zone.Name)
 	}
@@ -360,13 +360,23 @@ func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID string
 	return dynamic, static, login, keyName, nil
 }
 
-func pickSubnet(subnets []*provision.Subnet, zoneID string) string {
+// pickSubnet matches by zone ID, then by a name containing the zone name
+// (the API leaves availability_zone_id empty), then takes the only subnet.
+// A subnet of another zone does not boot the VM, so no blind "first one".
+func pickSubnet(subnets []*provision.Subnet, zoneID, zoneName string) string {
 	for _, s := range subnets {
-		if s.AvailabilityZoneID == zoneID {
+		if s.AvailabilityZoneID != "" && s.AvailabilityZoneID == zoneID {
 			return s.ID
 		}
 	}
-	if len(subnets) > 0 {
+	if zoneName != "" {
+		for _, s := range subnets {
+			if strings.Contains(s.Name, zoneName) {
+				return s.ID
+			}
+		}
+	}
+	if len(subnets) == 1 {
 		return subnets[0].ID
 	}
 	return ""

@@ -36,7 +36,7 @@ func (e *Engine) confirmOptions(yes, dryRun, noPrompt bool) confirm.Options {
 // deployPreview describes the VM about to be created, priced with the same
 // estimator as the MCP deploy_plan. Lookups of names are best effort: the
 // preview falls back to the IDs rather than failing the deploy.
-func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, network vmNetwork, ports []int) confirm.Preview {
+func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, network vmNetwork, ports, udpPorts []int) confirm.Preview {
 	vm := deployplan.VMSpec{
 		Name:   req.Name,
 		Flavor: deployplan.FlavorSpec{Name: req.FlavorName},
@@ -88,10 +88,13 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		fmt.Sprintf("network:   subnet %s, security group %s", network.SubnetName, network.SecurityGroup),
 		"public IP: a floating IP will be created and attached",
 	}
-	if len(ports) > 0 {
-		ps := make([]string, len(ports))
-		for i, p := range ports {
-			ps[i] = fmt.Sprint(p)
+	if len(ports)+len(udpPorts) > 0 {
+		ps := make([]string, 0, len(ports)+len(udpPorts))
+		for _, p := range ports {
+			ps = append(ps, fmt.Sprint(p))
+		}
+		for _, p := range udpPorts {
+			ps = append(ps, fmt.Sprintf("%d/udp", p))
 		}
 		lines = append(lines, fmt.Sprintf("ports:     %s opened to 0.0.0.0/0 in security group %s (shared by every VM in it)",
 			strings.Join(ps, ","), network.SecurityGroup))
@@ -108,6 +111,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 			"subnet_id":      network.SubnetID,
 			"security_group": map[string]string{"id": network.SecurityGroupID, "name": network.SecurityGroup},
 			"open_ports":     ports,
+			"open_udp_ports": udpPorts,
 			"cost":           cost,
 			"cost_note":      costNote,
 		},

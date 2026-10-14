@@ -37,6 +37,9 @@ IAM не принял пару Key ID / Key Secret:
 опубликован и не проверен — см. [auth.md → роли](auth.md#3-роли); на
 аккаунте с правами на уровне проекта весь сценарий `deploy` работает.
 
+У compute API (ВМ, диски, `deploy`, `destroy`) тот же отказ приходит как
+`AUTH_FAILED: access denied (403)` с кодом `2`.
+
 ### `configure` не показывает проекты: «Could not list projects»
 
 Ожидаемо для сервисного аккаунта: Organization API не отдаёт ему список

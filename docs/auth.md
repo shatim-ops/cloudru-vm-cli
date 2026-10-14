@@ -56,7 +56,8 @@ Secret, тот же обмен), но для скриптов, CI и MCP-сер�
   пользователя проекта и расширяйте по ошибкам `403`.
 
 Что видно в ошибках: `403` при обмене ключа — `AUTH_FAILED`, код выхода `2`;
-`403` от API сервиса (compute, vpc, …) — код `5` с текстом ответа Cloud.ru.
+`403` от compute API (ВМ, диски, `deploy`) — `AUTH_FAILED`, код `2`; от других
+сервисов (vpc, dns, …) — код `5` с текстом ответа Cloud.ru.
 Подробнее — [troubleshooting.md](troubleshooting.md#403-forbidden-от-сервиса-код-5).
 
 Organization API (`organization.api.cloud.ru/v3/projects`) **не отдаёт

@@ -2,8 +2,12 @@ package verify
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -32,16 +36,45 @@ func Check(ctx context.Context, ip string, ports []int, timeout time.Duration) [
 }
 
 func probe(ctx context.Context, ip string, port int, timeout time.Duration) ProbeResult {
+	result, err := get(ctx, "http", ip, port, timeout)
+	// An HTTPS-only port answers plain HTTP with 400 (nginx, Go) or a TLS
+	// alert that is not HTTP at all. Ask it over TLS; keep the plain result
+	// if that does not work either. A timeout is not retried: it would
+	// double the wait for a service that does not answer.
+	var netErr net.Error
+	timedOut := errors.As(err, &netErr) && netErr.Timeout()
+	if (err != nil && !timedOut && ctx.Err() == nil) || result.StatusCode == http.StatusBadRequest {
+		if tlsResult, tlsErr := get(ctx, "https", ip, port, timeout); tlsErr == nil {
+			return tlsResult
+		}
+	}
+	return result
+}
+
+// get probes scheme://ip:port/ once. Redirects are not followed: a 3xx is
+// the service answering, and following it would probe another host (often
+// https:// with a certificate for a name, not for this IP). Certificates are
+// not checked for the same reason — this is a liveness check, not trust.
+func get(ctx context.Context, scheme, ip string, port int, timeout time.Duration) (ProbeResult, error) {
 	result := ProbeResult{Port: port}
 
-	client := &http.Client{Timeout: timeout}
+	client := &http.Client{
+		Timeout:       timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	if scheme == "https" {
+		tr := http.DefaultTransport.(*http.Transport).Clone()
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // liveness probe of an IP
+		client.Transport = tr
+		defer tr.CloseIdleConnections()
+	}
 
-	url := fmt.Sprintf("http://%s:%d/", ip, port)
+	url := fmt.Sprintf("%s://%s/", scheme, net.JoinHostPort(ip, strconv.Itoa(port)))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		result.Error = err.Error()
-		return result
+		return result, err
 	}
 
 	start := time.Now()
@@ -50,12 +83,12 @@ func probe(ctx context.Context, ip string, port int, timeout time.Duration) Prob
 
 	if err != nil {
 		result.Error = err.Error()
-		return result
+		return result, err
 	}
 	defer resp.Body.Close()
 
 	result.StatusCode = resp.StatusCode
 	result.Healthy = resp.StatusCode >= 200 && resp.StatusCode < 400
 
-	return result
+	return result, nil
 }
