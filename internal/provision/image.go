@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
 // CreateImageReq creates a VM image from an existing boot disk
@@ -98,9 +99,9 @@ func (a *CloudRuAdapter) DeleteImage(ctx context.Context, imageID, projectID str
 	if imageID == "" {
 		return fmt.Errorf("image_id is required")
 	}
-	path := "/api/v1/images/" + imageID
+	path := "/api/v1/images/" + seg(imageID)
 	if projectID != "" {
-		path += "?project_id=" + projectID
+		path += "?project_id=" + url.QueryEscape(projectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
 	if err != nil {

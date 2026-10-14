@@ -247,7 +247,7 @@ func FindResourcefulJobs(name, excludeID string) []OrphanRef {
 // Save persists a job to disk.
 func (j *Job) Save() error {
 	dir := jobsDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil { // job files hold secret values of the manifest
 		return err
 	}
 	data, err := json.MarshalIndent(j, "", "  ")

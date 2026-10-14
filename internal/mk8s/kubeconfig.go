@@ -17,12 +17,18 @@ import (
 // `cloudlogin` exec-plugin uses (client-credentials grant).
 const DefaultOIDCTokenURL = "https://id.cloud.ru/auth/system/openid/token"
 
+// oidcClient sends the token request; tests replace its transport.
+var oidcClient = &http.Client{Timeout: 20 * time.Second}
+
 // FetchOIDCToken performs the same client-credentials exchange the Cloud.ru
 // mk8s `cloudlogin get-token` plugin does, returning the JWT used as the
 // kube-apiserver bearer token. Prefers id_token, falls back to access_token
 // (they carry identical claims: iss=id.cloud.ru/auth/system, sub=serviceAccount).
 func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string, error) {
-	if tokenURL == "" {
+	// The URL comes from the cluster's kubeconfig, i.e. from an API
+	// response, and the request carries the service account's secret: send
+	// it only to Cloud.ru IAM over https.
+	if !trustedOIDCURL(tokenURL) {
 		tokenURL = DefaultOIDCTokenURL
 	}
 	form := url.Values{
@@ -35,13 +41,12 @@ func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	cl := &http.Client{Timeout: 20 * time.Second}
-	resp, err := cl.Do(req)
+	resp, err := oidcClient.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("OIDC token HTTP %d: %s", resp.StatusCode, string(data[:min(len(data), 200)]))
 	}
@@ -59,6 +64,17 @@ func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string
 		return r.AccessToken, nil
 	}
 	return "", fmt.Errorf("OIDC response had no id_token/access_token")
+}
+
+// trustedOIDCHosts are the IAM hosts the access key may be sent to (both
+// answer the client-credentials grant, checked 2026-10-14).
+var trustedOIDCHosts = map[string]bool{"id.cloud.ru": true, "auth.iam.cloud.ru": true}
+
+// trustedOIDCURL reports whether u is https on a Cloud.ru IAM host.
+func trustedOIDCURL(u string) bool {
+	p, err := url.Parse(u)
+	return err == nil && p.Scheme == "https" && p.User == nil && p.Port() == "" &&
+		trustedOIDCHosts[strings.ToLower(p.Hostname())]
 }
 
 // OIDCURLFromKubeconfig pulls the --iam-url from the kubeconfig's exec-auth

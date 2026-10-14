@@ -113,6 +113,11 @@ func (s *Registry) handleK8sApply(ctx context.Context, args map[string]any) (str
 	if clusterID == "" || manifest == "" {
 		return errResult(fmt.Errorf("cluster_id and manifest are required")), true
 	}
+	// namespace goes to kubectl as an argument: a value starting with '-'
+	// would be read as another flag (as for k8s_helm).
+	if strings.HasPrefix(stringArg(args, "namespace"), "-") {
+		return errResult(fmt.Errorf("'namespace' must not start with '-'")), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
@@ -197,13 +202,20 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 		}
 		// Inline values YAML → temp file passed as -f.
 		if values := stringArg(args, "values"); values != "" {
+			// A failed write must not install the chart with its defaults.
 			vf, e := os.CreateTemp("", "helm-values-*.yaml")
-			if e == nil {
-				vf.WriteString(values)
-				vf.Close()
-				defer os.Remove(vf.Name())
-				hargs = append(hargs, "-f", vf.Name())
+			if e != nil {
+				return errResult(fmt.Errorf("values file: %w", e)), true
 			}
+			defer os.Remove(vf.Name())
+			_, e = vf.WriteString(values)
+			if ce := vf.Close(); e == nil {
+				e = ce
+			}
+			if e != nil {
+				return errResult(fmt.Errorf("values file: %w", e)), true
+			}
+			hargs = append(hargs, "-f", vf.Name())
 		}
 		// --set overrides (comma-safe: passed as repeated --set).
 		if sets, ok := args["set"].([]any); ok {

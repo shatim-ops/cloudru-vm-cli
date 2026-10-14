@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -100,7 +101,7 @@ func (a *CloudRuAdapter) CreateVM(ctx context.Context, req CreateVMRequest) (*VM
 
 // GetVM retrieves a virtual machine by ID via GET /api/v1/vms/{id}.
 func (a *CloudRuAdapter) GetVM(ctx context.Context, id string) (*VM, error) {
-	path := fmt.Sprintf("/api/v1/vms/%s", id)
+	path := fmt.Sprintf("/api/v1/vms/%s", seg(id))
 	resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
@@ -116,7 +117,7 @@ func (a *CloudRuAdapter) GetVM(ctx context.Context, id string) (*VM, error) {
 
 // DeleteVM deletes a virtual machine by ID via DELETE /api/v1/vms/{id}.
 func (a *CloudRuAdapter) DeleteVM(ctx context.Context, id string) error {
-	path := fmt.Sprintf("/api/v1/vms/%s", id)
+	path := fmt.Sprintf("/api/v1/vms/%s", seg(id))
 	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return err
@@ -230,7 +231,7 @@ func (a *CloudRuAdapter) ListImagesInProject(ctx context.Context, projectID stri
 	if projectID == "" {
 		return nil, nil
 	}
-	return a.listImages(ctx, "/api/v1/images?limit=200&project_id="+projectID)
+	return a.listImages(ctx, "/api/v1/images?limit=200&project_id="+url.QueryEscape(projectID))
 }
 
 func (a *CloudRuAdapter) listImages(ctx context.Context, path string) ([]*Image, error) {
@@ -272,7 +273,7 @@ func (a *CloudRuAdapter) listImages(ctx context.Context, path string) ([]*Image,
 // characters, which are invalid in JSON strings and make the strict decoder
 // fail, so the body is sanitized before decoding.
 func (a *CloudRuAdapter) GetImage(ctx context.Context, id string) (*ImageDetail, error) {
-	path := fmt.Sprintf("/api/v1/images/%s", id)
+	path := fmt.Sprintf("/api/v1/images/%s", seg(id))
 	resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
@@ -310,7 +311,7 @@ func sanitizeJSONControlChars(b []byte) []byte {
 
 // GetVMDetail retrieves full VM info including interfaces via GET /api/v1/vms/{id}.
 func (a *CloudRuAdapter) GetVMDetail(ctx context.Context, id string) (*VMDetail, error) {
-	path := fmt.Sprintf("/api/v1/vms/%s", id)
+	path := fmt.Sprintf("/api/v1/vms/%s", seg(id))
 	resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
@@ -346,7 +347,7 @@ func (a *CloudRuAdapter) CreateFloatingIP(ctx context.Context, req CreateFloatin
 
 // GetFloatingIP retrieves a floating IP by ID via GET /api/v1/floating-ips/{id}.
 func (a *CloudRuAdapter) GetFloatingIP(ctx context.Context, id string) (*FloatingIP, error) {
-	path := fmt.Sprintf("/api/v1/floating-ips/%s", id)
+	path := fmt.Sprintf("/api/v1/floating-ips/%s", seg(id))
 	resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
