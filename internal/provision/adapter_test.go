@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
@@ -16,6 +17,7 @@ func setupTestServer(handler http.HandlerFunc) (*httptest.Server, *CloudRuAdapte
 	srv := httptest.NewServer(handler)
 	adapter := NewCloudRuAdapter(srv.Client(), srv.URL)
 	adapter.SetToken("test-token")
+	adapter.Backoff = time.Millisecond
 	return srv, adapter
 }
 
@@ -241,6 +243,17 @@ func TestRetryOn429(t *testing.T) {
 	}
 	if callCount.Load() != 3 {
 		t.Errorf("expected 3 attempts, got %d", callCount.Load())
+	}
+}
+
+func TestBackoffDefault(t *testing.T) {
+	a := NewCloudRuAdapter(nil, "")
+	if got := a.firstBackoff(); got != time.Second {
+		t.Errorf("default first backoff = %v, want 1s", got)
+	}
+	a.Backoff = 5 * time.Millisecond
+	if got := a.firstBackoff(); got != 5*time.Millisecond {
+		t.Errorf("injected first backoff = %v, want 5ms", got)
 	}
 }
 

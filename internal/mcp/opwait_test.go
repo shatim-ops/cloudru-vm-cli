@@ -33,6 +33,8 @@ func TestOpTerminal(t *testing.T) {
 }
 
 func TestWaitForOpJSON_StopsOnTerminal(t *testing.T) {
+	defer func(d time.Duration) { opWaitFirstDelay = d }(opWaitFirstDelay)
+	opWaitFirstDelay = time.Millisecond
 	calls := 0
 	fetch := func(ctx context.Context) (map[string]any, error) {
 		calls++

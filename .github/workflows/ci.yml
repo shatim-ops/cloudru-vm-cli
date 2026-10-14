@@ -4,8 +4,19 @@ on: [push, pull_request]
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      # Падение на одной ОС не должно скрывать результат остальных.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
+      # Без этого checkout на Windows превращает LF в CRLF, и тесты, читающие
+      # файлы из репозитория, видят не те байты, что на Linux.
+      - name: git без перевода строк
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
@@ -18,9 +29,10 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
 
-      # Форматирование проверяем отдельно: gofmt молча ничего не возвращает,
-      # поэтому непустой вывод и есть провал.
+      # Форматирование от ОС не зависит — проверяем один раз. gofmt молча
+      # ничего не возвращает, поэтому непустой вывод и есть провал.
       - name: gofmt
+        if: runner.os == 'Linux'
         run: |
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
@@ -33,7 +45,10 @@ jobs:
       # x/crypto/ssh — тем самым коде, которым движок ходит на ВМ, включая обход
       # физического подтверждения FIDO/U2F. Все пришли обновлением зависимости,
       # а не правкой кода: поймать такое можно только регулярным прогоном.
+      # Версия зафиксирована, чтобы новый релиз сканера не ломал CI внезапно;
+      # поднимать вручную. Граф зависимостей один на все ОС — гоняем на Linux.
       - name: govulncheck
+        if: runner.os == 'Linux'
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           "$(go env GOPATH)/bin/govulncheck" ./...

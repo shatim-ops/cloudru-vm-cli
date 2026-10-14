@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/verify"
 )
 
 // --- Mocks ---
@@ -168,7 +169,7 @@ func (m *mockCloudAPI) GetVMDetail(ctx context.Context, id string) (*provision.V
 		Name:  "test-vm",
 		State: "running",
 		Interfaces: []provision.VMInterface{
-			{ID: "iface-1", IPAddress: "10.0.0.8", Primary: true},
+			{ID: "iface-1", IPAddress: "10.0.0.8", Primary: true, State: "created"},
 		},
 	}, nil
 }
@@ -180,7 +181,7 @@ func (m *mockCloudAPI) CreateFloatingIP(ctx context.Context, req provision.Creat
 	return &provision.FloatingIP{
 		ID:        "fip-1",
 		Name:      req.Name,
-		IPAddress: "203.0.113.42",
+		IPAddress: "127.0.0.1",
 		State:     "in_use",
 	}, nil
 }
@@ -191,7 +192,7 @@ func (m *mockCloudAPI) GetFloatingIP(ctx context.Context, id string) (*provision
 	}
 	return &provision.FloatingIP{
 		ID:        id,
-		IPAddress: "203.0.113.42",
+		IPAddress: "127.0.0.1",
 		State:     "in_use",
 	}, nil
 }
@@ -289,12 +290,48 @@ func composeHash() string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(testComposeContent)))
 }
 
+// fastTimings replaces every production wait with a millisecond so that
+// deploy tests exercise the poll/retry loops without sleeping for real.
+var fastTimings = Timings{
+	VMPollInterval:    time.Millisecond,
+	VMPollTimeout:     5 * time.Second,
+	IfacePollInterval: time.Millisecond,
+	FIPRetryInterval:  time.Millisecond,
+	FIPPollInterval:   time.Millisecond,
+	SSHRetryInterval:  time.Millisecond,
+	SettleDelay:       time.Millisecond,
+	VerifyTimeout:     time.Second,
+}
+
+// stubProbe records health-check calls instead of opening connections, so
+// tests never dial the ports from the compose file.
+type stubProbe struct {
+	mu    sync.Mutex
+	ip    string
+	ports []int
+	calls int
+}
+
+func (p *stubProbe) Check(_ context.Context, ip string, ports []int, _ time.Duration) []verify.ProbeResult {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calls++
+	p.ip = ip
+	p.ports = append([]int(nil), ports...)
+	res := make([]verify.ProbeResult, len(ports))
+	for i, port := range ports {
+		res[i] = verify.ProbeResult{Port: port, StatusCode: 200, Healthy: true}
+	}
+	return res
+}
+
 func newTestEngine(t *testing.T, cloud *mockCloudAPI, deployer *mockDeployer) (*Engine, string) {
 	t.Helper()
 	tmpDir := t.TempDir()
 
 	var buf bytes.Buffer
 	printer := output.NewWithWriter(&buf, output.ModePlain, false)
+	probe := &stubProbe{}
 
 	return &Engine{
 		Config: config.Config{
@@ -309,6 +346,8 @@ func newTestEngine(t *testing.T, cloud *mockCloudAPI, deployer *mockDeployer) (*
 		SSHKeyPEM: []byte("fake-key-pem"),
 		SSHPubKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest test@test",
 		StateDir:  tmpDir,
+		Timings:   fastTimings,
+		Probe:     probe.Check,
 	}, tmpDir
 }
 

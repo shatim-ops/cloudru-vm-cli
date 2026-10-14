@@ -19,3 +19,7 @@
 - [audit] `id.cloud.ru/auth/system/openid/token` (mk8s kubeconfig) не найден в документации; quickstart называет `auth.iam.cloud.ru` — проверить вживую до релиза
 - [audit] Хост billing API и `CLOUDRU_AGREEMENT_ID`: документация хоста не называет; подтвердить
 - [audit] Публичный API цен Cloud.ru отсутствует; `internal/pricing` — оценка по зашитой карте. Для внешнего продукта нужен источник или явный disclaimer в каждом превью
+- [06] Ожидания `Destroy` (30 с / 3 с) не внедряемы, тестов на `Destroy` нет · internal/engine/destroy.go:73 · файл переписывают этапы с исправлением destroy; внедрить через `Engine.Timings` вместе с первым тестом
+- [06] Жёсткие ожидания в MCP и deployplan: poll 5 с, 8 с, 10 с, `time.Sleep(5s)` · internal/mcp/tools.go:1687, internal/mcp/tools_stack.go:494, internal/mcp/captainkeys.go:79, internal/deployplan/apply.go:17,252 · текущие тесты эти пути не проходят; внедрить, когда появятся тесты
+- [06] `go test -race` тратит ≈1 с на каждый пакет: race-рантайм спит `atexit_sleep_ms=1000` при выходе · все пакеты · с ростом числа пакетов с тестами упрёмся в 10 с; тогда `GORACE=atexit_sleep_ms=0` в CI и документацию для разработчика
+- [06] `actions/checkout@v4` и `actions/setup-go@v5` на Node.js 20, runner предупреждает о депрекации · .github/workflows/ci.yml · пока их принудительно запускают на Node 24; поднять мажорные версии экшенов вместе с этапом 7 (релизный workflow)

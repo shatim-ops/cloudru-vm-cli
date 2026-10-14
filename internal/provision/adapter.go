@@ -29,6 +29,10 @@ type CloudRuAdapter struct {
 	mu        sync.RWMutex
 	flavors   []*Flavor
 	flavorExp time.Time
+
+	// Backoff is the delay before the first retry; it doubles on each next
+	// attempt. Zero means the production default (1s). Tests set milliseconds.
+	Backoff time.Duration
 }
 
 // NewCloudRuAdapter creates a new adapter. If client is nil, http.DefaultClient is used.
@@ -354,10 +358,18 @@ func (a *CloudRuAdapter) GetFloatingIP(ctx context.Context, id string) (*Floatin
 	return &fip, nil
 }
 
+// firstBackoff returns the delay before the first retry.
+func (a *CloudRuAdapter) firstBackoff() time.Duration {
+	if a.Backoff > 0 {
+		return a.Backoff
+	}
+	return initialBackoff
+}
+
 // doWithRetry executes an HTTP request with exponential-backoff retry on 429
 // responses, plus transient 5xx (500/502/503/504) on idempotent GET reads.
 func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
-	backoff := initialBackoff
+	backoff := a.firstBackoff()
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		var bodyReader io.Reader

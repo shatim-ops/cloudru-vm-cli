@@ -70,11 +70,18 @@ func TestCheck_Unhealthy(t *testing.T) {
 }
 
 func TestCheck_Timeout(t *testing.T) {
+	// The handler holds the request until the client gives up (or the test
+	// ends), so the probe hits its 100ms timeout without a real sleep.
+	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(2 * time.Second)
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
+	defer close(release)
 
 	port := serverPort(t, srv)
 	results := Check(context.Background(), "127.0.0.1", []int{port}, 100*time.Millisecond)
