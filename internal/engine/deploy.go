@@ -89,9 +89,12 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		return err
 	}
 
-	// The key is needed from here on: image metadata and SSH.
-	if err := e.EnsureSSHKey(); err != nil {
-		return err
+	// An existing VM needs the key for SSH from here on; a new one gets it
+	// in provisionVM after consent, so --dry-run leaves no key behind.
+	if !isNewDeploy {
+		if err := e.EnsureSSHKey(); err != nil {
+			return err
+		}
 	}
 
 	// Step 1: Auth (must happen before any API calls).
@@ -350,12 +353,14 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	// (e.g. public_key vs linux_password in "authentication" group).
 	imgMeta := map[string]string{}
 	satisfiedGroups := map[string]bool{}
+	var keyFields []string // filled with the SSH public key after consent
 
 	// First pass: populate fields we know how to fill.
 	for _, mf := range imgDetail.MetadataFields {
 		switch mf.Name {
 		case "ssh_key", "public_key", "ssh_public_key":
-			imgMeta[mf.Name] = e.SSHPubKey
+			imgMeta[mf.Name] = e.SSHPubKey // set again after consent: the key is made then
+			keyFields = append(keyFields, mf.Name)
 			if mf.MandatoryGroup != "" {
 				satisfiedGroups[mf.MandatoryGroup] = true
 			}
@@ -467,6 +472,12 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	}
 	if !proceed {
 		return state.DeploymentRecord{}, errDryRun
+	}
+	if err := e.EnsureSSHKey(); err != nil {
+		return state.DeploymentRecord{}, err
+	}
+	for _, name := range keyFields {
+		imgMeta[name] = e.SSHPubKey
 	}
 
 	vm, err := e.Cloud.CreateVM(ctx, req)
