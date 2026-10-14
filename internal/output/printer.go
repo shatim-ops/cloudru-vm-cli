@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"text/tabwriter"
+	"unicode"
 )
 
 // Mode determines the output format.
@@ -23,7 +24,10 @@ type Printer struct {
 	out    io.Writer
 	errOut io.Writer
 	mode   Mode
-	color  bool
+	color  bool // ANSI colors on out
+	// errColor is decided by errOut: "2>err.log" on a terminal must not
+	// write escape codes into the file.
+	errColor bool
 }
 
 // New creates a Printer. Detects mode from flags and TTY state.
@@ -35,20 +39,22 @@ func New(jsonMode bool, noColor bool) *Printer {
 		mode = ModePlain
 	}
 	return &Printer{
-		out:    os.Stdout,
-		errOut: os.Stderr,
-		mode:   mode,
-		color:  ColorEnabled(noColor) && mode == ModeText,
+		out:      os.Stdout,
+		errOut:   os.Stderr,
+		mode:     mode,
+		color:    ColorEnabled(noColor) && mode == ModeText,
+		errColor: colorAllowed(noColor) && mode != ModeJSON && IsTTY(int(os.Stderr.Fd())),
 	}
 }
 
 // NewWithWriter creates a Printer writing to a specific writer (for testing).
 func NewWithWriter(w io.Writer, mode Mode, color bool) *Printer {
 	return &Printer{
-		out:    w,
-		errOut: w,
-		mode:   mode,
-		color:  color,
+		out:      w,
+		errOut:   w,
+		mode:     mode,
+		color:    color,
+		errColor: color,
 	}
 }
 
@@ -56,10 +62,11 @@ func NewWithWriter(w io.Writer, mode Mode, color bool) *Printer {
 // writers (for testing what goes to stdout vs stderr).
 func NewWithWriters(out, errOut io.Writer, mode Mode, color bool) *Printer {
 	return &Printer{
-		out:    out,
-		errOut: errOut,
-		mode:   mode,
-		color:  color,
+		out:      out,
+		errOut:   errOut,
+		mode:     mode,
+		color:    color,
+		errColor: color,
 	}
 }
 
@@ -100,12 +107,15 @@ func (p *Printer) Success(msg string) {
 	}
 }
 
-// Warning prints a warning message in yellow.
+// Warning prints a warning message in yellow to the error writer; in JSON
+// mode as a {"warning": "..."} line, so that it is neither lost nor breaks
+// a parser reading stderr.
 func (p *Printer) Warning(msg string) {
 	if p.mode == ModeJSON {
+		_ = json.NewEncoder(p.errOut).Encode(map[string]string{"warning": msg})
 		return
 	}
-	if p.color {
+	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%sWarning: %s%s\n", colorBold, colorYellow, msg, colorReset)
 	} else {
 		fmt.Fprintf(p.errOut, "Warning: %s\n", msg)
@@ -115,7 +125,7 @@ func (p *Printer) Warning(msg string) {
 // Errorf prints an error message in red.
 func (p *Printer) Errorf(msg string, args ...any) {
 	formatted := fmt.Sprintf(msg, args...)
-	if p.color {
+	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%sError: %s%s\n", colorBold, colorRed, formatted, colorReset)
 	} else {
 		fmt.Fprintf(p.errOut, "Error: %s\n", formatted)
@@ -127,7 +137,7 @@ func (p *Printer) Hint(msg string) {
 	if p.mode == ModeJSON {
 		return
 	}
-	if p.color {
+	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%s%s\n", colorDim, msg, colorReset)
 	} else {
 		fmt.Fprintln(p.errOut, msg)
@@ -143,16 +153,40 @@ func (p *Printer) Table(headers []string, rows [][]string) {
 	if p.color {
 		colored := make([]string, len(headers))
 		for i, h := range headers {
-			colored[i] = colorBold + h + colorReset
+			colored[i] = colorBold + sanitizeCell(h) + colorReset
 		}
 		fmt.Fprintln(tw, strings.Join(colored, "\t"))
 	} else {
-		fmt.Fprintln(tw, strings.Join(headers, "\t"))
+		fmt.Fprintln(tw, strings.Join(sanitizeRow(headers), "\t"))
 	}
 	for _, row := range rows {
-		fmt.Fprintln(tw, strings.Join(row, "\t"))
+		fmt.Fprintln(tw, strings.Join(sanitizeRow(row), "\t"))
 	}
 	tw.Flush()
+}
+
+func sanitizeRow(row []string) []string {
+	out := make([]string, len(row))
+	for i, c := range row {
+		out[i] = sanitizeCell(c)
+	}
+	return out
+}
+
+// sanitizeCell makes a table cell safe for a terminal. Cells carry names
+// and descriptions from the cloud: an escape sequence could repaint or
+// clear the screen, a tab or a line break would break the columns.
+// Invalid UTF-8 becomes U+FFFD.
+func sanitizeCell(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\t' || r == '\n' || r == '\r':
+			return ' '
+		case unicode.IsControl(r):
+			return '?'
+		}
+		return r
+	}, s)
 }
 
 // JSON outputs v as JSON to stdout.

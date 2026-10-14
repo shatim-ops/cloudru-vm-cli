@@ -305,7 +305,7 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 		if !con.interactive {
 			if current != "" {
 				// Re-running configure to rotate the key keeps the project.
-				fmt.Fprintf(con.out, "Warning: could not list projects (%v); keeping project %s\n", err, current)
+				printer.Warning(fmt.Sprintf("could not list projects (%v); keeping project %s", err, current))
 				return current, nil
 			}
 			return "", err

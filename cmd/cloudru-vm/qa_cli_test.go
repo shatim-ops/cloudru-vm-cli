@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
@@ -132,6 +134,43 @@ func TestRun_UsageErrorIsJSONWhereverTheFlagIs(t *testing.T) {
 	// После "--" это уже не флаг CLI.
 	if _, _, stderr := runCLI(t, "", "nosuchcmd", "--", "--json"); json.Valid([]byte(stderr)) {
 		t.Errorf("--json after -- must not switch to JSON: %q", stderr)
+	}
+}
+
+// С --json каждая команда печатает в stdout ровно один JSON-документ (или
+// ничего), а каждая строка stderr — JSON. Раньше status/verify/destroy без
+// развёртывания отдавали пустой stdout (jq получал пустой вход), destroy
+// при успехе тоже молчал, предупреждения шли в stderr текстом.
+func TestRun_JSONModeKeepsBothStreamsParseable(t *testing.T) {
+	setupCLI(t)
+	// A warning on every command (credentials file readable by others),
+	// and no access key: nothing reaches the cloud.
+	if err := config.WriteFilePrivate(config.CredentialsPath(), []byte("profiles:\n  default:\n    s3: {region: x}\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(config.CredentialsPath(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range commandPaths() {
+		if path[0] == "mcp" {
+			continue
+		}
+		newProcess()
+		code, stdout, stderr := runCLI(t, "", append(path, "--json")...)
+		if strings.Contains(stdout, "Usage:") {
+			continue // a group shows its help
+		}
+		if s := strings.TrimSpace(stdout); s != "" && !json.Valid([]byte(s)) {
+			t.Errorf("%v (exit %d): stdout is not one JSON document: %.300q", path, code, stdout)
+		}
+		assertJSONLines(t, strings.Join(path, " ")+" stderr", stderr)
+	}
+	for _, cmd := range []string{"status", "verify", "destroy"} {
+		newProcess()
+		code, stdout, _ := runCLI(t, "", cmd, "--json")
+		if code != 0 || !json.Valid([]byte(stdout)) {
+			t.Errorf("%s --json without a deployment: exit %d, stdout %q", cmd, code, stdout)
+		}
 	}
 }
 
