@@ -24,7 +24,17 @@ import (
 	"github.com/shatim-ops/cloudru-vm-cli/internal/verify"
 )
 
-var version = "0.1.0"
+// Build identity. A release build sets all three through goreleaser:
+//
+//	-ldflags "-X main.version=1.2.3 -X main.commit=<sha> -X main.date=<RFC 3339>"
+//
+// A plain "go build" / "go install" leaves the defaults, and resolveVersion
+// fills them from the module and VCS data the Go toolchain embeds.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 // Global flags.
 var (
@@ -544,9 +554,9 @@ timeout: 300
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the version",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("cloudru-vm %s\n", version)
+		Short: "Print the version, commit, build date, Go version and platform",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return printVersion(cmd.OutOrStdout(), flagJSON, currentVersion())
 		},
 	}
 }
