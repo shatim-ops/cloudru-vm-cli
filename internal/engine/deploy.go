@@ -323,6 +323,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	if projectName == "" {
 		projectName = filepath.Base(e.StateDir)
 	}
+	vmName := vmNameFor(projectName)
 
 	diskSize := e.Config.DiskSize
 	if diskSize <= 0 {
@@ -351,7 +352,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				satisfiedGroups[mf.MandatoryGroup] = true
 			}
 		case "hostname", "instance_name":
-			imgMeta[mf.Name] = fmt.Sprintf("cloudru-vm-%s", projectName)
+			imgMeta[mf.Name] = vmName
 			if mf.MandatoryGroup != "" {
 				satisfiedGroups[mf.MandatoryGroup] = true
 			}
@@ -428,14 +429,14 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	// UUIDs or a missing interface make it answer 500.
 	req := provision.CreateVMRequest{
 		ProjectID:          projectID,
-		Name:               fmt.Sprintf("cloudru-vm-%s", projectName),
+		Name:               vmName,
 		FlavorName:         flavorAPIName,
 		AvailabilityZoneID: region,
 		ImageName:          imgDetail.Name,
 		ImageMetadata:      imgMeta,
 		Disks: []provision.DiskReq{
 			{
-				Name:         fmt.Sprintf("cloudru-vm-%s-boot", projectName),
+				Name:         vmName + "-boot",
 				Size:         diskSize,
 				DiskTypeName: diskType.Name,
 			},
@@ -708,6 +709,34 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 	// Return whatever IP we got even if state isn't confirmed.
 	report("Floating IP %s not confirmed after %s; continuing", fip.IPAddress, elapsed())
 	return fip.IPAddress, fipID, nil
+}
+
+// vmNameFor turns the project (directory) name into the VM name, which is
+// also its hostname: RFC 1123 allows lowercase letters, digits and inner
+// hyphens, up to 63 characters. "My App (копия)" → "cloudru-vm-my-app".
+func vmNameFor(project string) string {
+	const prefix = "cloudru-vm-"
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(project) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			if dash && b.Len() > 0 {
+				b.WriteByte('-')
+			}
+			b.WriteRune(r)
+			dash = false
+		} else {
+			dash = true
+		}
+	}
+	name := b.String()
+	if name == "" {
+		name = "app"
+	}
+	if max := 63 - len(prefix); len(name) > max {
+		name = strings.TrimRight(name[:max], "-")
+	}
+	return prefix + name
 }
 
 // fipName is the name deploy gives the VM's floating IP; destroy and the
