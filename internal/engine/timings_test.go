@@ -54,6 +54,7 @@ func TestDeploy_ProbeGetsVMIPAndPorts(t *testing.T) {
 		ComposeFile:    writeComposeFile(t, tmpDir),
 		Flavor:         "small",
 		NonInteractive: true,
+		Yes:            true,
 	})
 	if err != nil {
 		t.Fatalf("Deploy: %v", err)
@@ -99,6 +100,7 @@ func TestDeploy_DefaultProbeHitsService(t *testing.T) {
 		ComposeFile:    composePath,
 		Flavor:         "small",
 		NonInteractive: true,
+		Yes:            true,
 	})
 	if err != nil {
 		t.Fatalf("Deploy: %v", err)

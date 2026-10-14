@@ -26,3 +26,6 @@
 - [01] MCP-обработчики получают `context.Background()` и не отменяются по сигналу; `Server.Run` без контекста (в `main` обёрнут) · internal/mcp/server.go:216 · MCP — этап 3
 - [07] SBOM (syft) и SLSA provenance в релизе · .goreleaser.yaml · бриф не требует; подпись cosign уже закрывает целостность
 - [07] `install.ps1` для Windows (скачать zip, sha256, PATH) · корень репозитория · пока инструкция в README, раздел «Установка»
+- [03] `confirmation_required` в MCP возвращается с `isError=true`, хотя по спецификации MCP это не ошибка · internal/mcp/server.go:221 `toolResult`, все гейты в internal/mcp/tools*.go · клиента `image-factory/go/cmd/mcpcall` в этом репозитории нет, нельзя проверить, различает ли он исход по `status`, а не по `isError`; README обещает ему код 3 — оставлено как есть
+- [03] Превью `destroy` честно пишет, что floating IP остаётся и тарифицируется · internal/engine/preview.go `destroyPreview` · релиз FIP — этап 5; вместе с ним поменять действие `keep` → `release` и строку превью
+- [03] Превью MCP `deploy`/`provision` без оценки цены: гейт срабатывает до обращения в облако, а размер flavor без облака неизвестен · internal/mcp/tools.go `handleDeploy`/`handleProvision` · цена есть в `deploy_plan`; при желании — оценка в превью после первого read-only запроса

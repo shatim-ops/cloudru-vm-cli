@@ -42,6 +42,8 @@ var (
 	flagJSON    bool
 	flagVerbose bool
 	flagNoColor bool
+	flagYes     bool
+	flagDryRun  bool
 )
 
 // httpClient is shared by the IAM and compute clients: one connection pool
@@ -113,6 +115,8 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output in JSON format")
 	cmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Enable verbose logging")
 	cmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
+	cmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Confirm operations that create paid resources or delete data, without a prompt")
+	cmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "Show what would be created or deleted (with a cost estimate) and exit")
 
 	cmd.AddCommand(
 		newDeployCmd(),
@@ -338,6 +342,8 @@ func newDeployCmd() *cobra.Command {
 				Region:         eng.Config.Region,
 				Force:          force,
 				NonInteractive: nonInteractive,
+				Yes:            flagYes,
+				DryRun:         flagDryRun,
 			}
 
 			if err := eng.Deploy(cmd.Context(), opts); err != nil {
@@ -354,7 +360,7 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVar(&imageID, "image-id", "", "Boot image UUID")
 	cmd.Flags().IntVar(&diskSize, "disk-size", 0, "Boot disk size in GB (default: 10)")
 	cmd.Flags().BoolVar(&force, "force", false, "Force redeploy even if compose hash unchanged")
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Skip confirmation prompts")
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Never prompt; creating a VM then requires --yes")
 
 	return cmd
 }
@@ -430,7 +436,7 @@ func newDestroyCmd() *cobra.Command {
 				return err
 			}
 
-			opts := engine.DestroyOptions{Force: force}
+			opts := engine.DestroyOptions{Force: force || flagYes, DryRun: flagDryRun}
 			if err := eng.Destroy(cmd.Context(), opts); err != nil {
 				return err
 			}
@@ -438,7 +444,7 @@ func newDestroyCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
+	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt (same as --yes)")
 
 	return cmd
 }
