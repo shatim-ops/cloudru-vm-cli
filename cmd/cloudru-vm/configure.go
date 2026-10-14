@@ -27,6 +27,16 @@ var orgProjectsURL = "https://organization.api.cloud.ru/v3/projects"
 var (
 	stdinIsTerminal = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
 	readPassword    = func() ([]byte, error) { return term.ReadPassword(int(os.Stdin.Fd())) }
+	// saveTerminal returns a function that puts the terminal back as it is
+	// now (echo on), for when Ctrl-C abandons a ReadPassword.
+	saveTerminal = func() func() {
+		fd := int(os.Stdin.Fd())
+		st, err := term.GetState(fd)
+		if err != nil {
+			return func() {}
+		}
+		return func() { _ = term.Restore(fd, st) }
+	}
 )
 
 const configureHelp = `Store a service account access key and a default project in a profile.
@@ -87,27 +97,62 @@ func newConsole(in io.Reader, out io.Writer, interactive bool) *console {
 	return &console{in: bufio.NewReader(in), out: out, interactive: interactive}
 }
 
-func (c *console) readLine() (string, error) {
-	line, err := c.in.ReadString('\n')
-	if err != nil && (err != io.EOF || line == "") {
-		return "", err
+// readLine reads one trimmed line, giving up when ctx is cancelled: the
+// CLI catches SIGINT, so a read that ignores ctx makes Ctrl-C do nothing.
+func (c *console) readLine(ctx context.Context) (string, error) {
+	type result struct {
+		line string
+		err  error
 	}
-	return strings.TrimSpace(line), nil
+	ch := make(chan result, 1)
+	go func() {
+		line, err := c.in.ReadString('\n')
+		if err != nil && (err != io.EOF || line == "") {
+			ch <- result{"", err}
+			return
+		}
+		ch <- result{strings.TrimSpace(line), nil}
+	}()
+	select {
+	case r := <-ch:
+		return r.line, r.err
+	case <-ctx.Done():
+		fmt.Fprintln(c.out)
+		return "", ctx.Err()
+	}
 }
 
-func (c *console) ask(prompt string) (string, error) {
+func (c *console) ask(ctx context.Context, prompt string) (string, error) {
 	fmt.Fprint(c.out, prompt)
-	return c.readLine()
+	return c.readLine(ctx)
 }
 
-func (c *console) askSecret(prompt string) (string, error) {
+func (c *console) askSecret(ctx context.Context, prompt string) (string, error) {
 	fmt.Fprint(c.out, prompt)
-	b, err := readPassword()
-	fmt.Fprintln(c.out)
-	if err != nil {
-		return "", err
+	restore := saveTerminal()
+	type result struct {
+		b   []byte
+		err error
 	}
-	return strings.TrimSpace(string(b)), nil
+	ch := make(chan result, 1)
+	go func() {
+		b, err := readPassword()
+		ch <- result{b, err}
+	}()
+	select {
+	case r := <-ch:
+		fmt.Fprintln(c.out)
+		if r.err != nil {
+			return "", r.err
+		}
+		return strings.TrimSpace(string(r.b)), nil
+	case <-ctx.Done():
+		// ReadPassword turned echo off and will never restore it: the
+		// process exits first.
+		restore()
+		fmt.Fprintln(c.out)
+		return "", ctx.Err()
+	}
 }
 
 func runConfigure(ctx context.Context, opts configureOptions, con *console, printer *output.Printer) error {
@@ -130,7 +175,7 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 		if creds.KeyID != "" {
 			prompt = fmt.Sprintf("Access key ID [%s]: ", config.MaskKeyID(creds.KeyID))
 		}
-		if keyID, err = con.ask(prompt); err != nil {
+		if keyID, err = con.ask(ctx, prompt); err != nil {
 			return fmt.Errorf("read key ID: %w", err)
 		}
 	}
@@ -142,7 +187,10 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 	var secret string
 	switch {
 	case opts.secretStdin:
-		if secret, err = con.readLine(); err != nil {
+		if secret, err = con.readLine(ctx); err != nil {
+			if ctx.Err() != nil {
+				return err
+			}
 			return clerrors.Wrap(clerrors.CodeConfigInvalid, "no secret on stdin",
 				"Pipe the secret into 'cloudru-vm configure --secret-stdin'", err)
 		}
@@ -151,7 +199,7 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 		if creds.Secret != "" && keyID == creds.KeyID {
 			prompt = "Secret [keep current]: "
 		}
-		if secret, err = con.askSecret(prompt); err != nil {
+		if secret, err = con.askSecret(ctx, prompt); err != nil {
 			return fmt.Errorf("read secret: %w", err)
 		}
 	}
@@ -163,13 +211,14 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 			"Run 'cloudru-vm configure' in a terminal, or pass --key-id and --secret-stdin")
 	}
 
-	// Check the key and keep the token for the next commands.
-	provider := auth.NewIAMProvider(auth.Credentials{KeyID: keyID, Secret: secret}, httpClient,
-		auth.FileCache{Path: config.TokenCachePath(name)})
+	// Check the key with IAM itself: a cached token of the same key ID
+	// proves nothing about this secret. Keep the token for the next commands.
+	provider := auth.NewIAMProvider(auth.Credentials{KeyID: keyID, Secret: secret}, httpClient, nil)
 	tok, err := provider.Token(ctx)
 	if err != nil {
 		return fmt.Errorf("checking the access key: %w", err)
 	}
+	_ = auth.FileCache{Path: config.TokenCachePath(name)}.Store(keyID, tok)
 
 	projectID := opts.projectID
 	if projectID == "" {
@@ -262,7 +311,7 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 			return "", err
 		}
 		fmt.Fprintf(con.out, "Could not list projects (%v).\n", err)
-		return askProjectID(con, current)
+		return askProjectID(ctx, con, current)
 	}
 
 	switch {
@@ -278,7 +327,7 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 				"Pass --project-id, or grant the service account access to a project")
 		}
 		fmt.Fprintln(con.out, "The key sees no projects.")
-		return askProjectID(con, current)
+		return askProjectID(ctx, con, current)
 	}
 
 	if !con.interactive {
@@ -309,7 +358,7 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 		if def > 0 {
 			prompt = fmt.Sprintf("Choose a project (number or ID) [%d]: ", def)
 		}
-		ans, err := con.ask(prompt)
+		ans, err := con.ask(ctx, prompt)
 		if err != nil {
 			return "", fmt.Errorf("read project: %w", err)
 		}
@@ -328,12 +377,12 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 	}
 }
 
-func askProjectID(con *console, current string) (string, error) {
+func askProjectID(ctx context.Context, con *console, current string) (string, error) {
 	prompt := "Project ID: "
 	if current != "" {
 		prompt = fmt.Sprintf("Project ID [%s]: ", current)
 	}
-	id, err := con.ask(prompt)
+	id, err := con.ask(ctx, prompt)
 	if err != nil {
 		return "", fmt.Errorf("read project ID: %w", err)
 	}
