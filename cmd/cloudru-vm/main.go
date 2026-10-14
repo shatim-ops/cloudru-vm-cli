@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -30,19 +34,70 @@ var (
 	flagNoColor bool
 )
 
+// httpClient is shared by the IAM and compute clients: one connection pool
+// and a timeout, so a stalled Cloud.ru endpoint cannot hang the CLI forever.
+var httpClient = &http.Client{Timeout: 60 * time.Second}
+
+// commandStarted is set once cobra has parsed flags and arguments and is
+// about to run a command. An error before that is a usage error.
+var commandStarted bool
+
 func main() {
+	os.Exit(run(os.Args[1:]))
+}
+
+// run executes the CLI and returns the process exit code.
+func run(args []string) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		// After the first signal restore the default behaviour, so a second
+		// Ctrl-C kills a command that does not watch the context.
+		<-ctx.Done()
+		stop()
+	}()
+
+	commandStarted = false
 	rootCmd := newRootCmd()
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+	rootCmd.SetArgs(args)
+	cmd, err := rootCmd.ExecuteContextC(ctx)
+	if err == nil {
+		return clerrors.ExitOK
 	}
+	if ctx.Err() != nil && !stderrors.Is(err, context.Canceled) {
+		// The command was interrupted but reported it as something else.
+		err = fmt.Errorf("%w: %w", context.Canceled, err)
+	}
+	if cmd == nil {
+		cmd = rootCmd
+	}
+	if !commandStarted {
+		err = usageError(cmd, err)
+	}
+	handleError(output.New(flagJSON, flagNoColor), err)
+	return clerrors.ExitCode(err)
+}
+
+// usageError turns a cobra parsing error (unknown command or flag, bad
+// argument) into a CLIError pointing at --help.
+func usageError(cmd *cobra.Command, err error) error {
+	return clerrors.Wrap(clerrors.CodeUsage, err.Error(),
+		fmt.Sprintf("Run '%s --help' for usage.", cmd.CommandPath()), err)
 }
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "cloudru-vm",
-		Short:         "Deploy docker-compose projects to Cloud.ru VMs",
+		Use:   "cloudru-vm",
+		Short: "Deploy docker-compose projects to Cloud.ru VMs",
+		Long: "Deploy docker-compose projects to Cloud.ru VMs.\n\n" +
+			clerrors.ExitCodesHelp,
+		// Errors are printed once, by run(): as text or, with --json, as
+		// {"error": {...}} on stderr.
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			commandStarted = true
+		},
 	}
 
 	cmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output in JSON format")
@@ -90,7 +145,16 @@ exactly as for the regular CLI commands.`,
 				}
 				return buildEngine(overrides)
 			}, version)
-			return srv.Run(os.Stdin, os.Stdout)
+			// The server does not take a context; stop waiting for it on
+			// SIGINT/SIGTERM so the signal still ends the process.
+			done := make(chan error, 1)
+			go func() { done <- srv.Run(os.Stdin, os.Stdout) }()
+			select {
+			case err := <-done:
+				return err
+			case <-cmd.Context().Done():
+				return cmd.Context().Err()
+			}
 		},
 	}
 }
@@ -121,8 +185,8 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 
 	return &engine.Engine{
 		Config:    cfg,
-		Auth:      auth.NewEnvVarProvider(nil),
-		Cloud:     provision.NewCloudRuAdapter(nil, ""),
+		Auth:      auth.NewEnvVarProvider(httpClient),
+		Cloud:     provision.NewCloudRuAdapter(httpClient, ""),
 		Deployer:  deploy.NewSSHDeployer(),
 		Printer:   printer,
 		SSHKeyPEM: privKey,
@@ -178,16 +242,40 @@ func defaultConfigPath() string {
 	return filepath.Join(home, ".cloudru-vm.yaml")
 }
 
-// handleError prints a CLIError with its hint or a plain error.
-func handleError(cmd *cobra.Command, err error) {
-	if cliErr, ok := err.(*clerrors.CLIError); ok {
-		printer := output.New(flagJSON, flagNoColor)
-		printer.Errorf("%s", cliErr.Message)
-		if cliErr.Hint != "" {
-			printer.Hint(cliErr.Hint)
+// handleError prints err to the printer's error writer: as text with the
+// hint of the CLIError found anywhere in the wrap chain, or, in JSON mode,
+// as {"error": {"code": N, "message": "...", "hint": "..."}}.
+func handleError(p *output.Printer, err error) {
+	code := clerrors.ExitCode(err)
+	var message, hint string
+	var cliErr *clerrors.CLIError
+	switch {
+	case code == clerrors.ExitInterrupted:
+		message = "interrupted"
+		if stderrors.As(err, &cliErr) {
+			// e.g. deploy: which VM was left running and how to delete it.
+			message += ": " + cliErr.Message
+			hint = cliErr.Hint
 		}
-	} else {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	case stderrors.As(err, &cliErr):
+		hint = cliErr.Hint
+		if err == error(cliErr) {
+			message = cliErr.Message
+		} else {
+			// Keep the context added by fmt.Errorf("...: %w").
+			message = err.Error()
+		}
+	default:
+		message = err.Error()
+	}
+
+	if p.IsJSON() {
+		_ = p.JSONError(code, message, hint)
+		return
+	}
+	p.Errorf("%s", message)
+	if hint != "" {
+		p.Hint(hint)
 	}
 }
 
@@ -231,7 +319,6 @@ func newDeployCmd() *cobra.Command {
 
 			eng, err := buildEngine(flags)
 			if err != nil {
-				handleError(cmd, err)
 				return err
 			}
 
@@ -243,8 +330,7 @@ func newDeployCmd() *cobra.Command {
 				NonInteractive: nonInteractive,
 			}
 
-			if err := eng.Deploy(context.Background(), opts); err != nil {
-				handleError(cmd, err)
+			if err := eng.Deploy(cmd.Context(), opts); err != nil {
 				return err
 			}
 			return nil
@@ -272,11 +358,9 @@ func newStatusCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
-				handleError(cmd, err)
 				return err
 			}
-			if err := eng.Status(context.Background()); err != nil {
-				handleError(cmd, err)
+			if err := eng.Status(cmd.Context()); err != nil {
 				return err
 			}
 			return nil
@@ -299,7 +383,6 @@ func newLogsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
-				handleError(cmd, err)
 				return err
 			}
 
@@ -309,8 +392,7 @@ func newLogsCmd() *cobra.Command {
 				Follow:  follow,
 			}
 
-			if err := eng.Logs(context.Background(), opts); err != nil {
-				handleError(cmd, err)
+			if err := eng.Logs(cmd.Context(), opts); err != nil {
 				return err
 			}
 			return nil
@@ -335,13 +417,11 @@ func newDestroyCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
-				handleError(cmd, err)
 				return err
 			}
 
 			opts := engine.DestroyOptions{Force: force}
-			if err := eng.Destroy(context.Background(), opts); err != nil {
-				handleError(cmd, err)
+			if err := eng.Destroy(cmd.Context(), opts); err != nil {
 				return err
 			}
 			return nil
@@ -362,7 +442,6 @@ func newVerifyCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
-				handleError(cmd, err)
 				return err
 			}
 
@@ -370,7 +449,6 @@ func newVerifyCmd() *cobra.Command {
 			statePath := state.DefaultPath(cwd)
 			stateFile, err := state.Read(statePath)
 			if err != nil {
-				handleError(cmd, err)
 				return err
 			}
 
@@ -386,7 +464,7 @@ func newVerifyCmd() *cobra.Command {
 				return nil
 			}
 
-			results := verify.Check(context.Background(), active.VMIP, active.ExposedPorts, 10*time.Second)
+			results := verify.Check(cmd.Context(), active.VMIP, active.ExposedPorts, 10*time.Second)
 
 			if eng.Printer.IsJSON() {
 				return eng.Printer.JSON(results)
@@ -456,8 +534,7 @@ timeout: 300
 # project_id: <your-project-uuid>
 `
 			if err := os.WriteFile(cfgFile, []byte(content), 0644); err != nil {
-				printer.Errorf("failed to create config: %v", err)
-				return err
+				return fmt.Errorf("failed to create config: %w", err)
 			}
 
 			printer.Success("Created " + cfgFile)
@@ -497,22 +574,19 @@ Available zones:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
-				handleError(cmd, err)
 				return err
 			}
 
-			ctx := context.Background()
+			ctx := cmd.Context()
 
 			tok, err := eng.Auth.Token(ctx)
 			if err != nil {
-				handleError(cmd, err)
 				return err
 			}
 			eng.Cloud.SetToken(tok.Value)
 
 			zones, err := eng.Cloud.ListAvailabilityZones(ctx)
 			if err != nil {
-				handleError(cmd, err)
 				return err
 			}
 
@@ -552,12 +626,10 @@ Common images:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
-				handleError(cmd, err)
 				return err
 			}
 
-			if err := eng.ListImages(context.Background()); err != nil {
-				handleError(cmd, err)
+			if err := eng.ListImages(cmd.Context()); err != nil {
 				return err
 			}
 			return nil

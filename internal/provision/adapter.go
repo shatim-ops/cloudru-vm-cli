@@ -35,11 +35,12 @@ type CloudRuAdapter struct {
 	Backoff time.Duration
 }
 
-// NewCloudRuAdapter creates a new adapter. If client is nil, http.DefaultClient is used.
+// NewCloudRuAdapter creates a new adapter. If client is nil, a client with a
+// 60s timeout is used (http.DefaultClient has none).
 // If baseURL is empty, the default Cloud.ru compute endpoint is used.
 func NewCloudRuAdapter(client *http.Client, baseURL string) *CloudRuAdapter {
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{Timeout: 60 * time.Second}
 	}
 	if baseURL == "" {
 		baseURL = defaultBaseURL

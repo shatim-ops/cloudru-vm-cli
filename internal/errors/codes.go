@@ -4,6 +4,7 @@ package errors
 const (
 	CodeAuthRequired      = "AUTH_REQUIRED"
 	CodeAuthExpired       = "AUTH_EXPIRED"
+	CodeAuthFailed        = "AUTH_FAILED"
 	CodeAPIUnreachable    = "API_UNREACHABLE"
 	CodeAPIRateLimited    = "API_RATE_LIMITED"
 	CodeAPIError          = "API_ERROR"
@@ -16,4 +17,7 @@ const (
 	CodeComposeNotFound   = "COMPOSE_NOT_FOUND"
 	CodeConfigInvalid     = "CONFIG_INVALID"
 	CodeStateCorrupted    = "STATE_CORRUPTED"
+
+	CodeConfirmationRequired = "CONFIRMATION_REQUIRED"
+	CodeUsage                = "USAGE" // unknown command or flag, bad arguments
 )
