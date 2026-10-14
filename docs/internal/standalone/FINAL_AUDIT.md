@@ -139,7 +139,18 @@
 
 ## 7. Рекомендованный порядок действий на утро
 
-1. Прочитать и смержить этот PR (CI зелёный на трёх ОС + docker).
+0. **GitHub Actions не запускается.** На PR #24 все четыре job упали за 3 с
+   без логов с аннотацией «The job was not started because recent account
+   payments have failed or your spending limit needs to be increased»
+   (Settings → Billing & plans). Последний успешный прогон — `main@10ccc2c`
+   в 23:19 UTC; после него ночные прогоны на трёх ОС (macOS считается ×10)
+   выбрали лимит. Поднять лимит / поправить оплату → «Re-run all jobs» на
+   PR #24. Локально эквивалент CI пройден: `go build`, `go vet` (linux,
+   windows, darwin), `gofmt`, `go test -race` (все пакеты), `staticcheck`,
+   `govulncheck`, `shellcheck`, `goreleaser` snapshot; не воспроизведены
+   здесь только `hadolint` и сборка образа (нет Docker-демона) — они
+   зелёные на `main`, Dockerfile в этом PR меняет один комментарий.
+1. Прочитать и смержить этот PR после зелёного CI на трёх ОС + docker.
 2. **Секреты для `cloud-e2e`**: Settings → Secrets → Actions: `CLOUDRU_KEY_ID`, `CLOUDRU_SECRET`, `CLOUDRU_PROJECT_ID` тестового SA. Запустить `cloud-e2e` вручную (zone `ru.AZ-2`). Зелёный прогон закрывает метрику 5 (ВМ с Docker, `verify`, `logs -f` > 120 с, `destroy` удаляет ВМ и FIP). Если `logs -f` или SSH упадут — это первый реальный дефект для rc.2, не блокер тега.
 3. **Ротация ключа SA.** Ключ тестового аккаунта этой ночью лежал в окружении нескольких агентских контейнеров (`/root/.cloudru.env`). Создать новый ключ в консоли → положить в секреты репозитория (п. 2) → удалить старый. Проверить `cloudru-vm whoami` с новым.
 4. Ответить на вопросы 1–3 (остальные могут подождать GA). Если правообладателя надо менять — одна правка `NOTICE` + README до тега.
