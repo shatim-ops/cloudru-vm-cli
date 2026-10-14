@@ -45,3 +45,6 @@
 - [08] README: раздел «MCP по HTTP / Docker» (`MCP_BEARER_TOKEN`, `--auth`, `--allow-secret-export`, секреты `CLOUDRU_AR_*`) · README.md · этап 9; пока — `cloudru-vm mcp --help` и комментарии в Dockerfile/release.yml
 - [04] MCP `s3_bucket_create` создаёт бакет без `confirmed` (единственная изменяющая операция без гейта) · internal/tools/tools_s3.go `handleS3BucketCreate` · этап 4 переносит реестр без изменения поведения MCP; CLI (`tools call`) спрашивает подтверждение сам
 - [04] Строки BACKLOG [06], [02], [03] ссылаются на `internal/mcp/tools*.go`, `captainkeys.go`, `opwait.go` — после этапа 4 эти файлы в `internal/tools/` (номера строк те же) · docs/standalone/BACKLOG.md · чужие строки не правлю
+- [04] `vm_list` / `vm list` без flavor и публичного IP: `provision.VM` не разбирает вложенные `flavor` и FIP ответа `GET /api/v1/vms` (поле `flavor_id` приходило пустым — из вывода убрано) · internal/provision/types.go `VM` · чужой пакет; IP одной ВМ отдаёт `vm get`
+- [04] Нет инструментов `vm start/stop/reboot` — в дереве `vm` их нет · internal/tools, internal/provision · сначала инструмент в реестре, потом команда
+- [04] Обработчики s3 без ключей Object Storage отвечают простой строкой «S3 credentials not configured» — код выхода 5 вместо 2 · internal/tools/tools_s3.go `s3Client` · ответы обработчиков этап 4 не меняет

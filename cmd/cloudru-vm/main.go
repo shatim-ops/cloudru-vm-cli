@@ -133,6 +133,7 @@ func newRootCmd() *cobra.Command {
 		newDoctorCmd(),
 		newToolsCmd(),
 	)
+	cmd.AddCommand(newTreeCmds()...)
 
 	return cmd
 }

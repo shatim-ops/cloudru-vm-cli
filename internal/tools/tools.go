@@ -67,6 +67,11 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
+			Name:        "vm_list",
+			Description: "List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. Read-only. For IPs and interfaces of one VM use vm_get. Unlike 'list' (local deployment records of this directory), this shows every VM in the project.",
+			InputSchema: objSchema(nil),
+		},
+		{
 			Name:        "logs",
 			Description: "Retrieve container logs from the deployed VM via 'docker compose logs' over SSH.",
 			InputSchema: objSchema(map[string]any{
@@ -1206,6 +1211,7 @@ func (s *Registry) registerTools() {
 		"status":               s.handleStatus,
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,
+		"vm_list":              s.handleVMList,
 		"logs":                 s.handleLogs,
 		"destroy":              s.handleDestroy,
 		"list_zones":           s.handleListZones,
