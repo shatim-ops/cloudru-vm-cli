@@ -35,7 +35,12 @@ func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	cl := &http.Client{Timeout: 20 * time.Second}
+	// No redirects: on 307/308 the client would POST the same body, with
+	// client_secret, to wherever the Location points.
+	cl := &http.Client{
+		Timeout:       20 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	resp, err := cl.Do(req)
 	if err != nil {
 		return "", err
@@ -62,8 +67,30 @@ func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string
 }
 
 // OIDCURLFromKubeconfig pulls the --iam-url from the kubeconfig's exec-auth
-// block (so we hit the exact endpoint the cluster expects); returns "" if absent.
+// block (so we hit the exact endpoint the cluster expects); returns "" if
+// absent or not an https URL on cloud.ru. The kubeconfig comes from the API,
+// and the access key secret is posted to this URL: any other host, or plain
+// http, would hand the secret to whoever answers there.
 func OIDCURLFromKubeconfig(raw string) string {
+	u := iamURLFromKubeconfig(raw)
+	if !trustedIAMURL(u) {
+		return ""
+	}
+	return u
+}
+
+// trustedIAMURL reports whether u is https://cloud.ru or a subdomain, on the
+// default port and without user info.
+func trustedIAMURL(u string) bool {
+	p, err := url.Parse(u)
+	if err != nil || p.Scheme != "https" || p.User != nil || p.Port() != "" {
+		return false
+	}
+	h := strings.ToLower(p.Hostname())
+	return h == "cloud.ru" || strings.HasSuffix(h, ".cloud.ru")
+}
+
+func iamURLFromKubeconfig(raw string) string {
 	var kc map[string]any
 	if yaml.Unmarshal([]byte(raw), &kc) != nil {
 		return ""
