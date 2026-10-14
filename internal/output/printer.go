@@ -52,6 +52,17 @@ func NewWithWriter(w io.Writer, mode Mode, color bool) *Printer {
 	}
 }
 
+// NewWithWriters creates a Printer with separate result and diagnostic
+// writers (for testing what goes to stdout vs stderr).
+func NewWithWriters(out, errOut io.Writer, mode Mode, color bool) *Printer {
+	return &Printer{
+		out:    out,
+		errOut: errOut,
+		mode:   mode,
+		color:  color,
+	}
+}
+
 // Step prints a step indicator: "==> [1/5] Message..."
 func (p *Printer) Step(n, total int, msg string) {
 	if p.mode == ModeJSON {
@@ -165,4 +176,26 @@ func (p *Printer) IsJSON() bool {
 // Writer returns the underlying output writer.
 func (p *Printer) Writer() io.Writer {
 	return p.out
+}
+
+// ErrWriter returns the writer for diagnostics and prompts (stderr), so that
+// stdout carries only the command's result.
+func (p *Printer) ErrWriter() io.Writer {
+	return p.errOut
+}
+
+// ErrorBody is the payload of a JSON-mode error.
+type ErrorBody struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Hint    string `json:"hint"`
+}
+
+// JSONError writes {"error": {"code": N, "message": "...", "hint": "..."}}
+// to the error writer. code is the process exit code.
+func (p *Printer) JSONError(code int, message, hint string) error {
+	enc := json.NewEncoder(p.errOut)
+	return enc.Encode(struct {
+		Error ErrorBody `json:"error"`
+	}{ErrorBody{Code: code, Message: message, Hint: hint}})
 }

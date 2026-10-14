@@ -1,9 +1,15 @@
 package engine
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 	"time"
+
+	"golang.org/x/term"
 
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
@@ -14,6 +20,13 @@ type DestroyOptions struct {
 	Force bool // skip confirmation prompt
 }
 
+// destroyStdin is where the confirmation answer is read from; destroyStdinIsTTY
+// tells whether a human can answer at all. Variables so tests can replace them.
+var (
+	destroyStdin      io.Reader = os.Stdin
+	destroyStdinIsTTY           = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+)
+
 // Destroy tears down the active deployment.
 func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	statePath := state.DefaultPath(e.StateDir)
@@ -23,6 +36,19 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 
 	active := stateFile.ActiveDeployment()
+
+	// Without a terminal nobody can answer the prompt: reading stdin would
+	// hit EOF and look like a refusal. Fail loudly instead of exiting 0.
+	if !opts.Force && !destroyStdinIsTTY() {
+		target := "the deployment"
+		if active != nil {
+			target = "VM " + active.VMID
+		}
+		return clerrors.New(clerrors.CodeConfirmationRequired,
+			fmt.Sprintf("refusing to destroy %s: confirmation required and stdin is not a terminal", target),
+			"Re-run with --force to destroy without a prompt.")
+	}
+
 	if active == nil {
 		e.Printer.Success("No active deployment to destroy.")
 		return nil
@@ -33,12 +59,15 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	if !opts.Force {
 		e.Printer.Warning(fmt.Sprintf("This will permanently delete VM %s and all data on it.", active.VMID))
-		fmt.Fprintf(e.Printer.Writer(), "Type 'yes' to confirm: ")
-		var answer string
-		fmt.Scanln(&answer)
+		fmt.Fprintf(e.Printer.ErrWriter(), "Type 'yes' to confirm: ")
+		answer, err := readAnswer(ctx, destroyStdin)
+		if err != nil {
+			return err
+		}
 		if answer != "yes" {
-			e.Printer.Hint("Destruction cancelled.")
-			return nil
+			return clerrors.New(clerrors.CodeConfirmationRequired,
+				"destruction cancelled: confirmation not given",
+				"Type 'yes' at the prompt, or re-run with --force.")
 		}
 	}
 
@@ -101,4 +130,20 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	e.Printer.Success("Deployment destroyed successfully.")
 	return nil
+}
+
+// readAnswer reads one line from r, giving up when ctx is cancelled
+// (Ctrl-C at the prompt).
+func readAnswer(ctx context.Context, r io.Reader) (string, error) {
+	ch := make(chan string, 1)
+	go func() {
+		line, _ := bufio.NewReader(r).ReadString('\n')
+		ch <- strings.TrimSpace(line)
+	}()
+	select {
+	case answer := <-ch:
+		return answer, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }
