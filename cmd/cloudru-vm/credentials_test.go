@@ -376,11 +376,21 @@ func TestDeprecatedAPIKeyWarnsOnStderr(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "Warning: CLOUDRU_API_KEY") || !strings.Contains(stderr, "deprecated") {
+	// With --json the warning is a JSON line: stderr stays parseable.
+	var w struct {
+		Warning string `json:"warning"`
+	}
+	if err := json.Unmarshal([]byte(strings.SplitN(stderr, "\n", 2)[0]), &w); err != nil ||
+		!strings.Contains(w.Warning, "CLOUDRU_API_KEY") || !strings.Contains(w.Warning, "deprecated") {
 		t.Errorf("no deprecation warning on stderr: %q", stderr)
 	}
-	if strings.Contains(stdout, "Warning") {
+	if strings.Contains(stdout, "warning") {
 		t.Errorf("warning leaked into stdout: %q", stdout)
+	}
+
+	newProcess()
+	if _, _, stderr := runCLI(t, "", "whoami"); !strings.Contains(stderr, "Warning: CLOUDRU_API_KEY") {
+		t.Errorf("no text warning without --json: %q", stderr)
 	}
 }
 

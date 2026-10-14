@@ -23,17 +23,14 @@ func IsTTY(fd int) bool {
 	return term.IsTerminal(fd)
 }
 
-// ColorEnabled returns true if color output should be used.
+// ColorEnabled returns true if color output should be used on stdout.
 // Disabled by: NO_COLOR env var, TERM=dumb, no TTY, or explicit noColor flag.
 func ColorEnabled(noColor bool) bool {
-	if noColor {
-		return false
-	}
-	if _, ok := os.LookupEnv("NO_COLOR"); ok {
-		return false
-	}
-	if os.Getenv("TERM") == "dumb" {
-		return false
-	}
-	return IsTTY(int(os.Stdout.Fd()))
+	return colorAllowed(noColor) && IsTTY(int(os.Stdout.Fd()))
+}
+
+// colorAllowed applies the flag and the environment, not the terminal.
+// NO_COLOR counts only when non-empty (https://no-color.org).
+func colorAllowed(noColor bool) bool {
+	return !noColor && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
 }

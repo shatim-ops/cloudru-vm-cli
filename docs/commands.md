@@ -606,6 +606,10 @@ cloudru-vm destroy [flags]
 
 Disks
 
+```
+cloudru-vm disk [flags]
+```
+
 ### Options
 
 ```
@@ -1009,6 +1013,10 @@ cloudru-vm init [flags]
 ## cloudru-vm k8s
 
 Managed Kubernetes clusters
+
+```
+cloudru-vm k8s [flags]
+```
 
 ### Options
 
@@ -1751,6 +1759,10 @@ cloudru-vm mcp [flags]
 
 Managed PostgreSQL clusters, databases, users, backups
 
+```
+cloudru-vm pg [flags]
+```
+
 ### Options
 
 ```
@@ -2405,6 +2417,10 @@ cloudru-vm pg versions [flags]
 
 Object Storage: buckets and objects
 
+```
+cloudru-vm s3 [flags]
+```
+
 ### Options
 
 ```
@@ -2721,6 +2737,10 @@ cloudru-vm s3 rm <bucket> <key> [flags]
 ## cloudru-vm secret
 
 Secret Manager
+
+```
+cloudru-vm secret [flags]
+```
 
 ### Options
 
@@ -3044,6 +3064,10 @@ advance, --dry-run to see the preview only; without a terminal and without
 --yes the call stops with exit code 3.
 ```
 
+```
+cloudru-vm tools [flags]
+```
+
 ### Options
 
 ```
@@ -3082,7 +3106,8 @@ Call a tool and print its JSON result as is.
 Arguments come from --args-file, then --args-json, then --arg (later ones
 win). --arg values are converted by the tool's schema: integer, number and
 boolean are parsed; an array is a comma-separated list (or a JSON array);
-an object is JSON.
+an object is JSON. Names and types from the JSON sources are checked
+against the schema too; null means "not given".
 
   cloudru-vm tools call list_zones
   cloudru-vm tools call vm_get --arg name=web
@@ -3252,6 +3277,10 @@ cloudru-vm version [flags]
 ## cloudru-vm vm
 
 Virtual machines
+
+```
+cloudru-vm vm [flags]
+```
 
 ### Options
 
@@ -3527,6 +3556,10 @@ cloudru-vm vm zones [flags]
 ## cloudru-vm vpc
 
 Networks: VPCs, routes, subnets, security groups, floating IPs
+
+```
+cloudru-vm vpc [flags]
+```
 
 ### Options
 

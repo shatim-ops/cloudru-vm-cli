@@ -36,6 +36,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	active := stateFile.ActiveDeployment()
 	if active == nil {
+		if e.Printer.IsJSON() {
+			return e.Printer.JSON(map[string]any{"status": "none", "message": "No active deployment to destroy."})
+		}
 		e.Printer.Success("No active deployment to destroy.")
 		return nil
 	}
@@ -140,6 +143,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		return err
 	}
 
+	if e.Printer.IsJSON() {
+		return e.Printer.JSON(map[string]any{"status": "destroyed", "vm_id": active.VMID, "vm_ip": active.VMIP})
+	}
 	e.Printer.Success("Deployment destroyed successfully.")
 	return nil
 }

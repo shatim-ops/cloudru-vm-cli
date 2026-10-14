@@ -42,6 +42,10 @@ Verify the key ID and secret: 'cloudru-vm configure', or CLOUDRU_KEY_ID / CLOUDR
 {"error":{"code":2,"message":"IAM rejected the credentials (status 401)","hint":"Verify the key ID and secret: 'cloudru-vm configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET"}}
 ```
 
+Предупреждения (устаревшая переменная, права `credentials.yaml`, порты, которые
+не удалось открыть) с `--json` — тоже строки JSON в stderr, перед ошибкой:
+`{"warning":"…"}`. Так каждая строка stderr разбирается `jq`.
+
 `code` — код выхода. Символьный код из таблицы (`AUTH_FAILED`) попадает в
 `message` только у ошибок с добавленным контекстом
 (`checking the access key: AUTH_FAILED: …`); опирайтесь на `code`, а не на

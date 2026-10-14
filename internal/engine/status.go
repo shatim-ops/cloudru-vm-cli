@@ -17,6 +17,10 @@ func (e *Engine) Status(ctx context.Context) error {
 
 	active := stateFile.ActiveDeployment()
 	if active == nil {
+		if e.Printer.IsJSON() {
+			// The same answer as the MCP status tool: --json must print JSON.
+			return e.Printer.JSON(map[string]any{"status": "none", "message": "No active deployment."})
+		}
 		e.Printer.Success("No active deployment.")
 		e.Printer.Hint("Run 'cloudru-vm deploy' to create one.")
 		return nil
