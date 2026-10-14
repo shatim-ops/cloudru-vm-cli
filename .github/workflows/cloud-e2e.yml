@@ -115,8 +115,7 @@ jobs:
 
       - name: destroy --yes (всегда)
         if: always()
-        working-directory: e2e-app
         run: |
-          [ -f .cloudru-vm/state.json ] || { echo "нечего удалять"; exit 0; }
+          cd e2e-app 2>/dev/null && [ -f .cloudru-vm/state.json ] || { echo "нечего удалять"; exit 0; }
           for i in 1 2 3; do cloudru-vm destroy --yes && break; sleep 30; done
           jq -e '.deployments | length == 0' .cloudru-vm/state.json
