@@ -47,8 +47,8 @@ var (
 )
 
 // printWarnings prints each warning once per process: the MCP server
-// resolves the configuration on every tool call. Warnings go to stderr even
-// with --json, which keeps stdout machine-readable.
+// resolves the configuration on every tool call. Warnings go to stderr,
+// with --json as {"warning": "..."} lines: both streams stay parseable.
 func printWarnings(p *output.Printer, warnings []string) {
 	warnedMu.Lock()
 	defer warnedMu.Unlock()
@@ -57,7 +57,7 @@ func printWarnings(p *output.Printer, warnings []string) {
 			continue
 		}
 		warned[w] = true
-		fmt.Fprintf(p.ErrWriter(), "Warning: %s\n", w)
+		p.Warning(w)
 	}
 }
 

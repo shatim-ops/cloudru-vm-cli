@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -166,12 +167,61 @@ func LoadProfile(name string) (Profile, Credentials, bool, error) {
 	return p, cr, ok1 || ok2, nil
 }
 
+// lockName is the lock file that serialises changes of the profile files.
+const lockName = ".lock"
+
+// Waiting for the lock: the holder only rewrites two small files, so a
+// lock older than lockStale was left by a process that died.
+var (
+	lockWait  = 10 * time.Second
+	lockStale = 30 * time.Second
+	lockPoll  = 20 * time.Millisecond
+)
+
+// lockProfiles takes the lock of Dir(). SaveProfile and DeleteProfile read
+// both files, change one profile and write them back; without the lock two
+// 'configure' runs at once lose one of the profiles.
+func lockProfiles() (unlock func(), err error) {
+	dir := Dir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create %s: %w", dir, err)
+	}
+	path := filepath.Join(dir, lockName)
+	deadline := time.Now().Add(lockWait)
+	for {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err == nil {
+			fmt.Fprintf(f, "%d\n", os.Getpid())
+			f.Close()
+			return func() { os.Remove(path) }, nil
+		}
+		if !os.IsExist(err) {
+			return nil, fmt.Errorf("lock %s: %w", path, err)
+		}
+		if st, serr := os.Stat(path); serr == nil && time.Since(st.ModTime()) > lockStale {
+			os.Remove(path)
+			continue
+		}
+		if time.Now().After(deadline) {
+			return nil, clerrors.New(clerrors.CodeConfigInvalid,
+				fmt.Sprintf("profiles are locked by another cloudru-vm process (%s)", path),
+				"Wait for the other 'cloudru-vm configure' to finish; if none is running, delete the lock file")
+		}
+		time.Sleep(lockPoll)
+	}
+}
+
 // SaveProfile writes the profile into both files (0600, directory 0700),
 // keeping the other profiles.
 func SaveProfile(name string, p Profile, c Credentials) error {
 	if err := ValidateProfileName(name); err != nil {
 		return err
 	}
+	unlock, err := lockProfiles()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	s, err := readSettingsFile()
 	if err != nil {
 		return err
@@ -196,6 +246,11 @@ func SaveProfile(name string, p Profile, c Credentials) error {
 
 // DeleteProfile removes a profile from both files and drops its token cache.
 func DeleteProfile(name string) error {
+	unlock, err := lockProfiles()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	s, err := readSettingsFile()
 	if err != nil {
 		return err
@@ -218,6 +273,12 @@ func DeleteProfile(name string) error {
 	}
 	if err := writeYAML(CredentialsPath(), cr); err != nil {
 		return err
+	}
+	// A name read from the file is not validated: "x/../../y" would make
+	// the cache path point outside the cache directory. Such a profile
+	// never had a cache file (Resolve rejects the name).
+	if ValidateProfileName(name) != nil {
+		return nil
 	}
 	if err := os.Remove(TokenCachePath(name)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove token cache: %w", err)

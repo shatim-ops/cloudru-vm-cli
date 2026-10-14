@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/pricing"
@@ -122,8 +123,22 @@ func Save(stateDir string, p *Plan) error {
 	return os.WriteFile(filepath.Join(dir, p.PlanID+".json"), data, 0o600)
 }
 
+// validPlanID reports whether id is what newPlanID makes. The id comes from
+// the MCP client and becomes a file name: nothing else may reach the path.
+func validPlanID(id string) bool {
+	const prefix = "plan-"
+	if !strings.HasPrefix(id, prefix) || len(id) != len(prefix)+12 {
+		return false
+	}
+	_, err := hex.DecodeString(id[len(prefix):])
+	return err == nil
+}
+
 // Load reads a plan by id, enforcing the TTL.
 func Load(stateDir, planID string) (*Plan, error) {
+	if !validPlanID(planID) {
+		return nil, fmt.Errorf("plan %q not found: a plan_id looks like plan-0123456789ab (run deploy_plan to get one)", planID)
+	}
 	dir, err := plansDir(stateDir)
 	if err != nil {
 		return nil, err
@@ -144,6 +159,9 @@ func Load(stateDir, planID string) (*Plan, error) {
 
 // Delete removes a plan file (best-effort; called after a successful apply).
 func Delete(stateDir, planID string) {
+	if !validPlanID(planID) {
+		return
+	}
 	dir, err := plansDir(stateDir)
 	if err != nil {
 		return

@@ -17,7 +17,8 @@ const (
 	CodeComposeNotFound   = "COMPOSE_NOT_FOUND"
 	CodeConfigInvalid     = "CONFIG_INVALID"
 	CodeStateCorrupted    = "STATE_CORRUPTED"
-	CodeUnhealthy         = "UNHEALTHY" // verify: a service did not answer; exit 1
+	CodeStateLocked       = "STATE_LOCKED" // another deploy/destroy holds the state lock; exit 1
+	CodeUnhealthy         = "UNHEALTHY"    // verify: a service did not answer; exit 1
 
 	CodeConfirmationRequired = "CONFIRMATION_REQUIRED"
 	CodeUsage                = "USAGE"     // unknown command or flag, bad arguments

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -44,7 +45,7 @@ func cmdPrinter(cmd *cobra.Command) *output.Printer {
 }
 
 func newToolsCmd() *cobra.Command {
-	cmd := &cobra.Command{
+	cmd := asGroup(&cobra.Command{
 		Use:   "tools",
 		Short: "List, describe and call any of the cloudru-vm tools (the same ones the MCP server exposes)",
 		Long: `Every operation the MCP server exposes is available here as a tool.
@@ -57,7 +58,7 @@ Tools that create paid resources or delete data ask for confirmation the same
 way as the other commands: a prompt on a terminal, --yes to confirm in
 advance, --dry-run to see the preview only; without a terminal and without
 --yes the call stops with exit code 3.`,
-	}
+	})
 	cmd.AddCommand(newToolsListCmd(), newToolsDescribeCmd(), newToolsCallCmd())
 	return cmd
 }
@@ -268,7 +269,8 @@ func newToolsCallCmd() *cobra.Command {
 Arguments come from --args-file, then --args-json, then --arg (later ones
 win). --arg values are converted by the tool's schema: integer, number and
 boolean are parsed; an array is a comma-separated list (or a JSON array);
-an object is JSON.
+an object is JSON. Names and types from the JSON sources are checked
+against the schema too; null means "not given".
 
   cloudru-vm tools call list_zones
   cloudru-vm tools call vm_get --arg name=web
@@ -329,6 +331,26 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 	for _, p := range schemaParams(t) {
 		params[p.Name] = p
 	}
+	// JSON arguments get the same checks as --arg: a misspelt name or a
+	// string where the schema wants a number would otherwise reach the
+	// handler, which silently takes its default.
+	for name, v := range args {
+		if name == "confirmed" {
+			continue // refused below with a hint
+		}
+		if v == nil {
+			delete(args, name) // null: as if not given
+			continue
+		}
+		p, known := params[name]
+		if !known {
+			return nil, unknownArgError(t, name)
+		}
+		if err := checkArgType(p, v); err != nil {
+			return nil, clerrors.New(clerrors.CodeUsage, fmt.Sprintf("argument %s: %v", name, err),
+				fmt.Sprintf("Run 'cloudru-vm tools describe %s'.", t.Name))
+		}
+	}
 	for _, pair := range pairs {
 		name, value, ok := strings.Cut(pair, "=")
 		if !ok || name == "" {
@@ -350,7 +372,9 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 	}
 	var missing []string
 	for _, p := range schemaParams(t) {
-		if _, ok := args[p.Name]; p.Required && !ok {
+		// An empty string is no value: the handler would answer
+		// "required" as a tool error (exit 5) instead of a usage error.
+		if v, ok := args[p.Name]; p.Required && (!ok || v == "") {
 			missing = append(missing, p.Name)
 		}
 	}
@@ -398,7 +422,8 @@ func coerceArg(p param, value string) (any, error) {
 		return float64(n), nil
 	case "number":
 		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil {
+		// NaN and ±Inf parse, but JSON cannot carry them.
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
 			return nil, fmt.Errorf("%q is not a number", value)
 		}
 		return f, nil
@@ -414,7 +439,18 @@ func coerceArg(p param, value string) (any, error) {
 			if err := json.Unmarshal([]byte(value), &a); err != nil {
 				return nil, fmt.Errorf("not a JSON array: %v", err)
 			}
+			if err := checkArgType(p, a); err != nil {
+				return nil, err
+			}
 			return a, nil
+		}
+		if p.ItemType == "object" || p.ItemType == "array" {
+			// JSON items contain commas themselves: one value, one item.
+			v, err := coerceArg(param{Type: p.ItemType}, value)
+			if err != nil {
+				return nil, err
+			}
+			return []any{v}, nil
 		}
 		out := []any{}
 		for _, part := range strings.Split(value, ",") {
@@ -437,6 +473,50 @@ func coerceArg(p param, value string) (any, error) {
 		return m, nil
 	}
 	return value, nil
+}
+
+// checkArgType checks a decoded JSON value against the schema type of p.
+// An untyped parameter takes anything.
+func checkArgType(p param, v any) error {
+	ok := true
+	switch p.Type {
+	case "integer":
+		f, isNum := v.(float64)
+		ok = isNum && f == math.Trunc(f) && !math.IsInf(f, 0)
+	case "number":
+		f, isNum := v.(float64)
+		ok = isNum && !math.IsNaN(f) && !math.IsInf(f, 0)
+	case "boolean":
+		_, ok = v.(bool)
+	case "string":
+		_, ok = v.(string)
+	case "object":
+		_, ok = v.(map[string]any)
+	case "array":
+		a, isArr := v.([]any)
+		if !isArr {
+			ok = false
+			break
+		}
+		for i, item := range a {
+			if err := checkArgType(param{Type: p.ItemType}, item); err != nil {
+				return fmt.Errorf("item %d: %v", i, err)
+			}
+		}
+	}
+	if !ok {
+		b, _ := json.Marshal(v)
+		return fmt.Errorf("want %s, got %s", article(p.Type), summary(string(b), 40))
+	}
+	return nil
+}
+
+func article(typ string) string {
+	switch typ {
+	case "integer", "array", "object":
+		return "an " + typ
+	}
+	return "a " + typ
 }
 
 // applyWait sets wait_seconds to the longest wait the tool allows, unless

@@ -21,11 +21,17 @@ func (e *Engine) Verify(ctx context.Context) error {
 
 	active := stateFile.ActiveDeployment()
 	if active == nil {
+		if e.Printer.IsJSON() {
+			return e.Printer.JSON([]verify.ProbeResult{}) // nothing checked
+		}
 		e.Printer.Success("No active deployment to verify.")
 		e.Printer.Hint("Run 'cloudru-vm deploy' first.")
 		return nil
 	}
 	if len(active.ExposedPorts) == 0 {
+		if e.Printer.IsJSON() {
+			return e.Printer.JSON([]verify.ProbeResult{})
+		}
 		e.Printer.Success("No exposed ports to verify.")
 		return nil
 	}

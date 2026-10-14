@@ -205,13 +205,16 @@ func resolve(opts Options) (Config, map[string]string, error) {
 // taken as a whole: mixing an env key ID with a profile secret would only
 // produce a confusing IAM rejection.
 func applyEnvCredentials(cfg *Config, origins map[string]string) error {
-	keyID, secret := os.Getenv("CLOUDRU_KEY_ID"), os.Getenv("CLOUDRU_SECRET")
+	// Values pasted from a .env file often carry "\r" or spaces; IAM would
+	// reject the key with no hint why.
+	keyID := strings.TrimSpace(os.Getenv("CLOUDRU_KEY_ID"))
+	secret := strings.TrimSpace(os.Getenv("CLOUDRU_SECRET"))
 	if keyID != "" || secret != "" {
 		cfg.KeyID, cfg.Secret = keyID, secret
 		origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
 		return nil
 	}
-	legacy := os.Getenv("CLOUDRU_API_KEY")
+	legacy := strings.TrimSpace(os.Getenv("CLOUDRU_API_KEY"))
 	if legacy == "" {
 		return nil
 	}
@@ -230,6 +233,7 @@ func applyEnvCredentials(cfg *Config, origins map[string]string) error {
 
 func splitLegacyKey(v string) (keyID, secret string, ok bool) {
 	keyID, secret, found := strings.Cut(v, ":")
+	keyID, secret = strings.TrimSpace(keyID), strings.TrimSpace(secret)
 	return keyID, secret, found && keyID != "" && secret != ""
 }
 

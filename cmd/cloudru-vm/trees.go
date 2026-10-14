@@ -138,7 +138,7 @@ func newTreeCmds() []*cobra.Command {
 	reg := newRegistry()
 	var out []*cobra.Command
 	for _, g := range treeGroups {
-		group := &cobra.Command{Use: g.Name, Short: g.Short}
+		group := asGroup(&cobra.Command{Use: g.Name, Short: g.Short})
 		for _, c := range g.Cmds {
 			t, ok := reg.Lookup(c.Tool)
 			if !ok {
@@ -235,6 +235,9 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		Short: short,
 		Long:  long,
 		Args: func(cmd *cobra.Command, args []string) error {
+			if maxArgs == 0 && len(args) > 0 {
+				return fmt.Errorf("%s takes no arguments, got %q", cmd.CommandPath(), args[0])
+			}
 			if len(args) < minArgs || (maxArgs >= 0 && len(args) > maxArgs) {
 				return fmt.Errorf("%s: want %s, got %d argument(s)", cmd.CommandPath(), strings.Join(use[1:], " "), len(args))
 			}
@@ -294,6 +297,12 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 	for _, p := range pos {
 		if i >= len(args) {
 			break
+		}
+		if args[i] == "" && !p.optional {
+			label := strings.ReplaceAll(strings.Join(p.names, "|"), "_", "-")
+			return nil, clerrors.New(clerrors.CodeUsage,
+				fmt.Sprintf("%s: <%s> is empty", cmd.CommandPath(), label),
+				fmt.Sprintf("Run '%s --help'.", cmd.CommandPath()))
 		}
 		switch {
 		case p.rest:

@@ -122,7 +122,8 @@ poll:
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			// The VM exists: say which, or nobody will find it.
+			return nil, fmt.Errorf("VM %s was created, but the wait for it was interrupted; it is still running — check it with vm_get, delete it in the Cloud.ru console if unwanted: %w", vm.ID, ctx.Err())
 		case <-deadline:
 			return &ApplyResult{
 				VMID: vm.ID, Status: "timeout", Password: password,
