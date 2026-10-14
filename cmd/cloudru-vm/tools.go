@@ -125,8 +125,11 @@ func knownGroup(g string) bool {
 
 // summary returns the first sentence of s, cut to max runes.
 func summary(s string, max int) string {
-	if i := strings.Index(s, ". "); i >= 0 {
-		s = s[:i+1]
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] == '.' && s[i+1] == ' ' && !strings.HasSuffix(s[:i], "e.g") && !strings.HasSuffix(s[:i], "i.e") {
+			s = s[:i+1]
+			break
+		}
 	}
 	r := []rune(s)
 	if len(r) > max {
