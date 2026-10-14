@@ -26,9 +26,17 @@ need() {
 	command -v "$1" >/dev/null 2>&1 || die "нужна утилита $1"
 }
 
+# Без cosign целостность держится на TLS: checksums.txt приходит оттуда же,
+# откуда архив. Поэтому для https-адреса curl не идёт ни на что, кроме
+# https, и в том числе по редиректам (GitHub отдаёт файлы релиза редиректом
+# на другой хост): иначе «https → http» отдал бы архив и суммы тому, кто
+# сидит в сети.
 download() { # url file
 	if command -v curl >/dev/null 2>&1; then
-		curl -fsSL -o "$2" "$1"
+		case "$1" in
+		https://*) curl --proto '=https' --tlsv1.2 -fsSL -o "$2" "$1" ;;
+		*) curl -fsSL -o "$2" "$1" ;;
+		esac
 	elif command -v wget >/dev/null 2>&1; then
 		wget -q -O "$2" "$1"
 	else
@@ -56,7 +64,7 @@ detect_arch() {
 # лимитов. Pre-release (rc) туда не попадает.
 latest_tag() {
 	need curl
-	url=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest") ||
+	url=$(curl --proto '=https' --tlsv1.2 -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest") ||
 		die "не удалось узнать последний релиз; задайте CLOUDRU_VM_VERSION"
 	tag=${url##*/}
 	case "$tag" in
@@ -86,6 +94,10 @@ main() {
 	version=${tag#v}
 
 	base=${CLOUDRU_VM_BASE_URL:-https://github.com/$REPO/releases/download}
+	case "$base" in
+	https://*) ;;
+	*) say "внимание: $base — не https; без cosign подлинность архива не проверяется ничем" ;;
+	esac
 	archive="${BINARY}_${version}_${os}_${arch}.tar.gz"
 
 	tmp=$(mktemp -d)

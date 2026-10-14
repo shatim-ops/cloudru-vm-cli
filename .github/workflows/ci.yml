@@ -8,6 +8,11 @@ on:
   # Вызывается из release.yml перед сборкой релиза.
   workflow_call:
 
+# GITHUB_TOKEN только на чтение: сборке и тестам писать в репозиторий
+# незачем, а код PR и зависимостей выполняется в этих job.
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
@@ -23,8 +28,11 @@ jobs:
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
 
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Токен GITHUB_TOKEN не остаётся в .git/config для следующих шагов.
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           # 1.26.9 закрывает GO-2026-6603/6605/6607/6608/6610 (net/http,
           # crypto/tls, net/textproto); 1.26.5 закрывал GO-2026-5856 и
@@ -50,7 +58,7 @@ jobs:
       # Конфиг релиза проверяется на каждом PR, а не впервые на теге.
       - name: goreleaser check
         if: runner.os == 'Linux'
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           # Та же версия, что в release.yml; поднимать вручную в обоих.
           version: v2.18.3
@@ -72,15 +80,25 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           "$(go env GOPATH)/bin/govulncheck" ./...
 
+      # Версия зафиксирована, как у govulncheck; поднимать вручную.
+      - name: staticcheck
+        if: runner.os == 'Linux'
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+          "$(go env GOPATH)/bin/staticcheck" ./...
+
   # Образ MCP-сервера для Marketplace: сборка и smoke-тест по HTTP. Кредов
   # Cloud.ru не нужно: initialize и tools/list в облако не ходят.
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Токен GITHUB_TOKEN не остаётся в .git/config для следующих шагов.
+          persist-credentials: false
 
       - name: hadolint
-        run: docker run --rm -i hadolint/hadolint:v2.12.0 < Dockerfile
+        run: docker run --rm -i hadolint/hadolint:v2.12.0@sha256:30a8fd2e785ab6176eed53f74769e04f125afb2f74a6c52aef7d463583b6d45e < Dockerfile
 
       - name: docker build
         run: docker build -t cloudru-vm:ci --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" .

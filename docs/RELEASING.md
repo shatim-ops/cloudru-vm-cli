@@ -22,6 +22,15 @@
 
 Версия goreleaser зафиксирована в `ci.yml` и `release.yml` (`v2.18.3`); поднимать в обоих сразу.
 
+Цепочка поставок: сторонние экшены закреплены по SHA коммита (версия — в
+комментарии), базовые образы `Dockerfile` и `hadolint` — по digest; их
+поднимает Dependabot (`.github/dependabot.yml`) отдельными PR. Тег можно
+переписать в чужом репозитории, SHA и digest — нет. Job `goreleaser`
+собирает без кэша Actions (`cache: false`): подписанный бинарь не берёт
+объектные файлы из кэша, который мог записать другой запуск. У `GITHUB_TOKEN`
+по умолчанию только `contents: read`, `checkout` не оставляет токен в
+`.git/config`.
+
 ## Docker-образ MCP-сервера
 
 Job `image` в `release.yml` после `ci` собирает образ, гоняет smoke-тест

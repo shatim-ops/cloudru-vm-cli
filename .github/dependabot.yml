@@ -1,0 +1,17 @@
+# Экшены закреплены по SHA коммита, базовые образы — по digest: тег у
+# стороннего репозитория можно переписать, SHA и digest — нет. Dependabot
+# поднимает их PR-ами (с версией в комментарии), а не молча.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

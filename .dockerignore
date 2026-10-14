@@ -7,3 +7,16 @@ docs
 specs
 *.md
 !README.md
+# Секреты и ключи не уходят в контекст сборки (а с ним — в слои стадии
+# build и на удалённый сборщик). Шаблоны — с **/: без него .dockerignore
+# совпадает только с корнем.
+**/.cloudru-vm
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/credentials
+**/credentials.yaml
+.e2e-config
+e2e-app
