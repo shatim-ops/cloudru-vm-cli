@@ -2458,7 +2458,7 @@ Create an Object Storage (S3) bucket.
 ### Synopsis
 
 ```text
-Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error.
+Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the captain approves.
 
 Runs the s3_bucket_create tool (see 'cloudru-vm tools describe s3_bucket_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
