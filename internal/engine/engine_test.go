@@ -54,6 +54,9 @@ type mockCloudAPI struct {
 	listFloatingIPsFn       func(ctx context.Context, projectID string) ([]*provision.FloatingIP, error)
 	deleteFloatingIPFn      func(ctx context.Context, fipID, projectID string) error
 	listDiskTypesFn         func(ctx context.Context, projectID string) ([]*provision.DiskType, error)
+	listSubnetsFn           func(ctx context.Context, projectID string) ([]*provision.Subnet, error)
+	listSecurityGroupsFn    func(ctx context.Context, projectID string) ([]*provision.SecurityGroup, error)
+	addedRules              []provision.SGRule
 
 	token        string
 	createCalled bool
@@ -690,4 +693,25 @@ func TestDeploy_ForceRedeploy(t *testing.T) {
 	if !uploadCalled {
 		t.Error("expected Upload to be called on force redeploy")
 	}
+}
+
+func (m *mockCloudAPI) ListSubnets(ctx context.Context, projectID string) ([]*provision.Subnet, error) {
+	if m.listSubnetsFn != nil {
+		return m.listSubnetsFn(ctx, projectID)
+	}
+	return []*provision.Subnet{{ID: "subnet-1", Name: "Default_ru-moscow-1"}}, nil
+}
+
+func (m *mockCloudAPI) ListSecurityGroups(ctx context.Context, projectID string) ([]*provision.SecurityGroup, error) {
+	if m.listSecurityGroupsFn != nil {
+		return m.listSecurityGroupsFn(ctx, projectID)
+	}
+	return []*provision.SecurityGroup{{ID: "sg-1", Name: "SSH-access_ru-moscow-1"}}, nil
+}
+
+func (m *mockCloudAPI) AddSecurityGroupRule(ctx context.Context, sgID, projectID string, rule provision.SGRule) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.addedRules = append(m.addedRules, rule)
+	return nil
 }

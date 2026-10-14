@@ -28,13 +28,21 @@ func (c *interruptCloud) GetImage(context.Context, string) (*provision.ImageDeta
 	}}, nil
 }
 
+func (c *interruptCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
+	return []*provision.Subnet{{ID: "subnet-1", Name: "Default"}}, nil
+}
+
+func (c *interruptCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return []*provision.SecurityGroup{{ID: "sg-1", Name: "default"}}, nil
+}
+
 func (c *interruptCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
 	return []*provision.DiskType{{ID: "dt-ssd", Name: "SSD"}}, nil
 }
 
 // The preview looks names up best effort; failing lookups must not stop it.
 func (c *interruptCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
-	return nil, stderrors.New("not in this test")
+	return []*provision.Flavor{{ID: "flavor", Name: "flavor"}}, nil
 }
 
 func (c *interruptCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {

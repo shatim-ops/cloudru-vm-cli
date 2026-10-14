@@ -66,8 +66,8 @@ func TestDeploy_NewVMGetsDockerDiskTypeAndFIPInState(t *testing.T) {
 	cloud.mu.Lock()
 	req := cloud.createReq
 	cloud.mu.Unlock()
-	if len(req.Disks) != 1 || req.Disks[0].DiskTypeID != "dt-ssd" {
-		t.Errorf("disks = %+v, want disk type dt-ssd from list_disk_types", req.Disks)
+	if len(req.Disks) != 1 || req.Disks[0].DiskTypeName != "SSD" {
+		t.Errorf("disks = %+v, want disk type SSD by name from list_disk_types", req.Disks)
 	}
 	if req.ImageMetadata["name"] != "user1" {
 		t.Errorf("image metadata = %v", req.ImageMetadata)
@@ -148,8 +148,8 @@ func TestDeploy_DiskTypeMatchedByNameCaseInsensitive(t *testing.T) {
 	if err := eng.Deploy(context.Background(), newDeployOpts(t, dir)); err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}
-	if got := cloud.createReq.Disks[0].DiskTypeID; got != "ssd-id" {
-		t.Errorf("disk type = %q, want ssd-id", got)
+	if got := cloud.createReq.Disks[0].DiskTypeName; got != "ssd" {
+		t.Errorf("disk type = %q, want ssd as listed by the API", got)
 	}
 }
 

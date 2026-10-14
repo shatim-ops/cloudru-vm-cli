@@ -328,6 +328,14 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			if mf.MandatoryGroup != "" {
 				satisfiedGroups[mf.MandatoryGroup] = true
 			}
+		case "linux_password":
+			// Without it the VM never leaves "creating" (seen live
+			// 2026-10-14; MCP vm_create sets it for the same reason). Login
+			// is by SSH key: the password is random and not kept.
+			imgMeta[mf.Name] = randomPassword(16)
+			if mf.MandatoryGroup != "" {
+				satisfiedGroups[mf.MandatoryGroup] = true
+			}
 		case "name", "user", "username", "default_user":
 			val := mf.DefaultValue
 			if val == "" {
@@ -350,10 +358,13 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		if mf.MandatoryGroup != "" && satisfiedGroups[mf.MandatoryGroup] {
 			continue
 		}
+		// Only fields with a real default: empty values and these two flags
+		// make the create API answer 500 (same rule as MCP vm_create).
+		if mf.Name == "vmm_enabled" || mf.Name == "guest_agent_ready" {
+			continue
+		}
 		if mf.DefaultValue != "" {
 			imgMeta[mf.Name] = mf.DefaultValue
-		} else {
-			imgMeta[mf.Name] = ""
 		}
 	}
 
@@ -377,25 +388,44 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		return state.DeploymentRecord{}, err
 	}
 
+	network, err := e.resolveNetwork(ctx, projectID, region)
+	if err != nil {
+		return state.DeploymentRecord{}, err
+	}
+	flavorAPIName, err := e.flavorAPIName(ctx, flavorName)
+	if err != nil {
+		return state.DeploymentRecord{}, err
+	}
+
+	// The create API takes names, not UUIDs, and an explicit interface:
+	// UUIDs or a missing interface make it answer 500.
 	req := provision.CreateVMRequest{
 		ProjectID:          projectID,
 		Name:               fmt.Sprintf("cloudru-vm-%s", projectName),
-		FlavorID:           flavorName,
+		FlavorName:         flavorAPIName,
 		AvailabilityZoneID: region,
-		ImageID:            imageID,
+		ImageName:          imgDetail.Name,
 		ImageMetadata:      imgMeta,
 		Disks: []provision.DiskReq{
 			{
-				Name:       fmt.Sprintf("cloudru-vm-%s-boot", projectName),
-				Size:       diskSize,
-				DiskTypeID: diskType.ID,
+				Name:         fmt.Sprintf("cloudru-vm-%s-boot", projectName),
+				Size:         diskSize,
+				DiskTypeName: diskType.Name,
+			},
+		},
+		Interfaces: []provision.InterfaceReq{
+			{
+				Type:                     "regular",
+				SubnetID:                 network.SubnetID,
+				InterfaceSecurityEnabled: true,
+				SecurityGroups:           []string{network.SecurityGroupID},
 			},
 		},
 	}
 
 	// The VM is billed from this call on: show what will be created and what
 	// it costs, and get consent (or stop here on --dry-run).
-	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, network, project.Ports), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}
@@ -476,6 +506,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				if publicIP != "" {
 					e.Printer.StepDone(fmt.Sprintf("Public IP: %s", publicIP))
 				}
+				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports)
 				return rec, nil
 			case "error":
 				return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
