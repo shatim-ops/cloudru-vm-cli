@@ -71,3 +71,54 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           "$(go env GOPATH)/bin/govulncheck" ./...
+
+  # Образ MCP-сервера для Marketplace: сборка и smoke-тест по HTTP. Кредов
+  # Cloud.ru не нужно: initialize и tools/list в облако не ходят.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: hadolint
+        run: docker run --rm -i hadolint/hadolint:v2.12.0 < Dockerfile
+
+      - name: docker build
+        run: docker build -t cloudru-vm:ci --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" .
+
+      - name: без MCP_BEARER_TOKEN не стартует
+        run: |
+          set +e
+          docker run --rm cloudru-vm:ci
+          code=$?
+          set -e
+          if [ "$code" -ne 2 ]; then echo "ожидали код 2, получили $code"; exit 1; fi
+
+      - name: smoke-тест по HTTP
+        run: |
+          docker run -d --name mcp -e MCP_BEARER_TOKEN=ci-token-0123456789 -p 8080:8080 cloudru-vm:ci
+          for _ in $(seq 1 30); do curl -sf localhost:8080/healthz >/dev/null && break; sleep 1; done
+          curl -sf localhost:8080/healthz
+
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/mcp)
+          echo "без токена: $code"; [ "$code" = 401 ]
+
+          auth='Authorization: Bearer ci-token-0123456789'
+          v=$(curl -sf -H "$auth" -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            localhost:8080/mcp | jq -r .result.protocolVersion)
+          echo "protocolVersion: $v"; [ "$v" = 2025-06-18 ]
+
+          n=$(curl -sf -H "$auth" -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' localhost:8080/mcp | jq '.result.tools | length')
+          echo "tools/list: $n"; [ "$n" -gt 0 ]
+
+          # kubectl в образе нет: инструмент отвечает понятной ошибкой.
+          curl -sf -H "$auth" \
+            -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"k8s_kubectl","arguments":{"cluster_id":"x","args":"get pods"}}}' \
+            localhost:8080/mcp | jq -e '.result.isError and (.result.content[0].text | contains("not available in this mode"))'
+
+          # HEALTHCHECK образа — тем же бинарём, без shell и curl.
+          docker exec mcp /usr/local/bin/cloudru-vm mcp healthcheck
+
+      - name: логи контейнера
+        if: always()
+        run: docker logs mcp || true

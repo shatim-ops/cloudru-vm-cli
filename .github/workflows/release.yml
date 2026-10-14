@@ -56,3 +56,84 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Образ MCP-сервера в Artifact Registry Cloud.ru — источник карточки
+  # Marketplace. Секреты (Settings → Secrets → Actions):
+  #   CLOUDRU_AR_REGISTRY  имя реестра (<имя>.cr.cloud.ru) или полный хост
+  #   CLOUDRU_AR_KEY_ID    ключ доступа с правом push в реестр
+  #   CLOUDRU_AR_SECRET    его секрет
+  # Без них job проходит с notice: бинари выпускаются и без образа.
+  image:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      AR_REGISTRY: ${{ secrets.CLOUDRU_AR_REGISTRY }}
+      AR_KEY_ID: ${{ secrets.CLOUDRU_AR_KEY_ID }}
+      AR_SECRET: ${{ secrets.CLOUDRU_AR_SECRET }}
+    steps:
+      - name: секреты Artifact Registry
+        id: ar
+        run: |
+          if [ -z "$AR_REGISTRY" ] || [ -z "$AR_KEY_ID" ] || [ -z "$AR_SECRET" ]; then
+            echo "::notice title=Образ не опубликован::не заданы секреты CLOUDRU_AR_REGISTRY, CLOUDRU_AR_KEY_ID, CLOUDRU_AR_SECRET"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$AR_REGISTRY" in
+            *.*) host="$AR_REGISTRY" ;;
+            *)   host="$AR_REGISTRY.cr.cloud.ru" ;;
+          esac
+          version="${GITHUB_REF_NAME#v}"
+          {
+            echo "enabled=true"
+            echo "host=$host"
+            echo "version=$version"
+            # -rc.N и прочие pre-release не двигают latest.
+            case "$version" in *-*) echo "latest=false" ;; *) echo "latest=true" ;; esac
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        if: steps.ar.outputs.enabled == 'true'
+
+      - name: docker build
+        if: steps.ar.outputs.enabled == 'true'
+        env:
+          IMAGE: ${{ steps.ar.outputs.host }}/cloudru-vm
+          VERSION: ${{ steps.ar.outputs.version }}
+        run: |
+          docker build -t "$IMAGE:$VERSION" \
+            --build-arg VERSION="$VERSION" \
+            --build-arg COMMIT="$GITHUB_SHA" \
+            --build-arg DATE="$(git log -1 --format=%cI)" .
+
+      - name: smoke-тест
+        if: steps.ar.outputs.enabled == 'true'
+        env:
+          IMAGE: ${{ steps.ar.outputs.host }}/cloudru-vm
+          VERSION: ${{ steps.ar.outputs.version }}
+        run: |
+          docker run -d --name mcp -e MCP_BEARER_TOKEN=release-smoke-0123456789 -p 8080:8080 "$IMAGE:$VERSION"
+          for _ in $(seq 1 30); do curl -sf localhost:8080/healthz >/dev/null && break; sleep 1; done
+          v=$(curl -sf -H 'Authorization: Bearer release-smoke-0123456789' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"release","version":"0"}}}' \
+            localhost:8080/mcp | jq -r '[.result.protocolVersion, .result.serverInfo.version] | join(" ")')
+          echo "$v"; [ "$v" = "2025-06-18 $VERSION" ]
+          docker rm -f mcp
+
+      - name: docker push
+        if: steps.ar.outputs.enabled == 'true'
+        env:
+          HOST: ${{ steps.ar.outputs.host }}
+          VERSION: ${{ steps.ar.outputs.version }}
+          LATEST: ${{ steps.ar.outputs.latest }}
+        run: |
+          echo "$AR_SECRET" | docker login "$HOST" -u "$AR_KEY_ID" --password-stdin
+          docker push "$HOST/cloudru-vm:$VERSION"
+          if [ "$LATEST" = true ]; then
+            docker tag "$HOST/cloudru-vm:$VERSION" "$HOST/cloudru-vm:latest"
+            docker push "$HOST/cloudru-vm:latest"
+          fi
+          docker logout "$HOST"
+          echo "::notice title=Образ опубликован::$HOST/cloudru-vm:$VERSION"
