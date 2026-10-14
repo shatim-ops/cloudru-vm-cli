@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"runtime/debug"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
@@ -97,6 +99,11 @@ type rpcRequest struct {
 	ID      json.RawMessage `json:"id,omitempty"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params,omitempty"`
+
+	// Result and Error mark a response from the client. The server sends
+	// no requests, so there is nothing to match it to: it is ignored.
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  json.RawMessage `json:"error,omitempty"`
 }
 
 type rpcResponse struct {
@@ -121,39 +128,131 @@ const (
 	codeInternalError  = -32603
 )
 
-// Run serves the JSON-RPC loop over the given reader/writer until EOF.
-// Messages are newline-delimited JSON objects (MCP stdio transport).
-func (s *Server) Run(in io.Reader, out io.Writer) error {
-	scanner := bufio.NewScanner(in)
-	// Allow large request lines (tool arguments may be sizeable).
-	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
+// maxMessageSize bounds one message: a stdio line or an HTTP body.
+const maxMessageSize = 16 << 20
 
+// nullID is the id of an answer to a message whose id cannot be read.
+var nullID = json.RawMessage("null")
+
+// Run serves the JSON-RPC loop over the given reader/writer until EOF.
+// Messages are newline-delimited JSON (MCP stdio transport): one message or
+// a batch per line. A line longer than maxMessageSize is answered with an
+// error and skipped; the loop goes on.
+func (s *Server) Run(in io.Reader, out io.Writer) error {
+	r := bufio.NewReaderSize(in, 64*1024)
 	enc := json.NewEncoder(out)
 
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
+	for {
+		line, tooLong, readErr := readLine(r, maxMessageSize)
+		var resp any
+		switch {
+		case tooLong:
+			resp = errorResponse(nullID, codeInvalidReq, fmt.Sprintf("message larger than %d bytes", maxMessageSize))
+		case len(bytes.TrimSpace(line)) > 0:
+			resp = s.answer(decodeMessages(line))
 		}
-
-		var req rpcRequest
-		if err := json.Unmarshal(line, &req); err != nil {
-			_ = enc.Encode(&rpcResponse{
-				JSONRPC: "2.0",
-				Error:   &rpcError{Code: codeParseError, Message: "parse error"},
-			})
-			continue
-		}
-
-		resp := s.handle(&req)
 		if resp != nil {
 			if err := enc.Encode(resp); err != nil {
 				return fmt.Errorf("write response: %w", err)
 			}
 		}
+		if readErr == io.EOF {
+			return nil
+		}
+		if readErr != nil {
+			return readErr
+		}
 	}
+}
 
-	return scanner.Err()
+// readLine reads one line. A line longer than max is read to its end and
+// dropped (tooLong), so the next line is read normally.
+func readLine(r *bufio.Reader, max int) (line []byte, tooLong bool, err error) {
+	for {
+		chunk, err := r.ReadSlice('\n')
+		if !tooLong {
+			if len(line)+len(chunk) > max+1 { // +1: the newline
+				tooLong, line = true, nil
+			} else {
+				line = append(line, chunk...)
+			}
+		}
+		if err != bufio.ErrBufferFull {
+			return line, tooLong, err
+		}
+	}
+}
+
+// incoming is one decoded message: a request (or notification) to dispatch,
+// or the error answer to a message that is not one. Both are nil for a
+// response from the client, which needs no answer.
+type incoming struct {
+	req *rpcRequest
+	bad *rpcResponse
+}
+
+// decodeMessages splits a stdio line or an HTTP body into messages; batch
+// reports a non-empty JSON array (answered with an array).
+func decodeMessages(data []byte) (msgs []incoming, batch bool) {
+	data = bytes.TrimSpace(data)
+	if !json.Valid(data) {
+		return []incoming{{bad: errorResponse(nullID, codeParseError, "parse error")}}, false
+	}
+	if data[0] != '[' {
+		return []incoming{decodeMessage(data)}, false
+	}
+	var raw []json.RawMessage
+	_ = json.Unmarshal(data, &raw) // valid JSON starting with '['
+	if len(raw) == 0 {
+		return []incoming{{bad: errorResponse(nullID, codeInvalidReq, "invalid request: empty batch")}}, false
+	}
+	for _, m := range raw {
+		msgs = append(msgs, decodeMessage(m))
+	}
+	return msgs, true
+}
+
+// decodeMessage decodes one valid JSON value as a JSON-RPC message.
+func decodeMessage(raw json.RawMessage) incoming {
+	var req rpcRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return incoming{bad: errorResponse(nullID, codeInvalidReq, "invalid request: not a JSON-RPC message object")}
+	}
+	if req.Method == "" {
+		if len(req.Result) > 0 || len(req.Error) > 0 {
+			return incoming{} // the client's response; the server sends no requests
+		}
+		id := req.ID
+		if len(id) == 0 {
+			id = nullID
+		}
+		return incoming{bad: errorResponse(id, codeInvalidReq, "invalid request: method is required")}
+	}
+	return incoming{req: &req}
+}
+
+// answer dispatches decoded messages and returns what to send back: nil
+// (only notifications and responses), one response, or a batch.
+func (s *Server) answer(msgs []incoming, batch bool) any {
+	var out []*rpcResponse
+	for _, m := range msgs {
+		switch {
+		case m.bad != nil:
+			out = append(out, m.bad)
+		case m.req != nil:
+			if resp := s.handle(m.req); resp != nil {
+				out = append(out, resp)
+			}
+		}
+	}
+	switch {
+	case len(out) == 0:
+		return nil
+	case batch:
+		return out
+	default:
+		return out[0]
+	}
 }
 
 // isNotification reports whether the request lacks an id (JSON-RPC notification,
@@ -162,8 +261,17 @@ func (r *rpcRequest) isNotification() bool {
 	return len(r.ID) == 0
 }
 
-// handle dispatches a single request. It returns nil for notifications.
+// handle dispatches a single request. Notifications are executed, but it
+// returns nil for them: JSON-RPC forbids answering a notification.
 func (s *Server) handle(req *rpcRequest) *rpcResponse {
+	resp := s.call(req)
+	if req.isNotification() {
+		return nil
+	}
+	return resp
+}
+
+func (s *Server) call(req *rpcRequest) *rpcResponse {
 	switch req.Method {
 	case "initialize":
 		return s.ok(req, s.initializeResult(req.Params))
@@ -182,9 +290,6 @@ func (s *Server) handle(req *rpcRequest) *rpcResponse {
 		return s.handleToolCall(req)
 
 	default:
-		if req.isNotification() {
-			return nil
-		}
 		return s.fail(req, codeMethodNotFound, "method not found: "+req.Method)
 	}
 }
@@ -236,8 +341,24 @@ func (s *Server) handleToolCall(req *rpcRequest) *rpcResponse {
 		return s.toolResult(req, "unknown tool: "+p.Name, true)
 	}
 
-	text, isErr := handler(context.Background(), p.Arguments)
+	text, isErr := callHandler(handler, p.Name, p.Arguments)
 	return s.toolResult(req, text, isErr)
+}
+
+// panicLog receives the stack of a panicking tool handler (stderr: in stdio
+// mode stdout is the protocol channel).
+var panicLog io.Writer = os.Stderr
+
+// callHandler runs a tool handler. A panic becomes a tool error: one broken
+// handler must not take the server down, and with it every other session.
+func callHandler(h toolHandler, name string, args map[string]any) (text string, isErr bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(panicLog, "cloudru-vm mcp: tool %s panicked: %v\n%s", name, r, debug.Stack())
+			text, isErr = tools.ErrResult(fmt.Errorf("internal error: tool %s panicked: %v", name, r)), true
+		}
+	}()
+	return h(context.Background(), args)
 }
 
 // toolResult wraps a tool's textual output in the MCP tools/call result shape.
@@ -257,5 +378,9 @@ func (s *Server) ok(req *rpcRequest, result any) *rpcResponse {
 
 // fail builds a JSON-RPC protocol error response.
 func (s *Server) fail(req *rpcRequest, code int, msg string) *rpcResponse {
-	return &rpcResponse{JSONRPC: "2.0", ID: req.ID, Error: &rpcError{Code: code, Message: msg}}
+	return errorResponse(req.ID, code, msg)
+}
+
+func errorResponse(id json.RawMessage, code int, msg string) *rpcResponse {
+	return &rpcResponse{JSONRPC: "2.0", ID: id, Error: &rpcError{Code: code, Message: msg}}
 }

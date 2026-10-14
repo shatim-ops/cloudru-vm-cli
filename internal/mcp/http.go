@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"bytes"
 	"context"
 	crand "crypto/rand"
 	"crypto/subtle"
@@ -14,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -54,13 +54,17 @@ type HTTPOptions struct {
 
 // Limits of the HTTP transport.
 const (
-	httpMaxBody      = 16 << 20 // same as a stdio line
+	httpMaxBody      = maxMessageSize
 	httpMaxSessions  = 10000
 	httpSessionTTL   = 24 * time.Hour
 	defaultKeepAlive = 15 * time.Second
 	headerSessionID  = "Mcp-Session-Id"
 	headerProtocol   = "Mcp-Protocol-Version"
 )
+
+// httpBodyTimeout is how long a client may take to send a request body
+// (16 MiB at ~2 Mbit/s). A variable only so that tests can shorten it.
+var httpBodyTimeout = 60 * time.Second
 
 // HTTPHandler serves the MCP Streamable HTTP transport.
 type HTTPHandler struct {
@@ -121,7 +125,14 @@ func (h *HTTPHandler) serveMCP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	// DNS rebinding: a browser page must not drive a local server.
+	// DNS rebinding: a browser page must not drive a local server. Without
+	// a token the server listens on loopback only, and a page whose name
+	// resolves to 127.0.0.1 sends its own name as both Host and Origin,
+	// which passes the same-origin check: the Host must be loopback too.
+	if h.opts.BearerToken == "" && !loopbackHost(r.Host) {
+		http.Error(w, "host not allowed", http.StatusForbidden)
+		return
+	}
 	if !originAllowed(r) {
 		http.Error(w, "origin not allowed", http.StatusForbidden)
 		return
@@ -176,53 +187,62 @@ func originAllowed(r *http.Request) bool {
 	if err != nil || u.Host == "" {
 		return false
 	}
-	host := u.Hostname()
-	if host == "localhost" {
-		return true
-	}
-	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+	if loopbackHost(u.Host) {
 		return true
 	}
 	return strings.EqualFold(u.Host, r.Host)
 }
 
+// loopbackHost reports whether a host[:port] names the loopback interface.
+func loopbackHost(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // post handles one JSON-RPC message or a batch of them.
 func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
+	// ReadHeaderTimeout covers the headers only; without a deadline a
+	// client could trickle the body forever, holding the connection. The
+	// deadline is lifted once the body is in: a tool call may run for many
+	// minutes. On a read error it stays, or net/http would block draining
+	// the rest of the body before it sends the error.
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(httpBodyTimeout))
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, httpMaxBody))
+	if err == nil {
+		_ = rc.SetReadDeadline(time.Time{})
+	}
 	if err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 			return
 		}
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			http.Error(w, "request body not received in time", http.StatusRequestTimeout)
+			return
+		}
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	body = bytes.TrimSpace(body)
-
-	batch := len(body) > 0 && body[0] == '['
+	msgs, batch := decodeMessages(body)
+	if !batch && msgs[0].bad != nil {
+		writeJSON(w, http.StatusBadRequest, msgs[0].bad)
+		return
+	}
 	var reqs []*rpcRequest
-	if batch {
-		var raw []json.RawMessage
-		if json.Unmarshal(body, &raw) != nil || len(raw) == 0 {
-			writeJSON(w, http.StatusBadRequest, &rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: codeParseError, Message: "parse error"}})
-			return
+	for _, m := range msgs {
+		if m.req != nil {
+			reqs = append(reqs, m.req)
 		}
-		for _, m := range raw {
-			var req rpcRequest
-			if json.Unmarshal(m, &req) != nil {
-				writeJSON(w, http.StatusBadRequest, &rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: codeParseError, Message: "parse error"}})
-				return
-			}
-			reqs = append(reqs, &req)
-		}
-	} else {
-		var req rpcRequest
-		if json.Unmarshal(body, &req) != nil {
-			writeJSON(w, http.StatusBadRequest, &rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: codeParseError, Message: "parse error"}})
-			return
-		}
-		reqs = []*rpcRequest{&req}
 	}
 
 	initialize := false
@@ -231,8 +251,8 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 			initialize = true
 		}
 	}
-	if initialize && len(reqs) > 1 {
-		writeJSON(w, http.StatusBadRequest, &rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: codeInvalidReq, Message: "initialize must not be part of a batch"}})
+	if initialize && len(msgs) > 1 {
+		writeJSON(w, http.StatusBadRequest, errorResponse(nullID, codeInvalidReq, "initialize must not be part of a batch"))
 		return
 	}
 	// A client without a session id is served statelessly: the server
@@ -245,16 +265,14 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 
 	// Responses and notifications only: nothing to answer.
 	hasRequest := false
-	for _, req := range reqs {
-		if req.Method != "" && !req.isNotification() {
+	for _, m := range msgs {
+		if m.bad != nil || (m.req != nil && !m.req.isNotification()) {
 			hasRequest = true
 		}
 	}
 	if !hasRequest {
 		for _, req := range reqs {
-			if req.Method != "" {
-				h.dispatch(req)
-			}
+			h.dispatch(req)
 		}
 		w.WriteHeader(http.StatusAccepted)
 		return
@@ -270,9 +288,13 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var out []*rpcResponse
-	for _, req := range reqs {
-		if resp := h.dispatch(req); resp != nil {
-			out = append(out, resp)
+	for _, m := range msgs {
+		if m.bad != nil {
+			out = append(out, m.bad)
+		} else if m.req != nil {
+			if resp := h.dispatch(m.req); resp != nil {
+				out = append(out, resp)
+			}
 		}
 	}
 	switch {

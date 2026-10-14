@@ -15,6 +15,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 )
@@ -51,6 +52,10 @@ type Registry struct {
 	newEngine EngineFactory
 	tools     []Tool
 	handlers  map[string]toolHandler
+
+	// jobLocks serialize the stack tools per job_id (see lockJob).
+	jobMu    sync.Mutex
+	jobLocks map[string]*sync.Mutex
 }
 
 // New builds the registry. factory is called by handlers that need an
@@ -197,11 +202,9 @@ func groupOf(name string) string {
 
 // mutatingOverride corrects the rule "a tool is mutating when it takes
 // confirmed": cert_private_key asks for consent because it reveals a secret,
-// not because it changes anything; s3_bucket_create creates a bucket
-// without asking.
+// not because it changes anything.
 var mutatingOverride = map[string]bool{
 	"cert_private_key": false,
-	"s3_bucket_create": true,
 }
 
 // isMutating reports whether the tool changes state in the cloud.

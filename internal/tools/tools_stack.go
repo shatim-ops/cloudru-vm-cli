@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/stack"
@@ -97,6 +98,10 @@ func (s *Registry) findIDByName(ctx context.Context, tool, field, name string, e
 
 // maxStepAttempts bounds create retries per step (transient-error tolerance).
 const maxStepAttempts = 4
+
+// stackCrankInterval is the pause between cranks inside one stack_status
+// call. A variable only so that tests can shorten it.
+var stackCrankInterval = 8 * time.Second
 
 // isTerminalFail reports whether a resource status means it will never become
 // ready (a failed create) — so the orchestrator stops waiting and fails the job
@@ -217,6 +222,9 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					continue
 				}
 				args := substituteRefs(st.Args, job.Outputs)
+				// stack_apply was confirmed for the whole stack. Jobs planned
+				// before provision and s3_put got their gates lack the flag.
+				args["confirmed"] = true
 				res, err := s.callTool(ctx, st.Tool, args)
 				if err != nil {
 					st.Attempts++
@@ -315,6 +323,9 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	job := stack.Plan(m)
+	if err := job.CheckDeps(); err != nil {
+		return errResult(fmt.Errorf("invalid manifest: %w", err)), true
+	}
 	if err := job.Save(); err != nil {
 		return errResult(fmt.Errorf("persist plan: %w", err)), true
 	}
@@ -435,9 +446,16 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_apply provisions BILLABLE resources. Call again with confirmed=true after the captain approved."}), true
 	}
+	unlock := s.lockJob(id)
+	defer unlock()
 	job, err := stack.LoadJob(id)
 	if err != nil {
 		return errResult(err), true
+	}
+	if job.Status == "destroyed" || job.Status == "destroy_failed" {
+		// Its steps are all "done" from the first apply: advancing would
+		// report status=done for resources that no longer exist.
+		return errResult(fmt.Errorf("job %s is %s: its resources were torn down; run stack_plan again for a new deploy", id, job.Status)), true
 	}
 	s.advance(ctx, job)
 	if e := job.Save(); e != nil {
@@ -448,14 +466,47 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 	return toJSON(out), job.Status == "error"
 }
 
+// lockJob serializes the stack tools on one job and returns the unlock.
+// Each crank loads the job, starts the pending steps and saves it; two
+// concurrent cranks (two HTTP clients, a poll retried while the first one
+// still runs) would both see a step pending and create it twice.
+func (s *Registry) lockJob(id string) (unlock func()) {
+	s.jobMu.Lock()
+	if s.jobLocks == nil {
+		s.jobLocks = map[string]*sync.Mutex{}
+	}
+	mu := s.jobLocks[id]
+	if mu == nil {
+		mu = &sync.Mutex{}
+		s.jobLocks[id] = mu
+	}
+	s.jobMu.Unlock()
+	mu.Lock()
+	return mu.Unlock
+}
+
+// crankJob loads the job and, while it is in progress, advances and saves
+// it, all under the job's lock.
+func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) {
+	unlock := s.lockJob(id)
+	defer unlock()
+	job, err := stack.LoadJob(id)
+	if err != nil {
+		return nil, err
+	}
+	if job.Status == "running" || job.Status == "planned" {
+		s.advance(ctx, job)
+		if e := job.Save(); e != nil {
+			return nil, fmt.Errorf("persist job: %w", e)
+		}
+	}
+	return job, nil
+}
+
 func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
 		return errResult(fmt.Errorf("'job_id' is required")), true
-	}
-	job, err := stack.LoadJob(id)
-	if err != nil {
-		return errResult(err), true
 	}
 	// Absorb SOME waiting inside the call (crank every few seconds up to a small
 	// budget) so the agent doesn't poll in a tight loop — but keep the budget SHORT.
@@ -476,25 +527,24 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 	}
 	deadline := time.Now().Add(time.Duration(waitBudget) * time.Second)
 	for {
-		if job.Status == "running" || job.Status == "planned" {
-			s.advance(ctx, job)
-			if e := job.Save(); e != nil {
-				return errResult(fmt.Errorf("persist job: %w", e)), true
-			}
+		// Reloaded on every crank: another call may have advanced it.
+		job, err := s.crankJob(ctx, id)
+		if err != nil {
+			return errResult(err), true
 		}
 		if job.Status != "running" && job.Status != "planned" {
-			break // terminal (done/error)
+			return toJSON(job.Compact()), false // terminal (done/error)
 		}
-		if !time.Now().Before(deadline) {
-			break // budget exhausted — return current progress, agent polls again
+		rem := time.Until(deadline)
+		if rem <= 0 {
+			return toJSON(job.Compact()), false // budget exhausted — agent polls again
 		}
 		select {
 		case <-ctx.Done():
 			return errResult(ctx.Err()), true
-		case <-time.After(8 * time.Second):
+		case <-time.After(min(stackCrankInterval, rem)):
 		}
 	}
-	return toJSON(job.Compact()), false
 }
 
 func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) (string, bool) {
@@ -505,6 +555,8 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_destroy PERMANENTLY deletes all resources in this stack. Call again with confirmed=true."}), true
 	}
+	unlock := s.lockJob(id)
+	defer unlock()
 	job, err := stack.LoadJob(id)
 	if err != nil {
 		return errResult(err), true
@@ -584,7 +636,15 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	if id := job.Outputs["vpc"]; id != "" {
 		del("vpc", "vpc_delete", map[string]any{"id": id})
 	}
+	// A job with a failed deletion still holds resources: "destroyed" would
+	// hide it from the duplicate warning of stack_plan. Calling stack_destroy
+	// again retries; what is gone already counts as deleted.
 	job.Status = "destroyed"
-	_ = job.Save()
-	return toJSON(map[string]any{"status": "destroyed", "deleted": deleted, "failed": failed}), false
+	if len(failed) > 0 {
+		job.Status = "destroy_failed"
+	}
+	if e := job.Save(); e != nil {
+		failed = append(failed, "persist job: "+e.Error())
+	}
+	return toJSON(map[string]any{"status": job.Status, "deleted": deleted, "failed": failed}), len(failed) > 0
 }

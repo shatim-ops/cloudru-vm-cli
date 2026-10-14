@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -256,8 +257,15 @@ func (j *Job) Save() error {
 	return os.WriteFile(filepath.Join(dir, j.ID+".json"), data, 0o600)
 }
 
+// jobIDRe matches the ids newID makes. The id comes from the caller (MCP
+// job_id) and becomes a file name: "../x" must not leave jobsDir.
+var jobIDRe = regexp.MustCompile(`^stk-[0-9a-f]{10}$`)
+
 // LoadJob reads a job from disk.
 func LoadJob(id string) (*Job, error) {
+	if !jobIDRe.MatchString(id) {
+		return nil, fmt.Errorf("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)", id)
+	}
 	data, err := os.ReadFile(filepath.Join(jobsDir(), id+".json"))
 	if err != nil {
 		return nil, fmt.Errorf("job %s not found: %w", id, err)
@@ -454,13 +462,13 @@ func Plan(m Manifest) *Job {
 		j.Steps = append(j.Steps, &Step{
 			Key:       fmt.Sprintf("s3:%d", i),
 			Tool:      "s3_put",
-			Args:      map[string]any{"bucket": s3.Bucket, "key": s3.Key, "content": s3.Content},
+			Args:      map[string]any{"bucket": s3.Bucket, "key": s3.Key, "content": s3.Content, "confirmed": true},
 			ReadyKind: "", Status: "pending",
 		})
 	}
 
 	if vm := m.VM; vm != nil {
-		args := map[string]any{"name": vm.Name}
+		args := map[string]any{"name": vm.Name, "confirmed": true}
 		if vm.Private {
 			args["no_public_ip"] = true
 		}
@@ -535,6 +543,52 @@ func Plan(m Manifest) *Job {
 	}
 
 	return j
+}
+
+// CheckDeps reports a step that depends on a step the job does not have, or
+// a dependency cycle. Such a step never starts: the job would create the
+// other resources and then stay "running" forever.
+func (j *Job) CheckDeps() error {
+	byKey := make(map[string]*Step, len(j.Steps))
+	for _, st := range j.Steps {
+		byKey[st.Key] = st
+	}
+	for _, st := range j.Steps {
+		for _, d := range st.DependsOn {
+			if byKey[d] == nil {
+				return fmt.Errorf("step %q depends on %q, which this stack does not have (nlb.target must name a step such as \"vm\"; dns without an explicit target needs nlb)", st.Key, d)
+			}
+		}
+	}
+	const (
+		unseen = iota
+		inPath
+		finished
+	)
+	state := map[string]int{}
+	var visit func(key string, path []string) error
+	visit = func(key string, path []string) error {
+		switch state[key] {
+		case inPath:
+			return fmt.Errorf("dependency cycle: %s", strings.Join(append(path, key), " → "))
+		case finished:
+			return nil
+		}
+		state[key] = inPath
+		for _, d := range byKey[key].DependsOn {
+			if err := visit(d, append(path, key)); err != nil {
+				return err
+			}
+		}
+		state[key] = finished
+		return nil
+	}
+	for _, st := range j.Steps {
+		if err := visit(st.Key, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Rate-card monthly estimates (RUB) — NOT a bill; exact cost via billing_finops
