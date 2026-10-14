@@ -30,9 +30,11 @@ type EnvVarProvider struct {
 }
 
 // NewEnvVarProvider creates an EnvVarProvider with the given HTTP client.
+// If client is nil, a client with a 60s timeout is used: http.DefaultClient
+// has no timeout and would hang forever on a stalled IAM connection.
 func NewEnvVarProvider(client *http.Client) *EnvVarProvider {
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{Timeout: 60 * time.Second}
 	}
 	return &EnvVarProvider{
 		client: client,
@@ -120,6 +122,14 @@ func (p *EnvVarProvider) exchange(ctx context.Context, keyID, secret string) (To
 		)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return Token{}, clerrors.New(
+			clerrors.CodeAuthFailed,
+			fmt.Sprintf("IAM rejected the credentials (status %d)", resp.StatusCode),
+			"Verify your CLOUDRU_KEY_ID and CLOUDRU_SECRET are correct",
+		)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return Token{}, clerrors.New(
