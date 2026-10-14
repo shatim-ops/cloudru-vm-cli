@@ -15,7 +15,7 @@ docs/mcp.md               # stdio и HTTP, Claude Code/Cursor конфиги, Do
 docs/exit-codes.md        # таблица кодов из этапа 1
 docs/troubleshooting.md   # типовые ошибки IAM/квоты/429/SSH, что собрать для обращения в поддержку
 docs/RELEASING.md         # из этапа 7
-docs/standalone/          # эти планы — переместить в docs/internal/ или удалить перед релизом
+docs/internal/standalone/ # эти планы (перенесены сюда из docs/standalone/ на этапе 9)
 ```
 
 Язык: README и docs — русский (аудитория — РФ), `--help` — английский
