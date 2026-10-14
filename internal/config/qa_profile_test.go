@@ -1,0 +1,204 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+)
+
+// Два configure одновременно (два терминала, параллельные шаги CI) читали
+// оба файла, меняли свой профиль и записывали всё целиком: последний
+// затирал профиль первого. Воспроизведено бинарём: из 20 параллельных
+// «configure --profile pN» сохранилось 8, все 20 ответили успехом.
+func TestSaveProfile_ConcurrentWritersKeepEveryProfile(t *testing.T) {
+	isolate(t)
+	const n = 16
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			name := fmt.Sprintf("p%02d", i)
+			errs <- SaveProfile(name, Profile{ProjectID: "proj-" + name},
+				Credentials{KeyID: "key-" + name, Secret: "secret-" + name})
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("p%02d", i)
+		p, c, ok, err := LoadProfile(name)
+		if err != nil || !ok || p.ProjectID != "proj-"+name || c.Secret != "secret-"+name {
+			t.Errorf("profile %s lost: %+v %+v %v %v", name, p, c, ok, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(Dir(), lockName)); !os.IsNotExist(err) {
+		t.Errorf("lock file left behind: %v", err)
+	}
+}
+
+// Замок, брошенный упавшим процессом, не блокирует configure навсегда;
+// живой замок — ошибка конфигурации с подсказкой, а не вечное ожидание.
+func TestProfileLock_StaleAndBusy(t *testing.T) {
+	isolate(t)
+	oldWait, oldStale := lockWait, lockStale
+	lockWait, lockStale = 200*time.Millisecond, time.Minute
+	t.Cleanup(func() { lockWait, lockStale = oldWait, oldStale })
+
+	lock := filepath.Join(Dir(), lockName)
+	writeFile(t, lock, "12345\n")
+	err := SaveProfile("default", Profile{}, Credentials{KeyID: "k", Secret: "s"})
+	if exitCode(err) != clerrors.ExitAuth || !strings.Contains(err.Error(), lock) {
+		t.Fatalf("busy lock: %v", err)
+	}
+
+	old := time.Now().Add(-2 * time.Minute)
+	if err := os.Chtimes(lock, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveProfile("default", Profile{}, Credentials{KeyID: "k", Secret: "s"}); err != nil {
+		t.Fatalf("stale lock not broken: %v", err)
+	}
+}
+
+// Имя профиля из файла не проверялось при удалении: профиль
+// "../../victim" в credentials.yaml (руками, чужим инструментом) — и
+// «configure delete» удалял victim.json вне каталога кэша.
+func TestDeleteProfile_NeverRemovesFilesOutsideTheCache(t *testing.T) {
+	dir := isolate(t)
+	victim := filepath.Join(filepath.Dir(dir), "victim.json")
+	writeFile(t, victim, "{}")
+	name := "x/../../../victim"
+	if p := TokenCachePath(name); filepath.Clean(p) != filepath.Clean(victim) {
+		t.Fatalf("test premise: %s != %s", p, victim)
+	}
+	writeFile(t, CredentialsPath(), fmt.Sprintf("profiles:\n  %q:\n    key_id: k\n    secret: s\n", name))
+
+	if err := DeleteProfile(name); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(victim); err != nil {
+		t.Fatalf("file outside the cache removed: %v", err)
+	}
+	if _, _, ok, _ := LoadProfile(name); ok {
+		t.Error("profile still in the file")
+	}
+}
+
+// Ключ из .env с CRLF или с пробелами по краям: IAM отвечал 401 «IAM
+// rejected the credentials», хотя ключ верный.
+func TestResolve_EnvCredentialsAreTrimmed(t *testing.T) {
+	isolate(t)
+	t.Setenv("CLOUDRU_KEY_ID", " key-id\r")
+	t.Setenv("CLOUDRU_SECRET", "secret\r\n")
+	cfg, err := Resolve(Options{})
+	if err != nil || cfg.KeyID != "key-id" || cfg.Secret != "secret" {
+		t.Errorf("got %q %q %v", cfg.KeyID, cfg.Secret, err)
+	}
+
+	t.Setenv("CLOUDRU_KEY_ID", "")
+	t.Setenv("CLOUDRU_SECRET", "")
+	for _, v := range []string{" id:sec\r", "id : sec", "id:sec\n"} {
+		t.Setenv("CLOUDRU_API_KEY", v)
+		cfg, err := Resolve(Options{})
+		if err != nil || cfg.KeyID != "id" || cfg.Secret != "sec" {
+			t.Errorf("CLOUDRU_API_KEY=%q: got %q %q %v", v, cfg.KeyID, cfg.Secret, err)
+		}
+	}
+	for _, v := range []string{"id:", ":sec", " : ", "nocolon"} {
+		t.Setenv("CLOUDRU_API_KEY", v)
+		if _, err := Resolve(Options{}); exitCode(err) != clerrors.ExitAuth {
+			t.Errorf("CLOUDRU_API_KEY=%q: %v, want exit 2", v, err)
+		}
+	}
+}
+
+// FuzzProfileFiles: любые config.yaml/credentials.yaml и имя профиля —
+// без паники; ошибка всегда код 2; файл кэша токена всегда внутри CacheDir.
+func FuzzProfileFiles(f *testing.F) {
+	f.Add("profiles:\n  default:\n    project_id: p\n", "profiles:\n  default:\n    key_id: k\n    secret: s\n", "default")
+	f.Add("", "", "default")
+	f.Add("profiles: [", "profiles: {}", "prod")
+	f.Add("profiles:\n  default:\n    disk_size: lots\n", "", "default")
+	f.Add("profiles: ~\n", "profiles:\n  \"x/../../../victim\":\n    key_id: k\n", "x/../../../victim")
+	f.Add("a: &a [x,x]\nb: [*a,*a]\nprofiles: {}\n", "\xff\xfe", "a.b-c_d")
+	f.Add("profiles:\n  default: 5\n", "profiles:\n  default:\n    s3: {access_key: a}\n", "default")
+	f.Add("\ufeffprofiles:\r\n  default:\r\n    project_id: p\r\n", "", "default")
+	f.Fuzz(func(t *testing.T, settings, creds, profile string) {
+		root := t.TempDir()
+		dir := filepath.Join(root, "cfg")
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		victim := filepath.Join(root, "victim.json")
+		if err := os.WriteFile(victim, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv(EnvConfigDir, dir)
+		t.Setenv("CLOUDRU_PROFILE", "")
+		if err := os.WriteFile(filepath.Join(dir, settingsName), []byte(settings), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, credentialsName), []byte(creds), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Resolve(Options{Profile: profile}); err != nil && exitCode(err) != clerrors.ExitAuth {
+			t.Fatalf("Resolve: exit %d for %v", exitCode(err), err)
+		}
+		if _, err := Profiles(); err != nil && exitCode(err) != clerrors.ExitAuth {
+			t.Fatalf("Profiles: exit %d for %v", exitCode(err), err)
+		}
+		if ValidateProfileName(profile) == nil {
+			rel, err := filepath.Rel(CacheDir(), TokenCachePath(profile))
+			if err != nil || strings.HasPrefix(rel, "..") || strings.ContainsAny(rel, `/\`) {
+				t.Fatalf("token cache of %q outside the cache dir: %s", profile, rel)
+			}
+		}
+		_ = DeleteProfile(profile)
+		if _, err := os.Stat(victim); err != nil {
+			t.Fatalf("DeleteProfile(%q) removed a file outside the config dir", profile)
+		}
+	})
+}
+
+// FuzzSaveProfileRoundTrip: что configure сохранил, то и читается обратно.
+// Иначе один «неудобный» символ в секрете ломает все команды профиля.
+func FuzzSaveProfileRoundTrip(f *testing.F) {
+	f.Add("p", "key", "secret", "ru.AZ-1")
+	f.Add("", "a:b", "#not-a-comment", "- x")
+	f.Add("null", "~", "yes", "0x1F")
+	f.Add("\"quoted\"", "'single'", "multi\nline", "tab\there")
+	f.Add("\x00", "\xff", "\u2028", "  lead")
+	f.Fuzz(func(t *testing.T, project, keyID, secret, region string) {
+		for _, v := range []string{project, keyID, secret, region} {
+			if strings.TrimSpace(v) != v {
+				return // configure trims every answer
+			}
+		}
+		t.Setenv(EnvConfigDir, t.TempDir())
+		p := Profile{ProjectID: project, Region: region}
+		c := Credentials{KeyID: keyID, Secret: secret}
+		if err := SaveProfile("default", p, c); err != nil {
+			return // refusing to store is fine; storing garbage is not
+		}
+		gp, gc, _, err := LoadProfile("default")
+		if err != nil {
+			t.Fatalf("saved profile does not load: %v", err)
+		}
+		if gp != p || gc.KeyID != c.KeyID || gc.Secret != c.Secret {
+			t.Fatalf("round trip changed the profile: %+v %+v -> %+v %+v", p, c, gp, gc)
+		}
+	})
+}
