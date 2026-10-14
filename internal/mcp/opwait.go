@@ -16,6 +16,10 @@ import (
 
 const opWaitMaxSeconds = 300
 
+// opWaitFirstDelay is the first poll interval of waitForOpJSON. A variable only
+// so that tests can shorten it; production code never changes it.
+var opWaitFirstDelay = 2 * time.Second
+
 // opTerminalStates are the status/state values we treat as "operation finished".
 var opTerminalStates = map[string]bool{
 	"DONE": true, "READY": true, "ACTIVE": true, "AVAILABLE": true,
@@ -68,7 +72,7 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 		waitSeconds = opWaitMaxSeconds
 	}
 	deadline := time.Now().Add(time.Duration(waitSeconds) * time.Second)
-	delay := 2 * time.Second
+	delay := opWaitFirstDelay
 	var last map[string]any
 	for {
 		m, err := fetch(ctx)

@@ -20,14 +20,10 @@ import (
 
 const (
 	totalSteps        = 5
-	vmPollInterval    = 5 * time.Second
-	vmPollTimeout     = 5 * time.Minute
-	sshRetryInterval  = 5 * time.Second
 	sshMaxRetries     = 60
 	sshDefaultUser    = "user1"
 	remoteComposeDir  = "/opt/app"
 	remoteComposeFile = "/opt/app/docker-compose.yml"
-	verifyTimeout     = 10 * time.Second
 )
 
 // Deploy orchestrates the full deploy lifecycle.
@@ -181,8 +177,13 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
 	e.Printer.Step(5, totalSteps, "Verifying health...")
 	if len(project.Ports) > 0 {
 		// Give containers a moment to start.
-		time.Sleep(2 * time.Second)
-		results := verify.Check(ctx, rec.VMIP, project.Ports, verifyTimeout)
+		t := e.timings()
+		time.Sleep(t.SettleDelay)
+		probe := e.Probe
+		if probe == nil {
+			probe = verify.Check
+		}
+		results := probe(ctx, rec.VMIP, project.Ports, t.VerifyTimeout)
 		e.printVerifyResults(results, rec.VMIP)
 	} else {
 		e.Printer.StepDone("No exposed ports to verify")
@@ -368,8 +369,9 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	}
 
 	// Poll until active.
-	pollDeadline := time.After(vmPollTimeout)
-	ticker := time.NewTicker(vmPollInterval)
+	t := e.timings()
+	pollDeadline := time.After(t.VMPollTimeout)
+	ticker := time.NewTicker(t.VMPollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -378,7 +380,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			return rec, e.handleInterrupt(sig.String(), vm.ID, opts.NonInteractive)
 		case <-pollDeadline:
 			return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
-				fmt.Sprintf("VM %s did not become active within %s", vm.ID, vmPollTimeout),
+				fmt.Sprintf("VM %s did not become active within %s", vm.ID, t.VMPollTimeout),
 				"Check VM status in Cloud.ru console.")
 		case <-ticker.C:
 			updated, err := e.Cloud.GetVM(ctx, vm.ID)
@@ -424,26 +426,26 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 // AssignFloatingIP creates a floating IP and attaches it to the VM's primary interface.
 // It polls until the floating IP is in_use or times out.
 func AssignFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID, projectID, azID string) (string, error) {
-	return assignFloatingIP(ctx, cloud, vmID, projectID, azID)
+	return assignFloatingIP(ctx, cloud, Timings{}.withDefaults(), vmID, projectID, azID)
 }
 
 func (e *Engine) assignFloatingIP(ctx context.Context, vmID, projectID, azID string) (string, error) {
-	return assignFloatingIP(ctx, e.Cloud, vmID, projectID, azID)
+	return assignFloatingIP(ctx, e.Cloud, e.timings(), vmID, projectID, azID)
 }
 
 // assignFloatingIP creates a floating IP and attaches it to the VM's primary interface.
-func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID, projectID, azID string) (string, error) {
+func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, vmID, projectID, azID string) (string, error) {
 	// Poll until the primary interface reaches "created" state.
 	// Cloud.ru returns 422 "interface_can_not_be_changed_from_current_state"
 	// if the interface is still being provisioned.
 	var ifaceID string
-	for attempt := 0; attempt < 24; attempt++ { // up to 2 minutes
+	for attempt := 0; attempt < ifaceMaxAttempts; attempt++ {
 		vmDetail, err := cloud.GetVMDetail(ctx, vmID)
 		if err != nil {
 			select {
 			case <-ctx.Done():
 				return "", ctx.Err()
-			case <-time.After(5 * time.Second):
+			case <-time.After(t.IfacePollInterval):
 				continue
 			}
 		}
@@ -459,7 +461,7 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID, proje
 		}
 
 		// Also accept primary interface without state check as fallback.
-		if attempt >= 12 {
+		if attempt >= ifaceFallbackAttempt {
 			for _, iface := range vmDetail.Interfaces {
 				if iface.Primary {
 					ifaceID = iface.ID
@@ -474,7 +476,7 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID, proje
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
-		case <-time.After(5 * time.Second):
+		case <-time.After(t.IfacePollInterval):
 		}
 	}
 	if ifaceID == "" {
@@ -497,7 +499,7 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID, proje
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
-		case <-time.After(10 * time.Second):
+		case <-time.After(t.FIPRetryInterval):
 		}
 	}
 	if err != nil {
@@ -512,7 +514,7 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID, proje
 		select {
 		case <-ctx.Done():
 			return fip.IPAddress, ctx.Err()
-		case <-time.After(5 * time.Second):
+		case <-time.After(t.FIPPollInterval):
 		}
 		updated, err := cloud.GetFloatingIP(ctx, fip.ID)
 		if err != nil {
@@ -545,7 +547,7 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(sshRetryInterval):
+		case <-time.After(e.timings().SSHRetryInterval):
 		}
 	}
 	return clerrors.Wrap(clerrors.CodeSSHTimeout,
