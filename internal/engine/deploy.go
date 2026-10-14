@@ -375,7 +375,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	for {
 		select {
 		case sig := <-sigCh:
-			return rec, e.handleInterrupt(ctx, sig, vm.ID, opts.NonInteractive)
+			return rec, e.handleInterrupt(sig.String(), vm.ID, opts.NonInteractive)
 		case <-pollDeadline:
 			return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
 				fmt.Sprintf("VM %s did not become active within %s", vm.ID, vmPollTimeout),
@@ -412,7 +412,11 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 					"Check Cloud.ru console for details.")
 			}
 		case <-ctx.Done():
-			return rec, ctx.Err()
+			// The CLI cancels ctx on the same SIGINT/SIGTERM that sigCh
+			// receives, and select picks a ready case at random. Both cases
+			// must lead to the same handling, or the VM may be left running
+			// without a word.
+			return rec, e.handleInterrupt("interrupt", vm.ID, opts.NonInteractive)
 		}
 	}
 }
@@ -550,18 +554,20 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 		lastErr)
 }
 
-// handleInterrupt handles SIGINT/SIGTERM after VM creation.
-func (e *Engine) handleInterrupt(ctx context.Context, sig os.Signal, vmID string, nonInteractive bool) error {
-	if nonInteractive {
-		e.Printer.Warning(fmt.Sprintf("Received %v. VM %s left running (non-interactive mode).", sig, vmID))
-		return clerrors.New(clerrors.CodeVMProvisionFailed,
+// handleInterrupt handles SIGINT/SIGTERM (or a cancelled context) after VM
+// creation. The returned error wraps context.Canceled, so the CLI exits 130.
+func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) error {
+	if nonInteractive || !promptStdinIsTTY() {
+		e.Printer.Warning(fmt.Sprintf("Received %s. VM %s left running (non-interactive mode).", sig, vmID))
+		return clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 			"deployment interrupted",
-			fmt.Sprintf("VM %s was created but deploy was interrupted. Use 'cloudru-vm destroy' to clean up.", vmID))
+			fmt.Sprintf("VM %s was created and is still running. Use 'cloudru-vm destroy --force' to delete it.", vmID),
+			context.Canceled)
 	}
 
-	fmt.Fprintf(os.Stderr, "\nReceived %v. Delete the VM %s? [y/N] ", sig, vmID)
+	fmt.Fprintf(e.Printer.ErrWriter(), "\nReceived %s. Delete the VM %s? [y/N] ", sig, vmID)
 	var answer string
-	fmt.Scanln(&answer)
+	fmt.Fscanln(promptStdin, &answer)
 
 	if answer == "y" || answer == "Y" {
 		e.Printer.StepDone("Deleting VM...")
@@ -576,9 +582,10 @@ func (e *Engine) handleInterrupt(ctx context.Context, sig os.Signal, vmID string
 		e.Printer.Warning(fmt.Sprintf("VM %s left running.", vmID))
 	}
 
-	return clerrors.New(clerrors.CodeVMProvisionFailed,
+	return clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 		"deployment interrupted by signal",
-		fmt.Sprintf("VM %s was created. Use 'cloudru-vm destroy' to clean up if needed.", vmID))
+		fmt.Sprintf("VM %s was created. Use 'cloudru-vm destroy' to clean up if needed.", vmID),
+		context.Canceled)
 }
 
 // printVerifyResults outputs health check results.

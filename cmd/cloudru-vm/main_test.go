@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -57,6 +58,21 @@ func TestHandleError_JSON(t *testing.T) {
 	if got.Error.Code != clerrors.ExitConfirmationRequired || got.Error.Hint != "use --force" ||
 		!strings.Contains(got.Error.Message, "no tty") {
 		t.Errorf("unexpected payload: %+v", got.Error)
+	}
+}
+
+func TestHandleError_InterruptedKeepsHint(t *testing.T) {
+	// As run() sees a deploy interrupted after the VM was created.
+	inner := clerrors.Wrap(clerrors.CodeVMProvisionFailed, "deployment interrupted",
+		"VM vm-1 was created and is still running. Use 'cloudru-vm destroy --force' to delete it.", context.Canceled)
+	err := fmt.Errorf("%w: %w", context.Canceled, inner)
+
+	var buf bytes.Buffer
+	handleError(output.NewWithWriter(&buf, output.ModeJSON, false), err)
+
+	if !strings.Contains(buf.String(), `"code":130`) || !strings.Contains(buf.String(), "vm-1") ||
+		!strings.Contains(buf.String(), "destroy --force") {
+		t.Errorf("interrupt must keep the VM hint: %q", buf.String())
 	}
 }
 

@@ -66,7 +66,7 @@ func run(args []string) int {
 	}
 	if ctx.Err() != nil && !stderrors.Is(err, context.Canceled) {
 		// The command was interrupted but reported it as something else.
-		err = fmt.Errorf("%w: %v", context.Canceled, err)
+		err = fmt.Errorf("%w: %w", context.Canceled, err)
 	}
 	if cmd == nil {
 		cmd = rootCmd
@@ -252,6 +252,11 @@ func handleError(p *output.Printer, err error) {
 	switch {
 	case code == clerrors.ExitInterrupted:
 		message = "interrupted"
+		if stderrors.As(err, &cliErr) {
+			// e.g. deploy: which VM was left running and how to delete it.
+			message += ": " + cliErr.Message
+			hint = cliErr.Hint
+		}
 	case stderrors.As(err, &cliErr):
 		hint = cliErr.Hint
 		if err == error(cliErr) {

@@ -20,11 +20,12 @@ type DestroyOptions struct {
 	Force bool // skip confirmation prompt
 }
 
-// destroyStdin is where the confirmation answer is read from; destroyStdinIsTTY
-// tells whether a human can answer at all. Variables so tests can replace them.
+// promptStdin is where confirmation answers (destroy, deploy interrupt) are
+// read from; promptStdinIsTTY tells whether a human can answer at all.
+// Variables so tests can replace them.
 var (
-	destroyStdin      io.Reader = os.Stdin
-	destroyStdinIsTTY           = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+	promptStdin      io.Reader = os.Stdin
+	promptStdinIsTTY           = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
 )
 
 // Destroy tears down the active deployment.
@@ -39,7 +40,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Without a terminal nobody can answer the prompt: reading stdin would
 	// hit EOF and look like a refusal. Fail loudly instead of exiting 0.
-	if !opts.Force && !destroyStdinIsTTY() {
+	if !opts.Force && !promptStdinIsTTY() {
 		target := "the deployment"
 		if active != nil {
 			target = "VM " + active.VMID
@@ -60,7 +61,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	if !opts.Force {
 		e.Printer.Warning(fmt.Sprintf("This will permanently delete VM %s and all data on it.", active.VMID))
 		fmt.Fprintf(e.Printer.ErrWriter(), "Type 'yes' to confirm: ")
-		answer, err := readAnswer(ctx, destroyStdin)
+		answer, err := readAnswer(ctx, promptStdin)
 		if err != nil {
 			return err
 		}

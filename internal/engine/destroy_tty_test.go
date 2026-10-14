@@ -31,12 +31,12 @@ func destroyEngineWithVM(t *testing.T) (*Engine, *bytes.Buffer) {
 	return &Engine{Printer: output.NewWithWriter(&buf, output.ModePlain, false), StateDir: dir}, &buf
 }
 
-func withDestroyStdin(t *testing.T, r io.Reader, tty bool) {
+func withPromptStdin(t *testing.T, r io.Reader, tty bool) {
 	t.Helper()
-	oldIn, oldTTY := destroyStdin, destroyStdinIsTTY
-	destroyStdin = r
-	destroyStdinIsTTY = func() bool { return tty }
-	t.Cleanup(func() { destroyStdin, destroyStdinIsTTY = oldIn, oldTTY })
+	oldIn, oldTTY := promptStdin, promptStdinIsTTY
+	promptStdin = r
+	promptStdinIsTTY = func() bool { return tty }
+	t.Cleanup(func() { promptStdin, promptStdinIsTTY = oldIn, oldTTY })
 }
 
 func assertVMStillInState(t *testing.T, e *Engine) {
@@ -52,7 +52,7 @@ func assertVMStillInState(t *testing.T, e *Engine) {
 
 func TestDestroy_NoTTYWithoutForce_RequiresConfirmation(t *testing.T) {
 	e, _ := destroyEngineWithVM(t)
-	withDestroyStdin(t, strings.NewReader("\n"), false)
+	withPromptStdin(t, strings.NewReader("\n"), false)
 
 	err := e.Destroy(context.Background(), DestroyOptions{})
 	if got := clerrors.ExitCode(err); got != clerrors.ExitConfirmationRequired {
@@ -63,7 +63,7 @@ func TestDestroy_NoTTYWithoutForce_RequiresConfirmation(t *testing.T) {
 
 func TestDestroy_AnswerNotYes_IsNotSuccess(t *testing.T) {
 	e, buf := destroyEngineWithVM(t)
-	withDestroyStdin(t, strings.NewReader("no\n"), true)
+	withPromptStdin(t, strings.NewReader("no\n"), true)
 
 	err := e.Destroy(context.Background(), DestroyOptions{})
 	if got := clerrors.ExitCode(err); got != clerrors.ExitConfirmationRequired {
@@ -79,7 +79,7 @@ func TestDestroy_PromptGoesToStderr(t *testing.T) {
 	e, _ := destroyEngineWithVM(t)
 	var stdout, stderr bytes.Buffer
 	e.Printer = output.NewWithWriters(&stdout, &stderr, output.ModePlain, false)
-	withDestroyStdin(t, strings.NewReader("no\n"), true)
+	withPromptStdin(t, strings.NewReader("no\n"), true)
 
 	_ = e.Destroy(context.Background(), DestroyOptions{})
 	if strings.Contains(stdout.String(), "Type 'yes'") {
@@ -94,7 +94,7 @@ func TestDestroy_InterruptAtPrompt(t *testing.T) {
 	e, _ := destroyEngineWithVM(t)
 	pr, pw := io.Pipe() // never written: the user does not answer
 	defer pw.Close()
-	withDestroyStdin(t, pr, true)
+	withPromptStdin(t, pr, true)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Ctrl-C while the prompt waits

@@ -19,6 +19,5 @@
 - [audit] `id.cloud.ru/auth/system/openid/token` (mk8s kubeconfig) не найден в документации; quickstart называет `auth.iam.cloud.ru` — проверить вживую до релиза
 - [audit] Хост billing API и `CLOUDRU_AGREEMENT_ID`: документация хоста не называет; подтвердить
 - [audit] Публичный API цен Cloud.ru отсутствует; `internal/pricing` — оценка по зашитой карте. Для внешнего продукта нужен источник или явный disclaimer в каждом превью
-- [01] `deploy`: после создания ВМ Ctrl-C ловят и свой `signal.Notify` (deploy.go:348), и контекст из `main`; `select` (deploy.go:377/414) выбирает случайно — в половине случаев вопрос «удалить ВМ?» пропускается, выход 130, ВМ остаётся · internal/engine/deploy.go:347-416 · вне scope этапа 1; поднять в этап 5
 - [01] Compute API 401/403 даёт `API_ERROR` (код 5), а не код 2 · internal/provision/adapter.go `doWithRetry`, ветка default · в adapter.go этап 1 меняет только http.Client: параллельно идёт этап 6
 - [01] MCP-обработчики получают `context.Background()` и не отменяются по сигналу; `Server.Run` без контекста (в `main` обёрнут) · internal/mcp/server.go:216 · MCP — этап 3
