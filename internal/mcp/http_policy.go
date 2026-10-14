@@ -7,6 +7,10 @@ import (
 	"github.com/shatim-ops/cloudru-vm-cli/internal/kubetools"
 )
 
+// binaryAvailable reports whether kubectl/helm can be run; tests replace it
+// (kubetools also looks in /usr/local/bin, where CI runners have both).
+var binaryAvailable = kubetools.Available
+
 // restrictForHTTP adjusts tool handlers for the HTTP transport. The tool set
 // and schemas stay the same; some calls answer with an error instead:
 //
@@ -30,7 +34,7 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 			continue
 		}
 		s.handlers[tool] = func(ctx context.Context, args map[string]any) (string, bool) {
-			if !kubetools.Available(bin) {
+			if !binaryAvailable(bin) {
 				return errResult(fmt.Errorf(
 					"%s is not available in this mode: %s is not installed on the MCP server (the Docker image ships without kubectl/helm). "+
 						"Use k8s_kubeconfig with embed_token=false and run %s on your machine, or run 'cloudru-vm mcp' over stdio on a host with %s",

@@ -396,8 +396,9 @@ func TestHTTPPolicy_SecretExport(t *testing.T) {
 }
 
 func TestHTTPPolicy_KubeBinariesMissing(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
+	orig := binaryAvailable
+	binaryAvailable = func(string) bool { return false }
+	t.Cleanup(func() { binaryAvailable = orig })
 	s := newTestServer()
 	s.restrictForHTTP(false)
 	for _, tool := range []string{"k8s_kubectl", "k8s_apply", "k8s_helm"} {
