@@ -7,6 +7,7 @@ type DeploymentRecord struct {
 	ID                    string    `json:"id"`
 	VMID                  string    `json:"vm_id"`
 	VMIP                  string    `json:"vm_ip"`
+	FloatingIPID          string    `json:"floating_ip_id,omitempty"` // released by destroy
 	VMFlavor              string    `json:"vm_flavor"`
 	Region                string    `json:"region"`
 	Status                string    `json:"status"` // creating, running, ssh_timeout, destroying, destroyed

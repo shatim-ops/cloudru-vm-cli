@@ -1,0 +1,167 @@
+package engine
+
+import (
+	"bytes"
+	"context"
+	stderrors "errors"
+	"strings"
+	"testing"
+	"time"
+
+	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+)
+
+// destroyFixture returns an engine whose state holds rec and whose VM is
+// gone right after DeleteVM.
+func destroyFixture(t *testing.T, rec state.DeploymentRecord) (*Engine, *mockCloudAPI, *bytes.Buffer) {
+	t.Helper()
+	cloud := &mockCloudAPI{getVMFn: func(context.Context, string) (*provision.VM, error) {
+		return nil, clerrors.New(clerrors.CodeVMNotFound, "gone", "")
+	}}
+	eng, dir := newTestEngine(t, cloud, newMockDeployer())
+	var out bytes.Buffer
+	eng.Printer = output.NewWithWriter(&out, output.ModePlain, false)
+	sf := &state.File{Version: 1}
+	sf.UpsertDeployment(rec)
+	if err := state.Write(state.DefaultPath(dir), sf); err != nil {
+		t.Fatal(err)
+	}
+	return eng, cloud, &out
+}
+
+func runningRecord() state.DeploymentRecord {
+	return state.DeploymentRecord{
+		ID: "vm-1", VMID: "vm-1", VMIP: "198.51.100.10", FloatingIPID: "fip-9",
+		SSHUser: "user1", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+}
+
+// destroy releases the floating IP recorded at deploy, as the MCP tool does;
+// otherwise the address stays billed after the VM is gone.
+func TestDestroy_ReleasesFloatingIPFromState(t *testing.T) {
+	eng, cloud, out := destroyFixture(t, runningRecord())
+
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-9" {
+		t.Errorf("released FIPs = %v, want [fip-9]", cloud.deletedFIPs)
+	}
+	if !strings.Contains(out.String(), "Floating IP 198.51.100.10 (fip-9) released") {
+		t.Errorf("output:\n%s", out.String())
+	}
+	if a := readActive(t, eng.StateDir); a != nil {
+		t.Errorf("deployment left in state: %+v", a)
+	}
+}
+
+// State written before floating_ip_id existed: the FIP is found by address.
+func TestDestroy_OldStateFindsFloatingIPByAddress(t *testing.T) {
+	rec := runningRecord()
+	rec.FloatingIPID = ""
+	eng, cloud, _ := destroyFixture(t, rec)
+	cloud.listFloatingIPsFn = func(context.Context, string) ([]*provision.FloatingIP, error) {
+		return []*provision.FloatingIP{
+			{ID: "fip-other", IPAddress: "198.51.100.99"},
+			{ID: "fip-old", IPAddress: "198.51.100.10"},
+		}, nil
+	}
+
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-old" {
+		t.Errorf("released FIPs = %v, want [fip-old]", cloud.deletedFIPs)
+	}
+}
+
+func TestDestroy_NoFloatingIPNothingToRelease(t *testing.T) {
+	rec := runningRecord()
+	rec.FloatingIPID, rec.VMIP = "", ""
+	eng, cloud, _ := destroyFixture(t, rec)
+
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if len(cloud.deletedFIPs) != 0 {
+		t.Errorf("released FIPs = %v, want none", cloud.deletedFIPs)
+	}
+}
+
+// A FIP the platform already removed is not an error.
+func TestDestroy_FloatingIPAlreadyGone(t *testing.T) {
+	eng, cloud, _ := destroyFixture(t, runningRecord())
+	cloud.deleteFloatingIPFn = func(context.Context, string, string) error {
+		return clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
+	}
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if a := readActive(t, eng.StateDir); a != nil {
+		t.Errorf("deployment left in state: %+v", a)
+	}
+}
+
+// A release that keeps failing is an API error (exit 5), not success: the
+// record stays, and re-running destroy finishes the job.
+func TestDestroy_FloatingIPReleaseFailureKeepsRecordForRetry(t *testing.T) {
+	eng, cloud, _ := destroyFixture(t, runningRecord())
+	cloud.deleteFloatingIPFn = func(context.Context, string, string) error {
+		return clerrors.New(clerrors.CodeAPIError, "API returned status 409: floating ip is in use", "")
+	}
+
+	err := eng.Destroy(context.Background(), DestroyOptions{Force: true})
+	if got := clerrors.ExitCode(err); got != clerrors.ExitAPI {
+		t.Fatalf("exit code = %d (err %v), want %d", got, err, clerrors.ExitAPI)
+	}
+	var cliErr *clerrors.CLIError
+	if !stderrors.As(err, &cliErr) || !strings.Contains(cliErr.Message, "fip-9") || !strings.Contains(cliErr.Hint, "destroy --force") {
+		t.Errorf("error must name the FIP and how to retry: %v", err)
+	}
+	if len(cloud.deletedFIPs) != fipReleaseAttempts {
+		t.Errorf("release attempts = %d, want %d", len(cloud.deletedFIPs), fipReleaseAttempts)
+	}
+	a := readActive(t, eng.StateDir)
+	if a == nil || a.Status != "destroying" || a.FloatingIPID != "fip-9" {
+		t.Fatalf("record must stay for a retry: %+v", a)
+	}
+
+	// Re-run: the VM is already gone, the release now succeeds.
+	cloud.deleteVMFn = func(context.Context, string) error {
+		return clerrors.New(clerrors.CodeVMNotFound, "gone", "")
+	}
+	cloud.deleteFloatingIPFn = nil
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("re-run: %v", err)
+	}
+	if a := readActive(t, eng.StateDir); a != nil {
+		t.Errorf("deployment left in state after re-run: %+v", a)
+	}
+}
+
+// The deletion wait uses Engine.Timings: a VM that never disappears costs
+// DestroyPollTimeout, not 30 real seconds, and the FIP is still released.
+func TestDestroy_DeletionWaitUsesTimings(t *testing.T) {
+	eng, cloud, out := destroyFixture(t, runningRecord())
+	cloud.getVMFn = func(_ context.Context, id string) (*provision.VM, error) {
+		return &provision.VM{ID: id, Status: "deleting"}, nil
+	}
+	eng.Timings.DestroyPollTimeout = 20 * time.Millisecond
+
+	start := time.Now()
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("destroy took %s", d)
+	}
+	if !strings.Contains(out.String(), "Timeout waiting for VM deletion confirmation") {
+		t.Errorf("output:\n%s", out.String())
+	}
+	if len(cloud.deletedFIPs) != 1 {
+		t.Errorf("released FIPs = %v", cloud.deletedFIPs)
+	}
+}

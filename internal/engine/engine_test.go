@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -50,10 +51,18 @@ type mockCloudAPI struct {
 	getVMDetailFn           func(ctx context.Context, id string) (*provision.VMDetail, error)
 	createFloatingIPFn      func(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error)
 	getFloatingIPFn         func(ctx context.Context, id string) (*provision.FloatingIP, error)
+	listFloatingIPsFn       func(ctx context.Context, projectID string) ([]*provision.FloatingIP, error)
+	deleteFloatingIPFn      func(ctx context.Context, fipID, projectID string) error
+	listDiskTypesFn         func(ctx context.Context, projectID string) ([]*provision.DiskType, error)
+	listSubnetsFn           func(ctx context.Context, projectID string) ([]*provision.Subnet, error)
+	listSecurityGroupsFn    func(ctx context.Context, projectID string) ([]*provision.SecurityGroup, error)
+	addedRules              []provision.SGRule
 
 	token        string
 	createCalled bool
+	createReq    provision.CreateVMRequest
 	getCalls     int
+	deletedFIPs  []string
 }
 
 func (m *mockCloudAPI) SetToken(t string) {
@@ -65,6 +74,7 @@ func (m *mockCloudAPI) SetToken(t string) {
 func (m *mockCloudAPI) CreateVM(ctx context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
 	m.mu.Lock()
 	m.createCalled = true
+	m.createReq = req
 	m.mu.Unlock()
 	if m.createVMFn != nil {
 		return m.createVMFn(ctx, req)
@@ -148,6 +158,7 @@ func (m *mockCloudAPI) GetImage(ctx context.Context, id string) (*provision.Imag
 		MetadataFields: []provision.ImageMetadataField{
 			{ID: "mf-1", Name: "ssh_key", Required: true, MandatoryGroup: "ssh"},
 			{ID: "mf-2", Name: "hostname", Required: false},
+			{ID: "mf-3", Name: "name", MandatoryGroup: "name", DefaultValue: "user1"},
 		},
 	}, nil
 }
@@ -197,6 +208,33 @@ func (m *mockCloudAPI) GetFloatingIP(ctx context.Context, id string) (*provision
 	}, nil
 }
 
+func (m *mockCloudAPI) ListFloatingIPs(ctx context.Context, projectID string) ([]*provision.FloatingIP, error) {
+	if m.listFloatingIPsFn != nil {
+		return m.listFloatingIPsFn(ctx, projectID)
+	}
+	return nil, nil
+}
+
+func (m *mockCloudAPI) DeleteFloatingIP(ctx context.Context, fipID, projectID string) error {
+	m.mu.Lock()
+	m.deletedFIPs = append(m.deletedFIPs, fipID)
+	m.mu.Unlock()
+	if m.deleteFloatingIPFn != nil {
+		return m.deleteFloatingIPFn(ctx, fipID, projectID)
+	}
+	return nil
+}
+
+func (m *mockCloudAPI) ListDiskTypes(ctx context.Context, projectID string) ([]*provision.DiskType, error) {
+	if m.listDiskTypesFn != nil {
+		return m.listDiskTypesFn(ctx, projectID)
+	}
+	return []*provision.DiskType{
+		{ID: "dt-ssd", Name: "SSD"},
+		{ID: "dt-hdd", Name: "HDD"},
+	}, nil
+}
+
 type mockDeployer struct {
 	mu sync.Mutex
 
@@ -204,8 +242,11 @@ type mockDeployer struct {
 	uploadErr       error
 	execResults     map[string]string
 	execErr         error
+	streamErrs      map[string][]error                          // per-command errors for ExecStream, consumed in order
+	streamHook      func(ctx context.Context, cmd string) error // runs first; a non-nil error is returned
 	hostFingerprint string
 	connectCalled   bool
+	connectCalls    int
 	uploadCalled    bool
 	execCalls       []string
 	closeCalled     bool
@@ -215,7 +256,7 @@ type mockDeployer struct {
 func newMockDeployer() *mockDeployer {
 	return &mockDeployer{
 		execResults: map[string]string{
-			"docker compose version": "Docker Compose version v2.24.0",
+			dockerReadyCmd: "Docker Compose version v2.24.0",
 		},
 	}
 }
@@ -224,6 +265,7 @@ func (m *mockDeployer) Connect(_ context.Context, host string, port int, user st
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.connectCalled = true
+	m.connectCalls++
 	return m.connectErr
 }
 
@@ -255,6 +297,30 @@ func (m *mockDeployer) Exec(_ context.Context, cmd string) (string, error) {
 		return result, nil
 	}
 	return "", nil
+}
+
+// ExecStream records the call like Exec and writes the scripted result.
+func (m *mockDeployer) ExecStream(ctx context.Context, cmd string, stdout, _ io.Writer) error {
+	if m.streamHook != nil {
+		if err := m.streamHook(ctx, cmd); err != nil {
+			m.mu.Lock()
+			m.execCalls = append(m.execCalls, cmd)
+			m.mu.Unlock()
+			return err
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.execCalls = append(m.execCalls, cmd)
+	if errs := m.streamErrs[cmd]; len(errs) > 0 {
+		m.streamErrs[cmd] = errs[1:]
+		return errs[0]
+	}
+	if m.execErr != nil {
+		return m.execErr
+	}
+	_, _ = io.WriteString(stdout, m.execResults[cmd])
+	return nil
 }
 
 func (m *mockDeployer) Close() error {
@@ -301,6 +367,11 @@ var fastTimings = Timings{
 	SSHRetryInterval:  time.Millisecond,
 	SettleDelay:       time.Millisecond,
 	VerifyTimeout:     time.Second,
+
+	DockerPollInterval:  time.Millisecond,
+	DockerWaitTimeout:   5 * time.Second,
+	DestroyPollInterval: time.Millisecond,
+	DestroyPollTimeout:  5 * time.Second,
 }
 
 // stubProbe records health-check calls instead of opening connections, so
@@ -405,7 +476,7 @@ func TestDeploy_NewDeploy(t *testing.T) {
 	foundVersion := false
 	foundUp := false
 	for _, cmd := range execCalls {
-		if cmd == "docker compose version" {
+		if cmd == dockerReadyCmd {
 			foundVersion = true
 		}
 		if cmd == "cd /opt/app && docker compose -f docker-compose.yml up -d" {
@@ -413,7 +484,7 @@ func TestDeploy_NewDeploy(t *testing.T) {
 		}
 	}
 	if !foundVersion {
-		t.Error("expected 'docker compose version' exec call")
+		t.Errorf("expected %q exec call", dockerReadyCmd)
 	}
 	if !foundUp {
 		t.Errorf("expected 'docker compose up -d' exec call, got: %v", execCalls)
@@ -455,6 +526,7 @@ func TestDeploy_UpdateDeploy(t *testing.T) {
 				VMFlavor:    "small",
 				Region:      "ru-moscow-1",
 				Status:      "running",
+				SSHUser:     "user1",
 				ComposeHash: "oldhash-different-from-current",
 				CreatedAt:   time.Now().Add(-time.Hour),
 				UpdatedAt:   time.Now().Add(-time.Hour),
@@ -527,6 +599,7 @@ func TestDeploy_NoChanges(t *testing.T) {
 				VMFlavor:    "small",
 				Region:      "ru-moscow-1",
 				Status:      "running",
+				SSHUser:     "user1",
 				ComposeHash: composeHash(),
 				CreatedAt:   time.Now().Add(-time.Hour),
 				UpdatedAt:   time.Now().Add(-time.Hour),
@@ -581,6 +654,7 @@ func TestDeploy_ForceRedeploy(t *testing.T) {
 				VMFlavor:    "small",
 				Region:      "ru-moscow-1",
 				Status:      "running",
+				SSHUser:     "user1",
 				ComposeHash: composeHash(),
 				CreatedAt:   time.Now().Add(-time.Hour),
 				UpdatedAt:   time.Now().Add(-time.Hour),
@@ -619,4 +693,25 @@ func TestDeploy_ForceRedeploy(t *testing.T) {
 	if !uploadCalled {
 		t.Error("expected Upload to be called on force redeploy")
 	}
+}
+
+func (m *mockCloudAPI) ListSubnets(ctx context.Context, projectID string) ([]*provision.Subnet, error) {
+	if m.listSubnetsFn != nil {
+		return m.listSubnetsFn(ctx, projectID)
+	}
+	return []*provision.Subnet{{ID: "subnet-1", Name: "Default_ru-moscow-1"}}, nil
+}
+
+func (m *mockCloudAPI) ListSecurityGroups(ctx context.Context, projectID string) ([]*provision.SecurityGroup, error) {
+	if m.listSecurityGroupsFn != nil {
+		return m.listSecurityGroupsFn(ctx, projectID)
+	}
+	return []*provision.SecurityGroup{{ID: "sg-1", Name: "SSH-access_ru-moscow-1"}}, nil
+}
+
+func (m *mockCloudAPI) AddSecurityGroupRule(ctx context.Context, sgID, projectID string, rule provision.SGRule) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.addedRules = append(m.addedRules, rule)
+	return nil
 }

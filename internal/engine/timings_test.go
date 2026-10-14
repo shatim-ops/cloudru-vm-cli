@@ -30,6 +30,11 @@ func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 		SSHRetryInterval:  5 * time.Second,
 		SettleDelay:       2 * time.Second,
 		VerifyTimeout:     10 * time.Second,
+
+		DockerPollInterval:  10 * time.Second,
+		DockerWaitTimeout:   10 * time.Minute,
+		DestroyPollInterval: 3 * time.Second,
+		DestroyPollTimeout:  30 * time.Second,
 	}
 	if got != want {
 		t.Errorf("defaults changed:\n got  %+v\n want %+v", got, want)
@@ -132,7 +137,7 @@ func TestAssignFloatingIP_InterfaceStateFallback(t *testing.T) {
 		return &provision.FloatingIP{ID: "fip-1", IPAddress: "127.0.0.1", State: "in_use"}, nil
 	}
 
-	ip, err := assignFloatingIP(context.Background(), cloud, fastTimings, "vm-1", "proj", "az")
+	ip, _, err := assignFloatingIP(context.Background(), cloud, fastTimings, nil, "vm-1", "proj", "az")
 	if err != nil {
 		t.Fatalf("assignFloatingIP: %v", err)
 	}

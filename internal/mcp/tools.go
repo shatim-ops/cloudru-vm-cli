@@ -1539,6 +1539,9 @@ func (s *Server) handleProvision(ctx context.Context, args map[string]any) (stri
 		return errResult(fmt.Errorf("get image details: %w", err)), true
 	}
 
+	if err := eng.EnsureSSHKey(); err != nil {
+		return errResult(err), true
+	}
 	imgMeta := map[string]string{}
 	satisfiedGroups := map[string]bool{}
 	for _, mf := range imgDetail.MetadataFields {

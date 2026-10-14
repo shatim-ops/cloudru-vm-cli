@@ -1,14 +1,19 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	stderrors "errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/shatim-ops/cloudru-vm-cli/internal/bootstrap"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/compose"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
@@ -22,13 +27,19 @@ import (
 const (
 	totalSteps        = 5
 	sshMaxRetries     = 60
-	sshDefaultUser    = "user1"
 	remoteComposeDir  = "/opt/app"
 	remoteComposeFile = "/opt/app/docker-compose.yml"
+
+	// defaultDiskTypeName is looked up in list_disk_types (case-insensitive);
+	// its UUID is per tenant.
+	defaultDiskTypeName = "ssd"
+	// dockerReadyCmd succeeds once the compose plugin exists and the SSH user
+	// may talk to the daemon (docker group).
+	dockerReadyCmd = "docker compose version && docker info >/dev/null"
 )
 
 // Deploy orchestrates the full deploy lifecycle.
-func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
+func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) {
 	// Stage 1: Parse compose file.
 	project, err := compose.Parse(opts.ComposeFile)
 	if err != nil {
@@ -46,7 +57,9 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
 	existing := stateFile.ActiveDeployment()
 	isNewDeploy := existing == nil
 
-	if !isNewDeploy && existing.ComposeHash == project.Hash && !opts.Force {
+	// Skip only a deployment that finished: after an SSH or Docker failure the
+	// hash is already recorded, and a plain re-run must retry.
+	if !isNewDeploy && existing.ComposeHash == project.Hash && existing.Status == "running" && !opts.Force {
 		e.Printer.Success("No changes detected in compose file (hash unchanged). Nothing to deploy.")
 		e.Printer.Hint("Use --force to redeploy anyway.")
 		return nil
@@ -55,6 +68,11 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
 		// Updating an existing VM creates nothing billable, so it is not
 		// gated; --dry-run still must not touch it.
 		_, err := confirm.Ask(ctx, redeployPreview(existing), e.confirmOptions(false, true, false))
+		return err
+	}
+
+	// The key is needed from here on: image metadata and SSH.
+	if err := e.EnsureSSHKey(); err != nil {
 		return err
 	}
 
@@ -96,6 +114,9 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
 		if err == errDryRun {
 			return nil
 		}
+		if vmID := rec.VMID; vmID != "" {
+			defer func() { retErr = e.vmLeftRunning(ctx, retErr, vmID) }()
+		}
 		if err != nil {
 			return err
 		}
@@ -122,9 +143,9 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
 		maxRetries = 12 // existing VM should be ready quickly
 	}
 
-	sshUserForConnect := rec.SSHUser
-	if sshUserForConnect == "" {
-		sshUserForConnect = sshDefaultUser
+	sshUserForConnect, err := sshUserOf(&rec)
+	if err != nil {
+		return err
 	}
 
 	if err := e.waitForSSH(ctx, rec.VMIP, sshUserForConnect, rec.SSHHostKeyFingerprint, maxRetries); err != nil {
@@ -141,12 +162,15 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
 		rec.SSHHostKeyFingerprint = e.Deployer.HostKeyFingerprint()
 	}
 
-	// Verify docker compose is available.
-	if _, err := e.Deployer.Exec(ctx, "docker compose version"); err != nil {
-		return clerrors.Wrap(clerrors.CodeSSHTimeout,
-			"docker compose not available on VM",
-			"Ensure cloud-init completed successfully. Check /var/log/cloud-init-output.log on the VM.",
-			err)
+	// Install Docker if the image has none (Ubuntu/Debian chosen by init).
+	if err := e.prepareDocker(ctx, rec.VMIP, sshUserForConnect, rec.SSHHostKeyFingerprint); err != nil {
+		if ctx.Err() == nil {
+			rec.Status = "docker_failed"
+			rec.UpdatedAt = time.Now()
+			stateFile.UpsertDeployment(rec)
+			_ = state.Write(statePath, stateFile)
+		}
+		return err
 	}
 	e.Printer.StepDone("SSH connected, docker compose ready")
 
@@ -166,8 +190,13 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
 		return err
 	}
 
-	// Run docker compose up.
-	if _, err := e.Deployer.Exec(ctx, fmt.Sprintf("cd %s && docker compose -f docker-compose.yml up -d", remoteComposeDir)); err != nil {
+	// Run docker compose up. Streamed, not Exec: pulling images can take
+	// longer than Exec's 120 s limit. Progress goes to stderr in text mode.
+	var progress io.Writer = e.Printer.ErrWriter()
+	if e.Printer.IsJSON() {
+		progress = io.Discard
+	}
+	if err := e.Deployer.ExecStream(ctx, fmt.Sprintf("cd %s && docker compose -f docker-compose.yml up -d", remoteComposeDir), progress, progress); err != nil {
 		return clerrors.Wrap(clerrors.CodeSSHTimeout,
 			"docker compose up failed",
 			"Check your compose file and service logs on the VM.",
@@ -188,7 +217,11 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
 	if len(project.Ports) > 0 {
 		// Give containers a moment to start.
 		t := e.timings()
-		time.Sleep(t.SettleDelay)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(t.SettleDelay):
+		}
 		probe := e.Probe
 		if probe == nil {
 			probe = verify.Check
@@ -295,6 +328,14 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			if mf.MandatoryGroup != "" {
 				satisfiedGroups[mf.MandatoryGroup] = true
 			}
+		case "linux_password":
+			// Without it the VM never leaves "creating" (seen live
+			// 2026-10-14; MCP vm_create sets it for the same reason). Login
+			// is by SSH key: the password is random and not kept.
+			imgMeta[mf.Name] = randomPassword(16)
+			if mf.MandatoryGroup != "" {
+				satisfiedGroups[mf.MandatoryGroup] = true
+			}
 		case "name", "user", "username", "default_user":
 			val := mf.DefaultValue
 			if val == "" {
@@ -317,41 +358,74 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		if mf.MandatoryGroup != "" && satisfiedGroups[mf.MandatoryGroup] {
 			continue
 		}
+		// Only fields with a real default: empty values and these two flags
+		// make the create API answer 500 (same rule as MCP vm_create).
+		if mf.Name == "vmm_enabled" || mf.Name == "guest_agent_ready" {
+			continue
+		}
 		if mf.DefaultValue != "" {
 			imgMeta[mf.Name] = mf.DefaultValue
-		} else {
-			imgMeta[mf.Name] = ""
 		}
 	}
 
-	// Determine SSH user from metadata (the "name" field is the login user).
-	sshUser := sshDefaultUser
+	// Determine SSH user from metadata (the "name" field is the login user;
+	// Cloud.ru images default it to user1).
+	sshUser := ""
 	for _, key := range []string{"name", "user", "username", "default_user"} {
 		if v, ok := imgMeta[key]; ok && v != "" {
 			sshUser = v
 			break
 		}
 	}
+	if sshUser == "" {
+		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
+			fmt.Sprintf("image %s declares no login user", imageID),
+			"Choose a Linux image whose metadata has a 'name' field (cloudru-vm list-images), e.g. Ubuntu-24.04.")
+	}
 
+	diskType, err := e.resolveDiskType(ctx, projectID, defaultDiskTypeName)
+	if err != nil {
+		return state.DeploymentRecord{}, err
+	}
+
+	network, err := e.resolveNetwork(ctx, projectID, region)
+	if err != nil {
+		return state.DeploymentRecord{}, err
+	}
+	flavorAPIName, err := e.flavorAPIName(ctx, flavorName)
+	if err != nil {
+		return state.DeploymentRecord{}, err
+	}
+
+	// The create API takes names, not UUIDs, and an explicit interface:
+	// UUIDs or a missing interface make it answer 500.
 	req := provision.CreateVMRequest{
 		ProjectID:          projectID,
 		Name:               fmt.Sprintf("cloudru-vm-%s", projectName),
-		FlavorID:           flavorName,
+		FlavorName:         flavorAPIName,
 		AvailabilityZoneID: region,
-		ImageID:            imageID,
+		ImageName:          imgDetail.Name,
 		ImageMetadata:      imgMeta,
 		Disks: []provision.DiskReq{
 			{
-				Name:       fmt.Sprintf("cloudru-vm-%s-boot", projectName),
-				Size:       diskSize,
-				DiskTypeID: "a859e3dc-6b14-42a8-9bcc-890fde0ba6d0",
+				Name:         fmt.Sprintf("cloudru-vm-%s-boot", projectName),
+				Size:         diskSize,
+				DiskTypeName: diskType.Name,
+			},
+		},
+		Interfaces: []provision.InterfaceReq{
+			{
+				Type:                     "regular",
+				SubnetID:                 network.SubnetID,
+				InterfaceSecurityEnabled: true,
+				SecurityGroups:           []string{network.SecurityGroupID},
 			},
 		},
 	}
 
 	// The VM is billed from this call on: show what will be created and what
 	// it costs, and get consent (or stop here on --dry-run).
-	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, network, project.Ports), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}
@@ -413,20 +487,26 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				e.Printer.StepDone(fmt.Sprintf("VM %s active", vm.ID))
 
 				// Assign a floating (public) IP to the VM.
-				publicIP, err := e.assignFloatingIP(ctx, vm.ID, projectID, region)
-				if err != nil {
-					e.Printer.Warning(fmt.Sprintf("floating IP: %v", err))
-					// Continue without public IP — user can assign manually.
-				}
+				publicIP, fipID, err := e.assignFloatingIP(ctx, vm.ID, projectID, region)
 
+				// Record the FIP even if it is not confirmed: destroy releases it.
 				rec.VMIP = publicIP
+				rec.FloatingIPID = fipID
 				rec.Status = "running"
 				rec.UpdatedAt = time.Now()
 				stateFile.UpsertDeployment(rec)
 				_ = state.Write(statePath, stateFile)
+				if ctx.Err() != nil {
+					return rec, ctx.Err()
+				}
+				if err != nil {
+					e.Printer.Warning(fmt.Sprintf("floating IP: %v", err))
+					// Continue without public IP — user can assign manually.
+				}
 				if publicIP != "" {
 					e.Printer.StepDone(fmt.Sprintf("Public IP: %s", publicIP))
 				}
+				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports)
 				return rec, nil
 			case "error":
 				return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
@@ -446,25 +526,45 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 // AssignFloatingIP creates a floating IP and attaches it to the VM's primary interface.
 // It polls until the floating IP is in_use or times out.
 func AssignFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID, projectID, azID string) (string, error) {
-	return assignFloatingIP(ctx, cloud, Timings{}.withDefaults(), vmID, projectID, azID)
+	ip, _, err := assignFloatingIP(ctx, cloud, Timings{}.withDefaults(), nil, vmID, projectID, azID)
+	return ip, err
 }
 
-func (e *Engine) assignFloatingIP(ctx context.Context, vmID, projectID, azID string) (string, error) {
-	return assignFloatingIP(ctx, e.Cloud, e.timings(), vmID, projectID, azID)
+// assignFloatingIP prints its progress: the waits add up to minutes.
+func (e *Engine) assignFloatingIP(ctx context.Context, vmID, projectID, azID string) (ip, fipID string, err error) {
+	return assignFloatingIP(ctx, e.Cloud, e.timings(), e.Printer.StepDone, vmID, projectID, azID)
 }
 
-// assignFloatingIP creates a floating IP and attaches it to the VM's primary interface.
-func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, vmID, projectID, azID string) (string, error) {
+// fipProgressEvery is how many polls pass between progress lines.
+const fipProgressEvery = 6
+
+// assignFloatingIP creates a floating IP and attaches it to the VM's primary
+// interface. It returns the address and the FIP ID; the ID is set as soon as
+// the FIP exists, even when the wait for it fails, so the caller can record
+// it for destroy. progress (may be nil) receives human-readable status.
+func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, progress func(string), vmID, projectID, azID string) (string, string, error) {
+	start := time.Now()
+	report := func(format string, args ...any) {
+		if progress != nil {
+			progress(fmt.Sprintf(format, args...))
+		}
+	}
+	elapsed := func() time.Duration { return time.Since(start).Round(time.Second) }
+
 	// Poll until the primary interface reaches "created" state.
 	// Cloud.ru returns 422 "interface_can_not_be_changed_from_current_state"
 	// if the interface is still being provisioned.
+	report("Waiting for the VM network interface...")
 	var ifaceID string
 	for attempt := 0; attempt < ifaceMaxAttempts; attempt++ {
+		if attempt > 0 && attempt%fipProgressEvery == 0 {
+			report("Still waiting for the network interface (%s)", elapsed())
+		}
 		vmDetail, err := cloud.GetVMDetail(ctx, vmID)
 		if err != nil {
 			select {
 			case <-ctx.Done():
-				return "", ctx.Err()
+				return "", "", ctx.Err()
 			case <-time.After(t.IfacePollInterval):
 				continue
 			}
@@ -495,15 +595,16 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return "", "", ctx.Err()
 		case <-time.After(t.IfacePollInterval):
 		}
 	}
 	if ifaceID == "" {
-		return "", fmt.Errorf("no primary interface found on VM %s (or interface not ready)", vmID)
+		return "", "", fmt.Errorf("no primary interface found on VM %s after %s (or interface not ready)", vmID, elapsed())
 	}
 
 	// Create floating IP with retry.
+	report("Creating floating IP...")
 	var fip *provision.FloatingIP
 	var err error
 	for attempt := 0; attempt < 5; attempt++ {
@@ -516,27 +617,37 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 		if err == nil {
 			break
 		}
+		if ctx.Err() != nil {
+			return "", "", ctx.Err()
+		}
+		report("Creating floating IP failed (%v), retrying", err)
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return "", "", ctx.Err()
 		case <-time.After(t.FIPRetryInterval):
 		}
 	}
 	if err != nil {
-		return "", fmt.Errorf("create floating IP: %w", err)
+		return "", "", fmt.Errorf("create floating IP: %w", err)
 	}
 
 	// Poll until floating IP is active.
+	fipID := fip.ID
 	for attempt := 0; attempt < 12; attempt++ {
 		if fip.State == "in_use" || fip.State == "active" {
-			return fip.IPAddress, nil
+			return fip.IPAddress, fipID, nil
+		}
+		if attempt == 0 {
+			report("Waiting for floating IP %s to attach...", fip.IPAddress)
+		} else if attempt%fipProgressEvery == 0 {
+			report("Still waiting for floating IP %s (state %q, %s)", fip.IPAddress, fip.State, elapsed())
 		}
 		select {
 		case <-ctx.Done():
-			return fip.IPAddress, ctx.Err()
+			return fip.IPAddress, fipID, ctx.Err()
 		case <-time.After(t.FIPPollInterval):
 		}
-		updated, err := cloud.GetFloatingIP(ctx, fip.ID)
+		updated, err := cloud.GetFloatingIP(ctx, fipID)
 		if err != nil {
 			continue
 		}
@@ -544,7 +655,8 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 	}
 
 	// Return whatever IP we got even if state isn't confirmed.
-	return fip.IPAddress, nil
+	report("Floating IP %s not confirmed after %s; continuing", fip.IPAddress, elapsed())
+	return fip.IPAddress, fipID, nil
 }
 
 // waitForSSH retries SSH connection until the VM is reachable.
@@ -574,6 +686,150 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 		fmt.Sprintf("SSH connection failed after %d attempts", maxRetries),
 		"VM may still be booting. Try again in a few minutes.",
 		lastErr)
+}
+
+// prepareDocker makes Docker with the compose plugin usable by user on the
+// VM. Cloud.ru renders cloud-init only from the image's own template, so the
+// install runs over SSH (internal/bootstrap); on a VM that already has
+// Docker it only checks the docker group and /opt/app. Retries until
+// Timings.DockerWaitTimeout: first-boot cloud-init may still hold the apt lock.
+func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) error {
+	t := e.timings()
+	start := time.Now()
+	deadline := start.Add(t.DockerWaitTimeout)
+	installCmd := bootstrap.InstallCommand(user)
+
+	e.Printer.StepDone("Preparing Docker on the VM (a fresh VM takes a few minutes)...")
+	var lastErr error
+	var lastOut string
+	for attempt := 1; ; attempt++ {
+		var out bytes.Buffer
+		attemptCtx, cancel := context.WithDeadline(ctx, deadline)
+		err := e.Deployer.ExecStream(attemptCtx, installCmd, &out, &out)
+		cancel()
+		if err == nil {
+			// Group membership is fixed at login: reconnect so the docker
+			// group the script may have just added applies.
+			err = e.reconnect(ctx, ip, user, hostKey)
+			if err == nil {
+				_, err = e.Deployer.Exec(ctx, dockerReadyCmd)
+			}
+			if err == nil {
+				return nil
+			}
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if isFatalSSHError(err) {
+			return err
+		}
+		lastErr, lastOut = err, out.String()
+		if !time.Now().Before(deadline) {
+			break
+		}
+		e.Printer.Warning(fmt.Sprintf("Docker not ready yet (attempt %d, %s elapsed), retrying...",
+			attempt, time.Since(start).Round(time.Second)))
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(t.DockerPollInterval):
+		}
+		// A failed attempt may have lost the connection.
+		if err := e.reconnect(ctx, ip, user, hostKey); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if isFatalSSHError(err) {
+				return err
+			}
+		}
+	}
+
+	hint := "Check that the VM reaches get.docker.com, then re-run 'cloudru-vm deploy'."
+	if tail := lastLines(lastOut, 15); tail != "" {
+		hint = "Last output of the Docker install:\n" + tail + "\n" + hint
+	}
+	return clerrors.Wrap(clerrors.CodeSSHTimeout,
+		fmt.Sprintf("Docker is not ready on VM %s after %s", ip, t.DockerWaitTimeout),
+		hint, lastErr)
+}
+
+// reconnect opens a fresh SSH connection to the VM.
+func (e *Engine) reconnect(ctx context.Context, ip, user, hostKey string) error {
+	_ = e.Deployer.Close()
+	return e.Deployer.Connect(ctx, ip, 22, user, e.SSHKeyPEM, hostKey)
+}
+
+// isFatalSSHError reports errors that retrying cannot fix.
+func isFatalSSHError(err error) bool {
+	var cliErr *clerrors.CLIError
+	return stderrors.As(err, &cliErr) &&
+		(cliErr.Code == clerrors.CodeSSHAuthFailed || cliErr.Code == clerrors.CodeSSHHostKeyChanged)
+}
+
+// lastLines returns up to n trailing lines of s.
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+// resolveDiskType finds a disk type by name (case-insensitive) in
+// list_disk_types: its UUID is per tenant and must not be hardcoded.
+func (e *Engine) resolveDiskType(ctx context.Context, projectID, name string) (*provision.DiskType, error) {
+	types, err := e.Cloud.ListDiskTypes(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list disk types: %w", err)
+	}
+	names := make([]string, 0, len(types))
+	for _, dt := range types {
+		if strings.EqualFold(dt.Name, name) {
+			return dt, nil
+		}
+		names = append(names, dt.Name)
+	}
+	return nil, clerrors.New(clerrors.CodeConfigInvalid,
+		fmt.Sprintf("disk type %q not found in project", name),
+		fmt.Sprintf("Available disk types: %s.", strings.Join(names, ", ")))
+}
+
+// sshUserOf returns the login user recorded for the deployment.
+func sshUserOf(rec *state.DeploymentRecord) (string, error) {
+	if rec.SSHUser == "" {
+		return "", clerrors.New(clerrors.CodeStateCorrupted,
+			fmt.Sprintf("deployment %s has no ssh_user in state", rec.ID),
+			"Set \"ssh_user\" in .cloudru-vm/state.json to the image's login user (Cloud.ru images: user1).")
+	}
+	return rec.SSHUser, nil
+}
+
+// vmLeftRunning turns an interruption after the VM became active (floating
+// IP, SSH, Docker, upload, compose up) into the same exit-130 error with a
+// hint that handleInterrupt gives while waiting for the VM: without it
+// Ctrl-C would leave a paid VM running without a word.
+func (e *Engine) vmLeftRunning(ctx context.Context, err error, vmID string) error {
+	if err == nil {
+		return nil
+	}
+	if !stderrors.Is(ctx.Err(), context.Canceled) && !stderrors.Is(err, context.Canceled) {
+		return err
+	}
+	var cliErr *clerrors.CLIError
+	if stderrors.As(err, &cliErr) && strings.Contains(cliErr.Hint, vmID) {
+		return err // handleInterrupt already said what happened to the VM
+	}
+	e.Printer.Warning(fmt.Sprintf("Interrupted. VM %s left running.", vmID))
+	cause := err
+	if !stderrors.Is(err, context.Canceled) {
+		cause = fmt.Errorf("%w: %w", context.Canceled, err)
+	}
+	return clerrors.Wrap(clerrors.CodeVMProvisionFailed,
+		"deployment interrupted",
+		fmt.Sprintf("VM %s was created and is still running. Use 'cloudru-vm destroy --force' to delete it.", vmID),
+		cause)
 }
 
 // handleInterrupt handles SIGINT/SIGTERM (or a cancelled context) after VM

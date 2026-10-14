@@ -167,6 +167,13 @@ func writeJSON(w io.Writer, v any, indent bool) {
 	_ = enc.Encode(v)
 }
 
+// ReadLine reads one trimmed line from Stdin, giving up when ctx is
+// cancelled. For prompts that are a choice, not consent (e.g. init picking a
+// zone); consent always goes through Ask.
+func ReadLine(ctx context.Context) (string, error) {
+	return readAnswer(ctx, Stdin)
+}
+
 // readAnswer reads one line from r, giving up when ctx is cancelled
 // (Ctrl-C at the prompt).
 func readAnswer(ctx context.Context, r io.Reader) (string, error) {

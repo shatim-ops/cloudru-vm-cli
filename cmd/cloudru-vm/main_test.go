@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -137,5 +139,23 @@ func TestRun_DestroyConfirmationFlags(t *testing.T) {
 	after, _ := state.Read(state.DefaultPath(dir))
 	if a := after.ActiveDeployment(); a == nil || a.VMID != "vm-1" {
 		t.Fatalf("deployment changed: %+v", a)
+	}
+}
+
+// Commands that never reach a VM must not leave an SSH key in the project.
+func TestRun_CommandsWithoutVMCreateNoSSHKey(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("HOME", dir)
+	t.Setenv("CLOUDRU_CONFIG_DIR", dir)
+	t.Setenv("CLOUDRU_KEY_ID", "")
+	t.Setenv("CLOUDRU_SECRET", "")
+	t.Setenv("CLOUDRU_API_KEY", "")
+
+	for _, args := range [][]string{{"list-zones"}, {"list-images"}, {"status"}, {"verify"}, {"init", "--non-interactive"}} {
+		_ = run(args)
+		if _, err := os.Stat(filepath.Join(dir, ".cloudru-vm", "id_ed25519")); err == nil {
+			t.Fatalf("run(%v) created an SSH key", args)
+		}
 	}
 }

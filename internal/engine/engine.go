@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/auth"
@@ -20,8 +21,12 @@ type Engine struct {
 	Deployer  deploy.Deployer
 	Printer   *output.Printer
 	SSHKeyPEM []byte // Ed25519 private key for SSH
-	SSHPubKey string // Ed25519 public key for cloud-init
+	SSHPubKey string // Ed25519 public key for image metadata
 	StateDir  string // project root (for state file)
+
+	// SSHKeyLoader loads or creates the key pair on first use (EnsureSSHKey),
+	// so commands that never reach a VM leave no key behind.
+	SSHKeyLoader func() (privPEM []byte, pubKey string, err error)
 
 	// Timings overrides poll/retry waits; zero fields keep production defaults.
 	Timings Timings
@@ -38,4 +43,18 @@ type DeployOptions struct {
 	NonInteractive bool // never prompt; creating a VM then needs Yes
 	Yes            bool // consent to create the VM given in advance (--yes)
 	DryRun         bool // show what would be created and its cost, then stop
+}
+
+// EnsureSSHKey fills SSHKeyPEM/SSHPubKey from SSHKeyLoader unless they are
+// already set. Commands that connect to the VM call it before they need the key.
+func (e *Engine) EnsureSSHKey() error {
+	if len(e.SSHKeyPEM) > 0 || e.SSHKeyLoader == nil {
+		return nil
+	}
+	priv, pub, err := e.SSHKeyLoader()
+	if err != nil {
+		return fmt.Errorf("SSH key: %w", err)
+	}
+	e.SSHKeyPEM, e.SSHPubKey = priv, pub
+	return nil
 }

@@ -132,7 +132,7 @@ func TestDestroy_DryRun_ListsResourcesTouchesNothing(t *testing.T) {
 	if err := e.Destroy(context.Background(), DestroyOptions{DryRun: true}); err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
-	for _, want := range []string{"Dry run: would destroy VM vm-1", "floating IP 203.0.113.7", "local state"} {
+	for _, want := range []string{"Dry run: would destroy VM vm-1", "release floating IP 203.0.113.7", "local state"} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("preview lacks %q:\n%s", want, buf.String())
 		}

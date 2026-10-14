@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/deployplan"
@@ -35,16 +36,19 @@ func (e *Engine) confirmOptions(yes, dryRun, noPrompt bool) confirm.Options {
 // deployPreview describes the VM about to be created, priced with the same
 // estimator as the MCP deploy_plan. Lookups of names are best effort: the
 // preview falls back to the IDs rather than failing the deploy.
-func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail) confirm.Preview {
+func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, network vmNetwork, ports []int) confirm.Preview {
 	vm := deployplan.VMSpec{
 		Name:   req.Name,
-		Flavor: deployplan.FlavorSpec{ID: req.FlavorID, Name: req.FlavorID},
-		Image:  deployplan.RefSpec{ID: req.ImageID, Name: req.ImageID},
+		Flavor: deployplan.FlavorSpec{Name: req.FlavorName},
+		Image:  deployplan.RefSpec{Name: req.ImageName},
 		Zone:   deployplan.RefSpec{ID: req.AvailabilityZoneID, Name: req.AvailabilityZoneID},
+	}
+	if img != nil {
+		vm.Image.ID = img.ID
 	}
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
 		for _, f := range flavors {
-			if f.ID == req.FlavorID || f.Name == req.FlavorID {
+			if f.Name == req.FlavorName || f.ID == req.FlavorName {
 				vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB}
 				break
 			}
@@ -62,7 +66,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		vm.Image.Name = img.Name
 	}
 	if len(req.Disks) > 0 {
-		vm.Disk = deployplan.DiskSpec{SizeGB: req.Disks[0].Size, TypeID: req.Disks[0].DiskTypeID}
+		vm.Disk = deployplan.DiskSpec{SizeGB: req.Disks[0].Size, Type: req.Disks[0].DiskTypeName}
 	}
 	cost := deployplan.EstimateVM(vm)
 
@@ -76,22 +80,36 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		costLine += "; flavor size unknown, compute may be missing from the total"
 	}
 
+	lines := []string{
+		"flavor:    " + flavor,
+		"zone:      " + refText(vm.Zone),
+		"image:     " + refText(vm.Image),
+		fmt.Sprintf("disk:      %d GB boot disk (priced at the SSD rate)", vm.Disk.SizeGB),
+		fmt.Sprintf("network:   subnet %s, security group %s", network.SubnetName, network.SecurityGroup),
+		"public IP: a floating IP will be created and attached",
+	}
+	if len(ports) > 0 {
+		ps := make([]string, len(ports))
+		for i, p := range ports {
+			ps[i] = fmt.Sprint(p)
+		}
+		lines = append(lines, fmt.Sprintf("ports:     %s opened to 0.0.0.0/0 in security group %s (shared by every VM in it)",
+			strings.Join(ps, ","), network.SecurityGroup))
+	}
+	lines = append(lines, costLine)
+
 	return confirm.Preview{
 		Action:  "deploy",
 		Summary: fmt.Sprintf("create VM %s (%s) in %s", vm.Name, vm.Flavor.Name, vm.Zone.Name),
-		Lines: []string{
-			"flavor:    " + flavor,
-			"zone:      " + refText(vm.Zone),
-			"image:     " + refText(vm.Image),
-			fmt.Sprintf("disk:      %d GB boot disk (priced at the SSD rate)", vm.Disk.SizeGB),
-			"public IP: a floating IP will be created and attached",
-			costLine,
-		},
+		Lines:   lines,
 		Details: map[string]any{
-			"vm":          vm,
-			"floating_ip": true,
-			"cost":        cost,
-			"cost_note":   costNote,
+			"vm":             vm,
+			"floating_ip":    true,
+			"subnet_id":      network.SubnetID,
+			"security_group": map[string]string{"id": network.SecurityGroupID, "name": network.SecurityGroup},
+			"open_ports":     ports,
+			"cost":           cost,
+			"cost_note":      costNote,
 		},
 	}
 }
@@ -124,11 +142,11 @@ func destroyPreview(rec *state.DeploymentRecord) confirm.Preview {
 		{Type: "vm", ID: rec.VMID, Address: rec.VMIP, Action: "delete", Note: "all data on its disks is lost"},
 	}
 	lines := []string{fmt.Sprintf("delete VM %s and all data on its disks", rec.VMID)}
-	if rec.VMIP != "" {
-		// The public address of a deployed VM is a floating IP.
-		res = append(res, destroyResource{Type: "floating_ip", Address: rec.VMIP, Action: "keep",
-			Note: "not released by destroy; it stays in the project and is billed"})
-		lines = append(lines, fmt.Sprintf("keep floating IP %s: destroy does not release it, it stays billed", rec.VMIP))
+	if rec.VMIP != "" || rec.FloatingIPID != "" {
+		// The public address of a deployed VM is a floating IP; destroy
+		// releases it after the VM (by floating_ip_id, else by address).
+		res = append(res, destroyResource{Type: "floating_ip", ID: rec.FloatingIPID, Address: rec.VMIP, Action: "release"})
+		lines = append(lines, fmt.Sprintf("release floating IP %s", fipLabel(rec.VMIP, rec.FloatingIPID)))
 	}
 	res = append(res, destroyResource{Type: "state_record", ID: rec.ID, Action: "remove"})
 	lines = append(lines, "remove the deployment from local state")
@@ -146,6 +164,9 @@ func destroyPreview(rec *state.DeploymentRecord) confirm.Preview {
 }
 
 func refText(r deployplan.RefSpec) string {
+	if r.ID == "" {
+		return r.Name
+	}
 	if r.Name == "" || r.Name == r.ID {
 		return r.ID
 	}
