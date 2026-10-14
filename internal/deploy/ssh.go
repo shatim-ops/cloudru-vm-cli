@@ -20,6 +20,10 @@ type SSHDeployer struct {
 	hostFingerprint string
 	connectTimeout  time.Duration // per-attempt timeout (default 10s)
 
+	// keepAliveInterval is how often the connection is probed; after
+	// keepAliveMissed unanswered probes it is closed. Zero means 15 s.
+	keepAliveInterval time.Duration
+
 	// newStreamSession opens the session ExecStream runs in; nil means a real
 	// session on client. Tests substitute a fake.
 	newStreamSession func(stdout, stderr io.Writer) (streamSession, error)
@@ -81,7 +85,48 @@ func (d *SSHDeployer) Connect(ctx context.Context, host string, port int, user s
 			return classifyDialError(res.err)
 		}
 		d.client = res.client
+		every := d.keepAliveInterval
+		if every <= 0 {
+			every = defaultKeepAlive
+		}
+		go keepAlive(res.client, every)
 		return nil
+	}
+}
+
+const (
+	defaultKeepAlive = 15 * time.Second
+	keepAliveMissed  = 3
+)
+
+// keepAlive probes the connection the way OpenSSH's ServerAliveInterval
+// does and closes it when the server stops answering. Without it a link that
+// dies without a RST (NAT timeout, lost Wi-Fi) left ExecStream blocked in
+// Wait for hours during `docker compose up` or `logs -f`. Ends when the
+// client is closed.
+func keepAlive(c *ssh.Client, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	missed := 0
+	for range t.C {
+		reply := make(chan error, 1)
+		go func() {
+			_, _, err := c.SendRequest("keepalive@openssh.com", true, nil)
+			reply <- err
+		}()
+		select {
+		case err := <-reply:
+			if err != nil {
+				return // closed
+			}
+			missed = 0
+		case <-time.After(every):
+			missed++
+			if missed >= keepAliveMissed {
+				_ = c.Close()
+				return
+			}
+		}
 	}
 }
 

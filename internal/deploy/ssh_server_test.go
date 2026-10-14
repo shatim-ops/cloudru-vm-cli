@@ -11,6 +11,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -288,6 +289,99 @@ func TestUpload_PathIsQuoted(t *testing.T) {
 	defer srv.mu.Unlock()
 	if !strings.Contains(srv.commands[0], shellQuote(evil)) {
 		t.Fatalf("path not shell-quoted: %s", srv.commands[0])
+	}
+}
+
+// freezingProxy forwards TCP until frozen, then silently drops everything
+// in both directions: a NAT entry or Wi-Fi gone without a RST.
+type freezingProxy struct {
+	addr   string
+	frozen atomic.Bool
+}
+
+func newFreezingProxy(t *testing.T, target string) *freezingProxy {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	p := &freezingProxy{addr: ln.Addr().String()}
+	pipe := func(dst, src net.Conn) {
+		buf := make([]byte, 32<<10)
+		for {
+			n, err := src.Read(buf)
+			if err != nil {
+				return
+			}
+			if !p.frozen.Load() {
+				if _, err := dst.Write(buf[:n]); err != nil {
+					return
+				}
+			}
+		}
+	}
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			s, err := net.Dial("tcp", target)
+			if err != nil {
+				_ = c.Close()
+				continue
+			}
+			t.Cleanup(func() { _ = c.Close(); _ = s.Close() })
+			go pipe(s, c)
+			go pipe(c, s)
+		}
+	}()
+	return p
+}
+
+// A connection that dies without a RST left ExecStream (docker compose up,
+// logs -f) blocked in Wait for hours: the client sent nothing to notice.
+// Keepalives close it after a few unanswered intervals.
+func TestExecStream_DeadConnectionEndsByKeepalive(t *testing.T) {
+	keyPEM, pub := clientKeyPair(t)
+	release := make(chan struct{})
+	defer close(release)
+	srv := newTestSSHServer(t, pub, func(string, []byte) (string, uint32) {
+		<-release // a long docker compose up
+		return "", 0
+	})
+	proxy := newFreezingProxy(t, srv.addr)
+	host, portStr, _ := net.SplitHostPort(proxy.addr)
+	var port int
+	for _, r := range portStr {
+		port = port*10 + int(r-'0')
+	}
+
+	d := NewSSHDeployer()
+	d.keepAliveInterval = 50 * time.Millisecond
+	if err := d.Connect(context.Background(), host, port, "user1", keyPEM, ""); err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+
+	done := make(chan error, 1)
+	go func() { done <- d.ExecStream(context.Background(), "docker compose up -d", io.Discard, io.Discard) }()
+	time.Sleep(250 * time.Millisecond) // keepalives answered: still running
+	select {
+	case err := <-done:
+		t.Fatalf("ExecStream ended on a live connection: %v", err)
+	default:
+	}
+	proxy.frozen.Store(true)
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("ExecStream on a dead connection succeeded")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ExecStream still blocked on a dead connection")
 	}
 }
 
