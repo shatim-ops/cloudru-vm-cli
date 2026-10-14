@@ -99,7 +99,10 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	// Step 2: Analyze.
 	e.Printer.Step(2, totalSteps, "Analyzing compose file...")
 	e.Printer.StepDone(fmt.Sprintf("%d service(s), %d exposed port(s), hash=%s",
-		len(project.Services), len(project.Ports), project.Hash[:12]))
+		len(project.Services), len(project.Ports)+len(project.UDPPorts), project.Hash[:12]))
+	for _, w := range project.Warnings {
+		e.Printer.Warning(w)
+	}
 
 	// Determine region.
 	region := opts.Region
@@ -425,7 +428,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 
 	// The VM is billed from this call on: show what will be created and what
 	// it costs, and get consent (or stop here on --dry-run).
-	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, network, project.Ports), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, network, project.Ports, project.UDPPorts), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}
@@ -506,7 +509,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				if publicIP != "" {
 					e.Printer.StepDone(fmt.Sprintf("Public IP: %s", publicIP))
 				}
-				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports)
+				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports, project.UDPPorts)
 				return rec, nil
 			case "error":
 				return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
