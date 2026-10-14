@@ -17,7 +17,6 @@ import (
 	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/mcp"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
 )
@@ -136,47 +135,6 @@ func newRootCmd() *cobra.Command {
 	)
 
 	return cmd
-}
-
-// --- mcp ---
-
-func newMCPCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "mcp",
-		Short: "Run as an MCP server (stdio JSON-RPC) for AI agents",
-		Long: `Run cloudru-vm as a Model Context Protocol server over stdio.
-
-The server exposes deploy, status, list, logs, ssh, destroy, list_zones and
-list_images as MCP tools, so an AI agent (e.g. Claude Code) can manage Cloud.ru
-deployments directly. It speaks newline-delimited JSON-RPC 2.0 on stdin/stdout;
-all human-readable output is suppressed (stdout is reserved for the protocol).
-
-Add it to Claude Code with:
-  claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
-
-Credentials and project parameters are resolved exactly as for the regular CLI
-commands (flags, environment, .cloudru-vm.yaml, profile from 'cloudru-vm configure').`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			srv := mcp.New(func(overrides map[string]any) (*engine.Engine, error) {
-				if overrides == nil {
-					overrides = map[string]any{}
-				}
-				// The SSH key stays lazy here too: only the tools that
-				// reach a VM call EnsureSSHKey.
-				return buildEngine(overrides)
-			}, version)
-			// The server does not take a context; stop waiting for it on
-			// SIGINT/SIGTERM so the signal still ends the process.
-			done := make(chan error, 1)
-			go func() { done <- srv.Run(os.Stdin, os.Stdout) }()
-			select {
-			case err := <-done:
-				return err
-			case <-cmd.Context().Done():
-				return cmd.Context().Err()
-			}
-		},
-	}
 }
 
 // buildEngine constructs the Engine from config and global flags.

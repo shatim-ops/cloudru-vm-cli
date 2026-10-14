@@ -1,7 +1,9 @@
 package tools
 
 import (
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
@@ -85,5 +87,29 @@ func TestRegistry_Mutating(t *testing.T) {
 	}
 	if _, ok := r.Lookup("nope"); ok {
 		t.Error("Lookup found a tool that does not exist")
+	}
+}
+
+// Wrap reaches every caller, including the in-process calls of the stack
+// orchestrator (callTool), not only the transport's dispatch.
+func TestRegistry_WrapReachesInProcessCalls(t *testing.T) {
+	r := newTestServer()
+	ok := r.Wrap("cert_private_key", func(Handler) Handler {
+		return func(context.Context, map[string]any) (string, bool) {
+			return ErrResult(errors.New("blocked by policy")), true
+		}
+	})
+	if !ok {
+		t.Fatal("Wrap: tool not found")
+	}
+	if _, err := r.callTool(context.Background(), "cert_private_key", map[string]any{"certificate_id": "c", "confirmed": true}); err == nil || !strings.Contains(err.Error(), "blocked by policy") {
+		t.Errorf("in-process call bypassed the wrapper: %v", err)
+	}
+	tl, _ := r.Lookup("cert_private_key")
+	if text, _ := tl.Handler(context.Background(), nil); !strings.Contains(text, "blocked by policy") {
+		t.Errorf("Lookup returns the unwrapped handler: %s", text)
+	}
+	if r.Wrap("nope", func(h Handler) Handler { return h }) {
+		t.Error("Wrap of an unknown tool reported success")
 	}
 }

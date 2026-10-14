@@ -1,8 +1,8 @@
 // Package mcp implements a Model Context Protocol (MCP) server that exposes
 // cloudru-vm operations as tools for AI agents. It speaks JSON-RPC 2.0 over
-// stdio (newline-delimited JSON), the MCP stdio transport.
+// stdio (newline-delimited JSON, Run) or over Streamable HTTP (http.go).
 //
-// IMPORTANT: stdout is reserved for the JSON-RPC channel. Nothing else may be
+// IMPORTANT: in stdio mode stdout is reserved for the JSON-RPC channel. Nothing else may be
 // written to it or the protocol stream is corrupted. All engine output is
 // redirected to in-memory buffers (see internal/tools); diagnostics go to stderr.
 package mcp
@@ -19,9 +19,25 @@ import (
 	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
 )
 
-// defaultProtocolVersion is the MCP protocol version advertised when the client
-// does not request a specific one. It is a widely supported baseline.
-const defaultProtocolVersion = "2024-11-05"
+// supportedProtocolVersions are the MCP revisions the server speaks, newest
+// first. None of them adds a field the server must send: tools/list and
+// tools/call results are the same in all three.
+var supportedProtocolVersions = []string{"2025-06-18", "2025-03-26", "2024-11-05"}
+
+// defaultProtocolVersion is the version answered when the client asks for none
+// or for one the server does not support: the newest one (the client then
+// decides whether it can talk to the server).
+var defaultProtocolVersion = supportedProtocolVersions[0]
+
+// supportedProtocol reports whether v is one of supportedProtocolVersions.
+func supportedProtocol(v string) bool {
+	for _, s := range supportedProtocolVersions {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
 
 // serverName is the MCP server identity reported during initialize.
 const serverName = "cloudru-vm"
@@ -48,6 +64,7 @@ type Server struct {
 	version  string
 	tools    []Tool
 	handlers map[string]toolHandler
+	reg      *tools.Registry
 }
 
 // New creates an MCP server. factory builds engines per tool call (so each call
@@ -57,10 +74,11 @@ func New(factory EngineFactory, version string) *Server {
 	s := &Server{
 		version:  version,
 		handlers: map[string]toolHandler{},
+		reg:      tools.New(tools.EngineFactory(factory)),
 	}
 	// The tools live in internal/tools, shared with the CLI; this package is
 	// only the transport.
-	for _, t := range tools.New(tools.EngineFactory(factory)).Tools() {
+	for _, t := range s.reg.Tools() {
 		s.tools = append(s.tools, Tool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema})
 		s.handlers[t.Name] = toolHandler(t.Handler)
 	}
@@ -171,15 +189,15 @@ func (s *Server) handle(req *rpcRequest) *rpcResponse {
 	}
 }
 
-// initializeResult builds the initialize response, echoing the client's
-// requested protocol version when present (and supported) for compatibility.
+// initializeResult builds the initialize response: the client's protocol
+// version when the server supports it, otherwise the newest supported one.
 func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 	protocolVersion := defaultProtocolVersion
 	if len(params) > 0 {
 		var p struct {
 			ProtocolVersion string `json:"protocolVersion"`
 		}
-		if err := json.Unmarshal(params, &p); err == nil && p.ProtocolVersion != "" {
+		if err := json.Unmarshal(params, &p); err == nil && supportedProtocol(p.ProtocolVersion) {
 			protocolVersion = p.ProtocolVersion
 		}
 	}

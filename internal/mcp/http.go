@@ -1,0 +1,524 @@
+package mcp
+
+import (
+	"bytes"
+	"context"
+	crand "crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Streamable HTTP transport (MCP 2025-03-26 / 2025-06-18):
+//
+//	POST   /mcp      one JSON-RPC message or a batch; the answer is JSON, or an
+//	                 SSE stream for tools/call when the client accepts it
+//	GET    /mcp      SSE stream for server-initiated messages (keep-alives only:
+//	                 the server sends no requests of its own)
+//	DELETE /mcp      ends the session named by Mcp-Session-Id
+//	GET    /healthz  liveness probe, no authentication
+//
+// The dispatch (handle) is shared with the stdio transport, so a request
+// gets the same answer over both.
+
+// HTTPOptions configures the HTTP transport.
+type HTTPOptions struct {
+	// BearerToken, when set, is required as "Authorization: Bearer <token>"
+	// on every /mcp request. Empty means no authentication: the caller
+	// allows that only on a loopback address.
+	BearerToken string
+
+	// AllowSecretExport lets k8s_kubeconfig embed a cluster token and
+	// cert_private_key return a private key. Off by default: over HTTP the
+	// answer leaves the machine the credentials live on.
+	AllowSecretExport bool
+
+	// Logger receives one line per tool call (name, status, duration; never
+	// arguments or results) and transport events. Nil disables logging.
+	Logger *slog.Logger
+
+	// KeepAlive is the interval of SSE comments that keep proxies from
+	// closing a quiet stream. Zero means 15 s.
+	KeepAlive time.Duration
+}
+
+// Limits of the HTTP transport.
+const (
+	httpMaxBody      = 16 << 20 // same as a stdio line
+	httpMaxSessions  = 10000
+	httpSessionTTL   = 24 * time.Hour
+	defaultKeepAlive = 15 * time.Second
+	headerSessionID  = "Mcp-Session-Id"
+	headerProtocol   = "Mcp-Protocol-Version"
+)
+
+// HTTPHandler serves the MCP Streamable HTTP transport.
+type HTTPHandler struct {
+	srv  *Server
+	opts HTTPOptions
+
+	mu       sync.Mutex
+	sessions map[string]time.Time // id -> last use
+
+	done     chan struct{}
+	doneOnce sync.Once
+}
+
+// NewHTTPHandler returns the HTTP transport of s. It applies the HTTP-mode
+// tool restrictions (see restrictForHTTP) to s, so s must not be served over
+// stdio afterwards.
+func NewHTTPHandler(s *Server, opts HTTPOptions) *HTTPHandler {
+	if opts.KeepAlive <= 0 {
+		opts.KeepAlive = defaultKeepAlive
+	}
+	s.restrictForHTTP(opts.AllowSecretExport)
+	return &HTTPHandler{
+		srv:      s,
+		opts:     opts,
+		sessions: map[string]time.Time{},
+		done:     make(chan struct{}),
+	}
+}
+
+// Close ends open SSE streams; http.Server.Shutdown would otherwise wait for
+// them forever.
+func (h *HTTPHandler) Close() {
+	h.doneOnce.Do(func() { close(h.done) })
+}
+
+// ServeHTTP implements http.Handler.
+func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Path {
+	case "/healthz":
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"status":"ok"}`+"\n")
+	case "/mcp":
+		h.serveMCP(w, r)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (h *HTTPHandler) serveMCP(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(r) {
+		h.logf(slog.LevelWarn, "unauthorized request", "method", r.Method, "remote", r.RemoteAddr)
+		w.Header().Set("WWW-Authenticate", `Bearer realm="cloudru-vm"`)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	// DNS rebinding: a browser page must not drive a local server.
+	if !originAllowed(r) {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
+		return
+	}
+	if v := r.Header.Get(headerProtocol); v != "" && !supportedProtocol(v) {
+		http.Error(w, "unsupported "+headerProtocol+": "+v, http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPost:
+		h.post(w, r)
+	case http.MethodGet:
+		h.stream(w, r)
+	case http.MethodDelete:
+		id := r.Header.Get(headerSessionID)
+		if id == "" {
+			http.Error(w, "missing "+headerSessionID, http.StatusBadRequest)
+			return
+		}
+		if !h.dropSession(id) {
+			http.Error(w, "unknown session", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.Header().Set("Allow", "GET, POST, DELETE")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// authorized checks the bearer token in constant time.
+func (h *HTTPHandler) authorized(r *http.Request) bool {
+	if h.opts.BearerToken == "" {
+		return true
+	}
+	got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(strings.TrimSpace(got)), []byte(h.opts.BearerToken)) == 1
+}
+
+// originAllowed accepts requests without Origin (non-browser clients), from
+// a loopback origin, or from the origin of the server itself.
+func originAllowed(r *http.Request) bool {
+	o := r.Header.Get("Origin")
+	if o == "" {
+		return true
+	}
+	u, err := url.Parse(o)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	return strings.EqualFold(u.Host, r.Host)
+}
+
+// post handles one JSON-RPC message or a batch of them.
+func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, httpMaxBody))
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	body = bytes.TrimSpace(body)
+
+	batch := len(body) > 0 && body[0] == '['
+	var reqs []*rpcRequest
+	if batch {
+		var raw []json.RawMessage
+		if json.Unmarshal(body, &raw) != nil || len(raw) == 0 {
+			writeJSON(w, http.StatusBadRequest, &rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: codeParseError, Message: "parse error"}})
+			return
+		}
+		for _, m := range raw {
+			var req rpcRequest
+			if json.Unmarshal(m, &req) != nil {
+				writeJSON(w, http.StatusBadRequest, &rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: codeParseError, Message: "parse error"}})
+				return
+			}
+			reqs = append(reqs, &req)
+		}
+	} else {
+		var req rpcRequest
+		if json.Unmarshal(body, &req) != nil {
+			writeJSON(w, http.StatusBadRequest, &rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: codeParseError, Message: "parse error"}})
+			return
+		}
+		reqs = []*rpcRequest{&req}
+	}
+
+	initialize := false
+	for _, req := range reqs {
+		if req.Method == "initialize" {
+			initialize = true
+		}
+	}
+	if initialize && len(reqs) > 1 {
+		writeJSON(w, http.StatusBadRequest, &rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: codeInvalidReq, Message: "initialize must not be part of a batch"}})
+		return
+	}
+	// A client without a session id is served statelessly: the server
+	// keeps no per-session state, the id only lets a client notice a
+	// restart (404 → initialize again).
+	if id := r.Header.Get(headerSessionID); id != "" && !initialize && !h.touchSession(id) {
+		http.Error(w, "unknown session", http.StatusNotFound)
+		return
+	}
+
+	// Responses and notifications only: nothing to answer.
+	hasRequest := false
+	for _, req := range reqs {
+		if req.Method != "" && !req.isNotification() {
+			hasRequest = true
+		}
+	}
+	if !hasRequest {
+		for _, req := range reqs {
+			if req.Method != "" {
+				h.dispatch(req)
+			}
+		}
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+
+	if initialize {
+		w.Header().Set(headerSessionID, h.newSession())
+	}
+
+	if !batch && reqs[0].Method == "tools/call" && acceptsSSE(r) {
+		h.postSSE(w, r, reqs[0])
+		return
+	}
+
+	var out []*rpcResponse
+	for _, req := range reqs {
+		if resp := h.dispatch(req); resp != nil {
+			out = append(out, resp)
+		}
+	}
+	switch {
+	case len(out) == 0:
+		w.WriteHeader(http.StatusAccepted)
+	case batch:
+		writeJSON(w, http.StatusOK, out)
+	default:
+		writeJSON(w, http.StatusOK, out[0])
+	}
+}
+
+// postSSE answers one tools/call as an SSE stream: comments keep the
+// connection alive while a long call (deploy, cluster creation) runs, then
+// the response arrives as a single "message" event.
+func (h *HTTPHandler) postSSE(w http.ResponseWriter, r *http.Request, req *rpcRequest) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusOK, h.dispatch(req))
+		return
+	}
+	result := make(chan *rpcResponse, 1)
+	// The call runs to completion even if the client goes away: a
+	// disconnect is not a cancellation (MCP spec), and stopping a
+	// half-done mutation is worse than finishing it.
+	go func() { result <- h.dispatch(req) }()
+
+	sseHeaders(w)
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	tick := time.NewTicker(h.opts.KeepAlive)
+	defer tick.Stop()
+	for {
+		select {
+		case resp := <-result:
+			data, _ := json.Marshal(resp)
+			fmt.Fprintf(w, "event: message\ndata: %s\n\n", data)
+			flusher.Flush()
+			return
+		case <-tick.C:
+			_, _ = io.WriteString(w, ": keep-alive\n\n")
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+// stream serves GET /mcp: an SSE stream the server could push requests and
+// notifications on. This server has none to send, so the stream only
+// carries keep-alives until the client or the server goes away.
+func (h *HTTPHandler) stream(w http.ResponseWriter, r *http.Request) {
+	if !acceptsSSE(r) {
+		http.Error(w, "GET /mcp requires Accept: text/event-stream", http.StatusNotAcceptable)
+		return
+	}
+	if id := r.Header.Get(headerSessionID); id != "" && !h.touchSession(id) {
+		http.Error(w, "unknown session", http.StatusNotFound)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	sseHeaders(w)
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	tick := time.NewTicker(h.opts.KeepAlive)
+	defer tick.Stop()
+	for {
+		select {
+		case <-tick.C:
+			_, _ = io.WriteString(w, ": keep-alive\n\n")
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		case <-h.done:
+			return
+		}
+	}
+}
+
+// dispatch runs one message through the shared handler and logs tool calls.
+func (h *HTTPHandler) dispatch(req *rpcRequest) *rpcResponse {
+	if req.Method != "tools/call" {
+		return h.srv.handle(req)
+	}
+	start := time.Now()
+	resp := h.srv.handle(req)
+	if h.opts.Logger != nil {
+		var p struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(req.Params, &p)
+		h.opts.Logger.Info("tool call",
+			"tool", p.Name,
+			"status", callStatus(resp),
+			"duration_ms", time.Since(start).Milliseconds(),
+		)
+	}
+	return resp
+}
+
+// callStatus is "ok", "error" (tool-level, isError) or "rpc_error".
+func callStatus(resp *rpcResponse) string {
+	if resp == nil {
+		return "none"
+	}
+	if resp.Error != nil {
+		return "rpc_error"
+	}
+	if m, ok := resp.Result.(map[string]any); ok && m["isError"] == true {
+		return "error"
+	}
+	return "ok"
+}
+
+func (h *HTTPHandler) logf(level slog.Level, msg string, args ...any) {
+	if h.opts.Logger != nil {
+		h.opts.Logger.Log(context.Background(), level, msg, args...)
+	}
+}
+
+// --- sessions ---
+
+func (h *HTTPHandler) newSession() string {
+	b := make([]byte, 16)
+	_, _ = crand.Read(b)
+	id := hex.EncodeToString(b)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := time.Now()
+	if len(h.sessions) >= httpMaxSessions {
+		for k, seen := range h.sessions {
+			if now.Sub(seen) > httpSessionTTL {
+				delete(h.sessions, k)
+			}
+		}
+		// Still full: forget the stalest one; its client re-initializes.
+		if len(h.sessions) >= httpMaxSessions {
+			var oldest string
+			var oldestSeen time.Time
+			for k, seen := range h.sessions {
+				if oldest == "" || seen.Before(oldestSeen) {
+					oldest, oldestSeen = k, seen
+				}
+			}
+			delete(h.sessions, oldest)
+		}
+	}
+	h.sessions[id] = now
+	return id
+}
+
+func (h *HTTPHandler) touchSession(id string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	seen, ok := h.sessions[id]
+	if !ok || time.Since(seen) > httpSessionTTL {
+		delete(h.sessions, id)
+		return false
+	}
+	h.sessions[id] = time.Now()
+	return true
+}
+
+func (h *HTTPHandler) dropSession(id string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	_, ok := h.sessions[id]
+	delete(h.sessions, id)
+	return ok
+}
+
+// --- helpers ---
+
+func acceptsSSE(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "text/event-stream")
+}
+
+func sseHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	// nginx and similar proxies buffer responses unless told otherwise.
+	w.Header().Set("X-Accel-Buffering", "no")
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		http.Error(w, "encode response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(append(data, '\n'))
+}
+
+// ListenAndServe listens on addr and serves the MCP HTTP transport until ctx is
+// done, then shuts down gracefully. ready, if not nil, receives the bound
+// address once the listener is open (useful with port 0).
+func (s *Server) ListenAndServe(ctx context.Context, addr string, opts HTTPOptions, ready func(net.Addr)) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	h := NewHTTPHandler(s, opts)
+	hs := &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		// No WriteTimeout: a tool call (deploy, cluster creation) may run
+		// for many minutes; SSE keep-alives hold the connection.
+	}
+	if ready != nil {
+		ready(ln.Addr())
+	}
+	h.logf(slog.LevelInfo, "MCP HTTP server listening",
+		"addr", ln.Addr().String(), "auth", authMode(opts), "allow_secret_export", opts.AllowSecretExport)
+
+	errc := make(chan error, 1)
+	go func() { errc <- hs.Serve(ln) }()
+
+	select {
+	case err := <-errc:
+		h.Close()
+		return err
+	case <-ctx.Done():
+	}
+	h.Close()
+	h.logf(slog.LevelInfo, "MCP HTTP server shutting down")
+	sctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := hs.Shutdown(sctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func authMode(o HTTPOptions) string {
+	if o.BearerToken != "" {
+		return "bearer"
+	}
+	return "none"
+}
