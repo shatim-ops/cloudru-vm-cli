@@ -60,6 +60,12 @@ func (s *Server) handleCertIssueLE(ctx context.Context, args map[string]any) (st
 	if name == "" || len(dnsNames) == 0 {
 		return errResult(fmt.Errorf("'name' and 'dns_names' (non-empty) are required")), true
 	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": fmt.Sprintf("cert_issue_le will request a Let's Encrypt certificate %q for %v (the domains must be delegated to Evolution DNS). Call again with confirmed=true after the captain approves.", name, dnsNames),
+		}), true
+	}
 	cli, err := s.certClient(ctx)
 	if err != nil {
 		return errResult(err), true
@@ -78,6 +84,12 @@ func (s *Server) handleCertImport(ctx context.Context, args map[string]any) (str
 	key := stringArg(args, "private_key")
 	if name == "" || server == "" || key == "" {
 		return errResult(fmt.Errorf("'name', 'server_certificate' (base64 PEM) and 'private_key' (base64 PEM) are required")), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": fmt.Sprintf("cert_import will upload certificate %q and its private key to Certificate Manager. Call again with confirmed=true after the captain approves.", name),
+		}), true
 	}
 	cli, err := s.certClient(ctx)
 	if err != nil {
@@ -101,6 +113,12 @@ func (s *Server) handleCertRenew(ctx context.Context, args map[string]any) (stri
 	id := stringArg(args, "certificate_id")
 	if id == "" {
 		return errResult(fmt.Errorf("'certificate_id' is required")), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": fmt.Sprintf("cert_renew will trigger Let's Encrypt renewal of certificate %q. Call again with confirmed=true after the captain approves.", id),
+		}), true
 	}
 	cli, err := s.certClient(ctx)
 	if err != nil {

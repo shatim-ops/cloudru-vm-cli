@@ -90,6 +90,12 @@ func (s *Server) handleS3Put(ctx context.Context, args map[string]any) (string, 
 	} else {
 		data = []byte(stringArg(args, "content"))
 	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": fmt.Sprintf("s3_put will upload %d bytes to s3://%s/%s, overwriting the object if it exists. Call again with confirmed=true after the captain approves.", len(data), bucket, key),
+		}), true
+	}
 	cli, err := s.s3Client()
 	if err != nil {
 		return errResult(err), true

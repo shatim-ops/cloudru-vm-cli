@@ -22,7 +22,7 @@ const ExitCodesHelp = `Exit codes:
   0    success
   1    general error (including unknown command or flag)
   2    authentication or configuration error
-  3    confirmation required (not given, or stdin is not a terminal; use --force)
+  3    confirmation required (not given, or stdin is not a terminal; use --yes)
   4    object not found
   5    Cloud.ru API error (HTTP 4xx/5xx other than authentication)
   130  interrupted by the user`

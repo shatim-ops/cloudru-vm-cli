@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/compose"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
@@ -50,6 +51,12 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
 		e.Printer.Hint("Use --force to redeploy anyway.")
 		return nil
 	}
+	if !isNewDeploy && opts.DryRun {
+		// Updating an existing VM creates nothing billable, so it is not
+		// gated; --dry-run still must not touch it.
+		_, err := confirm.Ask(ctx, redeployPreview(existing), e.confirmOptions(false, true, false))
+		return err
+	}
 
 	// Step 1: Auth (must happen before any API calls).
 	e.Printer.Step(1, totalSteps, "Authenticating...")
@@ -86,6 +93,9 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) error {
 	if isNewDeploy {
 		// Step 3: Provision.
 		rec, err = e.provisionVM(ctx, opts, stateFile, statePath, project, flavorName, region)
+		if err == errDryRun {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -339,6 +349,16 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		},
 	}
 
+	// The VM is billed from this call on: show what will be created and what
+	// it costs, and get consent (or stop here on --dry-run).
+	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+	if err != nil {
+		return state.DeploymentRecord{}, err
+	}
+	if !proceed {
+		return state.DeploymentRecord{}, errDryRun
+	}
+
 	vm, err := e.Cloud.CreateVM(ctx, req)
 	if err != nil {
 		return state.DeploymentRecord{}, err
@@ -559,7 +579,7 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 // handleInterrupt handles SIGINT/SIGTERM (or a cancelled context) after VM
 // creation. The returned error wraps context.Canceled, so the CLI exits 130.
 func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) error {
-	if nonInteractive || !promptStdinIsTTY() {
+	if nonInteractive || !confirm.StdinIsTTY() {
 		e.Printer.Warning(fmt.Sprintf("Received %s. VM %s left running (non-interactive mode).", sig, vmID))
 		return clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 			"deployment interrupted",
@@ -569,7 +589,7 @@ func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) e
 
 	fmt.Fprintf(e.Printer.ErrWriter(), "\nReceived %s. Delete the VM %s? [y/N] ", sig, vmID)
 	var answer string
-	fmt.Fscanln(promptStdin, &answer)
+	fmt.Fscanln(confirm.Stdin, &answer)
 
 	if answer == "y" || answer == "Y" {
 		e.Printer.StepDone("Deleting VM...")
