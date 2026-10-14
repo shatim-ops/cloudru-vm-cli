@@ -207,7 +207,7 @@ profiles:
 
 | Переменная | Что задаёт |
 |---|---|
-| `NO_COLOR` | если задана (любое значение) — без цвета, как `--no-color` |
+| `NO_COLOR` | если задана и не пуста — без цвета, как `--no-color` ([no-color.org](https://no-color.org)) |
 | `TERM` | `TERM=dumb` — без цвета |
 
 Переменные `CLOUDRU_*` и `MCP_BEARER_TOKEN` **не передаются** в дочерние
