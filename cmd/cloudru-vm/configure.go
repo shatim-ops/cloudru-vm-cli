@@ -135,8 +135,9 @@ func (c *console) askSecret(ctx context.Context, prompt string) (string, error) 
 		err error
 	}
 	ch := make(chan result, 1)
+	read := readPassword // the goroutine may outlive this call
 	go func() {
-		b, err := readPassword()
+		b, err := read()
 		ch <- result{b, err}
 	}()
 	select {
