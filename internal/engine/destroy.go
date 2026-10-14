@@ -4,10 +4,12 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
@@ -64,17 +66,32 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Delete VM, then its floating IP.
 	e.Printer.Step(3, 3, "Deleting VM and floating IP...")
+	prevStatus := active.Status
 	active.Status = "destroying"
 	active.UpdatedAt = time.Now()
 	stateFile.UpsertDeployment(*active)
 	_ = state.Write(statePath, stateFile)
 
-	err = e.Cloud.DeleteVM(ctx, active.VMID)
-	if err != nil {
+	if active.VMID == "" {
+		// No ID to delete by: DELETE /vms/ with an empty ID is not a VM.
+		e.Printer.Warning("No VM ID in state; nothing to delete in the cloud")
+	} else if err = e.Cloud.DeleteVM(ctx, active.VMID); err != nil {
 		// If VM is already gone (VM_NOT_FOUND), that's fine.
-		if cliErr, ok := err.(*clerrors.CLIError); ok && cliErr.Code == clerrors.CodeVMNotFound {
+		var cliErr *clerrors.CLIError
+		if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound {
 			e.Printer.StepDone("VM already deleted")
 		} else {
+			// The VM is still there: the record keeps saying what it was.
+			active.Status = prevStatus
+			stateFile.UpsertDeployment(*active)
+			_ = state.Write(statePath, stateFile)
+			if st := provision.HTTPStatus(err); st == http.StatusConflict || st == http.StatusUnprocessableEntity {
+				return clerrors.Wrap(clerrors.CodeAPIError,
+					fmt.Sprintf("VM %s cannot be deleted in its current state", active.VMID),
+					"It is probably still being created or changing state. Wait until it is running "+
+						"(Cloud.ru console, or 'cloudru-vm vm get "+active.VMID+"') and re-run 'cloudru-vm destroy'.",
+					err)
+			}
 			return err
 		}
 	} else {
@@ -83,6 +100,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		deadline := time.After(t.DestroyPollTimeout)
 		ticker := time.NewTicker(t.DestroyPollInterval)
 		defer ticker.Stop()
+		confirmed := false
 	pollLoop:
 		for {
 			select {
@@ -93,6 +111,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 				_, getErr := e.Cloud.GetVM(ctx, active.VMID)
 				if getErr != nil {
 					if cliErr, ok := getErr.(*clerrors.CLIError); ok && cliErr.Code == clerrors.CodeVMNotFound {
+						confirmed = true
 						break pollLoop
 					}
 				}
@@ -100,7 +119,11 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 				return ctx.Err()
 			}
 		}
-		e.Printer.StepDone("VM deleted")
+		if confirmed {
+			e.Printer.StepDone("VM deleted")
+		} else {
+			e.Printer.StepDone(fmt.Sprintf("VM deletion requested (not confirmed within %s)", t.DestroyPollTimeout))
+		}
 	}
 
 	// The VM is gone but its floating IP is billed until released. On failure
@@ -131,16 +154,18 @@ const fipReleaseAttempts = 5
 func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRecord) error {
 	projectID := e.Config.ProjectID
 	fipID := rec.FloatingIPID
-	if fipID == "" && rec.VMIP != "" {
+	// Without an ID: by address, else by the name deploy gives it (its
+	// create response may have been lost, leaving neither in state).
+	if fipID == "" && (rec.VMIP != "" || rec.VMID != "") {
 		fips, err := e.Cloud.ListFloatingIPs(ctx, projectID)
 		if err != nil {
 			return clerrors.Wrap(clerrors.CodeAPIError,
-				fmt.Sprintf("cannot look up floating IP %s", rec.VMIP),
+				fmt.Sprintf("cannot look up floating IP %s", fipLabel(rec.VMIP, fipName(rec.VMID))),
 				"The VM is deleted. Re-run 'cloudru-vm destroy --force' to release the floating IP, or release it in the Cloud.ru console.",
 				err)
 		}
 		for _, f := range fips {
-			if f.IPAddress == rec.VMIP {
+			if (rec.VMIP != "" && f.IPAddress == rec.VMIP) || (rec.VMID != "" && f.Name == fipName(rec.VMID)) {
 				fipID = f.ID
 				break
 			}

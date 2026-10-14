@@ -139,6 +139,13 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		rec.ComposeHash = project.Hash
 		rec.ExposedPorts = project.Ports
 		rec.UpdatedAt = time.Now()
+		if rec.VMIP == "" && rec.VMID != "" {
+			// The floating IP failed on an earlier run: try again instead
+			// of failing on "no public IP" on every re-run.
+			e.recoverFloatingIP(ctx, &rec)
+			stateFile.UpsertDeployment(rec)
+			_ = state.Write(statePath, stateFile)
+		}
 		e.Printer.StepDone(fmt.Sprintf("VM %s at %s", rec.VMID, rec.VMIP))
 	}
 
@@ -170,10 +177,17 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 	defer e.Deployer.Close()
 
-	// Store host key fingerprint on first connect.
+	// Store host key fingerprint on first connect, and save it now: a
+	// failure further on must not reopen trust-on-first-use. Until compose
+	// up succeeds the record is "deploying", so a re-run with the same
+	// compose file retries instead of answering "No changes".
 	if rec.SSHHostKeyFingerprint == "" {
 		rec.SSHHostKeyFingerprint = e.Deployer.HostKeyFingerprint()
 	}
+	rec.Status = "deploying"
+	rec.UpdatedAt = time.Now()
+	stateFile.UpsertDeployment(rec)
+	_ = state.Write(statePath, stateFile)
 
 	// Install Docker if the image has none (Ubuntu/Debian chosen by init).
 	if err := e.prepareDocker(ctx, rec.VMIP, sshUserForConnect, rec.SSHHostKeyFingerprint); err != nil {
@@ -472,7 +486,12 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	}
 	stateFile.UpsertDeployment(rec)
 	if err := state.Write(statePath, stateFile); err != nil {
-		return state.DeploymentRecord{}, err
+		// The VM exists and is billed; without its ID here nothing would
+		// point to it.
+		return rec, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
+			fmt.Sprintf("VM %s was created, but the state file could not be saved", vm.ID),
+			fmt.Sprintf("VM %s is running and billed. Delete it in the Cloud.ru console, or fix the state file problem and record it there.", vm.ID),
+			err)
 	}
 
 	// Poll until active.
@@ -481,10 +500,22 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	ticker := time.NewTicker(t.VMPollInterval)
 	defer ticker.Stop()
 
+	interrupted := func(sig string) (state.DeploymentRecord, error) {
+		deleted, err := e.handleInterrupt(sig, vm.ID, opts.NonInteractive)
+		if deleted {
+			// Gone in the cloud, gone from state: a kept record would be
+			// "reused" by the next deploy.
+			stateFile.RemoveDeployment(rec.ID)
+			_ = state.Write(statePath, stateFile)
+			return state.DeploymentRecord{}, err
+		}
+		return rec, err
+	}
+
 	for {
 		select {
 		case sig := <-sigCh:
-			return rec, e.handleInterrupt(sig.String(), vm.ID, opts.NonInteractive)
+			return interrupted(sig.String())
 		case <-pollDeadline:
 			return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
 				fmt.Sprintf("VM %s did not become active within %s", vm.ID, t.VMPollTimeout),
@@ -505,7 +536,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				// Record the FIP even if it is not confirmed: destroy releases it.
 				rec.VMIP = publicIP
 				rec.FloatingIPID = fipID
-				rec.Status = "running"
+				rec.Status = "provisioned" // VM up; "running" once compose up succeeds
 				rec.UpdatedAt = time.Now()
 				stateFile.UpsertDeployment(rec)
 				_ = state.Write(statePath, stateFile)
@@ -531,7 +562,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			// receives, and select picks a ready case at random. Both cases
 			// must lead to the same handling, or the VM may be left running
 			// without a word.
-			return rec, e.handleInterrupt("interrupt", vm.ID, opts.NonInteractive)
+			return interrupted("interrupt")
 		}
 	}
 }
@@ -622,7 +653,7 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 	var err error
 	for attempt := 0; attempt < 5; attempt++ {
 		fip, err = cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
-			Name:               fmt.Sprintf("fip-%s", vmID),
+			Name:               fipName(vmID),
 			ProjectID:          projectID,
 			InterfaceID:        ifaceID,
 			AvailabilityZoneID: azID,
@@ -641,7 +672,14 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 		}
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("create floating IP: %w", err)
+		// The platform may have made the FIP before the response was lost
+		// (then the next attempts fail: the interface already has one).
+		// It is billed, so find it by its name.
+		found := findFloatingIPByName(ctx, cloud, projectID, fipName(vmID))
+		if found == nil {
+			return "", "", fmt.Errorf("create floating IP: %w", err)
+		}
+		fip = found
 	}
 
 	// Poll until floating IP is active.
@@ -670,6 +708,48 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 	// Return whatever IP we got even if state isn't confirmed.
 	report("Floating IP %s not confirmed after %s; continuing", fip.IPAddress, elapsed())
 	return fip.IPAddress, fipID, nil
+}
+
+// fipName is the name deploy gives the VM's floating IP; destroy and the
+// recovery of a lost create response look it up by it.
+func fipName(vmID string) string { return "fip-" + vmID }
+
+// findFloatingIPByName returns the project's floating IP with that name, or nil.
+func findFloatingIPByName(ctx context.Context, cloud provision.CloudAPI, projectID, name string) *provision.FloatingIP {
+	fips, err := cloud.ListFloatingIPs(ctx, projectID)
+	if err != nil {
+		return nil
+	}
+	for _, f := range fips {
+		if f.Name == name {
+			return f
+		}
+	}
+	return nil
+}
+
+// recoverFloatingIP gives a recorded VM without a public address one: the
+// recorded floating IP's address, else a new floating IP. Failures are
+// warnings; the caller reports the missing address.
+func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRecord) {
+	if rec.FloatingIPID != "" {
+		// Never a second one next to the recorded FIP.
+		f, err := e.Cloud.GetFloatingIP(ctx, rec.FloatingIPID)
+		if err != nil {
+			e.Printer.Warning(fmt.Sprintf("floating IP %s: %v", rec.FloatingIPID, err))
+			return
+		}
+		rec.VMIP = f.IPAddress
+		return
+	}
+	ip, fipID, err := e.assignFloatingIP(ctx, rec.VMID, e.Config.ProjectID, rec.Region)
+	if fipID != "" {
+		rec.FloatingIPID = fipID
+	}
+	rec.VMIP = ip
+	if err != nil {
+		e.Printer.Warning(fmt.Sprintf("floating IP: %v", err))
+	}
 }
 
 // waitForSSH retries SSH connection until the VM is reachable.
@@ -846,11 +926,12 @@ func (e *Engine) vmLeftRunning(ctx context.Context, err error, vmID string) erro
 }
 
 // handleInterrupt handles SIGINT/SIGTERM (or a cancelled context) after VM
-// creation. The returned error wraps context.Canceled, so the CLI exits 130.
-func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) error {
+// creation and reports whether the VM was deleted. The returned error wraps
+// context.Canceled, so the CLI exits 130.
+func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) (deleted bool, _ error) {
 	if nonInteractive || !confirm.StdinIsTTY() {
 		e.Printer.Warning(fmt.Sprintf("Received %s. VM %s left running (non-interactive mode).", sig, vmID))
-		return clerrors.Wrap(clerrors.CodeVMProvisionFailed,
+		return false, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 			"deployment interrupted",
 			fmt.Sprintf("VM %s was created and is still running. Use 'cloudru-vm destroy --force' to delete it.", vmID),
 			context.Canceled)
@@ -868,12 +949,13 @@ func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) e
 			e.Printer.Warning(fmt.Sprintf("Failed to delete VM: %v", err))
 		} else {
 			e.Printer.StepDone("VM deleted")
+			deleted = true
 		}
 	} else {
 		e.Printer.Warning(fmt.Sprintf("VM %s left running.", vmID))
 	}
 
-	return clerrors.Wrap(clerrors.CodeVMProvisionFailed,
+	return deleted, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 		"deployment interrupted by signal",
 		fmt.Sprintf("VM %s was created. Use 'cloudru-vm destroy' to clean up if needed.", vmID),
 		context.Canceled)
