@@ -164,7 +164,12 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.client.Do(req)
+	// No redirects: on 307/308 the client would POST the same body, with
+	// the key secret, to wherever Location points. IAM answers directly;
+	// a redirect is treated as an unexpected status below.
+	client := *p.client
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := client.Do(req)
 	if err != nil {
 		return Token{}, true, clerrors.Wrap(
 			clerrors.CodeAPIUnreachable,
