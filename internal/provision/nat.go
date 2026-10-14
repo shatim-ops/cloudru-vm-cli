@@ -64,7 +64,7 @@ func (a *CloudRuAdapter) CreateNATGateway(ctx context.Context, req CreateNATGate
 	}
 	path := "/api/v1/nat-gateways"
 	if req.ProjectID != "" {
-		path += "?project_id=" + req.ProjectID
+		path += "?project_id=" + url.QueryEscape(req.ProjectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodPost, path, body)
 	if err != nil {
@@ -82,9 +82,9 @@ func (a *CloudRuAdapter) CreateNATGateway(ctx context.Context, req CreateNATGate
 // DeleteNATGateway deletes a SNAT gateway by id (project-scoped, mirroring the
 // other /api/v1 delete endpoints).
 func (a *CloudRuAdapter) DeleteNATGateway(ctx context.Context, id, projectID string) error {
-	path := fmt.Sprintf("/api/v1/nat-gateways/%s", id)
+	path := fmt.Sprintf("/api/v1/nat-gateways/%s", seg(id))
 	if projectID != "" {
-		path += "?project_id=" + projectID
+		path += "?project_id=" + url.QueryEscape(projectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
 	if err != nil {

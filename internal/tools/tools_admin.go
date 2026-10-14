@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 )
@@ -58,7 +59,7 @@ func (s *Registry) projectID(ctx context.Context) string {
 // one). This is where a k8s cluster_sa_id can be discovered.
 func (s *Registry) handleIamServiceAccounts(ctx context.Context, args map[string]any) (string, bool) {
 	pid := firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx))
-	m, err := s.adminGET(ctx, "https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId="+pid)
+	m, err := s.adminGET(ctx, "https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId="+neturl.QueryEscape(pid))
 	if err != nil {
 		return errResult(err), true
 	}
@@ -103,7 +104,7 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (string, bool) {
 	url := "https://organization.api.cloud.ru/v3/quotas/usages?page_size=200"
 	if pid := stringArg(args, "project_id"); pid != "" {
-		url += "&subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT&subject_ids=" + pid
+		url += "&subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT&subject_ids=" + neturl.QueryEscape(pid)
 	}
 	m, err := s.adminGET(ctx, url)
 	if err != nil {

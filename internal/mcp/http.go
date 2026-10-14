@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
 )
 
 // Streamable HTTP transport (MCP 2025-03-26 / 2025-06-18):
@@ -56,6 +58,8 @@ type HTTPOptions struct {
 const (
 	httpMaxBody      = maxMessageSize
 	httpMaxSessions  = 10000
+	httpMaxBatch     = 100 // messages in one POST: a batch of tools/list would otherwise answer ~40 KB per 30-byte request
+	httpMaxToolCalls = 32  // tool calls running at once; more are refused, not queued
 	httpSessionTTL   = 24 * time.Hour
 	defaultKeepAlive = 15 * time.Second
 	headerSessionID  = "Mcp-Session-Id"
@@ -74,6 +78,8 @@ type HTTPHandler struct {
 	mu       sync.Mutex
 	sessions map[string]time.Time // id -> last use
 
+	calls chan struct{} // semaphore: running tool calls
+
 	done     chan struct{}
 	doneOnce sync.Once
 }
@@ -90,6 +96,7 @@ func NewHTTPHandler(s *Server, opts HTTPOptions) *HTTPHandler {
 		srv:      s,
 		opts:     opts,
 		sessions: map[string]time.Time{},
+		calls:    make(chan struct{}, httpMaxToolCalls),
 		done:     make(chan struct{}),
 	}
 }
@@ -234,6 +241,11 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msgs, batch := decodeMessages(body)
+	if len(msgs) > httpMaxBatch {
+		writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse(nullID, codeInvalidReq,
+			fmt.Sprintf("batch of %d messages: at most %d per request", len(msgs), httpMaxBatch)))
+		return
+	}
 	if !batch && msgs[0].bad != nil {
 		writeJSON(w, http.StatusBadRequest, msgs[0].bad)
 		return
@@ -384,6 +396,17 @@ func (h *HTTPHandler) stream(w http.ResponseWriter, r *http.Request) {
 func (h *HTTPHandler) dispatch(req *rpcRequest) *rpcResponse {
 	if req.Method != "tools/call" {
 		return h.srv.handle(req)
+	}
+	select {
+	case h.calls <- struct{}{}:
+		defer func() { <-h.calls }()
+	default:
+		h.logf(slog.LevelWarn, "tool call refused: too many running", "limit", httpMaxToolCalls)
+		if req.isNotification() {
+			return nil
+		}
+		return h.srv.toolResult(req, tools.ErrResult(fmt.Errorf(
+			"server busy: %d tool calls are already running; retry later", httpMaxToolCalls)), true)
 	}
 	start := time.Now()
 	resp := h.srv.handle(req)
