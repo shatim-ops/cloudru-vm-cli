@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"time"
@@ -18,6 +19,18 @@ type SSHDeployer struct {
 	client          *ssh.Client
 	hostFingerprint string
 	connectTimeout  time.Duration // per-attempt timeout (default 10s)
+
+	// newStreamSession opens the session ExecStream runs in; nil means a real
+	// session on client. Tests substitute a fake.
+	newStreamSession func(stdout, stderr io.Writer) (streamSession, error)
+}
+
+// streamSession is the part of *ssh.Session that ExecStream uses.
+type streamSession interface {
+	Start(cmd string) error
+	Wait() error
+	Signal(sig ssh.Signal) error
+	Close() error
 }
 
 // NewSSHDeployer creates a new SSHDeployer with default settings.
@@ -137,6 +150,57 @@ func (d *SSHDeployer) Exec(ctx context.Context, cmd string) (string, error) {
 	}
 }
 
+// ExecStream runs cmd on the remote host, copying its stdout and stderr to
+// the given writers as output arrives. Unlike Exec it has no timeout of its
+// own: it runs until the command exits or ctx is cancelled (e.g. `logs -f`
+// until Ctrl-C). On cancellation the remote command gets SIGTERM, the session
+// is closed and the returned error wraps ctx.Err().
+func (d *SSHDeployer) ExecStream(ctx context.Context, cmd string, stdout, stderr io.Writer) error {
+	open := d.newStreamSession
+	if open == nil {
+		if d.client == nil {
+			return clerrors.New(clerrors.CodeSSHTimeout, "not connected", "Call Connect before ExecStream.")
+		}
+		open = d.openStreamSession
+	}
+
+	session, err := open(stdout, stderr)
+	if err != nil {
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, "failed to create SSH session", "The SSH connection may have been lost.", err)
+	}
+	defer session.Close()
+
+	if err := session.Start(cmd); err != nil {
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, "failed to start remote command", "Check the remote host state.", err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- session.Wait() }()
+
+	select {
+	case <-ctx.Done():
+		_ = session.Signal(ssh.SIGTERM)
+		_ = session.Close() // unblocks Wait; without a pty the server may ignore the signal
+		<-done
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, "command execution cancelled", "The operation was cancelled during command execution.", ctx.Err())
+	case err := <-done:
+		if err != nil {
+			return clerrors.Wrap(clerrors.CodeSSHTimeout, "command execution failed", "Check the command and remote host state.", err)
+		}
+		return nil
+	}
+}
+
+func (d *SSHDeployer) openStreamSession(stdout, stderr io.Writer) (streamSession, error) {
+	session, err := d.client.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	session.Stdout = stdout
+	session.Stderr = stderr
+	return session, nil
+}
+
 // Close terminates the SSH connection.
 func (d *SSHDeployer) Close() error {
 	if d.client != nil {
@@ -235,6 +299,9 @@ func errorAs(err error, target interface{}) bool {
 	}
 	return false
 }
+
+// ShellQuote quotes s as one word for the remote POSIX shell.
+func ShellQuote(s string) string { return shellQuote(s) }
 
 // shellQuote wraps a string in single quotes, escaping internal single quotes.
 func shellQuote(s string) string {

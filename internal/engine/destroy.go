@@ -3,6 +3,7 @@ package engine
 import (
 	"bufio"
 	"context"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"os"
@@ -83,8 +84,8 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 	e.Printer.StepDone("Authenticated")
 
-	// Delete VM.
-	e.Printer.Step(3, 3, "Deleting VM...")
+	// Delete VM, then its floating IP.
+	e.Printer.Step(3, 3, "Deleting VM and floating IP...")
 	active.Status = "destroying"
 	active.UpdatedAt = time.Now()
 	stateFile.UpsertDeployment(*active)
@@ -100,8 +101,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		}
 	} else {
 		// Poll until gone.
-		deadline := time.After(30 * time.Second)
-		ticker := time.NewTicker(3 * time.Second)
+		t := e.timings()
+		deadline := time.After(t.DestroyPollTimeout)
+		ticker := time.NewTicker(t.DestroyPollInterval)
 		defer ticker.Stop()
 	pollLoop:
 		for {
@@ -123,6 +125,14 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		e.Printer.StepDone("VM deleted")
 	}
 
+	// The VM is gone but its floating IP is billed until released. On failure
+	// the record stays ("destroying"), so re-running destroy retries.
+	if err := e.releaseFloatingIP(ctx, active); err != nil {
+		stateFile.UpsertDeployment(*active)
+		_ = state.Write(statePath, stateFile)
+		return err
+	}
+
 	// Clean up state.
 	stateFile.RemoveDeployment(active.ID)
 	if err := state.Write(statePath, stateFile); err != nil {
@@ -131,6 +141,71 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	e.Printer.Success("Deployment destroyed successfully.")
 	return nil
+}
+
+// fipReleaseAttempts bounds DeleteFloatingIP retries: right after the VM is
+// deleted the platform may still report the FIP as attached.
+const fipReleaseAttempts = 5
+
+// releaseFloatingIP deletes the deployment's floating IP. The ID comes from
+// state; records written before floating_ip_id existed fall back to looking
+// the address up in list_floating_ips. Nothing to release is not an error.
+func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRecord) error {
+	projectID := e.Config.ProjectID
+	fipID := rec.FloatingIPID
+	if fipID == "" && rec.VMIP != "" {
+		fips, err := e.Cloud.ListFloatingIPs(ctx, projectID)
+		if err != nil {
+			return clerrors.Wrap(clerrors.CodeAPIError,
+				fmt.Sprintf("cannot look up floating IP %s", rec.VMIP),
+				"The VM is deleted. Re-run 'cloudru-vm destroy --force' to release the floating IP, or release it in the Cloud.ru console.",
+				err)
+		}
+		for _, f := range fips {
+			if f.IPAddress == rec.VMIP {
+				fipID = f.ID
+				break
+			}
+		}
+	}
+	if fipID == "" {
+		return nil
+	}
+
+	t := e.timings()
+	var lastErr error
+	for attempt := 0; attempt < fipReleaseAttempts; attempt++ {
+		err := e.Cloud.DeleteFloatingIP(ctx, fipID, projectID)
+		if err == nil {
+			e.Printer.StepDone(fmt.Sprintf("Floating IP %s released", fipLabel(rec.VMIP, fipID)))
+			return nil
+		}
+		var cliErr *clerrors.CLIError
+		if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound {
+			e.Printer.StepDone("Floating IP already released")
+			return nil
+		}
+		lastErr = err
+		if attempt == fipReleaseAttempts-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(t.FIPRetryInterval):
+		}
+	}
+	return clerrors.Wrap(clerrors.CodeAPIError,
+		fmt.Sprintf("VM deleted, but floating IP %s was not released", fipLabel(rec.VMIP, fipID)),
+		"The floating IP is still billed. Re-run 'cloudru-vm destroy --force' or release it in the Cloud.ru console.",
+		lastErr)
+}
+
+func fipLabel(ip, id string) string {
+	if ip == "" {
+		return id
+	}
+	return fmt.Sprintf("%s (%s)", ip, id)
 }
 
 // readAnswer reads one line from r, giving up when ctx is cancelled

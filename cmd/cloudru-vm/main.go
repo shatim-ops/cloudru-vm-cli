@@ -21,8 +21,6 @@ import (
 	"github.com/shatim-ops/cloudru-vm-cli/internal/mcp"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/verify"
 )
 
 var version = "0.1.0"
@@ -143,7 +141,12 @@ exactly as for the regular CLI commands.`,
 				if overrides == nil {
 					overrides = map[string]any{}
 				}
-				return buildEngine(overrides)
+				eng, err := buildEngine(overrides)
+				if err != nil {
+					return nil, err
+				}
+				// MCP tools read the key fields directly.
+				return eng, eng.EnsureSSHKey()
 			}, version)
 			// The server does not take a context; stop waiting for it on
 			// SIGINT/SIGTERM so the signal still ends the process.
@@ -178,20 +181,15 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 		return nil, fmt.Errorf("get working directory: %w", err)
 	}
 
-	privKey, pubKey, err := loadOrGenerateSSHKey(cwd)
-	if err != nil {
-		return nil, fmt.Errorf("SSH key: %w", err)
-	}
-
 	return &engine.Engine{
-		Config:    cfg,
-		Auth:      auth.NewEnvVarProvider(httpClient),
-		Cloud:     provision.NewCloudRuAdapter(httpClient, ""),
-		Deployer:  deploy.NewSSHDeployer(),
-		Printer:   printer,
-		SSHKeyPEM: privKey,
-		SSHPubKey: pubKey,
-		StateDir:  cwd,
+		Config:   cfg,
+		Auth:     auth.NewEnvVarProvider(httpClient),
+		Cloud:    provision.NewCloudRuAdapter(httpClient, ""),
+		Deployer: deploy.NewSSHDeployer(),
+		Printer:  printer,
+		StateDir: cwd,
+		// Created on first use: list-zones and friends leave no key behind.
+		SSHKeyLoader: func() ([]byte, string, error) { return loadOrGenerateSSHKey(cwd) },
 	}, nil
 }
 
@@ -438,58 +436,13 @@ func newDestroyCmd() *cobra.Command {
 func newVerifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify",
-		Short: "Run health checks against the deployed application",
+		Short: "Run health checks against the deployed application (exit 1 if unhealthy)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
 				return err
 			}
-
-			cwd, _ := os.Getwd()
-			statePath := state.DefaultPath(cwd)
-			stateFile, err := state.Read(statePath)
-			if err != nil {
-				return err
-			}
-
-			active := stateFile.ActiveDeployment()
-			if active == nil {
-				eng.Printer.Success("No active deployment to verify.")
-				eng.Printer.Hint("Run 'cloudru-vm deploy' first.")
-				return nil
-			}
-
-			if len(active.ExposedPorts) == 0 {
-				eng.Printer.Success("No exposed ports to verify.")
-				return nil
-			}
-
-			results := verify.Check(cmd.Context(), active.VMIP, active.ExposedPorts, 10*time.Second)
-
-			if eng.Printer.IsJSON() {
-				return eng.Printer.JSON(results)
-			}
-
-			headers := []string{"Port", "Status", "Healthy", "Latency"}
-			var rows [][]string
-			for _, r := range results {
-				healthy := "yes"
-				status := fmt.Sprintf("%d", r.StatusCode)
-				if !r.Healthy {
-					healthy = "no"
-					if r.Error != "" {
-						status = r.Error
-					}
-				}
-				rows = append(rows, []string{
-					fmt.Sprintf("%d", r.Port),
-					status,
-					healthy,
-					r.Latency.Round(time.Millisecond).String(),
-				})
-			}
-			eng.Printer.Table(headers, rows)
-			return nil
+			return eng.Verify(cmd.Context())
 		},
 	}
 }
@@ -497,51 +450,32 @@ func newVerifyCmd() *cobra.Command {
 // --- init ---
 
 func newInitCmd() *cobra.Command {
-	return &cobra.Command{
+	var nonInteractive bool
+
+	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize a cloudru-vm project with a sample config",
+		Short: "Create .cloudru-vm.yaml with a zone and image chosen from the Cloud.ru API",
+		Long: `Create .cloudru-vm.yaml for this project.
+
+The availability zone and the boot image are listed from the Cloud.ru API
+(credentials required). On a terminal you choose from a numbered list;
+with --non-interactive or without a terminal the first zone and the newest
+plain Ubuntu (else Debian) image are taken, and the choice is printed.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			printer := output.New(flagJSON, flagNoColor)
-
-			cfgFile := ".cloudru-vm.yaml"
-			if _, err := os.Stat(cfgFile); err == nil {
-				printer.Warning(cfgFile + " already exists. Skipping.")
-				return nil
+			eng, err := buildEngine(map[string]any{})
+			if err != nil {
+				return err
 			}
-
-			content := `# cloudru-vm configuration
-# See: https://github.com/shatim-ops/cloudru-vm-cli
-
-# Availability zone (cloudru-vm list-zones)
-region: 7c99a597-8516-494f-a2c7-d7377048681e  # ru.AZ-1
-
-# Boot image (cloudru-vm list-images)
-image_id: 474c9e98-760f-4e54-aaa9-70024814f2b0  # ubuntu-22.04
-
-# VM flavor: auto picks the smallest that fits your compose services
-flavor: auto
-
-# Boot disk size in GB
-disk_size: 10
-
-# Docker Compose file to deploy
-compose_file: docker-compose.yml
-
-# Operation timeout in seconds
-timeout: 300
-
-# Cloud.ru project UUID (required — get from console.cloud.ru)
-# project_id: <your-project-uuid>
-`
-			if err := os.WriteFile(cfgFile, []byte(content), 0644); err != nil {
-				return fmt.Errorf("failed to create config: %w", err)
-			}
-
-			printer.Success("Created " + cfgFile)
-			printer.Hint("Set project_id in " + cfgFile + " and export CLOUDRU_KEY_ID + CLOUDRU_SECRET, then run 'cloudru-vm deploy'")
-			return nil
+			return eng.Init(cmd.Context(), engine.InitOptions{
+				Path:           ".cloudru-vm.yaml",
+				NonInteractive: nonInteractive,
+			})
 		},
 	}
+
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Take the first zone and the preferred image without asking")
+
+	return cmd
 }
 
 // --- version ---
@@ -565,12 +499,7 @@ func newListZonesCmd() *cobra.Command {
 		Long: `List availability zones from the Cloud.ru API.
 
 Use the zone ID as the --region flag or CLOUDRU_REGION env var for deploy.
-Use --json for machine-readable output.
-
-Available zones:
-  7c99a597-8516-494f-a2c7-d7377048681e  ru.AZ-1
-  479a4ab3-3ff3-4972-95c5-7610bac5c0bb  ru.AZ-2
-  2c63c482-2532-4bba-8c9b-70ea330507bf  ru.AZ-3`,
+Use --json for machine-readable output.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
@@ -614,15 +543,8 @@ func newListImagesCmd() *cobra.Command {
 		Long: `List boot images from the Cloud.ru API.
 
 Use the image ID as the --image-id flag or CLOUDRU_IMAGE_ID env var for deploy.
-Use --json for machine-readable output.
-
-Common images:
-  474c9e98-760f-4e54-aaa9-70024814f2b0  ubuntu-22.04
-  fe51a6e6-a5ad-410e-b441-1a195208a8cf  Ubuntu-24.04
-  f4f7df21-fa2f-470f-99f2-a4b778f938f1  CentOS-9
-  d3405a96-e07e-40e8-abb3-bd9b151ac543  debian-11
-  c3cf7d12-5e64-4d4d-b258-f3d2991daf9d  Docker
-  520eea4d-d40c-46b0-be7d-a99e9b2aef33  fedora-41`,
+deploy installs Docker on Ubuntu and Debian images (e.g. Ubuntu-24.04).
+Use --json for machine-readable output.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {

@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"io"
 	"testing"
 
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
@@ -73,6 +74,12 @@ func (m *MockDeployer) Exec(_ context.Context, cmd string) (string, error) {
 	}
 
 	return result, err
+}
+
+func (m *MockDeployer) ExecStream(ctx context.Context, cmd string, stdout, _ io.Writer) error {
+	out, err := m.Exec(ctx, cmd)
+	_, _ = io.WriteString(stdout, out)
+	return err
 }
 
 func (m *MockDeployer) Close() error {

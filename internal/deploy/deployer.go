@@ -1,6 +1,9 @@
 package deploy
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // FileEntry represents a file to upload.
 type FileEntry struct {
@@ -23,6 +26,10 @@ type Deployer interface {
 
 	// Exec runs a command on the remote host and returns stdout.
 	Exec(ctx context.Context, cmd string) (string, error)
+
+	// ExecStream runs a command, streaming its stdout/stderr to the writers
+	// until it exits or ctx is cancelled. No timeout of its own.
+	ExecStream(ctx context.Context, cmd string, stdout, stderr io.Writer) error
 
 	// Close terminates the SSH connection.
 	Close() error

@@ -23,7 +23,13 @@ type interruptCloud struct {
 }
 
 func (c *interruptCloud) GetImage(context.Context, string) (*provision.ImageDetail, error) {
-	return &provision.ImageDetail{}, nil
+	return &provision.ImageDetail{MetadataFields: []provision.ImageMetadataField{
+		{Name: "name", DefaultValue: "user1"},
+	}}, nil
+}
+
+func (c *interruptCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
+	return []*provision.DiskType{{ID: "dt-ssd", Name: "SSD"}}, nil
 }
 
 func (c *interruptCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {

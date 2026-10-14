@@ -2,7 +2,7 @@ package engine
 
 import "time"
 
-// Production waits used by Deploy. Engine.Timings overrides them per field.
+// Production waits used by Deploy and Destroy. Engine.Timings overrides them per field.
 const (
 	vmPollInterval       = 5 * time.Second
 	vmPollTimeout        = 5 * time.Minute
@@ -12,11 +12,15 @@ const (
 	sshRetryInterval     = 5 * time.Second
 	verifySettleDelay    = 2 * time.Second
 	verifyTimeout        = 10 * time.Second
+	dockerPollInterval   = 10 * time.Second
+	dockerWaitTimeout    = 10 * time.Minute // cloud-init: apt upgrade + get.docker.com
+	destroyPollInterval  = 3 * time.Second
+	destroyPollTimeout   = 30 * time.Second
 	ifaceMaxAttempts     = 24 // × ifacePollInterval ≈ 2 minutes
 	ifaceFallbackAttempt = 12 // after this, accept a primary interface in any state
 )
 
-// Timings holds the waits Deploy uses between polls and retries. A zero field
+// Timings holds the waits Deploy and Destroy use between polls and retries. A zero field
 // means the production default from the constants above; tests set
 // milliseconds so that no test sleeps for real.
 type Timings struct {
@@ -28,6 +32,11 @@ type Timings struct {
 	SSHRetryInterval  time.Duration // between SSH connect attempts
 	SettleDelay       time.Duration // pause before health checks after compose up
 	VerifyTimeout     time.Duration // per-port HTTP probe timeout
+
+	DockerPollInterval  time.Duration // between checks that cloud-init has installed Docker
+	DockerWaitTimeout   time.Duration // give up waiting for Docker on a new VM
+	DestroyPollInterval time.Duration // GetVM polling until a deleted VM is gone
+	DestroyPollTimeout  time.Duration // stop waiting for the deletion to be confirmed
 }
 
 // withDefaults fills zero fields with the production defaults.
@@ -45,6 +54,10 @@ func (t Timings) withDefaults() Timings {
 	def(&t.SSHRetryInterval, sshRetryInterval)
 	def(&t.SettleDelay, verifySettleDelay)
 	def(&t.VerifyTimeout, verifyTimeout)
+	def(&t.DockerPollInterval, dockerPollInterval)
+	def(&t.DockerWaitTimeout, dockerWaitTimeout)
+	def(&t.DestroyPollInterval, destroyPollInterval)
+	def(&t.DestroyPollTimeout, destroyPollTimeout)
 	return t
 }
 
