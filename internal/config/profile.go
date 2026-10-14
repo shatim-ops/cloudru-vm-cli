@@ -203,7 +203,11 @@ func lockProfiles() (unlock func(), err error) {
 			f.Close()
 			return func() { os.Remove(path) }, nil
 		}
-		if !os.IsExist(err) {
+		// Windows: a lock file the previous holder has just removed stays
+		// "delete pending" while anyone has it open, and opening it fails
+		// with ERROR_ACCESS_DENIED instead of "exists" — it is busy too.
+		busy := os.IsExist(err) || (runtime.GOOS == "windows" && os.IsPermission(err))
+		if !busy {
 			return nil, fmt.Errorf("lock %s: %w", path, err)
 		}
 		if st, serr := os.Stat(path); serr == nil && time.Since(st.ModTime()) > lockStale {
