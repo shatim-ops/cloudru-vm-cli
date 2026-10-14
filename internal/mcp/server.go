@@ -17,7 +17,6 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
 )
 
@@ -44,10 +43,10 @@ func supportedProtocol(v string) bool {
 // serverName is the MCP server identity reported during initialize.
 const serverName = "cloudru-vm"
 
-// EngineFactory builds an *engine.Engine from a set of config overrides.
-// Overrides use the same field names as config flags (e.g. "ComposeFile",
-// "Region", "ProjectID"). A nil or empty map yields the default config.
-type EngineFactory func(overrides map[string]any) (*engine.Engine, error)
+// EngineFactory builds an *engine.Engine from a set of config overrides; it
+// is the registry's factory type, so one function serves both transports and
+// the CLI.
+type EngineFactory = tools.EngineFactory
 
 // toolHandler executes a single tool call. It returns the textual result and a
 // flag indicating whether the result represents a tool-level error (reported to
@@ -76,7 +75,7 @@ func New(factory EngineFactory, version string) *Server {
 	s := &Server{
 		version:  version,
 		handlers: map[string]toolHandler{},
-		reg:      tools.New(tools.EngineFactory(factory)),
+		reg:      tools.New(factory),
 	}
 	// The tools live in internal/tools, shared with the CLI; this package is
 	// only the transport.

@@ -270,9 +270,9 @@ func TestResolve_InvalidInputs(t *testing.T) {
 	}
 }
 
-func TestLoad_MissingProjectFile(t *testing.T) {
+func TestResolve_MissingProjectFile(t *testing.T) {
 	isolate(t)
-	cfg, err := Load(filepath.Join(t.TempDir(), "nonexistent.yaml"), map[string]any{"Verbose": true})
+	cfg, err := Resolve(Options{ProjectFile: filepath.Join(t.TempDir(), "nonexistent.yaml"), Flags: map[string]any{"Verbose": true}})
 	if err != nil || !cfg.Verbose || cfg.Flavor != "auto" {
 		t.Errorf("got %+v, %v", cfg, err)
 	}

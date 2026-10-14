@@ -2,10 +2,6 @@ package deploy
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"io"
 	"testing"
@@ -190,75 +186,6 @@ func TestMockDeployer_HostKeyFingerprint(t *testing.T) {
 // ---------------------------------------------------------------------------
 // SSHDeployer unit tests (no real SSH server needed)
 // ---------------------------------------------------------------------------
-
-// generateTestEd25519Key creates an Ed25519 private key in PEM format for testing.
-func generateTestEd25519Key(t *testing.T) []byte {
-	t.Helper()
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("failed to generate ed25519 key: %v", err)
-	}
-	marshalled, err := x509.MarshalPKCS8PrivateKey(priv)
-	if err != nil {
-		t.Fatalf("failed to marshal private key: %v", err)
-	}
-	pemBlock := &pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: marshalled,
-	}
-	return pem.EncodeToMemory(pemBlock)
-}
-
-func TestSSHDeployer_ParseKey(t *testing.T) {
-	keyPEM := generateTestEd25519Key(t)
-
-	signer, err := parsePrivateKey(keyPEM)
-	if err != nil {
-		t.Fatalf("failed to parse Ed25519 key: %v", err)
-	}
-	if signer == nil {
-		t.Fatal("signer should not be nil")
-	}
-	if signer.PublicKey().Type() != "ssh-ed25519" {
-		t.Errorf("expected ssh-ed25519 key type, got %s", signer.PublicKey().Type())
-	}
-}
-
-func TestSSHDeployer_ParseKey_Invalid(t *testing.T) {
-	_, err := parsePrivateKey([]byte("not a valid key"))
-	if err == nil {
-		t.Fatal("expected error for invalid key PEM")
-	}
-}
-
-func TestSSHDeployer_HostKeyMismatch(t *testing.T) {
-	err := CompareHostKey("SHA256:expected", "SHA256:actual")
-	if err == nil {
-		t.Fatal("expected error for host key mismatch")
-	}
-
-	var cliErr *clerrors.CLIError
-	if !errors.As(err, &cliErr) {
-		t.Fatalf("expected CLIError, got %T", err)
-	}
-	if cliErr.Code != clerrors.CodeSSHHostKeyChanged {
-		t.Errorf("expected code %s, got %s", clerrors.CodeSSHHostKeyChanged, cliErr.Code)
-	}
-}
-
-func TestSSHDeployer_HostKeyMatch(t *testing.T) {
-	err := CompareHostKey("SHA256:samefingerprint", "SHA256:samefingerprint")
-	if err != nil {
-		t.Fatalf("expected nil for matching host keys, got: %v", err)
-	}
-}
-
-func TestSSHDeployer_HostKeyTOFU(t *testing.T) {
-	err := CompareHostKey("", "SHA256:anyfingerprintworks")
-	if err != nil {
-		t.Fatalf("expected nil for TOFU (empty expected key), got: %v", err)
-	}
-}
 
 func TestSSHDeployer_NewSSHDeployer(t *testing.T) {
 	d := NewSSHDeployer()

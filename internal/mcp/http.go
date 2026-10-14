@@ -136,7 +136,7 @@ func (h *HTTPHandler) serveMCP(w http.ResponseWriter, r *http.Request) {
 	// a token the server listens on loopback only, and a page whose name
 	// resolves to 127.0.0.1 sends its own name as both Host and Origin,
 	// which passes the same-origin check: the Host must be loopback too.
-	if h.opts.BearerToken == "" && !loopbackHost(r.Host) {
+	if h.opts.BearerToken == "" && !LoopbackHost(r.Host) {
 		http.Error(w, "host not allowed", http.StatusForbidden)
 		return
 	}
@@ -194,14 +194,16 @@ func originAllowed(r *http.Request) bool {
 	if err != nil || u.Host == "" {
 		return false
 	}
-	if loopbackHost(u.Host) {
+	if LoopbackHost(u.Host) {
 		return true
 	}
 	return strings.EqualFold(u.Host, r.Host)
 }
 
-// loopbackHost reports whether a host[:port] names the loopback interface.
-func loopbackHost(hostport string) bool {
+// LoopbackHost reports whether a host[:port] names the loopback interface
+// (localhost, 127.0.0.0/8, ::1). The mcp command uses it to allow --auth none
+// only there.
+func LoopbackHost(hostport string) bool {
 	host := hostport
 	if h, _, err := net.SplitHostPort(hostport); err == nil {
 		host = h

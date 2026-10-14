@@ -100,13 +100,8 @@ func Defaults() Config {
 	}
 }
 
-// Load resolves the configuration with the default profile selection.
-// Kept for callers that only know the project file and flags.
-func Load(projectFile string, flags map[string]any) (Config, error) {
-	return Resolve(Options{ProjectFile: projectFile, Flags: flags})
-}
-
-// Resolve merges all configuration layers.
+// Resolve merges all configuration layers (the tests' entry point; the
+// commands use ResolveWithSources).
 func Resolve(opts Options) (Config, error) {
 	cfg, _, err := resolve(opts)
 	return cfg, err

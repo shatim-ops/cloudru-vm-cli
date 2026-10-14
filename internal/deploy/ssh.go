@@ -374,26 +374,5 @@ func parentDir(path string) string {
 	return path[:idx]
 }
 
-// parsePrivateKey is an exported helper for testing key parsing.
-func parsePrivateKey(keyPEM []byte) (ssh.Signer, error) {
-	return ssh.ParsePrivateKey(keyPEM)
-}
-
-// CompareHostKey checks whether a given fingerprint matches the expected value.
-// Returns a CLIError with CodeSSHHostKeyChanged on mismatch, nil on match.
-func CompareHostKey(expected, actual string) error {
-	if expected == "" {
-		return nil // TOFU
-	}
-	if expected != actual {
-		return clerrors.New(
-			clerrors.CodeSSHHostKeyChanged,
-			fmt.Sprintf("host key mismatch: expected %s, got %s", expected, actual),
-			"The remote host key has changed. Update the stored host key if the change is expected.",
-		)
-	}
-	return nil
-}
-
 // Compile-time check that SSHDeployer implements Deployer.
 var _ Deployer = (*SSHDeployer)(nil)

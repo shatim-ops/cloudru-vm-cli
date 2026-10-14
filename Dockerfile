@@ -29,8 +29,9 @@ RUN CGO_ENABLED=0 go build -trimpath \
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=build /out/cloudru-vm /usr/local/bin/cloudru-vm
-# HOME=/home/nonroot: туда ложится кэш IAM-токена (~/.config/cloudru-vm);
-# рабочий каталог — для локального состояния deploy/provision.
+# HOME=/home/nonroot: туда ложится кэш IAM-токена (os.UserCacheDir():
+# ~/.cache/cloudru-vm); рабочий каталог — для локального состояния
+# deploy/provision (./.cloudru-vm/).
 WORKDIR /home/nonroot
 USER nonroot:nonroot
 EXPOSE 8080
