@@ -16,6 +16,9 @@ var (
 	bearerRe = regexp.MustCompile(`Bearer\s+[A-Za-z0-9+/=.\-]{20,}`)
 	// CLOUDRU_API_KEY=<value>
 	apiKeyRe = regexp.MustCompile(`CLOUDRU_API_KEY=[A-Za-z0-9+/=.\-]+`)
+	// Other secrets passed through the environment, whatever their length:
+	// the MCP bearer token may be short.
+	envSecretRe = regexp.MustCompile(`\b(CLOUDRU_SECRET|CLOUDRU_S3_SECRET_KEY|MCP_BEARER_TOKEN)=[^\s"]+`)
 	// Generic key=<value> where value is 20+ alphanumeric characters.
 	genericKeyRe = regexp.MustCompile(`(key=)([A-Za-z0-9+/=.\-]{20,})`)
 )
@@ -25,6 +28,7 @@ var (
 func (s *sanitizeWriter) Write(p []byte) (n int, err error) {
 	sanitized := bearerRe.ReplaceAll(p, []byte("Bearer ****"))
 	sanitized = apiKeyRe.ReplaceAll(sanitized, []byte("CLOUDRU_API_KEY=****"))
+	sanitized = envSecretRe.ReplaceAll(sanitized, []byte("${1}=****"))
 	sanitized = genericKeyRe.ReplaceAllFunc(sanitized, func(match []byte) []byte {
 		// Only replace if we haven't already redacted (avoid double-redacting
 		// CLOUDRU_API_KEY which contains "key=").
