@@ -49,3 +49,31 @@ func TestFetchOIDCToken_OnlyTrustedIAMHosts(t *testing.T) {
 		}
 	}
 }
+
+// redirectTransport answers the first request with 307 to another host.
+type redirectTransport struct{ hosts []string }
+
+func (r *redirectTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.hosts = append(r.hosts, req.URL.Host)
+	h := http.Header{}
+	h.Set("Location", "https://attacker.example/token")
+	return &http.Response{StatusCode: http.StatusTemporaryRedirect, Body: io.NopCloser(strings.NewReader("")),
+		Header: h, Request: req}, nil
+}
+
+// 307/308 repeat the POST with the same body — the access key secret — at
+// the Location: even the trusted IAM host must not forward it elsewhere.
+func TestFetchOIDCToken_RedirectDoesNotResendSecret(t *testing.T) {
+	rt := &redirectTransport{}
+	orig := oidcClient
+	oidcClient = &http.Client{Transport: rt, CheckRedirect: orig.CheckRedirect}
+	t.Cleanup(func() { oidcClient = orig })
+
+	_, err := FetchOIDCToken(context.Background(), DefaultOIDCTokenURL, "k", "s")
+	if len(rt.hosts) != 1 {
+		t.Fatalf("the request followed the redirect: %v", rt.hosts)
+	}
+	if err == nil {
+		t.Fatal("a redirect was taken for a token")
+	}
+}

@@ -40,11 +40,23 @@ jobs:
       IMAGE: ${{ inputs.image || 'ubuntu-22.04' }}
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Токен GITHUB_TOKEN не остаётся в .git/config для следующих шагов.
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.9"
           cache-dependency-path: go.sum
+
+      # Входы workflow_dispatch идут в jq и sed -i: только имена, без
+      # разделителей и флагов sed («|e» выполнил бы команду).
+      - name: Проверка входов
+        run: |
+          for v in "$ZONE" "$FLAVOR" "$IMAGE"; do
+            printf '%s' "$v" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' ||
+              { echo "::error::недопустимое значение входа: $v"; exit 1; }
+          done
 
       - name: Сборка
         run: go build -o "$RUNNER_TEMP/cloudru-vm" ./cmd/cloudru-vm && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"

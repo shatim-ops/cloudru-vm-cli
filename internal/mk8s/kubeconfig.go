@@ -17,8 +17,12 @@ import (
 // `cloudlogin` exec-plugin uses (client-credentials grant).
 const DefaultOIDCTokenURL = "https://id.cloud.ru/auth/system/openid/token"
 
-// oidcClient sends the token request; tests replace its transport.
-var oidcClient = &http.Client{Timeout: 20 * time.Second}
+// oidcClient sends the token request; tests replace its transport. No
+// redirects: on 307/308 the client would POST the same body, with
+// client_secret, to wherever the Location points.
+var oidcClient = &http.Client{Timeout: 20 * time.Second, CheckRedirect: noRedirects}
+
+func noRedirects(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 // FetchOIDCToken performs the same client-credentials exchange the Cloud.ru
 // mk8s `cloudlogin get-token` plugin does, returning the JWT used as the

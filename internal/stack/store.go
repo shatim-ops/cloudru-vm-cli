@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
 )
 
 // --- Manifest (desired state) ---
@@ -244,17 +246,73 @@ func FindResourcefulJobs(name, excludeID string) []OrphanRef {
 	return out
 }
 
-// Save persists a job to disk.
+// Save persists a job to disk: the directory 0700, the file 0600 via a
+// temporary file and rename. Secret values and S3 object bodies that are
+// already in the cloud are dropped first (see redactSpent).
 func (j *Job) Save() error {
 	dir := jobsDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil { // job files hold secret values of the manifest
 		return err
 	}
+	// Directories made by older versions were 0755: job names and
+	// manifests readable by every local user.
+	if st, err := os.Stat(dir); err == nil && config.PermissionsEnforced() && config.LooseMode(st.Mode()) {
+		_ = os.Chmod(dir, 0o700)
+	}
+	j.redactSpent()
 	data, err := json.MarshalIndent(j, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, j.ID+".json"), data, 0o600)
+	return config.WriteFilePrivate(filepath.Join(dir, j.ID+".json"), data)
+}
+
+// redactedValue replaces a secret value or object body on disk.
+const redactedValue = "<redacted: not kept on disk after the step>"
+
+// redactSpent drops the value of every secret and the body of every S3
+// object whose step is done, or all of them once the job is destroyed: the
+// job file would otherwise keep them in plain text forever. Paths, buckets
+// and keys stay: stack_destroy deletes by them. Values of steps still to run
+// are kept, stack_apply needs them.
+func (j *Job) redactSpent() {
+	gone := j.Status == "destroyed" || j.Status == "destroy_failed"
+	spent := func(key string) bool {
+		if gone {
+			return true
+		}
+		for _, st := range j.Steps {
+			if st.Key == key {
+				return st.Status == "done"
+			}
+		}
+		return false
+	}
+	for _, st := range j.Steps {
+		if !spent(st.Key) {
+			continue
+		}
+		switch st.Tool {
+		case "secret_create":
+			if _, ok := st.Args["value"]; ok {
+				st.Args["value"] = redactedValue
+			}
+		case "s3_put":
+			if _, ok := st.Args["content"]; ok {
+				st.Args["content"] = redactedValue
+			}
+		}
+	}
+	for i := range j.Manifest.Secrets {
+		if spent(fmt.Sprintf("secret:%d", i)) && j.Manifest.Secrets[i].Value != "" {
+			j.Manifest.Secrets[i].Value = redactedValue
+		}
+	}
+	for i := range j.Manifest.S3 {
+		if spent(fmt.Sprintf("s3:%d", i)) && j.Manifest.S3[i].Content != "" {
+			j.Manifest.S3[i].Content = redactedValue
+		}
+	}
 }
 
 // jobIDRe matches the ids newID makes. The id comes from the caller (MCP

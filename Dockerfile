@@ -10,7 +10,11 @@
 # Та же версия Go, что в ci.yml и release.yml; поднимать вместе.
 ARG GO_VERSION=1.26.9
 
-FROM golang:${GO_VERSION} AS build
+# Базовые образы закреплены по digest (индекс всех платформ): тег можно
+# переписать в реестре, digest — нет. Поднимая GO_VERSION, обновите и digest
+# (это делает Dependabot):
+#   docker buildx imagetools inspect golang:<версия> --format '{{.Manifest.Digest}}'
+FROM golang:${GO_VERSION}@sha256:37cfcca63222ec499bec5e8ad7aad52dbf7529db36d5812b8eae2f0621aa92d6 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -23,7 +27,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
       -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
       -o /out/cloudru-vm ./cmd/cloudru-vm
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=build /out/cloudru-vm /usr/local/bin/cloudru-vm
 # HOME=/home/nonroot: туда ложится кэш IAM-токена (~/.config/cloudru-vm);
 # рабочий каталог — для локального состояния deploy/provision.

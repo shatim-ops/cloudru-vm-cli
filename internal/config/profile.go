@@ -148,6 +148,14 @@ func readCredentialsFile() (credentialsFile, []string, error) {
 			warnings = append(warnings, fmt.Sprintf(
 				"%s is accessible by other users (mode %04o); run: chmod 600 %s", path, st.Mode().Perm(), path))
 		}
+		// A 0600 file is no protection in a directory others can write:
+		// they replace credentials.yaml (with their key, or a symlink) and
+		// the token cache.
+		dir := filepath.Dir(path)
+		if st, err := os.Stat(dir); err == nil && st.Mode().Perm()&0o022 != 0 {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s is writable by other users (mode %04o): they can replace credentials.yaml; run: chmod 700 %s", dir, st.Mode().Perm(), dir))
+		}
 	}
 	return f, warnings, nil
 }
@@ -195,7 +203,11 @@ func lockProfiles() (unlock func(), err error) {
 			f.Close()
 			return func() { os.Remove(path) }, nil
 		}
-		if !os.IsExist(err) {
+		// Windows: a lock file the previous holder has just removed stays
+		// "delete pending" while anyone has it open, and opening it fails
+		// with ERROR_ACCESS_DENIED instead of "exists" — it is busy too.
+		busy := os.IsExist(err) || (runtime.GOOS == "windows" && os.IsPermission(err))
+		if !busy {
 			return nil, fmt.Errorf("lock %s: %w", path, err)
 		}
 		if st, serr := os.Stat(path); serr == nil && time.Since(st.ModTime()) > lockStale {
@@ -340,6 +352,14 @@ func writeYAML(path string, v any) error {
 // a crash never leaves a half-written file, and the secret is never
 // readable by others even for a moment.
 func WriteFilePrivate(path string, data []byte) error {
+	return WriteFileAtomic(path, data, 0o600)
+}
+
+// WriteFileAtomic is WriteFilePrivate with the final mode perm. The
+// temporary file is created 0600 (O_EXCL) and gets perm before the rename;
+// the rename replaces a symlink at path instead of writing through it, and
+// a file already at path never lends its own mode to the new contents.
+func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create %s: %w", dir, err)
@@ -350,7 +370,7 @@ func WriteFilePrivate(path string, data []byte) error {
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op after a successful rename
-	if err := tmp.Chmod(0o600); err != nil && PermissionsEnforced() {
+	if err := tmp.Chmod(perm); err != nil && PermissionsEnforced() {
 		tmp.Close()
 		return fmt.Errorf("chmod %s: %w", tmpName, err)
 	}
