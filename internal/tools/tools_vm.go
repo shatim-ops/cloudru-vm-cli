@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // handleVMGet returns LIVE details for a single VM (by vm_id or name): its
@@ -86,4 +87,38 @@ func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string
 		"public_ip":  publicIP,
 		"interfaces": ifaces,
 	}), false
+}
+
+// handleVMList lists the project's VMs from the live API (read-only).
+func (s *Registry) handleVMList(ctx context.Context, args map[string]any) (string, bool) {
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	vms, err := eng.Cloud.ListVMsInProject(ctx, eng.Config.ProjectID)
+	if err != nil {
+		return errResult(err), true
+	}
+	out := make([]map[string]any, 0, len(vms))
+	for _, v := range vms {
+		row := map[string]any{
+			"id":    v.ID,
+			"name":  v.Name,
+			"state": v.Status,
+			"zone":  v.ZoneID(),
+		}
+		if v.AvailabilityZone != nil && v.AvailabilityZone.Name != "" {
+			row["zone"] = v.AvailabilityZone.Name
+		}
+		if ip := v.PublicIP; ip != "" {
+			row["public_ip"] = ip
+		} else if v.FloatingIP != "" {
+			row["public_ip"] = v.FloatingIP
+		}
+		if !v.CreatedAt.IsZero() {
+			row["created_time"] = v.CreatedAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, row)
+	}
+	return toJSON(map[string]any{"vms": out}), false
 }

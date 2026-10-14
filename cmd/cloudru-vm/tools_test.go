@@ -52,8 +52,8 @@ func TestToolsList_JSONHasEveryTool(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &list); err != nil {
 		t.Fatalf("not JSON: %v", err)
 	}
-	if len(list) != 146 {
-		t.Errorf("%d tools, want 146", len(list))
+	if len(list) != 147 {
+		t.Errorf("%d tools, want 147 (146 + vm_list)", len(list))
 	}
 	for _, tl := range list {
 		if tl.Group == "" || tl.Description == "" {
