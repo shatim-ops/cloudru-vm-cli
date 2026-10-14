@@ -44,7 +44,7 @@ func cmdPrinter(cmd *cobra.Command) *output.Printer {
 }
 
 func newToolsCmd() *cobra.Command {
-	cmd := &cobra.Command{
+	cmd := asGroup(&cobra.Command{
 		Use:   "tools",
 		Short: "List, describe and call any of the cloudru-vm tools (the same ones the MCP server exposes)",
 		Long: `Every operation the MCP server exposes is available here as a tool.
@@ -57,7 +57,7 @@ Tools that create paid resources or delete data ask for confirmation the same
 way as the other commands: a prompt on a terminal, --yes to confirm in
 advance, --dry-run to see the preview only; without a terminal and without
 --yes the call stops with exit code 3.`,
-	}
+	})
 	cmd.AddCommand(newToolsListCmd(), newToolsDescribeCmd(), newToolsCallCmd())
 	return cmd
 }

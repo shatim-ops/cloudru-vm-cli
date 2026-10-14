@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -82,9 +84,31 @@ func run(args []string) int {
 	}
 	if !commandStarted {
 		err = usageError(cmd, err)
+		// cobra stops at the first bad flag or command, so a --json after
+		// it is never parsed; the error must still be JSON.
+		flagJSON = flagJSON || jsonRequested(args)
 	}
 	handleError(output.New(flagJSON, flagNoColor), err)
 	return clerrors.ExitCode(err)
+}
+
+// jsonRequested reports whether the command line asks for --json, looking
+// at the raw arguments up to "--".
+func jsonRequested(args []string) bool {
+	on := false
+	for _, a := range args {
+		switch {
+		case a == "--":
+			return on
+		case a == "--json":
+			on = true
+		case strings.HasPrefix(a, "--json="):
+			if b, err := strconv.ParseBool(strings.TrimPrefix(a, "--json=")); err == nil {
+				on = b
+			}
+		}
+	}
+	return on
 }
 
 // usageError turns a cobra parsing error (unknown command or flag, bad
@@ -92,6 +116,25 @@ func run(args []string) int {
 func usageError(cmd *cobra.Command, err error) error {
 	return clerrors.Wrap(clerrors.CodeUsage, err.Error(),
 		fmt.Sprintf("Run '%s --help' for usage.", cmd.CommandPath()), err)
+}
+
+// asGroup makes cmd a command group that shows its help when called alone
+// and rejects anything else: by default cobra answers "vm lst" with the
+// group's help and exit 0, and a script takes the typo for success.
+func asGroup(cmd *cobra.Command) *cobra.Command {
+	cmd.SuggestionsMinimumDistance = 2 // cobra's default, set only for the root
+	cmd.Args = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return nil
+		}
+		msg := fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath())
+		if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
+			msg += "; did you mean " + strings.Join(s, ", ") + "?"
+		}
+		return stderrors.New(msg)
+	}
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
+	return cmd
 }
 
 func newRootCmd() *cobra.Command {
@@ -261,6 +304,7 @@ func newDeployCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "deploy",
+		Args:  cobra.NoArgs,
 		Short: "Deploy a docker-compose project to a Cloud.ru VM",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := map[string]any{}
@@ -322,6 +366,7 @@ func newDeployCmd() *cobra.Command {
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
+		Args:  cobra.NoArgs,
 		Short: "Show current deployment status",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
@@ -347,6 +392,7 @@ func newLogsCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "logs",
+		Args:  cobra.NoArgs,
 		Short: "View container logs from the deployed VM",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
@@ -381,6 +427,7 @@ func newDestroyCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "destroy",
+		Args:  cobra.NoArgs,
 		Short: "Delete the deployed VM and clean up resources",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
@@ -406,6 +453,7 @@ func newDestroyCmd() *cobra.Command {
 func newVerifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify",
+		Args:  cobra.NoArgs,
 		Short: "Run health checks against the deployed application (exit 1 if unhealthy)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
@@ -424,6 +472,7 @@ func newInitCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "init",
+		Args:  cobra.NoArgs,
 		Short: "Create .cloudru-vm.yaml with a zone and image chosen from the Cloud.ru API",
 		Long: `Create .cloudru-vm.yaml for this project.
 
@@ -453,6 +502,7 @@ plain Ubuntu (else Debian) image are taken, and the choice is printed.`,
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
+		Args:  cobra.NoArgs,
 		Short: "Print the version, commit, build date, Go version and platform",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return printVersion(cmd.OutOrStdout(), flagJSON, currentVersion())
@@ -465,6 +515,7 @@ func newVersionCmd() *cobra.Command {
 func newListZonesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list-zones",
+		Args:  cobra.NoArgs,
 		Short: "List available availability zones",
 		Long: `List availability zones from the Cloud.ru API.
 
@@ -509,6 +560,7 @@ Use --json for machine-readable output.`,
 func newListImagesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list-images",
+		Args:  cobra.NoArgs,
 		Short: "List available VM boot images",
 		Long: `List boot images from the Cloud.ru API.
 
