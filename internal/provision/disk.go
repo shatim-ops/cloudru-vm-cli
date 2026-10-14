@@ -52,7 +52,7 @@ func (a *CloudRuAdapter) CreateDisk(ctx context.Context, req CreateDiskReq) (map
 	}
 	path := "/api/v1/disks"
 	if req.ProjectID != "" {
-		path += "?project_id=" + req.ProjectID
+		path += "?project_id=" + url.QueryEscape(req.ProjectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodPost, path, body)
 	if err != nil {
@@ -81,9 +81,9 @@ func (a *CloudRuAdapter) diskAction(ctx context.Context, action, diskID, vmID, p
 	if err != nil {
 		return nil, err
 	}
-	path := fmt.Sprintf("/api/v1/disks/%s/%s", diskID, action)
+	path := fmt.Sprintf("/api/v1/disks/%s/%s", seg(diskID), action)
 	if projectID != "" {
-		path += "?project_id=" + projectID
+		path += "?project_id=" + url.QueryEscape(projectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodPost, path, body)
 	if err != nil {
@@ -102,9 +102,9 @@ func (a *CloudRuAdapter) ResizeDisk(ctx context.Context, diskID string, sizeGB i
 	if err != nil {
 		return nil, err
 	}
-	path := fmt.Sprintf("/api/v1/disks/%s", diskID)
+	path := fmt.Sprintf("/api/v1/disks/%s", seg(diskID))
 	if projectID != "" {
-		path += "?project_id=" + projectID
+		path += "?project_id=" + url.QueryEscape(projectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodPut, path, body)
 	if err != nil {
@@ -120,9 +120,9 @@ func (a *CloudRuAdapter) ResizeDisk(ctx context.Context, diskID string, sizeGB i
 
 // DeleteDisk deletes a disk by id.
 func (a *CloudRuAdapter) DeleteDisk(ctx context.Context, diskID, projectID string) error {
-	path := fmt.Sprintf("/api/v1/disks/%s", diskID)
+	path := fmt.Sprintf("/api/v1/disks/%s", seg(diskID))
 	if projectID != "" {
-		path += "?project_id=" + projectID
+		path += "?project_id=" + url.QueryEscape(projectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
 	if err != nil {

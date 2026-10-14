@@ -54,10 +54,14 @@ func run(ctx context.Context, kubeconfig, stdin string, timeout time.Duration, n
 		return "", err
 	}
 	defer os.Remove(f.Name())
-	if err := os.Chmod(f.Name(), 0o600); err == nil {
-		_, _ = f.WriteString(kubeconfig)
+	// CreateTemp makes the file 0600; the token goes in only after that.
+	_, err = f.WriteString(kubeconfig)
+	if cerr := f.Close(); err == nil {
+		err = cerr
 	}
-	f.Close()
+	if err != nil {
+		return "", fmt.Errorf("write kubeconfig: %w", err)
+	}
 
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

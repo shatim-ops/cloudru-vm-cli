@@ -1714,11 +1714,16 @@ HTTP authentication (--auth):
   none    no authentication; only allowed on a loopback address
           (--http 127.0.0.1:8080)
 
-Over HTTP, k8s_kubeconfig with an embedded token and cert_private_key are
-disabled unless --allow-secret-export is set; k8s_kubectl/k8s_apply/k8s_helm
-answer with an error when kubectl/helm is not installed (the Docker image has
-neither). One log line per tool call (name, status, duration; never the
-arguments) goes to stderr.
+Over HTTP, k8s_kubeconfig with an embedded token, cert_private_key and
+secret_value are disabled, and credential fields (passwords, keys, tokens) in
+other results are masked, unless --allow-secret-export is set. Arguments that
+reach the server's host are confined: deploy's compose_file to the working
+directory, k8s_kubectl to built-in commands without host flags (--kubeconfig,
+-f, ...), k8s_helm to remote charts on public https/oci hosts.
+k8s_kubectl/k8s_apply/k8s_helm answer with an error when kubectl/helm is not
+installed (the Docker image has neither). At most 32 tool calls run at once
+and a batch holds at most 100 messages. One log line per tool call (name,
+status, duration; never the arguments) goes to stderr.
 
 Cloud.ru credentials and project parameters are the server's own, resolved
 exactly as for the regular CLI commands (environment, profile from
@@ -1732,7 +1737,7 @@ cloudru-vm mcp [flags]
 ### Options
 
 ```
-      --allow-secret-export   HTTP mode: allow k8s_kubeconfig with an embedded token and cert_private_key
+      --allow-secret-export   HTTP mode: allow k8s_kubeconfig with an embedded token, cert_private_key, secret_value and unmasked credentials in results
       --auth string           HTTP authentication: bearer (token from $MCP_BEARER_TOKEN) or none (loopback address only) (default "bearer")
   -h, --help                  help for mcp
       --http string           Serve MCP over Streamable HTTP on this address (e.g. :8080) instead of stdio

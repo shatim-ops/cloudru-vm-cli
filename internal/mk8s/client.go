@@ -202,7 +202,7 @@ func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
 
 // GetCluster returns the raw cluster object by id.
 func (c *Client) GetCluster(ctx context.Context, id string) (map[string]any, error) {
-	data, st, err := c.do(ctx, http.MethodGet, "/v3/clusters/"+id, nil, nil)
+	data, st, err := c.do(ctx, http.MethodGet, "/v3/clusters/"+seg(id), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func (c *Client) CreateCluster(ctx context.Context, req CreateClusterReq) (*Oper
 
 // DeleteCluster deletes a cluster by id and returns the async operation.
 func (c *Client) DeleteCluster(ctx context.Context, id string) (*Operation, error) {
-	data, st, err := c.do(ctx, http.MethodDelete, "/v3/clusters/"+id, nil, nil)
+	data, st, err := c.do(ctx, http.MethodDelete, "/v3/clusters/"+seg(id), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +256,7 @@ func (c *Client) GetKubeConfig(ctx context.Context, id, network string) (string,
 	if network != "" {
 		body["network"] = network
 	}
-	data, st, err := c.do(ctx, http.MethodPost, "/v3/clusters/"+id+":getKubeConfig", nil, body)
+	data, st, err := c.do(ctx, http.MethodPost, "/v3/clusters/"+seg(id)+":getKubeConfig", nil, body)
 	if err != nil {
 		return "", err
 	}
@@ -290,7 +290,7 @@ func (c *Client) ProductConfiguration(ctx context.Context) (*ProductConfig, erro
 
 // GetOperation polls an async operation by id.
 func (c *Client) GetOperation(ctx context.Context, id string) (*Operation, error) {
-	data, st, err := c.do(ctx, http.MethodGet, "/v3/operations/"+id, nil, nil)
+	data, st, err := c.do(ctx, http.MethodGet, "/v3/operations/"+seg(id), nil, nil)
 	if err != nil {
 		return nil, err
 	}

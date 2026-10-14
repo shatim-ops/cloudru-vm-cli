@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
@@ -22,7 +23,7 @@ func listProjectScoped[T any](a *CloudRuAdapter, ctx context.Context, path, proj
 		if strings.Contains(path, "?") {
 			sep = "&"
 		}
-		full = fmt.Sprintf("%s%sproject_id=%s&limit=200", path, sep, projectID)
+		full = fmt.Sprintf("%s%sproject_id=%s&limit=200", path, sep, url.QueryEscape(projectID))
 	}
 
 	resp, err := a.doWithRetry(ctx, http.MethodGet, full, nil)
@@ -65,9 +66,9 @@ func (a *CloudRuAdapter) ListVMsInProject(ctx context.Context, projectID string)
 
 // DeleteVMInProject deletes a VM by ID, passing project_id.
 func (a *CloudRuAdapter) DeleteVMInProject(ctx context.Context, id, projectID string) error {
-	path := fmt.Sprintf("/api/v1/vms/%s", id)
+	path := fmt.Sprintf("/api/v1/vms/%s", seg(id))
 	if projectID != "" {
-		path += "?project_id=" + projectID
+		path += "?project_id=" + url.QueryEscape(projectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
 	if err != nil {
@@ -84,9 +85,9 @@ func (a *CloudRuAdapter) AddSecurityGroupRule(ctx context.Context, sgID, project
 	if err != nil {
 		return clierrors.Wrap(clierrors.CodeAPIError, "failed to marshal SG rule", "Check parameters", err)
 	}
-	path := fmt.Sprintf("/api/v1/security-groups/%s/rules", sgID)
+	path := fmt.Sprintf("/api/v1/security-groups/%s/rules", seg(sgID))
 	if projectID != "" {
-		path += "?project_id=" + projectID
+		path += "?project_id=" + url.QueryEscape(projectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodPost, path, body)
 	if err != nil {
@@ -120,9 +121,9 @@ func (a *CloudRuAdapter) ListFloatingIPs(ctx context.Context, projectID string) 
 // PUT /api/v1/floating-ips/{id} (floating-IP "variant B": attach after the VM
 // is running). Returns the updated floating IP.
 func (a *CloudRuAdapter) AttachFloatingIP(ctx context.Context, fipID, projectID, interfaceID, name string) (*FloatingIP, error) {
-	path := fmt.Sprintf("/api/v1/floating-ips/%s", fipID)
+	path := fmt.Sprintf("/api/v1/floating-ips/%s", seg(fipID))
 	if projectID != "" {
-		path += "?project_id=" + projectID
+		path += "?project_id=" + url.QueryEscape(projectID)
 	}
 	body, err := json.Marshal(map[string]string{"interface_id": interfaceID, "name": name})
 	if err != nil {
@@ -144,9 +145,9 @@ func (a *CloudRuAdapter) AttachFloatingIP(ctx context.Context, fipID, projectID,
 
 // DeleteFloatingIP releases a floating IP via DELETE /api/v1/floating-ips/{id}.
 func (a *CloudRuAdapter) DeleteFloatingIP(ctx context.Context, fipID, projectID string) error {
-	path := fmt.Sprintf("/api/v1/floating-ips/%s", fipID)
+	path := fmt.Sprintf("/api/v1/floating-ips/%s", seg(fipID))
 	if projectID != "" {
-		path += "?project_id=" + projectID
+		path += "?project_id=" + url.QueryEscape(projectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
 	if err != nil {

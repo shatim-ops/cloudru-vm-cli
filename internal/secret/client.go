@@ -44,7 +44,14 @@ func (c *Client) ProjectID() string { return c.projectID }
 func escapePath(p string) string {
 	parts := strings.Split(p, "/")
 	for i, seg := range parts {
-		parts[i] = url.PathEscape(seg)
+		switch seg {
+		case ".", "..":
+			// Not a folder name: the server would resolve it to
+			// another secret than the one the caller named.
+			parts[i] = strings.Repeat("%2E", len(seg))
+		default:
+			parts[i] = url.PathEscape(seg)
+		}
 	}
 	return strings.Join(parts, "/")
 }

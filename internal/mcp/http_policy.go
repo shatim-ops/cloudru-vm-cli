@@ -20,9 +20,14 @@ var binaryAvailable = kubetools.Available
 //   - k8s_kubectl, k8s_apply, k8s_helm when kubectl/helm is not installed
 //     (the Docker image ships without them);
 //   - k8s_kubeconfig with an embedded token, k8s_kubectl config (it prints
-//     the same token) and cert_private_key, unless allowSecretExport: over
-//     HTTP the secret would leave the host that holds the Cloud.ru
-//     credentials.
+//     the same token), cert_private_key and secret_value, unless
+//     allowSecretExport: over HTTP the secret would leave the host that
+//     holds the Cloud.ru credentials. Without the flag credential-shaped
+//     fields of every other result are masked too (redactSecrets);
+//   - arguments that reach the server's filesystem or network: deploy's
+//     compose_file must lie inside the working directory, k8s_kubectl takes
+//     only built-in commands without host-side flags, k8s_helm only remote
+//     charts on public https/oci hosts.
 //
 // Wrapping the handlers (not the tools/call dispatch) also covers calls the
 // stack orchestrator makes in-process.
@@ -46,9 +51,57 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 		})
 	}
 
+	// Arguments that name files or URLs reach the server's own filesystem
+	// and network: confine them (http_paths.go, http_kube.go).
+	s.wrapHandler("deploy", func(next tools.Handler) tools.Handler {
+		return func(ctx context.Context, args map[string]any) (string, bool) {
+			if p, _ := args["compose_file"].(string); p != "" {
+				if err := insideWorkDir(p); err != nil {
+					return tools.ErrResult(fmt.Errorf("compose_file over HTTP: %w", err)), true
+				}
+			}
+			return next(ctx, args)
+		}
+	})
+	s.wrapHandler("k8s_kubectl", func(next tools.Handler) tools.Handler {
+		return func(ctx context.Context, args map[string]any) (string, bool) {
+			kargs, _ := args["args"].(string)
+			if err := kubectlHTTPCheck(strings.Fields(kargs), allowSecretExport); err != nil {
+				return tools.ErrResult(err), true
+			}
+			return next(ctx, args)
+		}
+	})
+	s.wrapHandler("k8s_helm", func(next tools.Handler) tools.Handler {
+		return func(ctx context.Context, args map[string]any) (string, bool) {
+			if err := helmHTTPCheck(ctx, args); err != nil {
+				return tools.ErrResult(err), true
+			}
+			return next(ctx, args)
+		}
+	})
+
 	if allowSecretExport {
 		return
 	}
+	// Any other tool may echo a cloud object that carries a credential
+	// (a cluster's password, a generated VM password in deploy_apply):
+	// such fields are masked in every result.
+	for _, t := range s.reg.Tools() {
+		s.wrapHandler(t.Name, func(next tools.Handler) tools.Handler {
+			return func(ctx context.Context, args map[string]any) (string, bool) {
+				text, isErr := next(ctx, args)
+				return redactSecrets(text), isErr
+			}
+		})
+	}
+	s.wrapHandler("secret_value", func(tools.Handler) tools.Handler {
+		return func(context.Context, map[string]any) (string, bool) {
+			return tools.ErrResult(fmt.Errorf(
+				"secret_value is disabled over HTTP: it returns a decrypted secret. " +
+					"Start the server with --allow-secret-export to enable it")), true
+		}
+	})
 	s.wrapHandler("k8s_kubeconfig", func(next tools.Handler) tools.Handler {
 		return func(ctx context.Context, args map[string]any) (string, bool) {
 			if tools.BoolArg(args, "embed_token", true) {

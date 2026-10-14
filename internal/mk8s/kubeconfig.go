@@ -17,12 +17,22 @@ import (
 // `cloudlogin` exec-plugin uses (client-credentials grant).
 const DefaultOIDCTokenURL = "https://id.cloud.ru/auth/system/openid/token"
 
+// oidcClient sends the token request; tests replace its transport. No
+// redirects: on 307/308 the client would POST the same body, with
+// client_secret, to wherever the Location points.
+var oidcClient = &http.Client{Timeout: 20 * time.Second, CheckRedirect: noRedirects}
+
+func noRedirects(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
 // FetchOIDCToken performs the same client-credentials exchange the Cloud.ru
 // mk8s `cloudlogin get-token` plugin does, returning the JWT used as the
 // kube-apiserver bearer token. Prefers id_token, falls back to access_token
 // (they carry identical claims: iss=id.cloud.ru/auth/system, sub=serviceAccount).
 func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string, error) {
-	if tokenURL == "" {
+	// The URL comes from the cluster's kubeconfig, i.e. from an API
+	// response, and the request carries the service account's secret: send
+	// it only to Cloud.ru IAM over https.
+	if !trustedOIDCURL(tokenURL) {
 		tokenURL = DefaultOIDCTokenURL
 	}
 	form := url.Values{
@@ -35,18 +45,12 @@ func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	// No redirects: on 307/308 the client would POST the same body, with
-	// client_secret, to wherever the Location points.
-	cl := &http.Client{
-		Timeout:       20 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	resp, err := cl.Do(req)
+	resp, err := oidcClient.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("OIDC token HTTP %d: %s", resp.StatusCode, string(data[:min(len(data), 200)]))
 	}
@@ -66,31 +70,20 @@ func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string
 	return "", fmt.Errorf("OIDC response had no id_token/access_token")
 }
 
-// OIDCURLFromKubeconfig pulls the --iam-url from the kubeconfig's exec-auth
-// block (so we hit the exact endpoint the cluster expects); returns "" if
-// absent or not an https URL on cloud.ru. The kubeconfig comes from the API,
-// and the access key secret is posted to this URL: any other host, or plain
-// http, would hand the secret to whoever answers there.
-func OIDCURLFromKubeconfig(raw string) string {
-	u := iamURLFromKubeconfig(raw)
-	if !trustedIAMURL(u) {
-		return ""
-	}
-	return u
-}
+// trustedOIDCHosts are the IAM hosts the access key may be sent to (both
+// answer the client-credentials grant, checked 2026-10-14).
+var trustedOIDCHosts = map[string]bool{"id.cloud.ru": true, "auth.iam.cloud.ru": true}
 
-// trustedIAMURL reports whether u is https://cloud.ru or a subdomain, on the
-// default port and without user info.
-func trustedIAMURL(u string) bool {
+// trustedOIDCURL reports whether u is https on a Cloud.ru IAM host.
+func trustedOIDCURL(u string) bool {
 	p, err := url.Parse(u)
-	if err != nil || p.Scheme != "https" || p.User != nil || p.Port() != "" {
-		return false
-	}
-	h := strings.ToLower(p.Hostname())
-	return h == "cloud.ru" || strings.HasSuffix(h, ".cloud.ru")
+	return err == nil && p.Scheme == "https" && p.User == nil && p.Port() == "" &&
+		trustedOIDCHosts[strings.ToLower(p.Hostname())]
 }
 
-func iamURLFromKubeconfig(raw string) string {
+// OIDCURLFromKubeconfig pulls the --iam-url from the kubeconfig's exec-auth
+// block (so we hit the exact endpoint the cluster expects); returns "" if absent.
+func OIDCURLFromKubeconfig(raw string) string {
 	var kc map[string]any
 	if yaml.Unmarshal([]byte(raw), &kc) != nil {
 		return ""

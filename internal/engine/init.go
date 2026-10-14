@@ -107,7 +107,7 @@ timeout: 300
 
 # Cloud.ru project UUID (required; console.cloud.ru or CLOUDRU_PROJECT_ID)
 %s
-`, zone.ID, zone.Name, image.ID, image.Name, projectLine)
+`, yamlComment(zone.ID), yamlComment(zone.Name), yamlComment(image.ID), yamlComment(image.Name), projectLine)
 
 	if err := os.WriteFile(opts.Path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("failed to create config: %w", err)
@@ -192,4 +192,16 @@ func deployableImages(images []*provision.Image) []*provision.Image {
 		res[i] = r.img
 	}
 	return res
+}
+
+// yamlComment keeps a value from the cloud on its own line of the generated
+// config: a zone or image name with a newline would otherwise add keys
+// (compose_file, flavor, ...) to the user's project file.
+func yamlComment(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, s)
 }
