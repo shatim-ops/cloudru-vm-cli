@@ -202,3 +202,67 @@ func FuzzSaveProfileRoundTrip(f *testing.F) {
 		}
 	})
 }
+
+// Приоритет флаг > env > проект > профиль — для каждого поля, снимая слои
+// по одному сверху.
+func TestResolve_PrecedenceEveryField(t *testing.T) {
+	num := func(base int) func(string) any {
+		return func(l string) any {
+			return base + map[string]int{"profile": 1, "project": 2, "env": 3, "flag": 4}[l]
+		}
+	}
+	str := func(prefix string) func(string) any { return func(l string) any { return prefix + l } }
+	fields := []struct {
+		field, env, yamlKey string
+		inProfile           bool
+		val                 func(layer string) any
+	}{
+		{"ProjectID", "CLOUDRU_PROJECT_ID", "project_id", true, str("proj-")},
+		{"Region", "CLOUDRU_REGION", "region", true, str("az-")},
+		{"Flavor", "CLOUDRU_FLAVOR", "flavor", true, str("fl-")},
+		{"ImageID", "CLOUDRU_IMAGE_ID", "image_id", true, str("img-")},
+		{"DiskSize", "CLOUDRU_DISK_SIZE", "disk_size", true, num(10)},
+		{"Timeout", "CLOUDRU_TIMEOUT", "timeout", true, num(20)},
+		{"ComposeFile", "CLOUDRU_COMPOSE_FILE", "compose_file", false, str("compose-")},
+		{"ProjectName", "CLOUDRU_PROJECT_NAME", "project_name", false, str("name-")},
+	}
+	layers := []string{"flag", "env", "project", "profile"}
+	for _, f := range fields {
+		for top := range layers {
+			active := map[string]bool{}
+			for _, l := range layers[top:] {
+				active[l] = true
+			}
+			want := layers[top]
+			if want == "profile" && !f.inProfile {
+				continue
+			}
+			t.Run(f.field+"/"+want, func(t *testing.T) {
+				isolate(t)
+				if active["profile"] && f.inProfile {
+					writeFile(t, SettingsPath(), fmt.Sprintf("profiles:\n  default:\n    %s: %v\n", f.yamlKey, f.val("profile")))
+				}
+				project := filepath.Join(t.TempDir(), ".cloudru-vm.yaml")
+				if active["project"] {
+					writeFile(t, project, fmt.Sprintf("%s: %v\n", f.yamlKey, f.val("project")))
+				}
+				if active["env"] {
+					t.Setenv(f.env, fmt.Sprint(f.val("env")))
+				}
+				flags := map[string]any{}
+				if active["flag"] {
+					flags[f.field] = f.val("flag")
+				}
+				_, sources, err := ResolveWithSources(Options{ProjectFile: project, Flags: flags})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, s := range sources {
+					if s.Key == f.field && (fmt.Sprint(s.Value) != fmt.Sprint(f.val(want)) || s.Origin != want) {
+						t.Errorf("%s = %v from %s, want %v from %s", f.field, s.Value, s.Origin, f.val(want), want)
+					}
+				}
+			})
+		}
+	}
+}
