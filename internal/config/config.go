@@ -1,45 +1,93 @@
-// Package config implements configuration loading with ADR-008 precedence:
-// CLI flags > env vars > config file > defaults.
+// Package config resolves the configuration of cloudru-vm from, highest
+// precedence first: CLI flags > environment > project file
+// (./.cloudru-vm.yaml) > profile ($CONFIG/cloudru-vm) > defaults.
 package config
 
 import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
 // Config holds all configuration values for cloudru-vm.
 type Config struct {
-	// Auth
-	APIKey string `yaml:"api_key" env:"CLOUDRU_API_KEY"` // legacy: "keyId:secret"
-	KeyID  string `yaml:"key_id" env:"CLOUDRU_KEY_ID"`
-	Secret string `yaml:"secret" env:"CLOUDRU_SECRET"`
+	// Profile is the name of the profile the values were read from.
+	Profile string `yaml:"-" json:"profile"`
+
+	// Auth. Never read from the project file: secrets live in
+	// credentials.yaml or the environment only.
+	KeyID  string `yaml:"-" json:"key_id"`
+	Secret string `yaml:"-" json:"-"`
 
 	// Deploy
-	ProjectID string `yaml:"project_id" env:"CLOUDRU_PROJECT_ID"` // required UUID
-	Region    string `yaml:"region" env:"CLOUDRU_REGION"`         // availability_zone_id UUID
-	Flavor    string `yaml:"flavor" env:"CLOUDRU_FLAVOR"`
-	ImageID   string `yaml:"image_id" env:"CLOUDRU_IMAGE_ID"` // boot image UUID
-	DiskSize  int    `yaml:"disk_size" env:"CLOUDRU_DISK_SIZE"`
-	Timeout   int    `yaml:"timeout" env:"CLOUDRU_TIMEOUT"` // SSH timeout in seconds
+	ProjectID string `yaml:"project_id" json:"project_id"` // required UUID
+	Region    string `yaml:"region" json:"region"`         // availability_zone_id UUID
+	Flavor    string `yaml:"flavor" json:"flavor"`
+	ImageID   string `yaml:"image_id" json:"image_id"` // boot image UUID
+	DiskSize  int    `yaml:"disk_size" json:"disk_size"`
+	Timeout   int    `yaml:"timeout" json:"timeout"` // SSH timeout in seconds
 
 	// Output
-	JSON    bool `yaml:"-"` // --json flag only
-	Verbose bool `yaml:"-"` // --verbose flag only
-	NoColor bool `yaml:"-"` // --no-color flag only
+	JSON    bool `yaml:"-" json:"-"` // --json flag only
+	Verbose bool `yaml:"-" json:"-"` // --verbose flag only
+	NoColor bool `yaml:"-" json:"-"` // --no-color flag only
 
 	// Project
-	ComposeFile string `yaml:"compose_file" env:"CLOUDRU_COMPOSE_FILE"`
-	ProjectName string `yaml:"project_name" env:"CLOUDRU_PROJECT_NAME"`
+	ComposeFile string `yaml:"compose_file" json:"compose_file"`
+	ProjectName string `yaml:"project_name" json:"project_name"`
+
+	// S3 holds the Object Storage credentials (optional profile section).
+	S3 S3Config `yaml:"-" json:"-"`
+
+	// Warnings are non-fatal problems found while resolving (deprecated
+	// variables, secrets in the project file, loose file permissions).
+	// The caller prints them to stderr.
+	Warnings []string `yaml:"-" json:"-"`
 }
 
-// Source tracks where each config value came from (for doctor command).
+// S3Config holds Cloud.ru Object Storage settings.
+type S3Config struct {
+	Endpoint  string `yaml:"endpoint,omitempty"`
+	AccessKey string `yaml:"access_key,omitempty"`
+	SecretKey string `yaml:"secret_key,omitempty"`
+	Region    string `yaml:"region,omitempty"`
+}
+
+// Origins of a value, as reported by ResolveWithSources.
+const (
+	OriginDefault = "default"
+	OriginProfile = "profile"
+	OriginProject = "project"
+	OriginEnv     = "env"
+	OriginFlag    = "flag"
+)
+
+// Source tracks where a config value came from (for the doctor command).
+// Secret values are masked.
 type Source struct {
 	Key    string
 	Value  any
-	Origin string // "default", "file", "env", "flag"
+	Origin string
+}
+
+// DefaultProfile is used when neither --profile nor CLOUDRU_PROFILE is set.
+const DefaultProfile = "default"
+
+// Options select the inputs of Resolve.
+type Options struct {
+	// Profile is the --profile flag value; "" falls back to CLOUDRU_PROFILE,
+	// then to DefaultProfile. A profile named explicitly must exist.
+	Profile string
+	// ProjectFile is the path of ./.cloudru-vm.yaml; "" or a missing file
+	// means no project overrides.
+	ProjectFile string
+	// Flags maps Config field names to values set via CLI flags.
+	Flags map[string]any
 }
 
 // Defaults returns a Config with sensible default values.
@@ -52,25 +100,44 @@ func Defaults() Config {
 	}
 }
 
-// Load reads configuration from file path (if exists), applies env var overrides,
-// then applies flag overrides. flags is a map of field names to values set via CLI flags.
-// This implements ADR-008 precedence: flags > env > file > defaults.
-func Load(filePath string, flags map[string]any) (Config, error) {
-	cfg, _, err := loadInternal(filePath, flags, false)
+// Load resolves the configuration with the default profile selection.
+// Kept for callers that only know the project file and flags.
+func Load(projectFile string, flags map[string]any) (Config, error) {
+	return Resolve(Options{ProjectFile: projectFile, Flags: flags})
+}
+
+// Resolve merges all configuration layers.
+func Resolve(opts Options) (Config, error) {
+	cfg, _, err := resolve(opts)
 	return cfg, err
 }
 
-// LoadWithSources returns config plus the origin of each value.
-func LoadWithSources(filePath string, flags map[string]any) (Config, []Source, error) {
-	return loadInternal(filePath, flags, true)
+// ResolveWithSources returns the config plus the origin of each value.
+func ResolveWithSources(opts Options) (Config, []Source, error) {
+	cfg, origins, err := resolve(opts)
+	if err != nil {
+		return Config{}, nil, err
+	}
+	return cfg, buildSources(&cfg, origins), nil
 }
 
-// envMapping maps env var names to config field names.
+// ProfileName returns the profile selected by flag, CLOUDRU_PROFILE or the
+// default, and whether it was chosen explicitly.
+func ProfileName(flag string) (name string, explicit bool) {
+	if flag != "" {
+		return flag, true
+	}
+	if env := os.Getenv("CLOUDRU_PROFILE"); env != "" {
+		return env, true
+	}
+	return DefaultProfile, false
+}
+
+// envMapping maps env var names to config field names (non-credential).
 var envMapping = []struct {
 	envVar string
 	field  string
 }{
-	{"CLOUDRU_API_KEY", "APIKey"},
 	{"CLOUDRU_PROJECT_ID", "ProjectID"},
 	{"CLOUDRU_REGION", "Region"},
 	{"CLOUDRU_FLAVOR", "Flavor"},
@@ -79,146 +146,242 @@ var envMapping = []struct {
 	{"CLOUDRU_TIMEOUT", "Timeout"},
 	{"CLOUDRU_COMPOSE_FILE", "ComposeFile"},
 	{"CLOUDRU_PROJECT_NAME", "ProjectName"},
+	{"CLOUDRU_S3_ENDPOINT", "S3Endpoint"},
+	{"CLOUDRU_S3_ACCESS_KEY", "S3AccessKey"},
+	{"CLOUDRU_S3_SECRET_KEY", "S3SecretKey"},
+	{"CLOUDRU_S3_REGION", "S3Region"},
 }
 
-func loadInternal(filePath string, flags map[string]any, trackSources bool) (Config, []Source, error) {
+func resolve(opts Options) (Config, map[string]string, error) {
 	cfg := Defaults()
+	origins := map[string]string{}
 
-	// Track origins: start with defaults for fields that have them.
-	origins := map[string]string{
-		"Region":      "default",
-		"Flavor":      "default",
-		"Timeout":     "default",
-		"ComposeFile": "default",
+	name, explicit := ProfileName(opts.Profile)
+	if err := ValidateProfileName(name); err != nil {
+		return Config{}, nil, err
+	}
+	cfg.Profile = name
+
+	// Layer 1: profile from $CONFIG/cloudru-vm.
+	if err := applyProfile(&cfg, name, explicit, origins); err != nil {
+		return Config{}, nil, err
 	}
 
-	// Layer 2: config file (if exists).
-	if filePath != "" {
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				return Config{}, nil, fmt.Errorf("reading config file: %w", err)
-			}
-			// File doesn't exist — not an error, skip.
-		} else {
-			var fileCfg Config
-			if err := yaml.Unmarshal(data, &fileCfg); err != nil {
-				return Config{}, nil, fmt.Errorf("parsing config file: %w", err)
-			}
-			mergeFromFile(&cfg, &fileCfg, origins)
+	// Layer 2: project file.
+	if opts.ProjectFile != "" {
+		if err := applyProjectFile(&cfg, opts.ProjectFile, origins); err != nil {
+			return Config{}, nil, err
 		}
 	}
 
-	// Layer 3: env vars.
+	// Layer 3: env vars. An empty variable counts as unset.
 	for _, m := range envMapping {
-		val, ok := os.LookupEnv(m.envVar)
-		if !ok {
+		val := os.Getenv(m.envVar)
+		if val == "" {
 			continue
 		}
 		if err := setField(&cfg, m.field, val); err != nil {
-			return Config{}, nil, fmt.Errorf("env %s: %w", m.envVar, err)
+			return Config{}, nil, clerrors.Wrap(clerrors.CodeConfigInvalid,
+				fmt.Sprintf("env %s: %v", m.envVar, err), "Fix or unset the variable", err)
 		}
-		origins[m.field] = "env"
+		origins[m.field] = OriginEnv
+	}
+	if err := applyEnvCredentials(&cfg, origins); err != nil {
+		return Config{}, nil, err
 	}
 
 	// Layer 4: CLI flags (highest precedence).
-	if flags != nil {
-		for key, val := range flags {
-			if err := setFieldAny(&cfg, key, val); err != nil {
-				return Config{}, nil, fmt.Errorf("flag %s: %w", key, err)
-			}
-			origins[key] = "flag"
+	for key, val := range opts.Flags {
+		if err := setFieldAny(&cfg, key, val); err != nil {
+			return Config{}, nil, fmt.Errorf("flag %s: %w", key, err)
+		}
+		origins[key] = OriginFlag
+	}
+
+	return cfg, origins, nil
+}
+
+// applyEnvCredentials takes the key pair from the environment. The pair is
+// taken as a whole: mixing an env key ID with a profile secret would only
+// produce a confusing IAM rejection.
+func applyEnvCredentials(cfg *Config, origins map[string]string) error {
+	keyID, secret := os.Getenv("CLOUDRU_KEY_ID"), os.Getenv("CLOUDRU_SECRET")
+	if keyID != "" || secret != "" {
+		cfg.KeyID, cfg.Secret = keyID, secret
+		origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
+		return nil
+	}
+	legacy := os.Getenv("CLOUDRU_API_KEY")
+	if legacy == "" {
+		return nil
+	}
+	id, sec, ok := splitLegacyKey(legacy)
+	if !ok {
+		return clerrors.New(clerrors.CodeAuthRequired,
+			"CLOUDRU_API_KEY must be in format 'keyId:secret'",
+			"Set CLOUDRU_KEY_ID and CLOUDRU_SECRET instead, or run 'cloudru-vm configure'")
+	}
+	cfg.KeyID, cfg.Secret = id, sec
+	origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
+	cfg.Warnings = append(cfg.Warnings,
+		"CLOUDRU_API_KEY=keyId:secret is deprecated: set CLOUDRU_KEY_ID and CLOUDRU_SECRET, or run 'cloudru-vm configure'")
+	return nil
+}
+
+func splitLegacyKey(v string) (keyID, secret string, ok bool) {
+	keyID, secret, found := strings.Cut(v, ":")
+	return keyID, secret, found && keyID != "" && secret != ""
+}
+
+// applyProfile merges config.yaml and credentials.yaml entries of profile.
+func applyProfile(cfg *Config, name string, explicit bool, origins map[string]string) error {
+	settings, err := readSettingsFile()
+	if err != nil {
+		return err
+	}
+	creds, credWarn, err := readCredentialsFile()
+	if err != nil {
+		return err
+	}
+	cfg.Warnings = append(cfg.Warnings, credWarn...)
+
+	p, hasSettings := settings.Profiles[name]
+	c, hasCreds := creds.Profiles[name]
+	if !hasSettings && !hasCreds {
+		if explicit {
+			return clerrors.New(clerrors.CodeConfigInvalid,
+				fmt.Sprintf("profile %q not found in %s", name, Dir()),
+				fmt.Sprintf("Run 'cloudru-vm configure --profile %s' to create it, or 'cloudru-vm configure list' to see existing profiles", name))
+		}
+		return nil
+	}
+
+	set := func(field string, ok bool) {
+		if ok {
+			origins[field] = OriginProfile
+		}
+	}
+	if p.ProjectID != "" {
+		cfg.ProjectID = p.ProjectID
+	}
+	set("ProjectID", p.ProjectID != "")
+	if p.Region != "" {
+		cfg.Region = p.Region
+	}
+	set("Region", p.Region != "")
+	if p.Flavor != "" {
+		cfg.Flavor = p.Flavor
+	}
+	set("Flavor", p.Flavor != "")
+	if p.ImageID != "" {
+		cfg.ImageID = p.ImageID
+	}
+	set("ImageID", p.ImageID != "")
+	if p.DiskSize != 0 {
+		cfg.DiskSize = p.DiskSize
+	}
+	set("DiskSize", p.DiskSize != 0)
+	if p.Timeout != 0 {
+		cfg.Timeout = p.Timeout
+	}
+	set("Timeout", p.Timeout != 0)
+
+	if c.KeyID != "" || c.Secret != "" {
+		cfg.KeyID, cfg.Secret = c.KeyID, c.Secret
+		origins["KeyID"], origins["Secret"] = OriginProfile, OriginProfile
+	}
+	if c.S3 != nil {
+		mergeS3(&cfg.S3, *c.S3, origins, OriginProfile)
+	}
+	return nil
+}
+
+func mergeS3(dst *S3Config, src S3Config, origins map[string]string, origin string) {
+	if src.Endpoint != "" {
+		dst.Endpoint = src.Endpoint
+		origins["S3Endpoint"] = origin
+	}
+	if src.AccessKey != "" {
+		dst.AccessKey = src.AccessKey
+		origins["S3AccessKey"] = origin
+	}
+	if src.SecretKey != "" {
+		dst.SecretKey = src.SecretKey
+		origins["S3SecretKey"] = origin
+	}
+	if src.Region != "" {
+		dst.Region = src.Region
+		origins["S3Region"] = origin
+	}
+}
+
+// secretKeys are keys that must not be in the project file: it is meant to
+// be committed with the project.
+var secretKeys = []string{"api_key", "key_id", "secret", "s3"}
+
+// applyProjectFile merges ./.cloudru-vm.yaml.
+func applyProjectFile(cfg *Config, path string, origins map[string]string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return clerrors.Wrap(clerrors.CodeConfigInvalid, "reading config file: "+err.Error(),
+			"Check the permissions of "+path, err)
+	}
+	var fileCfg Config
+	if err := yaml.Unmarshal(data, &fileCfg); err != nil {
+		return clerrors.Wrap(clerrors.CodeConfigInvalid, fmt.Sprintf("parsing %s: %v", path, err),
+			"Fix the YAML syntax", err)
+	}
+	var raw map[string]any
+	_ = yaml.Unmarshal(data, &raw)
+	for _, k := range secretKeys {
+		if _, ok := raw[k]; ok {
+			cfg.Warnings = append(cfg.Warnings, fmt.Sprintf(
+				"%s: %q is ignored, secrets are not read from the project file; run 'cloudru-vm configure' and remove it", path, k))
 		}
 	}
 
-	if !trackSources {
-		return cfg, nil, nil
+	mergeString := func(dst *string, v, field string) {
+		if v != "" {
+			*dst = v
+			origins[field] = OriginProject
+		}
 	}
-
-	sources := buildSources(&cfg, origins)
-	return cfg, sources, nil
-}
-
-// mergeFromFile copies non-zero values from fileCfg into cfg.
-func mergeFromFile(cfg, fileCfg *Config, origins map[string]string) {
-	if fileCfg.APIKey != "" {
-		cfg.APIKey = fileCfg.APIKey
-		origins["APIKey"] = "file"
-	}
-	if fileCfg.ProjectID != "" {
-		cfg.ProjectID = fileCfg.ProjectID
-		origins["ProjectID"] = "file"
-	}
-	if fileCfg.Region != "" {
-		cfg.Region = fileCfg.Region
-		origins["Region"] = "file"
-	}
-	if fileCfg.Flavor != "" {
-		cfg.Flavor = fileCfg.Flavor
-		origins["Flavor"] = "file"
-	}
-	if fileCfg.ImageID != "" {
-		cfg.ImageID = fileCfg.ImageID
-		origins["ImageID"] = "file"
-	}
+	mergeString(&cfg.ProjectID, fileCfg.ProjectID, "ProjectID")
+	mergeString(&cfg.Region, fileCfg.Region, "Region")
+	mergeString(&cfg.Flavor, fileCfg.Flavor, "Flavor")
+	mergeString(&cfg.ImageID, fileCfg.ImageID, "ImageID")
+	mergeString(&cfg.ComposeFile, fileCfg.ComposeFile, "ComposeFile")
+	mergeString(&cfg.ProjectName, fileCfg.ProjectName, "ProjectName")
 	if fileCfg.DiskSize != 0 {
 		cfg.DiskSize = fileCfg.DiskSize
-		origins["DiskSize"] = "file"
+		origins["DiskSize"] = OriginProject
 	}
 	if fileCfg.Timeout != 0 {
 		cfg.Timeout = fileCfg.Timeout
-		origins["Timeout"] = "file"
+		origins["Timeout"] = OriginProject
 	}
-	if fileCfg.ComposeFile != "" {
-		cfg.ComposeFile = fileCfg.ComposeFile
-		origins["ComposeFile"] = "file"
-	}
-	if fileCfg.ProjectName != "" {
-		cfg.ProjectName = fileCfg.ProjectName
-		origins["ProjectName"] = "file"
-	}
+	return nil
 }
 
 // setField sets a Config field from a string value (used for env vars).
 func setField(cfg *Config, field, val string) error {
 	switch field {
-	case "APIKey":
-		cfg.APIKey = val
-	case "ProjectID":
-		cfg.ProjectID = val
-	case "Region":
-		cfg.Region = val
-	case "Flavor":
-		cfg.Flavor = val
-	case "ImageID":
-		cfg.ImageID = val
-	case "DiskSize":
+	case "DiskSize", "Timeout":
 		n, err := strconv.Atoi(val)
 		if err != nil {
 			return fmt.Errorf("invalid integer: %w", err)
 		}
-		cfg.DiskSize = n
-	case "Timeout":
-		n, err := strconv.Atoi(val)
-		if err != nil {
-			return fmt.Errorf("invalid integer: %w", err)
-		}
-		cfg.Timeout = n
-	case "ComposeFile":
-		cfg.ComposeFile = val
-	case "ProjectName":
-		cfg.ProjectName = val
-	default:
-		return fmt.Errorf("unknown field %q", field)
+		return setFieldAny(cfg, field, n)
 	}
-	return nil
+	return setFieldAny(cfg, field, val)
 }
 
 // setFieldAny sets a Config field from an any value (used for flags).
 func setFieldAny(cfg *Config, field string, val any) error {
 	switch field {
-	case "APIKey":
-		cfg.APIKey = toString(val)
 	case "ProjectID":
 		cfg.ProjectID = toString(val)
 	case "Region":
@@ -243,6 +406,14 @@ func setFieldAny(cfg *Config, field string, val any) error {
 		cfg.ComposeFile = toString(val)
 	case "ProjectName":
 		cfg.ProjectName = toString(val)
+	case "S3Endpoint":
+		cfg.S3.Endpoint = toString(val)
+	case "S3AccessKey":
+		cfg.S3.AccessKey = toString(val)
+	case "S3SecretKey":
+		cfg.S3.SecretKey = toString(val)
+	case "S3Region":
+		cfg.S3.Region = toString(val)
 	case "JSON":
 		cfg.JSON = toBool(val)
 	case "Verbose":
@@ -290,35 +461,53 @@ func toBool(v any) bool {
 	}
 }
 
-// buildSources constructs Source slice from current config and origins.
+// MaskKeyID hides the middle of a key ID: enough to recognise it, not
+// enough to reuse it.
+func MaskKeyID(s string) string {
+	if s == "" {
+		return ""
+	}
+	if len(s) <= 8 {
+		return "****"
+	}
+	return s[:4] + "****" + s[len(s)-4:]
+}
+
+func maskSecret(s string) string {
+	if s == "" {
+		return ""
+	}
+	return "****"
+}
+
+// buildSources lists the resolved values with their origins.
 func buildSources(cfg *Config, origins map[string]string) []Source {
-	type entry struct {
+	fields := []struct {
 		key string
 		val any
-	}
-	fields := []entry{
-		{"APIKey", cfg.APIKey},
+	}{
+		{"KeyID", MaskKeyID(cfg.KeyID)},
+		{"Secret", maskSecret(cfg.Secret)},
+		{"ProjectID", cfg.ProjectID},
 		{"Region", cfg.Region},
 		{"Flavor", cfg.Flavor},
+		{"ImageID", cfg.ImageID},
+		{"DiskSize", cfg.DiskSize},
 		{"Timeout", cfg.Timeout},
 		{"ComposeFile", cfg.ComposeFile},
 		{"ProjectName", cfg.ProjectName},
-		{"JSON", cfg.JSON},
-		{"Verbose", cfg.Verbose},
-		{"NoColor", cfg.NoColor},
+		{"S3Endpoint", cfg.S3.Endpoint},
+		{"S3AccessKey", MaskKeyID(cfg.S3.AccessKey)},
+		{"S3SecretKey", maskSecret(cfg.S3.SecretKey)},
+		{"S3Region", cfg.S3.Region},
 	}
-
 	sources := make([]Source, 0, len(fields))
 	for _, f := range fields {
 		origin := origins[f.key]
 		if origin == "" {
-			origin = "default"
+			origin = OriginDefault
 		}
-		sources = append(sources, Source{
-			Key:    f.key,
-			Value:  f.val,
-			Origin: origin,
-		})
+		sources = append(sources, Source{Key: f.key, Value: f.val, Origin: origin})
 	}
 	return sources
 }

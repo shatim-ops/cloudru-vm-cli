@@ -88,6 +88,7 @@ func TestRun_MissingCredentialsExitTwo(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("HOME", dir)
+	t.Setenv("CLOUDRU_CONFIG_DIR", dir)
 	t.Setenv("CLOUDRU_KEY_ID", "")
 	t.Setenv("CLOUDRU_SECRET", "")
 	t.Setenv("CLOUDRU_API_KEY", "")
