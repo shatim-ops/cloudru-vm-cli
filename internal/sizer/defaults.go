@@ -36,29 +36,39 @@ func EstimateFromServices(services []compose.Service) compose.Resources {
 // resourcesForService returns explicit resources if set, otherwise looks up
 // the image in ImageDefaults, falling back to a conservative default.
 func resourcesForService(svc compose.Service) compose.Resources {
-	if svc.Resources.CPUCores > 0 || svc.Resources.MemoryMB > 0 {
-		return svc.Resources
+	def := fallbackResources
+	if d, ok := ImageDefaults[baseImage(svc.Image)]; ok {
+		def = d
 	}
-	base := baseImage(svc.Image)
-	if defaults, ok := ImageDefaults[base]; ok {
-		return defaults
+	// A limit on one dimension keeps the default for the other: cpus alone
+	// must not size the service at 0 MB.
+	r := svc.Resources
+	if r.CPUCores <= 0 {
+		r.CPUCores = def.CPUCores
 	}
-	return fallbackResources
+	if r.MemoryMB <= 0 {
+		r.MemoryMB = def.MemoryMB
+	}
+	return r
 }
 
-// baseImage strips the tag (and registry prefix path) from an image reference,
-// returning just the short image name. For example:
+// baseImage strips the registry, path, tag and digest from an image
+// reference, returning just the short image name. For example:
 //
-//	"postgres:15"             -> "postgres"
-//	"library/redis:7-alpine"  -> "redis"
+//	"postgres:15"                -> "postgres"
+//	"library/redis:7-alpine"     -> "redis"
+//	"localhost:5000/postgres"    -> "postgres" (a registry port is not a tag)
+//	"postgres@sha256:..."        -> "postgres"
 func baseImage(image string) string {
-	// Remove tag or digest.
-	if idx := strings.LastIndex(image, ":"); idx != -1 {
+	if idx := strings.Index(image, "@"); idx != -1 {
 		image = image[:idx]
 	}
 	// Take the last path component (handles registry/org prefixes).
 	if idx := strings.LastIndex(image, "/"); idx != -1 {
 		image = image[idx+1:]
+	}
+	if idx := strings.LastIndex(image, ":"); idx != -1 {
+		image = image[:idx]
 	}
 	return image
 }
