@@ -46,7 +46,7 @@ func ExitCode(err error) int {
 		return ExitAuth
 	case CodeConfirmationRequired:
 		return ExitConfirmationRequired
-	case CodeVMNotFound:
+	case CodeVMNotFound, CodeNotFound:
 		return ExitNotFound
 	case CodeAPIError, CodeAPIRateLimited:
 		return ExitAPI

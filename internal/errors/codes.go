@@ -20,5 +20,6 @@ const (
 	CodeUnhealthy         = "UNHEALTHY" // verify: a service did not answer; exit 1
 
 	CodeConfirmationRequired = "CONFIRMATION_REQUIRED"
-	CodeUsage                = "USAGE" // unknown command or flag, bad arguments
+	CodeUsage                = "USAGE"     // unknown command or flag, bad arguments
+	CodeNotFound             = "NOT_FOUND" // any object other than a VM; exit 4
 )

@@ -4,7 +4,7 @@
 //
 // IMPORTANT: in stdio mode stdout is reserved for the JSON-RPC channel. Nothing else may be
 // written to it or the protocol stream is corrupted. All engine output is
-// redirected to in-memory buffers (see tools.go); diagnostics go to stderr.
+// redirected to in-memory buffers (see internal/tools); diagnostics go to stderr.
 package mcp
 
 import (
@@ -16,6 +16,7 @@ import (
 	"io"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
 )
 
 // supportedProtocolVersions are the MCP revisions the server speaks, newest
@@ -60,10 +61,10 @@ type Tool struct {
 
 // Server is an MCP server exposing cloudru-vm operations over stdio.
 type Server struct {
-	newEngine EngineFactory
-	version   string
-	tools     []Tool
-	handlers  map[string]toolHandler
+	version  string
+	tools    []Tool
+	handlers map[string]toolHandler
+	reg      *tools.Registry
 }
 
 // New creates an MCP server. factory builds engines per tool call (so each call
@@ -71,10 +72,16 @@ type Server struct {
 // CLI version reported during initialize.
 func New(factory EngineFactory, version string) *Server {
 	s := &Server{
-		newEngine: factory,
-		version:   version,
+		version:  version,
+		handlers: map[string]toolHandler{},
+		reg:      tools.New(tools.EngineFactory(factory)),
 	}
-	s.registerTools()
+	// The tools live in internal/tools, shared with the CLI; this package is
+	// only the transport.
+	for _, t := range s.reg.Tools() {
+		s.tools = append(s.tools, Tool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema})
+		s.handlers[t.Name] = toolHandler(t.Handler)
+	}
 	return s
 }
 

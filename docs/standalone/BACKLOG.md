@@ -43,3 +43,5 @@
 - [08] Образ только linux/amd64; arm64 — `docker buildx --platform linux/amd64,linux/arm64` · .github/workflows/release.yml (job `image`) · Marketplace требований к arm64 не называет
 - [08] Подпись образа cosign и SBOM для Artifact Registry · .github/workflows/release.yml · бинари уже подписаны; поддерживает ли AR хранение подписей OCI — не проверено
 - [08] README: раздел «MCP по HTTP / Docker» (`MCP_BEARER_TOKEN`, `--auth`, `--allow-secret-export`, секреты `CLOUDRU_AR_*`) · README.md · этап 9; пока — `cloudru-vm mcp --help` и комментарии в Dockerfile/release.yml
+- [04] MCP `s3_bucket_create` создаёт бакет без `confirmed` (единственная изменяющая операция без гейта) · internal/tools/tools_s3.go `handleS3BucketCreate` · этап 4 переносит реестр без изменения поведения MCP; CLI (`tools call`) спрашивает подтверждение сам
+- [04] Строки BACKLOG [06], [02], [03] ссылаются на `internal/mcp/tools*.go`, `captainkeys.go`, `opwait.go` — после этапа 4 эти файлы в `internal/tools/` (номера строк те же) · docs/standalone/BACKLOG.md · чужие строки не правлю

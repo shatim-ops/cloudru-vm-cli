@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/kubetools"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
 )
 
 // binaryAvailable reports whether kubectl/helm can be run; tests replace it
@@ -29,40 +30,50 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 		"k8s_helm":    "helm",
 	}
 	for tool, bin := range needsBinary {
-		next, ok := s.handlers[tool]
-		if !ok {
-			continue
-		}
-		s.handlers[tool] = func(ctx context.Context, args map[string]any) (string, bool) {
-			if !binaryAvailable(bin) {
-				return errResult(fmt.Errorf(
-					"%s is not available in this mode: %s is not installed on the MCP server (the Docker image ships without kubectl/helm). "+
-						"Use k8s_kubeconfig with embed_token=false and run %s on your machine, or run 'cloudru-vm mcp' over stdio on a host with %s",
-					tool, bin, bin, bin)), true
+		s.wrapHandler(tool, func(next tools.Handler) tools.Handler {
+			return func(ctx context.Context, args map[string]any) (string, bool) {
+				if !binaryAvailable(bin) {
+					return tools.ErrResult(fmt.Errorf(
+						"%s is not available in this mode: %s is not installed on the MCP server (the Docker image ships without kubectl/helm). "+
+							"Use k8s_kubeconfig with embed_token=false and run %s on your machine, or run 'cloudru-vm mcp' over stdio on a host with %s",
+						tool, bin, bin, bin)), true
+				}
+				return next(ctx, args)
 			}
-			return next(ctx, args)
-		}
+		})
 	}
 
 	if allowSecretExport {
 		return
 	}
-	if next, ok := s.handlers["k8s_kubeconfig"]; ok {
-		s.handlers["k8s_kubeconfig"] = func(ctx context.Context, args map[string]any) (string, bool) {
-			if boolArg(args, "embed_token", true) {
-				return errResult(fmt.Errorf(
+	s.wrapHandler("k8s_kubeconfig", func(next tools.Handler) tools.Handler {
+		return func(ctx context.Context, args map[string]any) (string, bool) {
+			if tools.BoolArg(args, "embed_token", true) {
+				return tools.ErrResult(fmt.Errorf(
 					"k8s_kubeconfig with an embedded token is disabled over HTTP: the token grants access to the cluster. " +
 						"Call it with embed_token=false (kubeconfig with the cloudlogin exec plugin, no credentials inside), " +
 						"or start the server with --allow-secret-export")), true
 			}
 			return next(ctx, args)
 		}
-	}
-	if _, ok := s.handlers["cert_private_key"]; ok {
-		s.handlers["cert_private_key"] = func(context.Context, map[string]any) (string, bool) {
-			return errResult(fmt.Errorf(
+	})
+	s.wrapHandler("cert_private_key", func(tools.Handler) tools.Handler {
+		return func(context.Context, map[string]any) (string, bool) {
+			return tools.ErrResult(fmt.Errorf(
 				"cert_private_key is disabled over HTTP: it returns a private key in plaintext. " +
 					"Start the server with --allow-secret-export to enable it")), true
 		}
+	})
+}
+
+// wrapHandler wraps a tool's handler in the registry, so the policy also
+// holds for in-process calls (stack_apply drives other tools), and mirrors
+// the result into the tools/call dispatch table.
+func (s *Server) wrapHandler(name string, wrap func(next tools.Handler) tools.Handler) {
+	if !s.reg.Wrap(name, wrap) {
+		return
+	}
+	if t, ok := s.reg.Lookup(name); ok {
+		s.handlers[name] = toolHandler(t.Handler)
 	}
 }
