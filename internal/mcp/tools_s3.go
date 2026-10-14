@@ -4,21 +4,19 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"os"
 	"unicode/utf8"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/s3"
 )
 
-// s3Client builds an S3 client from the env vars exported by the MCP wrapper
-// (CLOUDRU_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY / _REGION).
+// s3Client builds an S3 client from CLOUDRU_S3_ENDPOINT / _ACCESS_KEY /
+// _SECRET_KEY / _REGION or the s3 section of the profile.
 func (s *Server) s3Client() (*s3.Client, error) {
-	return s3.New(s3.Config{
-		Endpoint:  os.Getenv("CLOUDRU_S3_ENDPOINT"),
-		AccessKey: os.Getenv("CLOUDRU_S3_ACCESS_KEY"),
-		SecretKey: os.Getenv("CLOUDRU_S3_SECRET_KEY"),
-		Region:    os.Getenv("CLOUDRU_S3_REGION"),
-	})
+	cfg, err := s.s3Config()
+	if err != nil {
+		return nil, err
+	}
+	return s3.New(cfg)
 }
 
 func (s *Server) handleS3Buckets(ctx context.Context, args map[string]any) (string, bool) {
@@ -91,6 +89,12 @@ func (s *Server) handleS3Put(ctx context.Context, args map[string]any) (string, 
 		data = d
 	} else {
 		data = []byte(stringArg(args, "content"))
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": fmt.Sprintf("s3_put will upload %d bytes to s3://%s/%s, overwriting the object if it exists. Call again with confirmed=true after the captain approves.", len(data), bucket, key),
+		}), true
 	}
 	cli, err := s.s3Client()
 	if err != nil {

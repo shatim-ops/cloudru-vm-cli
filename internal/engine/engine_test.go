@@ -433,6 +433,7 @@ func TestDeploy_NewDeploy(t *testing.T) {
 		Flavor:         "small",
 		Region:         "ru-moscow-1",
 		NonInteractive: true,
+		Yes:            true,
 	}
 
 	err := eng.Deploy(context.Background(), opts)
@@ -538,6 +539,7 @@ func TestDeploy_UpdateDeploy(t *testing.T) {
 		Flavor:         "small",
 		Region:         "ru-moscow-1",
 		NonInteractive: true,
+		Yes:            true,
 	}
 
 	err := eng.Deploy(context.Background(), opts)
@@ -610,6 +612,7 @@ func TestDeploy_NoChanges(t *testing.T) {
 		Flavor:         "small",
 		Region:         "ru-moscow-1",
 		NonInteractive: true,
+		Yes:            true,
 	}
 
 	err := eng.Deploy(context.Background(), opts)
@@ -665,6 +668,7 @@ func TestDeploy_ForceRedeploy(t *testing.T) {
 		Region:         "ru-moscow-1",
 		Force:          true,
 		NonInteractive: true,
+		Yes:            true,
 	}
 
 	err := eng.Deploy(context.Background(), opts)

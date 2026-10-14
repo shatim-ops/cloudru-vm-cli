@@ -1,274 +1,368 @@
 package config
 
 import (
+	stderrors "errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+
+	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
+
+// isolate points the config directory at a temp dir and blanks every
+// CLOUDRU_* variable of the developer's shell (empty counts as unset).
+// All credentials in these tests are fake.
+func isolate(t *testing.T) string {
+	t.Helper()
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "CLOUDRU_") {
+			t.Setenv(k, "")
+		}
+	}
+	dir := filepath.Join(t.TempDir(), "cloudru-vm")
+	t.Setenv(EnvConfigDir, dir)
+	return dir
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func saveFakeProfile(t *testing.T, name string, p Profile) {
+	t.Helper()
+	if err := SaveProfile(name, p, Credentials{KeyID: "fake-key-id-" + name, Secret: "fake-secret-" + name}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func exitCode(err error) int { return clerrors.ExitCode(err) }
 
 func TestDefaults(t *testing.T) {
 	cfg := Defaults()
-
-	if cfg.Region != "" {
-		t.Errorf("Region: got %q, want %q", cfg.Region, "")
-	}
-	if cfg.Flavor != "auto" {
-		t.Errorf("Flavor: got %q, want %q", cfg.Flavor, "auto")
-	}
-	if cfg.Timeout != 300 {
-		t.Errorf("Timeout: got %d, want %d", cfg.Timeout, 300)
-	}
-	if cfg.ComposeFile != "docker-compose.yml" {
-		t.Errorf("ComposeFile: got %q, want %q", cfg.ComposeFile, "docker-compose.yml")
-	}
-	// Zero-value fields.
-	if cfg.APIKey != "" {
-		t.Errorf("APIKey: got %q, want empty", cfg.APIKey)
-	}
-	if cfg.ProjectName != "" {
-		t.Errorf("ProjectName: got %q, want empty", cfg.ProjectName)
+	if cfg.Region != "" || cfg.Flavor != "auto" || cfg.Timeout != 300 ||
+		cfg.ComposeFile != "docker-compose.yml" || cfg.DiskSize != 10 {
+		t.Errorf("unexpected defaults: %+v", cfg)
 	}
 }
 
-func TestLoad_FileOverridesDefaults(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-
-	data := []byte("region: ru-moscow-2\nflavor: m1.small\n")
-	if err := os.WriteFile(cfgFile, data, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg, err := Load(cfgFile, nil)
+func TestResolve_NothingConfigured(t *testing.T) {
+	isolate(t)
+	cfg, err := Resolve(Options{})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("no files and no env must not be an error: %v", err)
 	}
-
-	if cfg.Region != "ru-moscow-2" {
-		t.Errorf("Region: got %q, want %q", cfg.Region, "ru-moscow-2")
-	}
-	if cfg.Flavor != "m1.small" {
-		t.Errorf("Flavor: got %q, want %q", cfg.Flavor, "m1.small")
-	}
-	// Default preserved for fields not in file.
-	if cfg.Timeout != 300 {
-		t.Errorf("Timeout: got %d, want %d (default)", cfg.Timeout, 300)
+	if cfg.Profile != DefaultProfile || cfg.KeyID != "" || cfg.Flavor != "auto" {
+		t.Errorf("unexpected config: %+v", cfg)
 	}
 }
 
-func TestLoad_EnvOverridesFile(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
+func TestResolve_Precedence(t *testing.T) {
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{
+		ProjectID: "proj-profile", Region: "az-profile", Flavor: "flavor-profile",
+		ImageID: "img-profile", DiskSize: 20,
+	})
+	project := filepath.Join(t.TempDir(), ".cloudru-vm.yaml")
+	writeFile(t, project, "region: az-project\nflavor: flavor-project\nimage_id: img-project\n")
+	t.Setenv("CLOUDRU_FLAVOR", "flavor-env")
+	t.Setenv("CLOUDRU_IMAGE_ID", "img-env")
 
-	data := []byte("region: ru-moscow-2\n")
-	if err := os.WriteFile(cfgFile, data, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("CLOUDRU_REGION", "ru-spb-1")
-
-	cfg, err := Load(cfgFile, nil)
+	cfg, sources, err := ResolveWithSources(Options{
+		ProjectFile: project,
+		Flags:       map[string]any{"ImageID": "img-flag"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if cfg.Region != "ru-spb-1" {
-		t.Errorf("Region: got %q, want %q (from env)", cfg.Region, "ru-spb-1")
+	want := map[string][2]string{
+		// field: value, origin
+		"ProjectID": {"proj-profile", OriginProfile},
+		"Region":    {"az-project", OriginProject},
+		"Flavor":    {"flavor-env", OriginEnv},
+		"ImageID":   {"img-flag", OriginFlag},
+		"Timeout":   {"300", OriginDefault},
+		"DiskSize":  {"20", OriginProfile},
+		"KeyID":     {"fake****ault", OriginProfile},
 	}
-}
-
-func TestLoad_FlagOverridesEnv(t *testing.T) {
-	t.Setenv("CLOUDRU_REGION", "ru-spb-1")
-
-	flags := map[string]any{
-		"Region": "eu-west-1",
-	}
-
-	cfg, err := Load("", flags)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if cfg.Region != "eu-west-1" {
-		t.Errorf("Region: got %q, want %q (from flag)", cfg.Region, "eu-west-1")
-	}
-}
-
-func TestLoad_MissingFile(t *testing.T) {
-	cfg, err := Load("/tmp/nonexistent-cloudru-config-12345.yaml", nil)
-	if err != nil {
-		t.Fatalf("unexpected error for missing file: %v", err)
-	}
-
-	// Should equal defaults.
-	defaults := Defaults()
-	if cfg.Region != defaults.Region {
-		t.Errorf("Region: got %q, want %q", cfg.Region, defaults.Region)
-	}
-}
-
-func TestLoad_EmptyPath(t *testing.T) {
-	cfg, err := Load("", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defaults := Defaults()
-	if cfg.Region != defaults.Region {
-		t.Errorf("Region: got %q, want %q", cfg.Region, defaults.Region)
-	}
-}
-
-func TestLoad_FullPrecedence(t *testing.T) {
-	// File sets region + flavor, env overrides region, flag overrides region again.
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-
-	data := []byte("region: from-file\nflavor: from-file\n")
-	if err := os.WriteFile(cfgFile, data, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("CLOUDRU_REGION", "from-env")
-
-	flags := map[string]any{
-		"Region": "from-flag",
-	}
-
-	cfg, err := Load(cfgFile, flags)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if cfg.Region != "from-flag" {
-		t.Errorf("Region: got %q, want %q", cfg.Region, "from-flag")
-	}
-	if cfg.Flavor != "from-file" {
-		t.Errorf("Flavor: got %q, want %q", cfg.Flavor, "from-file")
-	}
-}
-
-func TestLoad_EnvTimeout(t *testing.T) {
-	t.Setenv("CLOUDRU_TIMEOUT", "60")
-
-	cfg, err := Load("", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if cfg.Timeout != 60 {
-		t.Errorf("Timeout: got %d, want %d", cfg.Timeout, 60)
-	}
-}
-
-func TestLoad_FlagBooleans(t *testing.T) {
-	flags := map[string]any{
-		"JSON":    true,
-		"Verbose": true,
-		"NoColor": true,
-	}
-
-	cfg, err := Load("", flags)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !cfg.JSON {
-		t.Error("JSON: got false, want true")
-	}
-	if !cfg.Verbose {
-		t.Error("Verbose: got false, want true")
-	}
-	if !cfg.NoColor {
-		t.Error("NoColor: got false, want true")
-	}
-}
-
-func TestLoadWithSources(t *testing.T) {
-	// Clear any ambient CLOUDRU_* env vars that could interfere.
-	for _, env := range []string{
-		"CLOUDRU_API_KEY", "CLOUDRU_REGION", "CLOUDRU_FLAVOR",
-		"CLOUDRU_TIMEOUT", "CLOUDRU_COMPOSE_FILE", "CLOUDRU_PROJECT_NAME",
-	} {
-		if orig, ok := os.LookupEnv(env); ok {
-			t.Cleanup(func() { os.Setenv(env, orig) })
-		} else {
-			t.Cleanup(func() { os.Unsetenv(env) })
-		}
-		os.Unsetenv(env)
-	}
-
-	// Now set only the one we want for this test.
-	os.Setenv("CLOUDRU_FLAVOR", "from-env")
-	t.Cleanup(func() { os.Unsetenv("CLOUDRU_FLAVOR") })
-
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-
-	data := []byte("region: from-file\napi_key: secret-from-file\n")
-	if err := os.WriteFile(cfgFile, data, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	flags := map[string]any{
-		"Verbose": true,
-	}
-
-	cfg, sources, err := LoadWithSources(cfgFile, flags)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if cfg.Region != "from-file" {
-		t.Errorf("Region: got %q, want %q", cfg.Region, "from-file")
-	}
-
-	// Build a lookup for easy assertions.
-	originOf := make(map[string]string)
 	for _, s := range sources {
-		originOf[s.Key] = s.Origin
+		w, ok := want[s.Key]
+		if !ok {
+			continue
+		}
+		if got := toString(s.Value); got != w[0] || s.Origin != w[1] {
+			t.Errorf("%s = %q from %s, want %q from %s", s.Key, got, s.Origin, w[0], w[1])
+		}
 	}
-
-	expectations := map[string]string{
-		"APIKey":      "file",
-		"Region":      "file",
-		"Flavor":      "env",
-		"Timeout":     "default",
-		"ComposeFile": "default",
-		"Verbose":     "flag",
-		"JSON":        "default",
-		"NoColor":     "default",
-		"ProjectName": "default",
+	if cfg.KeyID != "fake-key-id-default" || cfg.Secret != "fake-secret-default" {
+		t.Errorf("credentials not taken from the profile: %q", cfg.KeyID)
 	}
-
-	for key, wantOrigin := range expectations {
-		got := originOf[key]
-		if got != wantOrigin {
-			t.Errorf("Source %q: origin got %q, want %q", key, got, wantOrigin)
+	for _, s := range sources {
+		if s.Key == "Secret" && s.Value != "****" {
+			t.Errorf("secret not masked in sources: %v", s.Value)
 		}
 	}
 }
 
-func TestLoad_InvalidYAML(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
+func TestResolve_EnvCredentialsOverrideProfileAsAPair(t *testing.T) {
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{})
 
-	data := []byte("region: [invalid yaml\n")
-	if err := os.WriteFile(cfgFile, data, 0644); err != nil {
+	t.Setenv("CLOUDRU_KEY_ID", "env-key")
+	cfg, err := Resolve(Options{})
+	if err != nil {
 		t.Fatal(err)
 	}
+	// Only the key ID in env: the profile secret must not be mixed in.
+	if cfg.KeyID != "env-key" || cfg.Secret != "" {
+		t.Errorf("got key %q secret set=%v, want env-key without secret", cfg.KeyID, cfg.Secret != "")
+	}
 
-	_, err := Load(cfgFile, nil)
-	if err == nil {
-		t.Fatal("expected error for invalid YAML, got nil")
+	t.Setenv("CLOUDRU_SECRET", "env-secret")
+	cfg, err = Resolve(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KeyID != "env-key" || cfg.Secret != "env-secret" {
+		t.Errorf("env pair not used: %q", cfg.KeyID)
 	}
 }
 
-func TestLoad_InvalidEnvTimeout(t *testing.T) {
+func TestResolve_DeprecatedAPIKey(t *testing.T) {
+	isolate(t)
+	t.Setenv("CLOUDRU_API_KEY", "legacy-id:legacy-secret")
+	cfg, err := Resolve(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KeyID != "legacy-id" || cfg.Secret != "legacy-secret" {
+		t.Errorf("legacy key not split: %q", cfg.KeyID)
+	}
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "deprecated") ||
+		!strings.Contains(cfg.Warnings[0], "CLOUDRU_KEY_ID") {
+		t.Errorf("expected a deprecation warning, got %q", cfg.Warnings)
+	}
+
+	// The proper variables win and silence the warning.
+	t.Setenv("CLOUDRU_KEY_ID", "new-id")
+	t.Setenv("CLOUDRU_SECRET", "new-secret")
+	cfg, err = Resolve(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KeyID != "new-id" || len(cfg.Warnings) != 0 {
+		t.Errorf("got %q, warnings %q", cfg.KeyID, cfg.Warnings)
+	}
+}
+
+func TestResolve_MalformedAPIKeyIsAuthError(t *testing.T) {
+	isolate(t)
+	t.Setenv("CLOUDRU_API_KEY", "no-colon-here")
+	_, err := Resolve(Options{})
+	if exitCode(err) != clerrors.ExitAuth {
+		t.Errorf("exit code %d for %v, want %d", exitCode(err), err, clerrors.ExitAuth)
+	}
+}
+
+func TestResolve_ProfileSelection(t *testing.T) {
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{ProjectID: "proj-default"})
+	saveFakeProfile(t, "staging", Profile{ProjectID: "proj-staging"})
+
+	cfg, err := Resolve(Options{Profile: "staging"})
+	if err != nil || cfg.ProjectID != "proj-staging" || cfg.KeyID != "fake-key-id-staging" {
+		t.Fatalf("flag: %+v %v", cfg, err)
+	}
+
+	t.Setenv("CLOUDRU_PROFILE", "staging")
+	cfg, err = Resolve(Options{})
+	if err != nil || cfg.Profile != "staging" || cfg.ProjectID != "proj-staging" {
+		t.Fatalf("env: %+v %v", cfg, err)
+	}
+	// The flag beats the env.
+	cfg, err = Resolve(Options{Profile: "default"})
+	if err != nil || cfg.ProjectID != "proj-default" {
+		t.Fatalf("flag over env: %+v %v", cfg, err)
+	}
+}
+
+func TestResolve_UnknownExplicitProfile(t *testing.T) {
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{})
+	_, err := Resolve(Options{Profile: "nosuch"})
+	if exitCode(err) != clerrors.ExitAuth {
+		t.Fatalf("exit code %d for %v, want %d", exitCode(err), err, clerrors.ExitAuth)
+	}
+	var cliErr *clerrors.CLIError
+	if !asCLI(err, &cliErr) || !strings.Contains(cliErr.Hint, "configure --profile nosuch") {
+		t.Errorf("hint does not say how to create the profile: %v", err)
+	}
+
+	if _, err := Resolve(Options{Profile: "../etc"}); exitCode(err) != clerrors.ExitAuth {
+		t.Errorf("path-like profile name accepted: %v", err)
+	}
+}
+
+func TestResolve_ProjectFileSecretsIgnored(t *testing.T) {
+	isolate(t)
+	project := filepath.Join(t.TempDir(), ".cloudru-vm.yaml")
+	writeFile(t, project, "project_id: p1\nkey_id: leaked-id\nsecret: leaked-secret\n")
+	cfg, err := Resolve(Options{ProjectFile: project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KeyID != "" || cfg.Secret != "" || cfg.ProjectID != "p1" {
+		t.Errorf("secrets taken from the project file: %+v", cfg)
+	}
+	if len(cfg.Warnings) != 2 {
+		t.Errorf("want warnings for key_id and secret, got %q", cfg.Warnings)
+	}
+}
+
+func TestResolve_S3SectionAndEnvOverride(t *testing.T) {
+	isolate(t)
+	err := SaveProfile("default", Profile{}, Credentials{
+		KeyID: "k", Secret: "s",
+		S3: &S3Config{AccessKey: "s3-file-ak", SecretKey: "s3-file-sk", Region: "ru-central-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Resolve(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.S3.AccessKey != "s3-file-ak" || cfg.S3.SecretKey != "s3-file-sk" {
+		t.Errorf("s3 section not read: %+v", cfg.S3)
+	}
+	t.Setenv("CLOUDRU_S3_ACCESS_KEY", "s3-env-ak")
+	cfg, err = Resolve(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.S3.AccessKey != "s3-env-ak" || cfg.S3.Region != "ru-central-1" {
+		t.Errorf("env must override the profile: %+v", cfg.S3)
+	}
+}
+
+func TestResolve_InvalidInputs(t *testing.T) {
+	isolate(t)
+	project := filepath.Join(t.TempDir(), ".cloudru-vm.yaml")
+	writeFile(t, project, "region: [invalid yaml\n")
+	if _, err := Resolve(Options{ProjectFile: project}); exitCode(err) != clerrors.ExitAuth {
+		t.Errorf("invalid YAML: %v", err)
+	}
 	t.Setenv("CLOUDRU_TIMEOUT", "not-a-number")
-
-	_, err := Load("", nil)
-	if err == nil {
-		t.Fatal("expected error for non-integer CLOUDRU_TIMEOUT, got nil")
+	if _, err := Resolve(Options{}); err == nil {
+		t.Error("non-integer CLOUDRU_TIMEOUT accepted")
+	}
+	t.Setenv("CLOUDRU_TIMEOUT", "")
+	writeFile(t, CredentialsPath(), "profiles: [broken\n")
+	if _, err := Resolve(Options{}); exitCode(err) != clerrors.ExitAuth {
+		t.Errorf("broken credentials.yaml: %v", err)
 	}
 }
+
+func TestLoad_MissingProjectFile(t *testing.T) {
+	isolate(t)
+	cfg, err := Load(filepath.Join(t.TempDir(), "nonexistent.yaml"), map[string]any{"Verbose": true})
+	if err != nil || !cfg.Verbose || cfg.Flavor != "auto" {
+		t.Errorf("got %+v, %v", cfg, err)
+	}
+}
+
+func TestSaveProfile_FileModes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file modes are not enforced on Windows")
+	}
+	dir := isolate(t)
+	saveFakeProfile(t, "default", Profile{ProjectID: "p"})
+
+	for path, want := range map[string]os.FileMode{
+		dir:               0o700,
+		SettingsPath():    0o600,
+		CredentialsPath(): 0o600,
+	} {
+		st, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Mode().Perm() != want {
+			t.Errorf("%s: mode %04o, want %04o", path, st.Mode().Perm(), want)
+		}
+	}
+	// Secrets go to credentials.yaml only.
+	data, _ := os.ReadFile(SettingsPath())
+	if strings.Contains(string(data), "fake-secret") || strings.Contains(string(data), "fake-key-id") {
+		t.Errorf("config.yaml contains credentials:\n%s", data)
+	}
+}
+
+func TestReadCredentials_WarnsOnLooseMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file modes are not enforced on Windows")
+	}
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{})
+	if err := os.Chmod(CredentialsPath(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Resolve(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "chmod 600") {
+		t.Errorf("expected a permissions warning, got %q", cfg.Warnings)
+	}
+}
+
+func TestProfiles_ListAndDelete(t *testing.T) {
+	isolate(t)
+	saveFakeProfile(t, "prod", Profile{ProjectID: "p-prod"})
+	saveFakeProfile(t, "default", Profile{ProjectID: "p-default"})
+	writeFile(t, TokenCachePath("prod"), `{"key_id":"x"}`)
+
+	list, err := Profiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].Name != "default" || list[1].Name != "prod" ||
+		list[1].ProjectID != "p-prod" || !list[1].HasSecret || strings.Contains(list[1].KeyID, "key-id") {
+		t.Fatalf("unexpected list: %+v", list)
+	}
+
+	if err := DeleteProfile("prod"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(TokenCachePath("prod")); !os.IsNotExist(err) {
+		t.Errorf("token cache of a deleted profile left behind: %v", err)
+	}
+	list, _ = Profiles()
+	if len(list) != 1 || list[0].Name != "default" {
+		t.Errorf("after delete: %+v", list)
+	}
+	if err := DeleteProfile("prod"); exitCode(err) != clerrors.ExitAuth {
+		t.Errorf("deleting a missing profile: %v", err)
+	}
+}
+
+func TestMaskKeyID(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                 "",
+		"short":            "****",
+		"abcdef0123456789": "abcd****6789",
+	} {
+		if got := MaskKeyID(in); got != want {
+			t.Errorf("MaskKeyID(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func asCLI(err error, target **clerrors.CLIError) bool { return stderrors.As(err, target) }

@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/auth"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
@@ -23,13 +22,26 @@ import (
 	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
 )
 
-var version = "0.1.0"
+// Build identity. A release build sets all three through goreleaser:
+//
+//	-ldflags "-X main.version=1.2.3 -X main.commit=<sha> -X main.date=<RFC 3339>"
+//
+// A plain "go build" / "go install" leaves the defaults, and resolveVersion
+// fills them from the module and VCS data the Go toolchain embeds.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 // Global flags.
 var (
 	flagJSON    bool
 	flagVerbose bool
 	flagNoColor bool
+	flagProfile string
+	flagYes     bool
+	flagDryRun  bool
 )
 
 // httpClient is shared by the IAM and compute clients: one connection pool
@@ -101,6 +113,9 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output in JSON format")
 	cmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Enable verbose logging")
 	cmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
+	cmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Credentials profile (default: $CLOUDRU_PROFILE or \"default\")")
+	cmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Confirm operations that create paid resources or delete data, without a prompt")
+	cmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "Show what would be created or deleted (with a cost estimate) and exit")
 
 	cmd.AddCommand(
 		newDeployCmd(),
@@ -113,6 +128,9 @@ func newRootCmd() *cobra.Command {
 		newListZonesCmd(),
 		newListImagesCmd(),
 		newMCPCmd(),
+		newConfigureCmd(),
+		newWhoamiCmd(),
+		newDoctorCmd(),
 	)
 
 	return cmd
@@ -134,19 +152,16 @@ all human-readable output is suppressed (stdout is reserved for the protocol).
 Add it to Claude Code with:
   claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
 
-Credentials and project parameters are read from the environment / .cloudru-vm.yaml
-exactly as for the regular CLI commands.`,
+Credentials and project parameters are resolved exactly as for the regular CLI
+commands (flags, environment, .cloudru-vm.yaml, profile from 'cloudru-vm configure').`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			srv := mcp.New(func(overrides map[string]any) (*engine.Engine, error) {
 				if overrides == nil {
 					overrides = map[string]any{}
 				}
-				eng, err := buildEngine(overrides)
-				if err != nil {
-					return nil, err
-				}
-				// MCP tools read the key fields directly.
-				return eng, eng.EnsureSSHKey()
+				// The SSH key stays lazy here too: only the tools that
+				// reach a VM call EnsureSSHKey.
+				return buildEngine(overrides)
 			}, version)
 			// The server does not take a context; stop waiting for it on
 			// SIGINT/SIGTERM so the signal still ends the process.
@@ -168,13 +183,11 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 	flagOverrides["Verbose"] = flagVerbose
 	flagOverrides["NoColor"] = flagNoColor
 
-	cfgPath := defaultConfigPath()
-	cfg, err := config.Load(cfgPath, flagOverrides)
+	printer := output.New(flagJSON, flagNoColor)
+	cfg, err := resolveConfig(printer, flagOverrides)
 	if err != nil {
 		return nil, err
 	}
-
-	printer := output.New(cfg.JSON, cfg.NoColor)
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -183,7 +196,7 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 
 	return &engine.Engine{
 		Config:   cfg,
-		Auth:     auth.NewEnvVarProvider(httpClient),
+		Auth:     tokenProvider(cfg),
 		Cloud:    provision.NewCloudRuAdapter(httpClient, ""),
 		Deployer: deploy.NewSSHDeployer(),
 		Printer:  printer,
@@ -227,17 +240,10 @@ func loadOrGenerateSSHKey(projectDir string) (privPEM []byte, pubKey string, err
 	return privPEM, pubKey, nil
 }
 
-func defaultConfigPath() string {
-	// Check current directory first, then home directory.
-	local := ".cloudru-vm.yaml"
-	if _, err := os.Stat(local); err == nil {
-		return local
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".cloudru-vm.yaml")
+// projectConfigPath is the project file with per-project overrides. User
+// settings and secrets live in the profile (see 'cloudru-vm configure').
+func projectConfigPath() string {
+	return ".cloudru-vm.yaml"
 }
 
 // handleError prints err to the printer's error writer: as text with the
@@ -326,6 +332,8 @@ func newDeployCmd() *cobra.Command {
 				Region:         eng.Config.Region,
 				Force:          force,
 				NonInteractive: nonInteractive,
+				Yes:            flagYes,
+				DryRun:         flagDryRun,
 			}
 
 			if err := eng.Deploy(cmd.Context(), opts); err != nil {
@@ -342,7 +350,7 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().StringVar(&imageID, "image-id", "", "Boot image UUID")
 	cmd.Flags().IntVar(&diskSize, "disk-size", 0, "Boot disk size in GB (default: 10)")
 	cmd.Flags().BoolVar(&force, "force", false, "Force redeploy even if compose hash unchanged")
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Skip confirmation prompts")
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Never prompt; creating a VM then requires --yes")
 
 	return cmd
 }
@@ -418,7 +426,7 @@ func newDestroyCmd() *cobra.Command {
 				return err
 			}
 
-			opts := engine.DestroyOptions{Force: force}
+			opts := engine.DestroyOptions{Force: force || flagYes, DryRun: flagDryRun}
 			if err := eng.Destroy(cmd.Context(), opts); err != nil {
 				return err
 			}
@@ -426,7 +434,7 @@ func newDestroyCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
+	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt (same as --yes)")
 
 	return cmd
 }
@@ -483,9 +491,9 @@ plain Ubuntu (else Debian) image are taken, and the choice is printed.`,
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the version",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("cloudru-vm %s\n", version)
+		Short: "Print the version, commit, build date, Go version and platform",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return printVersion(cmd.OutOrStdout(), flagJSON, currentVersion())
 		},
 	}
 }

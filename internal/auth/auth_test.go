@@ -7,60 +7,29 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"sync"
+	"path/filepath"
+	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
-// mockKeyringStore is an in-memory KeyringStore for testing.
-type mockKeyringStore struct {
-	mu   sync.Mutex
-	data map[string]string
-}
+// Fake credentials: tests never see real ones.
+var testCreds = Credentials{KeyID: "test-key-123", Secret: "test-secret"}
 
-func newMockKeyringStore() *mockKeyringStore {
-	return &mockKeyringStore{data: make(map[string]string)}
-}
-
-func (m *mockKeyringStore) key(service, k string) string {
-	return service + "/" + k
-}
-
-func (m *mockKeyringStore) Get(service, k string) (string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	v, ok := m.data[m.key(service, k)]
-	if !ok {
-		return "", errors.New("not found")
-	}
-	return v, nil
-}
-
-func (m *mockKeyringStore) Set(service, k, value string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.data[m.key(service, k)] = value
-	return nil
-}
-
-func (m *mockKeyringStore) Delete(service, k string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.data, m.key(service, k))
-	return nil
-}
-
-// newMockIAMServer creates a test server that mimics the Cloud.ru IAM token exchange endpoint.
-func newMockIAMServer(t *testing.T, tokenTTL time.Duration) *httptest.Server {
+// newMockIAMServer mimics the Cloud.ru IAM token exchange endpoint and
+// counts the requests it serves.
+func newMockIAMServer(t *testing.T, tokenTTL time.Duration) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-
 		var body struct {
 			KeyID  string `json:"keyId"`
 			Secret string `json:"secret"`
@@ -73,31 +42,23 @@ func newMockIAMServer(t *testing.T, tokenTTL time.Duration) *httptest.Server {
 			http.Error(w, "missing keyId or secret", http.StatusUnauthorized)
 			return
 		}
-
-		resp := map[string]any{
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "test-iam-token-" + body.KeyID,
 			"expires_in":   int(tokenTTL.Seconds()),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		})
 	}))
+	t.Cleanup(srv.Close)
+	old := IAMEndpoint
+	IAMEndpoint = srv.URL
+	t.Cleanup(func() { IAMEndpoint = old })
+	return srv, &calls
 }
 
-func TestEnvVarProvider_Token(t *testing.T) {
-	srv := newMockIAMServer(t, 1*time.Hour)
-	defer srv.Close()
+func TestIAMProvider_Token(t *testing.T) {
+	srv, _ := newMockIAMServer(t, time.Hour)
 
-	oldEndpoint := IAMEndpoint
-	IAMEndpoint = srv.URL
-	defer func() { IAMEndpoint = oldEndpoint }()
-
-	os.Setenv("CLOUDRU_KEY_ID", "test-key-123")
-	os.Setenv("CLOUDRU_SECRET", "test-secret")
-	defer os.Unsetenv("CLOUDRU_KEY_ID")
-	defer os.Unsetenv("CLOUDRU_SECRET")
-
-	p := NewEnvVarProvider(srv.Client())
-	tok, err := p.Token(context.Background())
+	tok, err := NewIAMProvider(testCreds, srv.Client(), nil).Token(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -109,202 +70,133 @@ func TestEnvVarProvider_Token(t *testing.T) {
 	}
 }
 
-func TestEnvVarProvider_CachesToken(t *testing.T) {
-	callCount := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		resp := map[string]any{
-			"access_token": "cached-token",
-			"expires_in":   3600,
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer srv.Close()
+func TestIAMProvider_IgnoresEnvironment(t *testing.T) {
+	// The provider uses the credentials it was given, whatever the env says.
+	srv, _ := newMockIAMServer(t, time.Hour)
+	t.Setenv("CLOUDRU_KEY_ID", "env-key")
+	t.Setenv("CLOUDRU_SECRET", "env-secret")
 
-	oldEndpoint := IAMEndpoint
-	IAMEndpoint = srv.URL
-	defer func() { IAMEndpoint = oldEndpoint }()
-
-	os.Setenv("CLOUDRU_KEY_ID", "test-key")
-	os.Setenv("CLOUDRU_SECRET", "test-secret")
-	defer os.Unsetenv("CLOUDRU_KEY_ID")
-	defer os.Unsetenv("CLOUDRU_SECRET")
-
-	p := NewEnvVarProvider(srv.Client())
-
-	// First call hits the server.
-	_, err := p.Token(context.Background())
+	tok, err := NewIAMProvider(Credentials{KeyID: "file-key", Secret: "file-secret"}, srv.Client(), nil).
+		Token(context.Background())
 	if err != nil {
-		t.Fatalf("first call: %v", err)
+		t.Fatal(err)
 	}
-
-	// Second call should return cached.
-	_, err = p.Token(context.Background())
-	if err != nil {
-		t.Fatalf("second call: %v", err)
-	}
-
-	if callCount != 1 {
-		t.Errorf("expected 1 server call, got %d", callCount)
+	if tok.Value != "test-iam-token-file-key" {
+		t.Errorf("token issued for the wrong key: %s", tok.Value)
 	}
 }
 
-func TestEnvVarProvider_RefreshesExpired(t *testing.T) {
-	callCount := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		resp := map[string]any{
-			"access_token": "refreshed-token",
-			"expires_in":   3600,
+func TestIAMProvider_CachesTokenInMemory(t *testing.T) {
+	srv, calls := newMockIAMServer(t, time.Hour)
+	p := NewIAMProvider(testCreds, srv.Client(), nil)
+	for i := 0; i < 2; i++ {
+		if _, err := p.Token(context.Background()); err != nil {
+			t.Fatalf("call %d: %v", i, err)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer srv.Close()
-
-	oldEndpoint := IAMEndpoint
-	IAMEndpoint = srv.URL
-	defer func() { IAMEndpoint = oldEndpoint }()
-
-	os.Setenv("CLOUDRU_KEY_ID", "test-key")
-	os.Setenv("CLOUDRU_SECRET", "test-secret")
-	defer os.Unsetenv("CLOUDRU_KEY_ID")
-	defer os.Unsetenv("CLOUDRU_SECRET")
-
-	p := NewEnvVarProvider(srv.Client())
-
-	// Seed with an expired cached token.
-	p.cached = &Token{
-		Value:     "old-token",
-		ExpiresAt: time.Now().Add(1 * time.Minute), // < 5min threshold
 	}
+	if calls.Load() != 1 || p.Exchanges() != 1 {
+		t.Errorf("expected 1 server call, got %d (exchanges %d)", calls.Load(), p.Exchanges())
+	}
+}
+
+func TestIAMProvider_RefreshesExpired(t *testing.T) {
+	srv, calls := newMockIAMServer(t, time.Hour)
+	p := NewIAMProvider(testCreds, srv.Client(), nil)
+	p.cached = &Token{Value: "old-token", ExpiresAt: time.Now().Add(time.Minute)} // < 5min threshold
 
 	tok, err := p.Token(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if tok.Value != "refreshed-token" {
-		t.Errorf("expected refreshed token, got %s", tok.Value)
-	}
-	if callCount != 1 {
-		t.Errorf("expected 1 server call for refresh, got %d", callCount)
+	if tok.Value == "old-token" || calls.Load() != 1 {
+		t.Errorf("expected a refresh, got %q after %d calls", tok.Value, calls.Load())
 	}
 }
 
-func TestEnvVarProvider_NoAPIKey(t *testing.T) {
-	os.Unsetenv("CLOUDRU_API_KEY")
-	os.Unsetenv("CLOUDRU_KEY_ID")
-	os.Unsetenv("CLOUDRU_SECRET")
-
-	p := NewEnvVarProvider(http.DefaultClient)
-	_, err := p.Token(context.Background())
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-
-	var cliErr *clerrors.CLIError
-	if !errors.As(err, &cliErr) {
-		t.Fatalf("expected CLIError, got %T: %v", err, err)
-	}
-	if cliErr.Code != clerrors.CodeAuthRequired {
-		t.Errorf("expected code %s, got %s", clerrors.CodeAuthRequired, cliErr.Code)
+func TestIAMProvider_NoCredentials(t *testing.T) {
+	for _, c := range []Credentials{{}, {KeyID: "only-id"}, {Secret: "only-secret"}} {
+		_, err := NewIAMProvider(c, http.DefaultClient, nil).Token(context.Background())
+		var cliErr *clerrors.CLIError
+		if !errors.As(err, &cliErr) || cliErr.Code != clerrors.CodeAuthRequired {
+			t.Errorf("%+v: expected %s, got %v", c, clerrors.CodeAuthRequired, err)
+		}
 	}
 }
 
-func TestEnvVarProvider_PreFlightTTL(t *testing.T) {
+func TestIAMProvider_PreFlightTTL(t *testing.T) {
 	// Server returns a token that expires in 5 minutes (< 10min threshold).
-	srv := newMockIAMServer(t, 5*time.Minute)
-	defer srv.Close()
-
-	oldEndpoint := IAMEndpoint
-	IAMEndpoint = srv.URL
-	defer func() { IAMEndpoint = oldEndpoint }()
-
-	os.Setenv("CLOUDRU_KEY_ID", "short-lived-key")
-	os.Setenv("CLOUDRU_SECRET", "short-lived-secret")
-	defer os.Unsetenv("CLOUDRU_KEY_ID")
-	defer os.Unsetenv("CLOUDRU_SECRET")
-
-	p := NewEnvVarProvider(srv.Client())
-	_, err := p.Token(context.Background())
-	if err == nil {
-		t.Fatal("expected pre-flight TTL error, got nil")
-	}
-
+	srv, _ := newMockIAMServer(t, 5*time.Minute)
+	_, err := NewIAMProvider(testCreds, srv.Client(), nil).Token(context.Background())
 	var cliErr *clerrors.CLIError
-	if !errors.As(err, &cliErr) {
-		t.Fatalf("expected CLIError, got %T: %v", err, err)
-	}
-	if cliErr.Code != clerrors.CodeAuthExpired {
-		t.Errorf("expected code %s, got %s", clerrors.CodeAuthExpired, cliErr.Code)
+	if !errors.As(err, &cliErr) || cliErr.Code != clerrors.CodeAuthExpired {
+		t.Fatalf("expected %s, got %v", clerrors.CodeAuthExpired, err)
 	}
 }
 
-func TestKeyringProvider_Login(t *testing.T) {
-	srv := newMockIAMServer(t, 1*time.Hour)
-	defer srv.Close()
+func TestFileCache_FreshTokenNeedsNoNetwork(t *testing.T) {
+	srv, calls := newMockIAMServer(t, time.Hour)
+	cache := FileCache{Path: filepath.Join(t.TempDir(), "cache", "token-default.json")}
 
-	oldEndpoint := IAMEndpoint
-	IAMEndpoint = srv.URL
-	defer func() { IAMEndpoint = oldEndpoint }()
-
-	store := newMockKeyringStore()
-	p := NewKeyringProvider(store, srv.Client())
-
-	err := p.Login(context.Background(), "my-key-id:my-secret")
+	// First run: exchange and store.
+	first, err := NewIAMProvider(testCreds, srv.Client(), cache).Token(context.Background())
 	if err != nil {
-		t.Fatalf("login failed: %v", err)
+		t.Fatal(err)
 	}
-
-	// Verify key was stored.
-	stored, err := store.Get("cloudru-vm", "api-key")
+	// Second run (a new process): the token comes from disk.
+	p2 := NewIAMProvider(testCreds, srv.Client(), cache)
+	second, err := p2.Token(context.Background())
 	if err != nil {
-		t.Fatalf("failed to read from keyring: %v", err)
+		t.Fatal(err)
 	}
-	if stored != "my-key-id:my-secret" {
-		t.Errorf("expected stored key 'my-key-id:my-secret', got '%s'", stored)
+	if calls.Load() != 1 || p2.Exchanges() != 0 {
+		t.Errorf("second run went to IAM: %d calls, %d exchanges", calls.Load(), p2.Exchanges())
+	}
+	if second.Value != first.Value {
+		t.Errorf("cached token %q != issued %q", second.Value, first.Value)
+	}
+	if runtime.GOOS != "windows" {
+		st, err := os.Stat(cache.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Mode().Perm() != 0o600 {
+			t.Errorf("token cache mode = %04o, want 0600", st.Mode().Perm())
+		}
 	}
 }
 
-func TestKeyringProvider_Token(t *testing.T) {
-	srv := newMockIAMServer(t, 1*time.Hour)
-	defer srv.Close()
-
-	oldEndpoint := IAMEndpoint
-	IAMEndpoint = srv.URL
-	defer func() { IAMEndpoint = oldEndpoint }()
-
-	// Pre-populate keyring with credentials in keyId:secret format.
-	store := newMockKeyringStore()
-	store.Set("cloudru-vm", "api-key", "stored-key:stored-secret")
-
-	// Clear env to ensure keyring is used.
-	oldKeyID := os.Getenv("CLOUDRU_KEY_ID")
-	oldSecret := os.Getenv("CLOUDRU_SECRET")
-	oldAPIKey := os.Getenv("CLOUDRU_API_KEY")
-	os.Unsetenv("CLOUDRU_KEY_ID")
-	os.Unsetenv("CLOUDRU_SECRET")
-	os.Unsetenv("CLOUDRU_API_KEY")
-	defer func() {
-		if oldKeyID != "" {
-			os.Setenv("CLOUDRU_KEY_ID", oldKeyID)
-		}
-		if oldSecret != "" {
-			os.Setenv("CLOUDRU_SECRET", oldSecret)
-		}
-		if oldAPIKey != "" {
-			os.Setenv("CLOUDRU_API_KEY", oldAPIKey)
-		}
-	}()
-
-	p := NewKeyringProvider(store, srv.Client())
-	tok, err := p.Token(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestFileCache_ExpiredTokenIsRefreshed(t *testing.T) {
+	srv, calls := newMockIAMServer(t, time.Hour)
+	cache := FileCache{Path: filepath.Join(t.TempDir(), "token-default.json")}
+	if err := cache.Store(testCreds.KeyID, Token{Value: "stale", ExpiresAt: time.Now().Add(2 * time.Minute)}); err != nil {
+		t.Fatal(err)
 	}
-	if tok.Value != "test-iam-token-stored-key" {
-		t.Errorf("expected token from keyring key, got %s", tok.Value)
+
+	tok, err := NewIAMProvider(testCreds, srv.Client(), cache).Token(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Value == "stale" || calls.Load() != 1 {
+		t.Fatalf("expected refresh, got %q after %d calls", tok.Value, calls.Load())
+	}
+	if stored, ok := cache.Load(testCreds.KeyID); !ok || stored.Value != tok.Value {
+		t.Errorf("refreshed token not written back: %+v %v", stored, ok)
+	}
+}
+
+func TestFileCache_OtherKeyIsAMiss(t *testing.T) {
+	cache := FileCache{Path: filepath.Join(t.TempDir(), "token-default.json")}
+	if err := cache.Store("key-a", Token{Value: "tok-a", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cache.Load("key-b"); ok {
+		t.Error("token of another key returned from cache")
+	}
+	if err := os.WriteFile(cache.Path, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cache.Load("key-a"); ok {
+		t.Error("corrupt cache file returned a token")
 	}
 }
 
@@ -321,13 +213,9 @@ func TestToken_IsValid(t *testing.T) {
 		{"invalid expired", -1 * time.Minute, 5 * time.Minute, false},
 		{"zero TTL threshold", 1 * time.Second, 0, true},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tok := Token{
-				Value:     "test",
-				ExpiresAt: time.Now().Add(tt.ttl),
-			}
+			tok := Token{Value: "test", ExpiresAt: time.Now().Add(tt.ttl)}
 			if got := tok.IsValid(tt.minTTL); got != tt.want {
 				t.Errorf("IsValid(%v) = %v, want %v", tt.minTTL, got, tt.want)
 			}

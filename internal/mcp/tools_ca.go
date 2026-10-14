@@ -175,6 +175,16 @@ func (s *Server) handleCaStartStop(ctx context.Context, args map[string]any, act
 	if name == "" {
 		return errResult(fmt.Errorf("name is required")), true
 	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		effect := "it is billed while running"
+		if action == "stop" {
+			effect = "it stops serving requests"
+		}
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": fmt.Sprintf("ca_%s will %s container app %q (%s). Call again with confirmed=true after the captain approves.", action, action, name, effect),
+		}), true
+	}
 	cli, err := s.caClient(ctx)
 	if err != nil {
 		return errResult(err), true

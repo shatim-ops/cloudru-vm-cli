@@ -10,8 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
 func TestHandleError_WrappedCLIErrorKeepsHint(t *testing.T) {
@@ -90,6 +92,7 @@ func TestRun_MissingCredentialsExitTwo(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("HOME", dir)
+	t.Setenv("CLOUDRU_CONFIG_DIR", dir)
 	t.Setenv("CLOUDRU_KEY_ID", "")
 	t.Setenv("CLOUDRU_SECRET", "")
 	t.Setenv("CLOUDRU_API_KEY", "")
@@ -99,11 +102,52 @@ func TestRun_MissingCredentialsExitTwo(t *testing.T) {
 	}
 }
 
+// Глобальные --yes/--dry-run доходят до destroy: без терминала и без --yes —
+// код 3, --dry-run — 0 и ВМ на месте, --yes проходит гейт (и упирается в
+// отсутствие кредов, то есть в облако, а не в подтверждение).
+func TestRun_DestroyConfirmationFlags(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("HOME", dir)
+	t.Setenv("CLOUDRU_KEY_ID", "")
+	t.Setenv("CLOUDRU_SECRET", "")
+	t.Setenv("CLOUDRU_API_KEY", "")
+	oldTTY := confirm.StdinIsTTY
+	confirm.StdinIsTTY = func() bool { return false }
+	t.Cleanup(func() { confirm.StdinIsTTY = oldTTY })
+
+	sf := &state.File{Version: 1}
+	sf.UpsertDeployment(state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", Status: "running"})
+	if err := state.Write(state.DefaultPath(dir), sf); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct {
+		args []string
+		want int
+	}{
+		{[]string{"destroy"}, clerrors.ExitConfirmationRequired},
+		{[]string{"destroy", "--json"}, clerrors.ExitConfirmationRequired},
+		{[]string{"destroy", "--dry-run"}, clerrors.ExitOK},
+		{[]string{"destroy", "--dry-run", "--yes"}, clerrors.ExitOK},
+		{[]string{"destroy", "-y"}, clerrors.ExitAuth},
+	} {
+		if got := run(c.args); got != c.want {
+			t.Errorf("run(%v) = %d, want %d", c.args, got, c.want)
+		}
+	}
+	after, _ := state.Read(state.DefaultPath(dir))
+	if a := after.ActiveDeployment(); a == nil || a.VMID != "vm-1" {
+		t.Fatalf("deployment changed: %+v", a)
+	}
+}
+
 // Commands that never reach a VM must not leave an SSH key in the project.
 func TestRun_CommandsWithoutVMCreateNoSSHKey(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("HOME", dir)
+	t.Setenv("CLOUDRU_CONFIG_DIR", dir)
 	t.Setenv("CLOUDRU_KEY_ID", "")
 	t.Setenv("CLOUDRU_SECRET", "")
 	t.Setenv("CLOUDRU_API_KEY", "")

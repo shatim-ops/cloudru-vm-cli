@@ -81,6 +81,9 @@ func (s *Server) handleDeployPlan(ctx context.Context, args map[string]any) (str
 	// captain's own key is added to authorized_keys post-install (see SKILL).
 	// An explicit ssh_key arg overrides this.
 	if params.SSHKey == "" {
+		if err := eng.EnsureSSHKey(); err != nil {
+			return errResult(err), true
+		}
 		params.SSHKey = eng.SSHPubKey
 	}
 
@@ -171,6 +174,9 @@ func (s *Server) handleDeployApply(ctx context.Context, args map[string]any) (st
 		}
 	}
 
+	if err := eng.EnsureSSHKey(); err != nil {
+		return errResult(err), true
+	}
 	// If we injected the agent's own deploy key, hand back an ssh command that
 	// uses it (and tolerates the reused-IP host-key change on ephemeral VMs).
 	if res.PublicIP != "" && plan.PublicKey == eng.SSHPubKey {

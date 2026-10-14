@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
 )
@@ -54,7 +55,7 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 			"Pick an image with 'cloudru-vm list-images' and set image_id in "+opts.Path+" by hand.")
 	}
 
-	interactive := !opts.NonInteractive && promptStdinIsTTY()
+	interactive := !opts.NonInteractive && confirm.StdinIsTTY()
 
 	zoneNames := make([]string, len(zones))
 	for i, z := range zones {
@@ -133,7 +134,7 @@ func (e *Engine) choose(ctx context.Context, interactive bool, what string, opti
 		fmt.Fprintf(w, "  %d) %s\n", i+1, o)
 	}
 	fmt.Fprintf(w, "Choose [1]: ")
-	answer, err := readAnswer(ctx, promptStdin)
+	answer, err := confirm.ReadLine(ctx)
 	if err != nil {
 		return 0, err
 	}

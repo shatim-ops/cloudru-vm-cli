@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
@@ -33,10 +34,10 @@ func destroyEngineWithVM(t *testing.T) (*Engine, *bytes.Buffer) {
 
 func withPromptStdin(t *testing.T, r io.Reader, tty bool) {
 	t.Helper()
-	oldIn, oldTTY := promptStdin, promptStdinIsTTY
-	promptStdin = r
-	promptStdinIsTTY = func() bool { return tty }
-	t.Cleanup(func() { promptStdin, promptStdinIsTTY = oldIn, oldTTY })
+	oldIn, oldTTY := confirm.Stdin, confirm.StdinIsTTY
+	confirm.Stdin = r
+	confirm.StdinIsTTY = func() bool { return tty }
+	t.Cleanup(func() { confirm.Stdin, confirm.StdinIsTTY = oldIn, oldTTY })
 }
 
 func assertVMStillInState(t *testing.T, e *Engine) {
@@ -69,7 +70,7 @@ func TestDestroy_AnswerNotYes_IsNotSuccess(t *testing.T) {
 	if got := clerrors.ExitCode(err); got != clerrors.ExitConfirmationRequired {
 		t.Fatalf("exit code = %d (err %v), want %d", got, err, clerrors.ExitConfirmationRequired)
 	}
-	if !strings.Contains(buf.String(), "Type 'yes' to confirm") {
+	if !strings.Contains(buf.String(), "[y/N]") {
 		t.Errorf("prompt not shown: %q", buf.String())
 	}
 	assertVMStillInState(t, e)
@@ -82,10 +83,10 @@ func TestDestroy_PromptGoesToStderr(t *testing.T) {
 	withPromptStdin(t, strings.NewReader("no\n"), true)
 
 	_ = e.Destroy(context.Background(), DestroyOptions{})
-	if strings.Contains(stdout.String(), "Type 'yes'") {
+	if strings.Contains(stdout.String(), "[y/N]") {
 		t.Errorf("prompt written to stdout: %q", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "Type 'yes'") {
+	if !strings.Contains(stderr.String(), "[y/N]") {
 		t.Errorf("prompt missing from stderr: %q", stderr.String())
 	}
 }

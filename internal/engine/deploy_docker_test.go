@@ -18,7 +18,7 @@ import (
 
 func newDeployOpts(t *testing.T, dir string) DeployOptions {
 	t.Helper()
-	return DeployOptions{ComposeFile: writeComposeFile(t, dir), Flavor: "small", NonInteractive: true}
+	return DeployOptions{ComposeFile: writeComposeFile(t, dir), Flavor: "small", NonInteractive: true, Yes: true}
 }
 
 func readActive(t *testing.T, dir string) *state.DeploymentRecord {

@@ -16,3 +16,6 @@
 *.pem
 *.key
 credentials
+
+# Вывод goreleaser
+/dist/
