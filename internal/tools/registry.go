@@ -41,6 +41,9 @@ type Tool struct {
 	Handler     Handler        `json:"-"`
 }
 
+// OpWaitMaxSeconds is the longest wait_seconds the *_operation tools honour.
+const OpWaitMaxSeconds = opWaitMaxSeconds
+
 // Registry holds every tool and its handler. Handlers build an engine per
 // call through the factory, so each call sees the current config, profile
 // and working directory.

@@ -116,6 +116,7 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Credentials profile (default: $CLOUDRU_PROFILE or \"default\")")
 	cmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Confirm operations that create paid resources or delete data, without a prompt")
 	cmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "Show what would be created or deleted (with a cost estimate) and exit")
+	addScopeFlags(cmd)
 
 	cmd.AddCommand(
 		newDeployCmd(),
@@ -131,6 +132,7 @@ func newRootCmd() *cobra.Command {
 		newConfigureCmd(),
 		newWhoamiCmd(),
 		newDoctorCmd(),
+		newToolsCmd(),
 	)
 
 	return cmd
@@ -182,6 +184,7 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 	flagOverrides["JSON"] = flagJSON
 	flagOverrides["Verbose"] = flagVerbose
 	flagOverrides["NoColor"] = flagNoColor
+	applyScopeFlags(flagOverrides)
 
 	printer := output.New(flagJSON, flagNoColor)
 	cfg, err := resolveConfig(printer, flagOverrides)
