@@ -72,7 +72,7 @@ func (s *Registry) handleLbList(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleLbGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from lb_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (from lb_list)")), true
 	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
@@ -88,7 +88,7 @@ func (s *Registry) handleLbGet(ctx context.Context, args map[string]any) (string
 func (s *Registry) handleLbOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'operation_id' is required")), true
+		return usageResult(fmt.Errorf("'operation_id' is required")), true
 	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
@@ -135,7 +135,7 @@ func (s *Registry) handleTgList(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleTgGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from tg_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (from tg_list)")), true
 	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
@@ -169,11 +169,11 @@ func targetSpecs(args map[string]any) []map[string]any {
 func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("'name' is required")), true
+		return usageResult(fmt.Errorf("'name' is required")), true
 	}
 	specs := targetSpecs(args)
 	if len(specs) == 0 {
-		return errResult(fmt.Errorf("provide targets (array of {id[, interface_id]}) or vm_id")), true
+		return usageResult(fmt.Errorf("provide targets (array of {id[, interface_id]}) or vm_id")), true
 	}
 	cli, eng, err := s.nlbClientEng(ctx)
 	if err != nil {
@@ -215,7 +215,7 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleTgDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from tg_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (from tg_list)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("tg_delete deletes target group %s. Call again with confirmed=true.", id)}), true
@@ -238,7 +238,7 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	tgID := stringArg(args, "target_group_id")
 	port := pgInt(args, "port", 0)
 	if name == "" || tgID == "" || port == 0 {
-		return errResult(fmt.Errorf("'name', 'target_group_id' and 'port' are required")), true
+		return usageResult(fmt.Errorf("'name', 'target_group_id' and 'port' are required")), true
 	}
 	targetPort := pgInt(args, "target_port", port)
 	hcPort := pgInt(args, "hc_port", targetPort)
@@ -342,7 +342,7 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleLbDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from lb_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (from lb_list)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("lb_delete deletes load balancer %s. Call again with confirmed=true.", id)}), true

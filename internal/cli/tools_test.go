@@ -154,7 +154,12 @@ func TestToolsCall_ToolErrorExitCodes(t *testing.T) {
 		`{"error":"VM_NOT_FOUND: resource not found"}`:  clerrors.ExitNotFound,
 		`{"error":"AUTH_FAILED: bad key"}`:              clerrors.ExitAuth,
 		`{"error":"'disk_id' is required"}`:             clerrors.ExitAPI,
-		`not json`:                                      clerrors.ExitAPI,
+		// The tool refused its arguments before calling the cloud: bad input,
+		// not an API error.
+		`{"error":"USAGE: 'disk_id' is required"}`: clerrors.ExitGeneral,
+		// Missing S3 keys are configuration, like a missing Cloud.ru key.
+		`{"error":"CONFIG_INVALID: S3 credentials not configured"}`: clerrors.ExitAuth,
+		`not json`: clerrors.ExitAPI,
 	} {
 		if got := clerrors.ExitCode(toolError("x", text)); got != want {
 			t.Errorf("%s: exit %d, want %d", text, got, want)

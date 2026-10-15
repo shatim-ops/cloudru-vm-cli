@@ -337,7 +337,7 @@ func firstStr(m map[string]any, keys ...string) string {
 func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (string, bool) {
 	raw, ok := args["manifest"]
 	if !ok {
-		return errResult(fmt.Errorf("'manifest' is required (object describing the stack)")), true
+		return usageResult(fmt.Errorf("'manifest' is required (object describing the stack)")), true
 	}
 	b, _ := json.Marshal(raw)
 	var m stack.Manifest
@@ -345,7 +345,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		return errResult(fmt.Errorf("invalid manifest: %w", err)), true
 	}
 	if m.Name == "" {
-		return errResult(fmt.Errorf("manifest.name is required")), true
+		return usageResult(fmt.Errorf("manifest.name is required")), true
 	}
 	// Validate + normalize the manifest BEFORE planning, so a malformed field
 	// fails fast at plan time (nothing created) instead of wedging the stack in
@@ -473,7 +473,7 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'job_id' is required (from stack_plan)")), true
+		return usageResult(fmt.Errorf("'job_id' is required (from stack_plan)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_apply provisions BILLABLE resources. Call again with confirmed=true after the user approved."}), true
@@ -538,7 +538,7 @@ func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) 
 func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'job_id' is required")), true
+		return usageResult(fmt.Errorf("'job_id' is required")), true
 	}
 	// Absorb SOME waiting inside the call (crank every few seconds up to a small
 	// budget) so the agent doesn't poll in a tight loop — but keep the budget SHORT.
@@ -582,7 +582,7 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'job_id' is required")), true
+		return usageResult(fmt.Errorf("'job_id' is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_destroy PERMANENTLY deletes all resources in this stack. Call again with confirmed=true."}), true

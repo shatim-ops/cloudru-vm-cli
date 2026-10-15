@@ -171,7 +171,7 @@ const stateLockWait = 2 * time.Minute
 func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (string, bool) {
 	planID := stringArg(args, "plan_id")
 	if planID == "" {
-		return errResult(fmt.Errorf("plan_id is required")), true
+		return usageResult(fmt.Errorf("plan_id is required")), true
 	}
 	confirmed, _ := args["confirmed"].(bool)
 	if !confirmed {
@@ -357,7 +357,7 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 	sgRef := stringArg(args, "security_group")
 	ports := parseInts(args["ports"])
 	if sgRef == "" || len(ports) == 0 {
-		return errResult(fmt.Errorf("security_group and ports are required")), true
+		return usageResult(fmt.Errorf("security_group and ports are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -471,7 +471,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	id := stringArg(args, "id")
 	ip := stringArg(args, "ip_address")
 	if id == "" && ip == "" {
-		return errResult(fmt.Errorf("provide either 'id' or 'ip_address'")), true
+		return usageResult(fmt.Errorf("provide either 'id' or 'ip_address'")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

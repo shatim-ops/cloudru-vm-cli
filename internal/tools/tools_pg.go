@@ -131,7 +131,7 @@ func (s *Registry) handlePgGet(ctx context.Context, args map[string]any) (string
 		id = stringArg(args, "cluster_id") // accept both, for consistency with pg_* sub-resource tools
 	}
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (get it from pg_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (get it from pg_list)")), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -211,7 +211,7 @@ func (s *Registry) handlePgSpecs(ctx context.Context, args map[string]any) (stri
 func (s *Registry) handlePgOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'operation_id' is required")), true
+		return usageResult(fmt.Errorf("'operation_id' is required")), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -279,7 +279,7 @@ func findSpec(specs []map[string]any, specID string, cpu, ram int) map[string]an
 func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("'name' is required")), true
+		return usageResult(fmt.Errorf("'name' is required")), true
 	}
 	cli, eng, err := s.pgClientEng(ctx)
 	if err != nil {
@@ -421,7 +421,7 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 		id = stringArg(args, "cluster_id") // accept both, for consistency with pg_* sub-resource tools
 	}
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from pg_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (from pg_list)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -445,7 +445,7 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 func (s *Registry) handlePgDatabases(ctx context.Context, args map[string]any) (string, bool) {
 	cid := stringArg(args, "cluster_id")
 	if cid == "" {
-		return errResult(fmt.Errorf("'cluster_id' is required")), true
+		return usageResult(fmt.Errorf("'cluster_id' is required")), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -463,7 +463,7 @@ func (s *Registry) handlePgDbCreate(ctx context.Context, args map[string]any) (s
 	name := stringArg(args, "name")
 	owner := stringArg(args, "owner")
 	if cid == "" || name == "" || owner == "" {
-		return errResult(fmt.Errorf("'cluster_id', 'name' and 'owner' are required")), true
+		return usageResult(fmt.Errorf("'cluster_id', 'name' and 'owner' are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("pg_db_create creates database %q (owner %q) in cluster %s. Call again with confirmed=true.", name, owner, cid)}), true
@@ -490,7 +490,7 @@ func (s *Registry) handlePgDbDelete(ctx context.Context, args map[string]any) (s
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	if cid == "" || name == "" {
-		return errResult(fmt.Errorf("'cluster_id' and 'name' are required")), true
+		return usageResult(fmt.Errorf("'cluster_id' and 'name' are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("pg_db_delete PERMANENTLY drops database %q in cluster %s. Call again with confirmed=true.", name, cid)}), true
@@ -510,7 +510,7 @@ func (s *Registry) handlePgDbDelete(ctx context.Context, args map[string]any) (s
 func (s *Registry) handlePgUsers(ctx context.Context, args map[string]any) (string, bool) {
 	cid := stringArg(args, "cluster_id")
 	if cid == "" {
-		return errResult(fmt.Errorf("'cluster_id' is required")), true
+		return usageResult(fmt.Errorf("'cluster_id' is required")), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -528,7 +528,7 @@ func (s *Registry) handlePgUserCreate(ctx context.Context, args map[string]any) 
 	name := stringArg(args, "name")
 	password := stringArg(args, "password")
 	if cid == "" || name == "" || password == "" {
-		return errResult(fmt.Errorf("'cluster_id', 'name' and 'password' are required")), true
+		return usageResult(fmt.Errorf("'cluster_id', 'name' and 'password' are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("pg_user_create creates user %q in cluster %s. Call again with confirmed=true.", name, cid)}), true
@@ -550,7 +550,7 @@ func (s *Registry) handlePgUserDelete(ctx context.Context, args map[string]any) 
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	if cid == "" || name == "" {
-		return errResult(fmt.Errorf("'cluster_id' and 'name' are required")), true
+		return usageResult(fmt.Errorf("'cluster_id' and 'name' are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("pg_user_delete PERMANENTLY deletes user %q in cluster %s. Call again with confirmed=true.", name, cid)}), true
@@ -570,7 +570,7 @@ func (s *Registry) handlePgUserDelete(ctx context.Context, args map[string]any) 
 func (s *Registry) handlePgBackups(ctx context.Context, args map[string]any) (string, bool) {
 	cid := stringArg(args, "cluster_id")
 	if cid == "" {
-		return errResult(fmt.Errorf("'cluster_id' is required")), true
+		return usageResult(fmt.Errorf("'cluster_id' is required")), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -587,7 +587,7 @@ func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	if cid == "" || name == "" {
-		return errResult(fmt.Errorf("'cluster_id' and 'name' are required")), true
+		return usageResult(fmt.Errorf("'cluster_id' and 'name' are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("pg_backup_create starts a manual backup %q of cluster %s. Call again with confirmed=true.", name, cid)}), true

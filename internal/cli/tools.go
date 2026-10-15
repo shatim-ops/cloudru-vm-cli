@@ -636,6 +636,12 @@ func toolError(name, text string) error {
 		}
 	}
 	if prefix, rest, ok := strings.Cut(msg, ": "); ok && isErrorCode(prefix) {
+		switch prefix {
+		case clerrors.CodeUsage: // the tool refused its arguments; nothing reached the cloud
+			return clerrors.New(prefix, name+": "+rest, "Check the arguments: 'evo tools describe "+name+"'.")
+		case clerrors.CodeConfigInvalid: // the message names what to set
+			return clerrors.New(prefix, name+": "+rest, "")
+		}
 		switch clerrors.ExitCode(clerrors.New(prefix, "", "")) {
 		case clerrors.ExitAuth:
 			return clerrors.New(prefix, name+": "+rest,

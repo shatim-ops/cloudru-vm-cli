@@ -79,7 +79,7 @@ func billStr(item map[string]any, keys ...string) string {
 func (s *Registry) handleBillingConsumption(ctx context.Context, args map[string]any) (string, bool) {
 	start := stringArg(args, "start")
 	if start == "" {
-		return errResult(fmt.Errorf("'start' is required (YYYY-MM-DD)")), true
+		return usageResult(fmt.Errorf("'start' is required (YYYY-MM-DD)")), true
 	}
 	end := stringArg(args, "end")
 	if end == "" {
@@ -192,7 +192,7 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	}
 	endT, err := time.Parse(layout, end)
 	if err != nil {
-		return errResult(fmt.Errorf("invalid end date %q (want YYYY-MM-DD)", end)), true
+		return usageResult(fmt.Errorf("invalid end date %q (want YYYY-MM-DD)", end)), true
 	}
 	start := stringArg(args, "start")
 	if start == "" {
@@ -200,7 +200,7 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	}
 	startT, err := time.Parse(layout, start)
 	if err != nil {
-		return errResult(fmt.Errorf("invalid start date %q (want YYYY-MM-DD)", start)), true
+		return usageResult(fmt.Errorf("invalid start date %q (want YYYY-MM-DD)", start)), true
 	}
 	periodDays := int(endT.Sub(startT).Hours()/24) + 1
 	if periodDays <= 0 {

@@ -45,7 +45,7 @@ func (s *Registry) handleRedisList(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleRedisGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := firstArg(args, "cluster_id", "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'cluster_id' is required (from redis_list)")), true
+		return usageResult(fmt.Errorf("'cluster_id' is required (from redis_list)")), true
 	}
 	cli, _, err := s.redisClientEng(ctx)
 	if err != nil {
@@ -96,7 +96,7 @@ func (s *Registry) handleRedisSpecs(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("'name' is required")), true
+		return usageResult(fmt.Errorf("'name' is required")), true
 	}
 	cli, eng, err := s.redisClientEng(ctx)
 	if err != nil {
@@ -201,7 +201,7 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 func (s *Registry) handleRedisDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := firstArg(args, "cluster_id", "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'cluster_id' is required (from redis_list)")), true
+		return usageResult(fmt.Errorf("'cluster_id' is required (from redis_list)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required",
@@ -221,7 +221,7 @@ func (s *Registry) handleRedisDelete(ctx context.Context, args map[string]any) (
 func (s *Registry) handleRedisOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'operation_id' is required")), true
+		return usageResult(fmt.Errorf("'operation_id' is required")), true
 	}
 	cli, _, err := s.redisClientEng(ctx)
 	if err != nil {

@@ -41,7 +41,7 @@ func parseSince(arg string) time.Duration {
 func (s *Registry) handleMetricsHistory(ctx context.Context, args map[string]any) (string, bool) {
 	match := stringArg(args, "match")
 	if match == "" {
-		return errResult(fmt.Errorf("'match' is required (a metric name / PromQL selector, e.g. cpu_usage)")), true
+		return usageResult(fmt.Errorf("'match' is required (a metric name / PromQL selector, e.g. cpu_usage)")), true
 	}
 	cli, err := s.monitoringClient(ctx)
 	if err != nil {

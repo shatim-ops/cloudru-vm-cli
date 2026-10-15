@@ -15,6 +15,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // Client wraps a minio S3 client.
@@ -35,7 +36,10 @@ type Config struct {
 // scheme decides TLS (https → Secure).
 func New(cfg Config) (*Client, error) {
 	if cfg.AccessKey == "" || cfg.SecretKey == "" {
-		return nil, fmt.Errorf("S3 credentials not configured (set CLOUDRU_S3_ACCESS_KEY / CLOUDRU_S3_SECRET_KEY)")
+		// A configuration problem, not an API error: exit 2, like a missing
+		// Cloud.ru key.
+		return nil, clierrors.New(clierrors.CodeConfigInvalid,
+			"S3 credentials not configured (set CLOUDRU_S3_ACCESS_KEY / CLOUDRU_S3_SECRET_KEY, or the s3 section of the profile)", "")
 	}
 	endpoint := cfg.Endpoint
 	if endpoint == "" {

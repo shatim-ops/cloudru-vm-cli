@@ -105,7 +105,7 @@ func (s *Registry) handleKafkaList(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleKafkaGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := firstArg(args, "cluster_id", "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'cluster_id' is required (from kafka_list)")), true
+		return usageResult(fmt.Errorf("'cluster_id' is required (from kafka_list)")), true
 	}
 	cli, _, err := s.kafkaClientEng(ctx)
 	if err != nil {
@@ -156,7 +156,7 @@ func (s *Registry) handleKafkaSpecs(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("'name' is required (2-63 chars)")), true
+		return usageResult(fmt.Errorf("'name' is required (2-63 chars)")), true
 	}
 	cli, eng, err := s.kafkaClientEng(ctx)
 	if err != nil {
@@ -243,7 +243,7 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 func (s *Registry) handleKafkaDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := firstArg(args, "cluster_id", "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'cluster_id' is required (from kafka_list)")), true
+		return usageResult(fmt.Errorf("'cluster_id' is required (from kafka_list)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required",
@@ -263,7 +263,7 @@ func (s *Registry) handleKafkaDelete(ctx context.Context, args map[string]any) (
 func (s *Registry) handleKafkaOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'operation_id' is required")), true
+		return usageResult(fmt.Errorf("'operation_id' is required")), true
 	}
 	cli, _, err := s.kafkaClientEng(ctx)
 	if err != nil {

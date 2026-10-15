@@ -76,11 +76,11 @@ func kubectlReadOnly(fields []string) bool {
 func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (string, bool) {
 	clusterID := stringArg(args, "cluster_id")
 	if clusterID == "" {
-		return errResult(fmt.Errorf("cluster_id is required")), true
+		return usageResult(fmt.Errorf("cluster_id is required")), true
 	}
 	raw := stringArg(args, "args")
 	if raw == "" {
-		return errResult(fmt.Errorf("'args' is required, e.g. \"get pods -A\"")), true
+		return usageResult(fmt.Errorf("'args' is required, e.g. \"get pods -A\"")), true
 	}
 	fields := strings.Fields(raw)
 	verb := ""
@@ -111,7 +111,7 @@ func (s *Registry) handleK8sApply(ctx context.Context, args map[string]any) (str
 	clusterID := stringArg(args, "cluster_id")
 	manifest := stringArg(args, "manifest")
 	if clusterID == "" || manifest == "" {
-		return errResult(fmt.Errorf("cluster_id and manifest are required")), true
+		return usageResult(fmt.Errorf("cluster_id and manifest are required")), true
 	}
 	// namespace goes to kubectl as an argument: a value starting with '-'
 	// would be read as another flag (as for k8s_helm).
@@ -145,7 +145,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	clusterID := stringArg(args, "cluster_id")
 	action := strings.ToLower(stringArg(args, "action"))
 	if clusterID == "" || action == "" {
-		return errResult(fmt.Errorf("cluster_id and action are required (install|upgrade|uninstall|list|status)")), true
+		return usageResult(fmt.Errorf("cluster_id and action are required (install|upgrade|uninstall|list|status)")), true
 	}
 	// release and chart go to helm as positional arguments: a value starting
 	// with '-' would be parsed as a flag (--post-renderer runs a program on
