@@ -17,7 +17,12 @@ on:
       - "scripts/cloudru-specs.py"
       - "internal/provision/**"
       - "internal/**/client.go"
+      - "internal/mk8s/**"
       - "internal/auth/iam.go"
+      # Часть запросов собирают обработчики MCP (тела redis/dns, admin,
+      # billing) — опись ссылается на эти файлы.
+      - "internal/tools/**"
+      - "internal/cli/configure.go"
 
 concurrency:
   group: api-contract-${{ github.ref }}
