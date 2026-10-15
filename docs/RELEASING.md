@@ -22,6 +22,9 @@
    sha256sum --ignore-missing -c checksums.txt
    ```
 
+   С cosign v2 (v2.4+) добавьте `--new-bundle-format`: бандл подписи — sigstore
+   v0.3, его пишет cosign v3 из `release.yml`.
+
    `v1.0.0-rc.1` и `rc.2` выпущены до переименования репозитория: их identity —
    `shatim-ops/cloudru-vm-cli`.
 

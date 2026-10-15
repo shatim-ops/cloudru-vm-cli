@@ -43,7 +43,7 @@
 **macOS и Linux:**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | CLOUDRU_VM_VERSION=v1.0.0-rc.3 sh
+curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | CLOUDRU_VM_VERSION=v1.0.0-rc.4 sh
 evo version
 ```
 
