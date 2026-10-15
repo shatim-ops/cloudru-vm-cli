@@ -7,6 +7,10 @@
 1. `main` зелёный в CI (в том числе `TestCommandsDoc`: `docs/commands.md` совпадает с бинарём); локально `goreleaser check` и, по желанию,
    `goreleaser release --snapshot --clean --skip=sign` — в `dist/` 6 архивов (в каждом `evo` и alias `cloudru-vm` до v1.1) и `checksums.txt`.
 2. `git tag -a v1.2.3 -m v1.2.3 && git push origin v1.2.3` — тег ставится на коммит в `main`.
+   Если тег не запушить (облачная сессия пушит только свои ветки): Actions →
+   **tag** → Run workflow с `tag` и полным `sha` коммита в `main`
+   (`gh workflow run tag.yml -f tag=v1.2.3 -f sha=…`). Он ставит тег и сам
+   запускает `release.yml` на нём; identity подписи та же (`release.yml@refs/tags/…`).
 3. `release.yml` гоняет весь `ci.yml`, затем goreleaser: архивы, `checksums.txt`,
    подписи cosign keyless (`*.sigstore.json`), GitHub Release. `-rc.N` публикуется как pre-release.
 4. Проверить подпись скачанного `checksums.txt` (пример для `v1.2.3`):
