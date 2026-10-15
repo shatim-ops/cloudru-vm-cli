@@ -251,7 +251,7 @@ func FindResourcefulJobs(name, excludeID string) []OrphanRef {
 // already in the cloud are dropped first (see redactSpent).
 func (j *Job) Save() error {
 	dir := jobsDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil { // job files hold secret values of the manifest
+	if err := config.MkdirPrivate(dir); err != nil { // job files hold secret values of the manifest
 		return err
 	}
 	// Directories made by older versions were 0755: job names and

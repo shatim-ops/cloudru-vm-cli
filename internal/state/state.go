@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
 	clierr "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
@@ -72,7 +73,7 @@ func Read(path string) (*File, error) {
 // Creates parent directory if needed.
 func Write(path string, f *File) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil { // .cloudru-vm/ also holds the SSH key
+	if err := config.MkdirPrivate(dir); err != nil { // .cloudru-vm/ also holds the SSH key
 		return clierr.Wrap(
 			clierr.CodeStateCorrupted,
 			"failed to create state directory",
