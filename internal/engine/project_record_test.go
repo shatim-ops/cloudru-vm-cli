@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	stderrors "errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,5 +115,28 @@ func TestDeploy_ExistingDeploymentInOtherProject(t *testing.T) {
 	eng.Config.ProjectID = projectA
 	if err := eng.Deploy(context.Background(), opts); err != nil {
 		t.Fatalf("Deploy with the recorded project: %v", err)
+	}
+}
+
+// The previews name the project: with a key that sees several projects the
+// person approving must see which one is changed (QA P6).
+func TestPreviews_NameTheProject(t *testing.T) {
+	eng, _, opts, stdout, _ := newDeployForConfirm(t)
+	opts.DryRun = true
+	if err := eng.Deploy(context.Background(), opts); err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	if want := "project:   " + eng.Config.ProjectID; !strings.Contains(stdout.String(), want) {
+		t.Errorf("deploy preview lacks %q:\n%s", want, stdout.String())
+	}
+
+	rec := runningRecord()
+	rec.ProjectID = projectA
+	p := destroyPreview(&rec, &state.File{}, nil, projectA)
+	if len(p.Lines) == 0 || p.Lines[0] != "project:   "+projectA {
+		t.Errorf("destroy preview lines = %q, want the project first", p.Lines)
+	}
+	if d, _ := p.Details.(map[string]any); d["project_id"] != projectA {
+		t.Errorf("destroy preview details = %v, want project_id", p.Details)
 	}
 }

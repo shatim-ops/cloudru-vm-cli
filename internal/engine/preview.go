@@ -82,6 +82,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 	}
 
 	lines := []string{
+		"project:   " + projectText(req.ProjectID),
 		"flavor:    " + flavor,
 		"zone:      " + refText(vm.Zone),
 		"image:     " + refText(vm.Image),
@@ -108,6 +109,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		Summary: fmt.Sprintf("create VM %s (%s) in %s", vm.Name, vm.Flavor.Name, vm.Zone.Name),
 		Lines:   lines,
 		Details: map[string]any{
+			"project_id":     req.ProjectID,
 			"vm":             vm,
 			"floating_ip":    true,
 			"subnet_id":      network.SubnetID,
@@ -121,8 +123,9 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 }
 
 // redeployPreview describes an update of an already running VM.
-func redeployPreview(rec *state.DeploymentRecord) confirm.Preview {
+func redeployPreview(rec *state.DeploymentRecord, project string) confirm.Preview {
 	lines := []string{
+		"project:   " + projectText(project),
 		"upload the compose file to the existing VM and run 'docker compose up -d'",
 		"no new resources are created",
 	}
@@ -134,7 +137,7 @@ func redeployPreview(rec *state.DeploymentRecord) confirm.Preview {
 		Action:  "deploy",
 		Summary: fmt.Sprintf("update VM %s (%s)", rec.VMID, rec.VMIP),
 		Lines:   lines,
-		Details: map[string]any{"vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": []string{}},
+		Details: map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": []string{}},
 	}
 }
 
@@ -193,11 +196,14 @@ func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 }
 
 // destroyPreview lists what destroy deletes and what it leaves behind.
-func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string) confirm.Preview {
+func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, project string) confirm.Preview {
 	res := []destroyResource{
 		{Type: "vm", ID: rec.VMID, Address: rec.VMIP, Action: "delete", Note: "all data on its disks is lost"},
 	}
-	lines := []string{fmt.Sprintf("delete VM %s and all data on its disks", rec.VMID)}
+	lines := []string{
+		"project:   " + projectText(project),
+		fmt.Sprintf("delete VM %s and all data on its disks", rec.VMID),
+	}
 	if rec.VMIP != "" || rec.FloatingIPID != "" {
 		// The public address of a deployed VM is a floating IP; destroy
 		// releases it after the VM (by floating_ip_id, else by address).
@@ -218,8 +224,17 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 		Action:  "destroy",
 		Summary: summary,
 		Lines:   lines,
-		Details: map[string]any{"resources": res},
+		Details: map[string]any{"project_id": project, "resources": res},
 	}
+}
+
+// projectText names the project in a preview: with a key that sees several
+// projects, the person approving must see which one is changed (QA P6).
+func projectText(id string) string {
+	if id == "" {
+		return "(not set)"
+	}
+	return id
 }
 
 func refText(r deployplan.RefSpec) string {

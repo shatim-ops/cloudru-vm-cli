@@ -29,15 +29,18 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 		tool string
 		args map[string]any
 		want string // what the preview must name
+		// resolvesProject: the preview builds an engine once, without a
+		// token, only to name the project the VM goes to (QA P6).
+		resolvesProject bool
 	}{
-		{"deploy", map[string]any{"flavor": "lowcost10-2-4"}, "lowcost10-2-4"},
-		{"provision", map[string]any{"name": "vm-a", "no_public_ip": true}, "vm-a"},
-		{"ca_start", map[string]any{"name": "app-1"}, "app-1"},
-		{"ca_stop", map[string]any{"name": "app-1"}, "app-1"},
-		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru"},
-		{"cert_import", map[string]any{"name": "byo", "server_certificate": "Y2VydA==", "private_key": "a2V5"}, "byo"},
-		{"cert_renew", map[string]any{"certificate_id": "cert-1"}, "cert-1"},
-		{"s3_put", map[string]any{"bucket": "b", "key": "k.txt", "content": "hello"}, "s3://b/k.txt"},
+		{"deploy", map[string]any{"flavor": "lowcost10-2-4"}, "lowcost10-2-4", true},
+		{"provision", map[string]any{"name": "vm-a", "no_public_ip": true}, "vm-a", true},
+		{"ca_start", map[string]any{"name": "app-1"}, "app-1", false},
+		{"ca_stop", map[string]any{"name": "app-1"}, "app-1", false},
+		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", false},
+		{"cert_import", map[string]any{"name": "byo", "server_certificate": "Y2VydA==", "private_key": "a2V5"}, "byo", false},
+		{"cert_renew", map[string]any{"certificate_id": "cert-1"}, "cert-1", false},
+		{"s3_put", map[string]any{"bucket": "b", "key": "k.txt", "content": "hello"}, "s3://b/k.txt", false},
 	}
 	for _, c := range cases {
 		t.Run(c.tool, func(t *testing.T) {
@@ -59,8 +62,12 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 			if !strings.Contains(out, c.want) {
 				t.Errorf("preview does not name %q: %s", c.want, out)
 			}
-			if engines != 0 {
-				t.Fatalf("preview built an engine (%d times): it must not reach the cloud", engines)
+			// Two calls above (h and callTool).
+			if want := map[bool]int{false: 0, true: 2}[c.resolvesProject]; engines != want {
+				t.Fatalf("preview built an engine %d times, want %d: it must not reach the cloud", engines, want)
+			}
+			if c.resolvesProject && !strings.Contains(out, "project_id") {
+				t.Errorf("preview does not name the project: %s", out)
 			}
 
 			confirmed := map[string]any{"confirmed": true}

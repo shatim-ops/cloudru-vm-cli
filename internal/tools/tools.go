@@ -1366,9 +1366,10 @@ func (s *Registry) registerTools() {
 func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (string, bool) {
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":      "confirmation_required",
-			"message":     "deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the user's approval, then call again with confirmed=true.",
-			"will_deploy": previewArgs(args, "compose_file", "flavor", "region", "project_id", "image_id", "disk_size", "force"),
+			"status":  "confirmation_required",
+			"message": "deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the user's approval, then call again with confirmed=true.",
+			"will_deploy": withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
+				firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx))),
 		}), true
 	}
 	overrides := map[string]any{}
@@ -1422,7 +1423,8 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (string, bool) {
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		noPublicIP, _ := args["no_public_ip"].(bool)
-		will := previewArgs(args, "name", "flavor", "region", "project_id", "image_id", "disk_size", "subnet_id")
+		will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
+			firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
 		will["public_ip"] = !noPublicIP
 		return toJSON(map[string]any{
 			"status":      "confirmation_required",
@@ -1951,8 +1953,9 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 	// ungated — now requires the same explicit confirmation as targeted deletes.
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "destroy permanently deletes the current deployment VM and all its data (irreversible). Get the user's approval, then call again with confirmed=true.",
+			"status":     "confirmation_required",
+			"message":    "destroy permanently deletes the current deployment VM and all its data (irreversible). Get the user's approval, then call again with confirmed=true.",
+			"project_id": s.deploymentProject(),
 		}), true
 	}
 	eng, err := s.newEngine(nil)
@@ -1973,8 +1976,9 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmID, name string) (string, bool) {
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "deleting a specific VM requires confirmed=true. Get the user's approval, then call again with confirmed=true.",
+			"status":     "confirmation_required",
+			"message":    "deleting a specific VM requires confirmed=true. Get the user's approval, then call again with confirmed=true.",
+			"project_id": s.projectID(ctx),
 		}), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
@@ -2264,6 +2268,32 @@ func intArg(args map[string]any, key string, def int) int {
 // previewArgs echoes the given arguments for a confirmation preview; an
 // argument that was not passed is shown as coming from the defaults
 // (env/config or auto).
+// withProject names the project in a preview, resolved as the call will
+// resolve it: with a key that sees several projects the user must see where
+// the VM is created (QA P6).
+func withProject(will map[string]any, project string) map[string]any {
+	if project == "" {
+		project = "(not set: the call will fail)"
+	}
+	will["project_id"] = project
+	return will
+}
+
+// deploymentProject is the project of the local deployment destroy would
+// delete: the one in its state record, else the configured one.
+func (s *Registry) deploymentProject() string {
+	eng, err := s.newEngine(nil)
+	if err != nil || eng == nil {
+		return ""
+	}
+	if sf, e := state.Read(state.DefaultPath(eng.StateDir)); e == nil {
+		if a := sf.ActiveDeployment(); a != nil && a.ProjectID != "" {
+			return a.ProjectID
+		}
+	}
+	return eng.Config.ProjectID
+}
+
 func previewArgs(args map[string]any, keys ...string) map[string]any {
 	out := make(map[string]any, len(keys))
 	for _, k := range keys {
