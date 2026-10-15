@@ -3339,7 +3339,7 @@ cloudru-vm vm create <name> [flags]
 ### Options
 
 ```
-      --disk-size int      Boot disk size in GB (default: 10).
+      --disk-size int      Boot disk size in GB (default: 10, raised to the image's min_disk).
       --flavor string      VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier).
   -h, --help               help for create
       --image-id string    Boot image UUID (see list_images).
