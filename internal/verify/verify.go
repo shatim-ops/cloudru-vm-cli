@@ -18,9 +18,15 @@ type ProbeResult struct {
 	Healthy    bool
 	Latency    time.Duration
 	Error      string // non-empty if probe failed
+	// Protocol is how the port answered: "http", "https", or "tcp" for a
+	// service that accepts connections but does not speak HTTP (a database,
+	// a cache). Empty when nothing answered.
+	Protocol string
 }
 
-// Check performs HTTP health probes against the given IP on each port.
+// Check probes each port of ip: a TCP connect, then HTTP (or HTTPS). An HTTP
+// answer is healthy for 2xx/3xx; a port that accepts connections but does
+// not speak HTTP is healthy as "tcp"; a closed or hanging port is not.
 // Returns one ProbeResult per port. Failures are recorded but not returned as errors
 // (health checks are non-blocking warnings).
 func Check(ctx context.Context, ip string, ports []int, timeout time.Duration) []ProbeResult {
@@ -36,6 +42,34 @@ func Check(ctx context.Context, ip string, ports []int, timeout time.Duration) [
 }
 
 func probe(ctx context.Context, ip string, port int, timeout time.Duration) ProbeResult {
+	// Is anything listening? A closed port is unhealthy whatever it serves.
+	start := time.Now()
+	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
+	if err != nil {
+		return ProbeResult{Port: port, Latency: time.Since(start), Error: err.Error()}
+	}
+	tcpLatency := time.Since(start)
+	_ = conn.Close()
+
+	result, err := httpProbe(ctx, ip, port, timeout)
+	if err == nil {
+		return result
+	}
+	// The port accepts connections but does not answer HTTP or HTTPS
+	// (Postgres, Redis, MySQL close or answer in their own protocol): the
+	// service is up. A timeout is not that: an HTTP service that hangs
+	// stays unhealthy.
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() || ctx.Err() != nil {
+		return result
+	}
+	return ProbeResult{Port: port, Healthy: true, Latency: tcpLatency, Protocol: "tcp"}
+}
+
+// httpProbe asks the port over HTTP, then over HTTPS when that is what it
+// seems to want. The error is that of the plain HTTP attempt when neither
+// produced an HTTP response.
+func httpProbe(ctx context.Context, ip string, port int, timeout time.Duration) (ProbeResult, error) {
 	result, err := get(ctx, "http", ip, port, timeout)
 	// An HTTPS-only port answers plain HTTP with 400 (nginx, Go) or a TLS
 	// alert that is not HTTP at all. Ask it over TLS; keep the plain result
@@ -45,10 +79,10 @@ func probe(ctx context.Context, ip string, port int, timeout time.Duration) Prob
 	timedOut := errors.As(err, &netErr) && netErr.Timeout()
 	if (err != nil && !timedOut && ctx.Err() == nil) || result.StatusCode == http.StatusBadRequest {
 		if tlsResult, tlsErr := get(ctx, "https", ip, port, timeout); tlsErr == nil {
-			return tlsResult
+			return tlsResult, nil
 		}
 	}
-	return result
+	return result, err
 }
 
 // get probes scheme://ip:port/ once. Redirects are not followed: a 3xx is
@@ -89,6 +123,7 @@ func get(ctx context.Context, scheme, ip string, port int, timeout time.Duration
 
 	result.StatusCode = resp.StatusCode
 	result.Healthy = resp.StatusCode >= 200 && resp.StatusCode < 400
+	result.Protocol = scheme
 
 	return result, nil
 }
