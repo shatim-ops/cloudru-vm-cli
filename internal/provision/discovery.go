@@ -7,55 +7,82 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
-// listProjectScoped fetches a project-scoped list endpoint and decodes either a
-// paginated {items:[...]} envelope or a bare JSON array. Cloud.ru is
-// inconsistent about which shape it returns, so we accept both (matching the
-// Python reference implementation).
+// listPageSize is the documented maximum of limit on compute lists
+// (openapi-v3: default 50, maximum 100); listMaxPages bounds the walk.
+const (
+	listPageSize = 100
+	listMaxPages = 100
+)
+
+// listProjectScoped fetches every page of a project-scoped list endpoint.
 func listProjectScoped[T any](a *CloudRuAdapter, ctx context.Context, path, projectID string) ([]*T, error) {
-	full := path
+	q := url.Values{}
 	if projectID != "" {
-		sep := "?"
-		if strings.Contains(path, "?") {
-			sep = "&"
+		q.Set("project_id", projectID)
+	}
+	return listAll[T](a, ctx, path, q, true)
+}
+
+// listAll walks a compute list by offset with limit=100 until total
+// (sending limit=200, as before, is over the documented maximum and left
+// projects with more than a page of subnets, floating IPs or images with a
+// partial list — docs/internal/api-contract.md §4.5, §4.7). It decodes the
+// documented {items,total} envelope; a bare JSON array is taken as the
+// whole list. paged=false sends neither limit nor offset (disk-types has
+// no such parameters).
+func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.Values, paged bool) ([]*T, error) {
+	var out []*T
+	offset := 0
+	for range listMaxPages {
+		pq := url.Values{}
+		for k, v := range q {
+			pq[k] = v
 		}
-		full = fmt.Sprintf("%s%sproject_id=%s&limit=200", path, sep, url.QueryEscape(projectID))
-	}
-
-	resp, err := a.doWithRetry(ctx, http.MethodGet, full, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to read response for "+path, "API returned unexpected format", err)
-	}
-
-	var page paginatedResponse[T]
-	if err := json.Unmarshal(body, &page); err == nil && len(page.Items) > 0 {
-		out := make([]*T, len(page.Items))
-		for i := range page.Items {
-			out[i] = &page.Items[i]
+		if paged {
+			pq.Set("limit", fmt.Sprint(listPageSize))
+			if offset > 0 {
+				pq.Set("offset", fmt.Sprint(offset))
+			}
 		}
-		return out, nil
-	}
-
-	var arr []T
-	if err := json.Unmarshal(body, &arr); err == nil {
-		out := make([]*T, len(arr))
-		for i := range arr {
-			out[i] = &arr[i]
+		full := path
+		if enc := pq.Encode(); enc != "" {
+			full += "?" + enc
 		}
-		return out, nil
-	}
+		resp, err := a.doWithRetry(ctx, http.MethodGet, full, nil)
+		if err != nil {
+			return nil, err
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxListBody))
+		resp.Body.Close()
+		if err != nil {
+			return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to read response for "+path, "API returned unexpected format", err)
+		}
 
-	return nil, clierrors.New(clierrors.CodeAPIError, "failed to decode list response for "+path, "API returned unexpected format — run with --verbose to debug")
+		var page paginatedResponse[T]
+		if err := json.Unmarshal(body, &page); err == nil && page.Items != nil {
+			for i := range page.Items {
+				out = append(out, &page.Items[i])
+			}
+			offset += len(page.Items)
+			if !paged || len(page.Items) == 0 || offset >= page.Total {
+				return out, nil
+			}
+			continue
+		}
+		var arr []T
+		if err := json.Unmarshal(body, &arr); err == nil {
+			for i := range arr {
+				out = append(out, &arr[i])
+			}
+			return out, nil
+		}
+		return nil, clierrors.New(clierrors.CodeAPIError, "failed to decode list response for "+path, "API returned unexpected format — run with --verbose to debug")
+	}
+	return out, nil
 }
 
 // ListVMsInProject lists VMs scoped to a project (the /vms endpoint requires
@@ -156,7 +183,11 @@ func (a *CloudRuAdapter) DeleteSecurityGroupRule(ctx context.Context, sgID, rule
 
 // ListDiskTypes lists disk types via GET /api/v1/disk-types.
 func (a *CloudRuAdapter) ListDiskTypes(ctx context.Context, projectID string) ([]*DiskType, error) {
-	return listProjectScoped[DiskType](a, ctx, "/api/v1/disk-types", projectID)
+	q := url.Values{}
+	if projectID != "" {
+		q.Set("project_id", projectID)
+	}
+	return listAll[DiskType](a, ctx, "/api/v1/disk-types", q, false)
 }
 
 // ListSubnets lists subnets via GET /api/v1/subnets.

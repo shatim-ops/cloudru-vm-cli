@@ -2,6 +2,7 @@ package provision
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,41 @@ type VM struct {
 	CreatedAt  time.Time `json:"created_time"`
 	// The /api/v1/vms list returns the zone nested, not as a flat id.
 	AvailabilityZone *ZoneRef `json:"availability_zone,omitempty"`
+}
+
+// UnmarshalJSON also reads the documented nested fields of GET /api/v1/vms
+// (openapi-v3): flavor{id}, image{id} and the public address on the
+// interfaces — interfaces[].floating_ip.ip_address, or ip_address of a
+// direct_ip interface. The flat flavor_id/image_id/public_ip/floating_ip are
+// not in the spec and came back empty (BACKLOG [04], api-contract §4.4);
+// they are kept for answers that still carry them.
+func (v *VM) UnmarshalJSON(b []byte) error {
+	type plain VM
+	var r struct {
+		plain
+		Flavor     *ZoneRef      `json:"flavor"`
+		Image      *ZoneRef      `json:"image"`
+		Interfaces []VMInterface `json:"interfaces"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	*v = VM(r.plain)
+	if v.FlavorID == "" && r.Flavor != nil {
+		v.FlavorID = r.Flavor.ID
+	}
+	if v.ImageID == "" && r.Image != nil {
+		v.ImageID = r.Image.ID
+	}
+	for _, in := range r.Interfaces {
+		if v.FloatingIP == "" && in.FloatingIP != nil && in.FloatingIP.IPAddress != "" {
+			v.FloatingIP = in.FloatingIP.IPAddress
+		}
+		if v.PublicIP == "" && in.Type == "direct_ip" && in.IPAddress != "" {
+			v.PublicIP = in.IPAddress
+		}
+	}
+	return nil
 }
 
 // ZoneRef is a nested {id,name} availability-zone reference.
@@ -89,6 +125,26 @@ type Subnet struct {
 	VPCID              string `json:"vpc_id,omitempty"`
 }
 
+// UnmarshalJSON reads the zone from the documented nested
+// availability_zone{id,name}: the flat availability_zone_id is not in the
+// spec and was always empty, so subnets were matched to zones by name only
+// (api-contract §4.3).
+func (s *Subnet) UnmarshalJSON(b []byte) error {
+	type plain Subnet
+	var r struct {
+		plain
+		AvailabilityZone *ZoneRef `json:"availability_zone"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	*s = Subnet(r.plain)
+	if s.AvailabilityZoneID == "" && r.AvailabilityZone != nil {
+		s.AvailabilityZoneID = r.AvailabilityZone.ID
+	}
+	return nil
+}
+
 // SecurityGroup represents a Cloud.ru security group (GET /api/v1/security-groups).
 // The documented list response has no rules, only their counts: read them
 // with ListSecurityGroupRules.
@@ -97,6 +153,24 @@ type SecurityGroup struct {
 	Name               string   `json:"name"`
 	AvailabilityZoneID string   `json:"availability_zone_id,omitempty"`
 	Rules              []SGRule `json:"rules,omitempty"`
+}
+
+// UnmarshalJSON reads the zone from the nested availability_zone{id}, as
+// for Subnet.
+func (g *SecurityGroup) UnmarshalJSON(b []byte) error {
+	type plain SecurityGroup
+	var r struct {
+		plain
+		AvailabilityZone *ZoneRef `json:"availability_zone"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	*g = SecurityGroup(r.plain)
+	if g.AvailabilityZoneID == "" && r.AvailabilityZone != nil {
+		g.AvailabilityZoneID = r.AvailabilityZone.ID
+	}
+	return nil
 }
 
 // SGRule is a security-group rule. Used both for reading existing rules and for
@@ -141,8 +215,30 @@ type Flavor struct {
 type Image struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
-	OS     string `json:"os"`
-	Status string `json:"status"` // active, creating, deleted
+	OS     string `json:"os"`     // not in the spec; usually empty
+	Status string `json:"status"` // not in the spec; usually empty
+	// AvailZones is the documented build state per zone
+	// (availability_zones[].state, .enabled; api-contract §4.6).
+	AvailZones []ImageAvailZone `json:"availability_zones,omitempty"`
+}
+
+// Usable reports whether a VM can be created from the image: built and
+// enabled in at least one zone, by the per-zone state when the answer has
+// it, else by the legacy top-level status.
+func (i *Image) Usable() bool {
+	if len(i.AvailZones) > 0 {
+		for _, az := range i.AvailZones {
+			if az.State == "created" && (az.Enabled == nil || *az.Enabled) {
+				return true
+			}
+		}
+		return false
+	}
+	switch strings.ToLower(i.Status) {
+	case "deleted", "error", "creating":
+		return false
+	}
+	return true
 }
 
 // ImageDetail contains full image info including required metadata fields.
@@ -174,7 +270,9 @@ type ImageAvailZone struct {
 	Size                 int64  `json:"size"`
 	Uploaded             bool   `json:"uploaded"`
 	Default              bool   `json:"default"`
-	Enabled              bool   `json:"enabled"`
+	// Enabled is nil when the answer has no such field: then the image is
+	// not dropped for it.
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Ready reports whether the image finished building in at least one zone.

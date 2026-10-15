@@ -157,20 +157,11 @@ func (a *CloudRuAdapter) ListFlavors(ctx context.Context) ([]*Flavor, error) {
 	}
 	a.mu.RUnlock()
 
-	resp, err := a.doWithRetry(ctx, http.MethodGet, "/api/v1/flavors", nil)
+	// Every page: the default page is 50, and a flavor named in .evo.yaml
+	// past it was "not found" (api-contract §4.7).
+	flavors, err := listAll[Flavor](a, ctx, "/api/v1/flavors", url.Values{}, true)
 	if err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var page paginatedResponse[Flavor]
-	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode flavors response", "API returned unexpected format", err)
-	}
-
-	flavors := make([]*Flavor, len(page.Items))
-	for i := range page.Items {
-		flavors[i] = &page.Items[i]
 	}
 
 	a.mu.Lock()
@@ -218,11 +209,11 @@ func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*Availabi
 	return nil, clierrors.New(clierrors.CodeAPIError, "failed to decode availability zones response", "API returned unexpected format — run with --verbose to debug")
 }
 
-// ListImages lists boot images via GET /api/v1/images. A bare call returns only
-// the shared catalogue, and only its first page — images built inside a project
+// ListImages lists boot images via GET /api/v1/images, every page. A bare
+// call returns only the shared catalogue — images built inside a project
 // are invisible there. ListImagesInProject exists for those.
 func (a *CloudRuAdapter) ListImages(ctx context.Context) ([]*Image, error) {
-	return a.listImages(ctx, "/api/v1/images?limit=200")
+	return listAll[Image](a, ctx, "/api/v1/images", url.Values{}, true)
 }
 
 // ListImagesInProject returns the images owned by one project — the ones
@@ -231,41 +222,7 @@ func (a *CloudRuAdapter) ListImagesInProject(ctx context.Context, projectID stri
 	if projectID == "" {
 		return nil, nil
 	}
-	return a.listImages(ctx, "/api/v1/images?limit=200&project_id="+url.QueryEscape(projectID))
-}
-
-func (a *CloudRuAdapter) listImages(ctx context.Context, path string) ([]*Image, error) {
-	resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to read images response", "API returned unexpected format", err)
-	}
-
-	// Try paginated response first, then plain array.
-	var page paginatedResponse[Image]
-	if err := json.Unmarshal(body, &page); err == nil && len(page.Items) > 0 {
-		result := make([]*Image, len(page.Items))
-		for i := range page.Items {
-			result[i] = &page.Items[i]
-		}
-		return result, nil
-	}
-
-	var images []Image
-	if err := json.Unmarshal(body, &images); err == nil {
-		result := make([]*Image, len(images))
-		for i := range images {
-			result[i] = &images[i]
-		}
-		return result, nil
-	}
-
-	return nil, clierrors.New(clierrors.CodeAPIError, "failed to decode images response", "API returned unexpected format — run with --verbose to debug")
+	return listAll[Image](a, ctx, "/api/v1/images", url.Values{"project_id": {projectID}}, true)
 }
 
 // GetImage retrieves image details including metadata fields via GET /api/v1/images/{id}.
