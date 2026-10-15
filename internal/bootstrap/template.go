@@ -5,7 +5,7 @@ import (
 	_ "embed"
 	"text/template"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 //go:embed cloudinit.yaml.tmpl

@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/config"
 )
 
 func daclProtected(t *testing.T, path string) bool {

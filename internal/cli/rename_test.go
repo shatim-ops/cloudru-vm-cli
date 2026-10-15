@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 func TestIsLegacyAlias(t *testing.T) {

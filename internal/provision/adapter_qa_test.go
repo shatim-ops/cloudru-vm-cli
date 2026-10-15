@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // dropFirst answers the first n requests by closing the connection without

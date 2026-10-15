@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/bootstrap"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/bootstrap"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 func newDeployOpts(t *testing.T, dir string) DeployOptions {

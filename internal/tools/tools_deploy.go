@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/deployplan"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/pricing"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/pricing"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // authedEngine builds an engine and sets a fresh bearer token on its cloud

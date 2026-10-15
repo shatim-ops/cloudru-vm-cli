@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 func setupTestServer(handler http.HandlerFunc) (*httptest.Server, *CloudRuAdapter) {

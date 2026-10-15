@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // commandPaths lists every command of the CLI as its argument path

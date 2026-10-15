@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
-	clierr "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	clierr "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // errLocked is what lockFile returns when another holder has the lock.

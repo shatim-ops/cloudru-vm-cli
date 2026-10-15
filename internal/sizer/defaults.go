@@ -3,7 +3,7 @@ package sizer
 import (
 	"strings"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/compose"
+	"github.com/shatim-ops/evo-cli/internal/compose"
 )
 
 // ImageDefaults maps well-known container images to estimated resource needs.

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/deploy"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // LogsOptions holds parameters for the logs command.

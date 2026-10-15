@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/deployplan"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/sgrules"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // costNote goes next to every price shown before an operation: Cloud.ru has

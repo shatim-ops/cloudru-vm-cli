@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // имитацияОблака подменяет только выборку образов. Интерфейс CloudAPI широкий,

@@ -11,7 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // Config holds all configuration values for evo.

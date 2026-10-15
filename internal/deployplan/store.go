@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/pricing"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/pricing"
 )
 
 // planTTL bounds how long a plan_id stays valid between plan and apply.

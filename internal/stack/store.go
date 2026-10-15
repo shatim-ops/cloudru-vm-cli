@@ -25,7 +25,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/config"
 )
 
 // --- Manifest (desired state) ---

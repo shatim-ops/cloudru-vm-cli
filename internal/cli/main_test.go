@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 func TestHandleError_WrappedCLIErrorKeepsHint(t *testing.T) {

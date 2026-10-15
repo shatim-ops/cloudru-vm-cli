@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/artifact"
+	"github.com/shatim-ops/evo-cli/internal/artifact"
 )
 
 // arClient builds an authenticated Artifact Registry client.

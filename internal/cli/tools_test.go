@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // execCLI runs the CLI with its output captured and returns stdout, stderr

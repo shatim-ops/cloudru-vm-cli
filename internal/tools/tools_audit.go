@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/audit"
+	"github.com/shatim-ops/evo-cli/internal/audit"
 )
 
 // auditClient builds an authenticated Audit Logging client.

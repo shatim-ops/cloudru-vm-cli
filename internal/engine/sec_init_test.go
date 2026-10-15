@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // Zone and image names come from the API and go into the YAML init writes.

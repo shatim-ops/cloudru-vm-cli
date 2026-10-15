@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // The zero Timings must keep the production waits unchanged.

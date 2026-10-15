@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // plan_id comes from the MCP client (over HTTP: from the network) and was

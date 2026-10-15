@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // A hand-edited or broken state.json must not panic destroy, and destroy

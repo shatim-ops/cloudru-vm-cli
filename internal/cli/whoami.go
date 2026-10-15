@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
 func newWhoamiCmd() *cobra.Command {

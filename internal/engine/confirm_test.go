@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // newDeployForConfirm returns an engine with separate stdout/stderr and a

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/s3"
+	"github.com/shatim-ops/evo-cli/internal/s3"
 )
 
 // s3Client builds an S3 client from CLOUDRU_S3_ENDPOINT / _ACCESS_KEY /

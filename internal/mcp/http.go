@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // Streamable HTTP transport (MCP 2025-03-26 / 2025-06-18):

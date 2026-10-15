@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	clog "github.com/shatim-ops/cloudru-vm-cli/internal/log"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/mcp"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	clog "github.com/shatim-ops/evo-cli/internal/log"
+	"github.com/shatim-ops/evo-cli/internal/mcp"
 )
 
 // envBearerToken holds the token clients must present in HTTP mode. It is

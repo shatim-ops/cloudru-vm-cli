@@ -1,7 +1,7 @@
 // Command evo is the Cloud.ru infrastructure CLI and MCP server; the code is in internal/cli.
 package main
 
-import "github.com/shatim-ops/cloudru-vm-cli/internal/cli"
+import "github.com/shatim-ops/evo-cli/internal/cli"
 
 // Build identity, set by the release build:
 //

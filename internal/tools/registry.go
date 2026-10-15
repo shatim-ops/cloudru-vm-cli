@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 )
 
 // EngineFactory builds an *engine.Engine from a set of config overrides.

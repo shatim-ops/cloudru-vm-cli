@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // runLines feeds the lines to the stdio transport and returns the decoded

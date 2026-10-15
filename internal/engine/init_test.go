@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // A catalog shaped like the real one: marketplace and GPU builds around the

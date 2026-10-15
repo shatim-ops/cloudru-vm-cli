@@ -8,9 +8,9 @@ import (
 	"sort"
 	"testing"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // fakeCloud keeps a group's rules like the API: POST adds with an id,

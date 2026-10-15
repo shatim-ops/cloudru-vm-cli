@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // callTool вызывает обработчик напрямую и разбирает его JSON-ответ. Эти

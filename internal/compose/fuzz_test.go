@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	clierr "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clierr "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // FuzzParse: any input either parses into a sane Project or fails with a

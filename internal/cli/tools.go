@@ -12,11 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // newRegistry builds the tool registry with the same engine factory as the

@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // The command trees (vm, disk, vpc, k8s, pg, s3, secret) are data: each

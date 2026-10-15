@@ -1,6 +1,6 @@
 # Установка
 
-Готовые бинари лежат в [GitHub Releases](https://github.com/shatim-ops/cloudru-vm-cli/releases):
+Готовые бинари лежат в [GitHub Releases](https://github.com/shatim-ops/evo-cli/releases):
 Linux, macOS и Windows, каждая для amd64 и arm64. К каждому релизу приложены
 `checksums.txt` (sha256 всех архивов) и подписи cosign keyless
 (`*.sigstore.json`). Бинарь статический и ничего, кроме себя, не требует —
@@ -9,7 +9,7 @@ Linux, macOS и Windows, каждая для amd64 и arm64. К каждому �
 ## Linux и macOS: install.sh
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | sh
 evo version
 ```
 
@@ -34,7 +34,7 @@ evo version
 
 ```sh
 # конкретная версия, в свой каталог
-curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh \
+curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh \
   | CLOUDRU_VM_VERSION=v1.0.0-rc.1 INSTALL_DIR="$HOME/bin" sh
 ```
 
@@ -52,7 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/inst
 
 ```sh
 V=1.0.0-rc.1; OS=linux; ARCH=amd64          # OS: linux | darwin; ARCH: amd64 | arm64
-base=https://github.com/shatim-ops/cloudru-vm-cli/releases/download/v$V
+base=https://github.com/shatim-ops/evo-cli/releases/download/v$V
 curl -fLO "$base/evo_${V}_${OS}_${ARCH}.tar.gz"
 curl -fLO "$base/checksums.txt"
 curl -fLO "$base/checksums.txt.sigstore.json"
@@ -106,13 +106,17 @@ v1.1, см. [README → «Переименование»](../README.md#пере�
 Rekor. Ключей у проекта нет — проверяется *кто* подписал (identity workflow).
 
 ```sh
-V=v1.0.0-rc.1
+V=v1.0.0-rc.3
 cosign verify-blob --bundle checksums.txt.sigstore.json \
-  --certificate-identity "https://github.com/shatim-ops/cloudru-vm-cli/.github/workflows/release.yml@refs/tags/$V" \
+  --certificate-identity "https://github.com/shatim-ops/evo-cli/.github/workflows/release.yml@refs/tags/$V" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
 sha256sum --ignore-missing -c checksums.txt     # macOS: shasum -a 256 --ignore-missing -c checksums.txt
 ```
+
+`v1.0.0-rc.1` и `v1.0.0-rc.2` подписаны до переименования репозитория: для
+них в identity — `shatim-ops/cloudru-vm-cli` вместо `shatim-ops/evo-cli`
+(`install.sh` это учитывает).
 
 `Verified OK` от cosign и `OK` у вашего архива — бинарь собран из этого
 репозитория в GitHub Actions на этом теге и не изменён. У каждого архива есть и
@@ -159,7 +163,7 @@ evo, — `evo doctor` (отсутствие — предупреждение, н
 ## Сборка из исходников
 
 ```sh
-git clone https://github.com/shatim-ops/cloudru-vm-cli && cd cloudru-vm-cli
+git clone https://github.com/shatim-ops/evo-cli && cd evo-cli
 go build -o bin/evo ./cmd/evo
 ```
 

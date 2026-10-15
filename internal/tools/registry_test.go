@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 )
 
 // nilFactory is an EngineFactory that fails — for tests that must not reach

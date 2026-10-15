@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // destroyEngineWithVM returns an Engine whose state holds one running VM.

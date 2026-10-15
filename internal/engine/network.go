@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/sgrules"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // vmNetwork is where a new VM is plugged in. The compute create API 500s

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // fakeResult makes a tool answer text without reaching the cloud. It wraps

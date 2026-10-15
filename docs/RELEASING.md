@@ -17,10 +17,13 @@
 
    ```
    cosign verify-blob --bundle checksums.txt.sigstore.json \
-     --certificate-identity-regexp '^https://github.com/shatim-ops/cloudru-vm-cli/\.github/workflows/release\.yml@refs/tags/v' \
+     --certificate-identity-regexp '^https://github.com/shatim-ops/evo-cli/\.github/workflows/release\.yml@refs/tags/v' \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
    sha256sum --ignore-missing -c checksums.txt
    ```
+
+   `v1.0.0-rc.1` и `rc.2` выпущены до переименования репозитория: их identity —
+   `shatim-ops/cloudru-vm-cli`.
 
 5. Неудачный релиз: удалить Release и тег (`git push --delete origin v1.2.3`), исправить, выпустить следующий patch — опубликованный номер не переиспользовать.
 

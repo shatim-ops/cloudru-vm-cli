@@ -14,10 +14,10 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/auth"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
 // orgProjectsURL lists the projects visible to the service account.
@@ -55,7 +55,7 @@ Files (mode 0600, directory 0700; CLOUDRU_CONFIG_DIR overrides the directory):
 Required access: the service account needs a project role that allows managing
 Compute and VPC resources; listing projects also needs read access to the
 organization (otherwise pass --project-id). Details:
-https://github.com/shatim-ops/cloudru-vm-cli/blob/main/docs/auth.md`
+https://github.com/shatim-ops/evo-cli/blob/main/docs/auth.md`
 
 func newConfigureCmd() *cobra.Command {
 	var opts configureOptions
