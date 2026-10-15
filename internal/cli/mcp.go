@@ -164,21 +164,7 @@ k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой, если kubectl
 // tool results (deploy's "log") and the server's log are read by agents
 // and operators, not by the person at the terminal.
 func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport bool, allowProjects []string) error {
-	srv := mcp.New(func(overrides map[string]any) (*engine.Engine, error) {
-		if overrides == nil {
-			overrides = map[string]any{}
-		}
-		// The SSH key stays lazy here too: only the tools that
-		// reach a VM call EnsureSSHKey.
-		eng, err := buildEngine(overrides)
-		if err != nil {
-			return nil, err
-		}
-		if err := checkAllowedProject(allowProjects, eng.Config.ProjectID); err != nil {
-			return nil, err
-		}
-		return eng, nil
-	}, version)
+	srv := mcp.New(mcpEngineFactory(allowProjects), version)
 
 	if httpAddr == "" {
 		if cmd.Flags().Changed("auth") || allowSecretExport {
@@ -209,6 +195,28 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport boo
 		AllowSecretExport: allowSecretExport,
 		Logger:            logger.Logger,
 	}, nil)
+}
+
+// mcpEngineFactory builds the engine of every tool call. Tools that take a
+// project_id argument (deploy, provision) pass it as the ProjectID override,
+// so the check sees the project the call resolves to, not only the
+// server's own.
+func mcpEngineFactory(allowProjects []string) func(map[string]any) (*engine.Engine, error) {
+	return func(overrides map[string]any) (*engine.Engine, error) {
+		if overrides == nil {
+			overrides = map[string]any{}
+		}
+		// The SSH key stays lazy here too: only the tools that
+		// reach a VM call EnsureSSHKey.
+		eng, err := buildEngine(overrides)
+		if err != nil {
+			return nil, err
+		}
+		if err := checkAllowedProject(allowProjects, eng.Config.ProjectID); err != nil {
+			return nil, err
+		}
+		return eng, nil
+	}
 }
 
 // checkAllowedProject refuses an engine for a project outside --allow-project

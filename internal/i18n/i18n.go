@@ -45,6 +45,21 @@ func isEnglish(lang string) bool {
 	return false
 }
 
+// Unsupported reports a non-empty language that is neither English nor
+// Russian ("ru", "ru_RU", …): the CLI falls back to Russian and says so.
+func Unsupported(lang string) bool {
+	l := strings.ToLower(strings.TrimSpace(lang))
+	if l == "" || isEnglish(l) || l == RU {
+		return false
+	}
+	for _, sep := range []string{"_", "-", "."} {
+		if strings.HasPrefix(l, RU+sep) {
+			return false
+		}
+	}
+	return true
+}
+
 // SetLang sets the language for the whole process: English for "en" and its
 // regional forms, Russian for anything else (including "").
 func SetLang(lang string) {

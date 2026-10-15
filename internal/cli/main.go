@@ -205,6 +205,10 @@ func newRootCmd() *cobra.Command {
 			config.SetWarnFunc(func(msg string) {
 				printWarnings(output.New(flagJSON, flagNoColor), []string{msg})
 			})
+			if v := os.Getenv("EVO_LANG"); i18n.Unsupported(v) {
+				printWarnings(output.New(flagJSON, flagNoColor), []string{
+					fmt.Sprintf("EVO_LANG=%q не поддерживается (en или ru): вывод на русском", v)})
+			}
 		},
 	}
 

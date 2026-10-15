@@ -79,3 +79,14 @@ func TestConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestUnsupported(t *testing.T) {
+	for lang, want := range map[string]bool{
+		"": false, "en": false, "en_US.UTF-8": false, "ru": false, "RU_ru": false,
+		"fr": true, "de_DE": true, "english": true,
+	} {
+		if got := Unsupported(lang); got != want {
+			t.Errorf("Unsupported(%q) = %v, want %v", lang, got, want)
+		}
+	}
+}
