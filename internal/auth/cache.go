@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"time"
@@ -9,7 +11,9 @@ import (
 )
 
 // TokenCache persists IAM tokens between runs. Entries are bound to the key
-// ID they were issued for: a token of another key is never returned.
+// they were issued for (CacheKey: key ID and a fingerprint of the secret): a
+// token of another key, or of the same key ID with another secret, is never
+// returned.
 type TokenCache interface {
 	Load(keyID string) (Token, bool)
 	Store(keyID string, tok Token) error
@@ -47,4 +51,14 @@ func (c FileCache) Store(keyID string, tok Token) error {
 		return err
 	}
 	return config.WriteFilePrivate(c.Path, data)
+}
+
+// CacheKey binds a cached token to the whole credential, not just the key
+// ID: with a wrong secret and a live cached token of the same key ID,
+// whoami and doctor would otherwise report "ok" without asking IAM. The
+// fingerprint is a truncated SHA-256 of key ID and secret; the cache file
+// (0600) already holds the access token itself, which is worth more.
+func CacheKey(c Credentials) string {
+	sum := sha256.Sum256([]byte(c.KeyID + "\x00" + c.Secret))
+	return c.KeyID + ":" + hex.EncodeToString(sum[:8])
 }
