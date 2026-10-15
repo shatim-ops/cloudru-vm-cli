@@ -1,0 +1,101 @@
+name: api-probe
+
+# Только чтение: проверяет на живом API Cloud.ru то, что сверка со
+# спецификациями (docs/internal/api-contract.md) не смогла решить по
+# документации, — форму ответов IAM и аудита, поведение limit=200, имена
+# параметров camelCase/snake_case, вложенные поля зоны и IP. Ничего не
+# создаёт и не удаляет.
+#
+# Репозиторий публичный, лог виден всем: печатаются только коды HTTP, имена
+# полей и количества — никаких значений, ID, адресов и токенов.
+#
+# Секреты — те же, что у cloud-e2e: CLOUDRU_KEY_ID, CLOUDRU_SECRET,
+# CLOUDRU_PROJECT_ID.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: api-probe
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Проверки (только GET, только форма ответа)
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] ||
+            { echo "::error::нет секретов CLOUDRU_KEY_ID / CLOUDRU_SECRET / CLOUDRU_PROJECT_ID"; exit 1; }
+          echo "::add-mask::$PROJECT"
+
+          # Тело запроса токена — через stdin, не в argv.
+          resp=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token \
+              -H 'Content-Type: application/json' --data-binary @- -w '\n%{http_code}')
+          code=${resp##*$'\n'}; body=${resp%$'\n'*}
+          echo "iam_token: http=$code keys=$(printf '%s' "$body" | jq -c 'keys')" \
+            "expires_in=$(printf '%s' "$body" | jq -c '.expires_in // .expiresIn // null | type')"
+          TOKEN=$(printf '%s' "$body" | jq -r '.access_token // .accessToken // empty')
+          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          unset body resp
+
+          # probe NAME URL JQ — печатает код HTTP и результат JQ по телу
+          # (только имена полей и числа).
+          probe() {
+            local name=$1 url=$2 filter=$3 r c b
+            r=$(curl -sS -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "$url" || true)
+            c=${r##*$'\n'}; b=${r%$'\n'*}
+            printf '%-28s http=%s %s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c "$filter" 2>/dev/null || echo 'не JSON')"
+          }
+          shape='{top: keys, total: (.total // null), n: ([.[] | arrays | length] | first // null)}'
+          item='[.[] | arrays | .[0] // empty | keys] | first // null'
+          C=https://compute.api.cloud.ru/api/v1
+          P="project_id=$PROJECT"
+
+          echo "== compute: limit (спецификация: max 100, default 50)"
+          probe vms_limit200          "$C/vms?$P&limit=200" "$shape"
+          probe vms_limit100          "$C/vms?$P&limit=100" "$shape"
+          probe vms_nolimit           "$C/vms?$P" "$shape"
+          probe flavors_nolimit       "$C/flavors" "$shape"
+          probe flavors_limit100      "$C/flavors?limit=100" "$shape"
+          probe images_limit200       "$C/images?limit=200" "$shape"
+          probe disk_types_limit200   "$C/disk-types?$P&limit=200" "$shape"
+
+          echo "== compute: поля элементов (зона, IP, флейвор, состояние образа)"
+          probe vm_item_keys          "$C/vms?$P&limit=1" "$item"
+          probe vm_iface_keys         "$C/vms?$P&limit=5" '[.[] | arrays | .[] | .interfaces[]? | keys] | first // null'
+          probe vm_iface_fip_keys     "$C/vms?$P&limit=5" '[.[] | arrays | .[] | .interfaces[]? | .floating_ip | objects | keys] | first // null'
+          probe subnet_item_keys      "$C/subnets?$P&limit=1" "$item"
+          probe subnet_zone_keys      "$C/subnets?$P&limit=1" '[.[] | arrays | .[0].availability_zone | objects | keys] | first // null'
+          probe sg_item_keys          "$C/security-groups?$P&limit=1" "$item"
+          probe image_item_keys       "$C/images?limit=1" "$item"
+          probe image_zone_keys       "$C/images?limit=1" '[.[] | arrays | .[0].availability_zones[]? | keys] | first // null'
+          probe fip_states            "$C/floating-ips?$P&limit=100" '[.[] | arrays | .[] | .state] | unique'
+          probe vm_states             "$C/vms?$P&limit=100" '[.[] | arrays | .[] | .status // .state] | unique'
+
+          echo "== grpc-gateway: projectId (спецификация) против project_id (сейчас)"
+          probe vpc_snake             "https://vpc.api.cloud.ru/v1/vpcs?project_id=$PROJECT" "$shape"
+          probe vpc_camel             "https://vpc.api.cloud.ru/v1/vpcs?projectId=$PROJECT" "$shape"
+          probe dns_snake             "https://dns.api.cloud.ru/v1/publicZones?project_id=$PROJECT" "$shape"
+          probe dns_camel             "https://dns.api.cloud.ru/v1/publicZones?projectId=$PROJECT" "$shape"
+          probe dns_zone_keys         "https://dns.api.cloud.ru/v1/publicZones?projectId=$PROJECT" "$item"
+
+          echo "== аудит: logs/events, limit/pageSize"
+          end=$(date -u +%Y-%m-%dT%H:%M:%SZ); start=$(date -u -d '-3 hours' +%Y-%m-%dT%H:%M:%SZ)
+          probe audit_limit           "https://audit.api.cloud.ru/events/list/$PROJECT?start=$start&end=$end&limit=5" "$shape"
+          probe audit_pagesize        "https://audit.api.cloud.ru/events/list/$PROJECT?start=$start&end=$end&pageSize=5" "$shape"
+
+          echo "== IAM и Organization"
+          probe iam_service_accounts  "https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId=$PROJECT" "$shape"
+          probe org_projects          "https://organization.api.cloud.ru/v3/projects" "$shape"
