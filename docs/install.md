@@ -28,19 +28,19 @@ evo version
 
 | Переменная | Что задаёт | По умолчанию |
 |---|---|---|
-| `CLOUDRU_VM_VERSION` | тег релиза, например `v1.0.0-rc.3` | последний стабильный; pre-release (`-rc.N`) надо назвать явно |
+| `CLOUDRU_VM_VERSION` | тег релиза, например `v1.0.0-rc.4` | последний стабильный; pre-release (`-rc.N`) надо назвать явно |
 | `INSTALL_DIR` | каталог для бинаря | `~/.local/bin`, под root `/usr/local/bin` |
 | `CLOUDRU_VM_BASE_URL` | откуда качать вместо GitHub (зеркало); ожидается `<base>/<тег>/<файл>` | GitHub Releases |
 
 ```sh
 # конкретная версия, в свой каталог
 curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh \
-  | CLOUDRU_VM_VERSION=v1.0.0-rc.3 INSTALL_DIR="$HOME/bin" sh
+  | CLOUDRU_VM_VERSION=v1.0.0-rc.4 INSTALL_DIR="$HOME/bin" sh
 ```
 
 Если стабильного релиза ещё нет (до `v1.0.0`), скрипт без версии
 останавливается с «стабильного релиза пока нет»: кандидат в релиз ставится с
-явной версией, `… | CLOUDRU_VM_VERSION=v1.0.0-rc.3 sh`. Релизы до
+явной версией, `… | CLOUDRU_VM_VERSION=v1.0.0-rc.4 sh`. Релизы до
 переименования (`v1.0.0-rc.1`) выпущены под старым именем — архив
 `cloudru-vm_<версия>_…` с одним бинарём `cloudru-vm`; скрипт узнаёт это по
 `checksums.txt` релиза и ставит `cloudru-vm`. С `v1.0.0-rc.2` — `evo` и alias
@@ -51,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh 
 ## Linux и macOS вручную
 
 ```sh
-V=1.0.0-rc.3; OS=linux; ARCH=amd64          # OS: linux | darwin; ARCH: amd64 | arm64
+V=1.0.0-rc.4; OS=linux; ARCH=amd64          # OS: linux | darwin; ARCH: amd64 | arm64
 base=https://github.com/shatim-ops/evo-cli/releases/download/v$V
 curl -fLO "$base/evo_${V}_${OS}_${ARCH}.tar.gz"
 curl -fLO "$base/checksums.txt"
@@ -76,7 +76,7 @@ v1.1, см. [README → «Переименование»](../README.md#пере�
    `checksums.txt`:
 
    ```powershell
-   (Get-FileHash .\evo_1.0.0-rc.3_windows_amd64.zip -Algorithm SHA256).Hash.ToLower()
+   (Get-FileHash .\evo_1.0.0-rc.4_windows_amd64.zip -Algorithm SHA256).Hash.ToLower()
    Select-String -Path .\checksums.txt -Pattern windows_amd64
    ```
 
@@ -106,13 +106,18 @@ v1.1, см. [README → «Переименование»](../README.md#пере�
 Rekor. Ключей у проекта нет — проверяется *кто* подписал (identity workflow).
 
 ```sh
-V=v1.0.0-rc.3
+V=v1.0.0-rc.4
 cosign verify-blob --bundle checksums.txt.sigstore.json \
   --certificate-identity "https://github.com/shatim-ops/evo-cli/.github/workflows/release.yml@refs/tags/$V" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
 sha256sum --ignore-missing -c checksums.txt     # macOS: shasum -a 256 --ignore-missing -c checksums.txt
 ```
+
+Подпись — в формате бандла sigstore v0.3 (её ставит cosign v3). Нужен cosign
+v3 или v2.4+; у cosign v2 добавьте `--new-bundle-format`, иначе он ответит
+«bundle does not contain cert for verification». `install.sh` пробует оба
+варианта сам.
 
 `v1.0.0-rc.1` и `v1.0.0-rc.2` подписаны до переименования репозитория: для
 них в identity — `shatim-ops/cloudru-vm-cli` вместо `shatim-ops/evo-cli`

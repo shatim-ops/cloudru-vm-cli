@@ -119,11 +119,27 @@ main() {
 		case "$tag" in
 		v1.0.0-rc.1 | v1.0.0-rc.2) signer=$LEGACY_REPO ;;
 		esac
-		cosign verify-blob \
-			--bundle "$tmp/checksums.txt.sigstore.json" \
-			--certificate-identity "https://github.com/$signer/.github/workflows/release.yml@refs/tags/$tag" \
-			--certificate-oidc-issuer https://token.actions.githubusercontent.com \
-			"$tmp/checksums.txt" >/dev/null 2>&1 || die "подпись checksums.txt не прошла проверку cosign"
+		# Релизы подписывает cosign v3: бандл в формате sigstore v0.3. cosign
+		# v2 читает его только с --new-bundle-format (есть с v2.4), без
+		# флага — «bundle does not contain cert». Сначала без флага (v3 и
+		# старые релизы), затем с ним, если cosign его знает.
+		verify() {
+			cosign verify-blob "$@" \
+				--bundle "$tmp/checksums.txt.sigstore.json" \
+				--certificate-identity "https://github.com/$signer/.github/workflows/release.yml@refs/tags/$tag" \
+				--certificate-oidc-issuer https://token.actions.githubusercontent.com \
+				"$tmp/checksums.txt" >"$tmp/cosign.log" 2>&1
+		}
+		if ! verify; then
+			if cosign verify-blob --help 2>&1 | grep -q -- --new-bundle-format; then
+				verify --new-bundle-format
+			else
+				false
+			fi || {
+				sed 's/^/  cosign: /' "$tmp/cosign.log" >&2
+				die "подпись checksums.txt не прошла проверку cosign (нужен cosign v2.4 или новее)"
+			}
+		fi
 		say "Подпись checksums.txt: OK (cosign)"
 	else
 		say "cosign не найден: подпись не проверена, только sha256"
