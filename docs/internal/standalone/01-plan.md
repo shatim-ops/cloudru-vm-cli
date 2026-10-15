@@ -1,4 +1,4 @@
-# План: cloudru-vm → самостоятельный CLI + MCP для Marketplace
+# План: cloudru-vm → самостоятельный CLI + MCP для управления инфраструктурой Cloud.ru
 
 Исполнитель кода — Opus 5.5. Каждый этап — отдельный самодостаточный бриф
 (`docs/internal/standalone/stages/NN-*.md`), который можно отдать агенту без истории
@@ -29,10 +29,10 @@
 | 5 | Починка сценария deploy: bootstrap Docker, FIP в destroy, `logs -f`, хардкод | 1 | M | Путь `init → deploy → logs → destroy` работает на дефолтах |
 | 6 | Тесты: инъекция часов/backoff, без реальной сети; CI-матрица ОС | — | S | `go test` < 10 с; CI на ubuntu/macos/windows |
 | 7 | Релиз: goreleaser, ldflags, checksums, cosign, `version` | 0, 6 | S | Тег → GitHub Release с 6 бинарями и подписями |
-| 8 | MCP для Marketplace: Streamable HTTP, Dockerfile, protocolVersion, кэш токена | 2 | M | Образ в Artifact Registry запускается как MCP-сервер по HTTP |
+| 8 | MCP по HTTP: Streamable HTTP, Dockerfile, protocolVersion, кэш токена | 2 | M | Образ в Artifact Registry запускается как MCP-сервер по HTTP |
 | 9 | Документация: внешний README, install, роли SA, Windows/macOS, troubleshooting | 2, 4, 7 | S | Внешний пользователь проходит quickstart без вопросов |
 | 10 | Переименование в `evo` (`stages/10-rename.md`; после согласования бренда) | 7 | S | Новый бинарь, `cloudru-vm` как alias на один минорный релиз |
-| 11 | Заявка в Marketplace (человек) | 8, 9 | — | Карточка MCP-сервера + ссылка на релизы |
+| 11 | ~~Заявка в Marketplace (человек)~~ — снято с v1.0 (DECISIONS D3, 15.10), BACKLOG `[marketplace]` | 8, 9 | — | — |
 
 \* S — до одного рабочего дня агента, M — 1–3 дня, L — 3–5 дней. Это оценка
 объёма изменений, не календарь: этапы 5, 6, 8 можно вести параллельно с 2–4

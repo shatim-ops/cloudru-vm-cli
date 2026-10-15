@@ -20,7 +20,8 @@
 ## Что это
 `evo` — CLI и MCP-сервер (stdio и Streamable HTTP) для управления
 инфраструктурой Cloud.ru от имени сервисного аккаунта **пользователя**.
-Распространяется через Cloud.ru Marketplace и GitHub Releases. Любой вызов
+Распространяется через GitHub Releases (бинари, `install.sh`) и Docker-образ
+MCP; Marketplace — не цель (DECISIONS D3). Любой вызов
 может создать платный ресурс или удалить чужие данные.
 
 ## Приоритеты (по убыванию)

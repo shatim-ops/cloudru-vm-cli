@@ -13,7 +13,7 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 | | stdio | Streamable HTTP |
 |---|---|---|
 | Запуск | клиент сам запускает `evo mcp` | `evo mcp --http :8080` или Docker-образ |
-| Для чего | агент на вашей машине | общий сервер, контейнер, Marketplace |
+| Для чего | агент на вашей машине | общий сервер, контейнер |
 | Аутентификация клиента | не нужна (локальный процесс) | `Authorization: Bearer $MCP_BEARER_TOKEN` |
 | Креды Cloud.ru | ваш профиль / переменные окружения | профиль / переменные окружения **сервера** |
 
@@ -271,8 +271,9 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
 
 Образ `evo` — distroless, без shell, пользователь `nonroot`, слушает
 `:8080`, `HEALTHCHECK` встроен (`evo mcp healthcheck`). Релизные образы
-публикуются в Artifact Registry Cloud.ru (`<реестр>.cr.cloud.ru/evo:<версия>`,
-адрес реестра — в карточке Marketplace); собрать самому:
+публикуются в Artifact Registry Cloud.ru (`<реестр>.cr.cloud.ru/evo:<версия>`;
+публичный адрес реестра появится вместе с первым опубликованным образом);
+собрать самому:
 
 ```sh
 docker build -t evo:local .
