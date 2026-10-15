@@ -149,7 +149,7 @@ func httpAuthToken(addr, mode, envToken string) (string, error) {
 		}
 		return envToken, nil
 	case authNone:
-		if !isLoopbackHost(host) {
+		if !mcp.LoopbackHost(host) { // an empty host (":8080") is every interface
 			return "", clerrors.New(clerrors.CodeUsage,
 				fmt.Sprintf("--auth none is only allowed on a loopback address, not %q", addr),
 				"Use --http 127.0.0.1:PORT for a local server, or --auth bearer with "+envBearerToken)
@@ -159,16 +159,6 @@ func httpAuthToken(addr, mode, envToken string) (string, error) {
 		return "", clerrors.New(clerrors.CodeUsage,
 			fmt.Sprintf("unknown --auth %q", mode), "Use --auth bearer or --auth none")
 	}
-}
-
-// isLoopbackHost reports whether host names only the loopback interface.
-// An empty host (":8080") listens on every interface.
-func isLoopbackHost(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 // newMCPHealthcheckCmd is the Docker HEALTHCHECK of the image: the
