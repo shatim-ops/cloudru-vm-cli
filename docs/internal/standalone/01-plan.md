@@ -62,7 +62,7 @@
 
 - [ ] `go test -race ./...` < 10 с, CI зелёный на трёх ОС
 - [ ] `<bin> configure && <bin> whoami` работает без единой env-переменной
-- [ ] `<bin> tools list | wc -l` = 147 (146 исходных + `vm_list`, этап 4b); `tools call` любого инструмента отдаёт тот же JSON, что MCP
+- [ ] `<bin> tools list --json | jq length` = 147 (146 исходных + `vm_list`, этап 4b; `wc -l` у табличного вывода даёт 148 — считает заголовок); `tools call` любого инструмента отдаёт тот же JSON, что MCP
 - [ ] `<bin> vm create …` без `--yes` и без TTY → код 3 и ничего не создано
 - [ ] `init → deploy → logs -f → destroy` на дефолтном образе: ВМ и FIP удалены, биллинг чистый
 - [ ] Тег `v1.0.0` → Release: linux/darwin/windows × amd64/arm64, `checksums.txt`, cosign-подписи
