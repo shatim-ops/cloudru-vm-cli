@@ -9,16 +9,21 @@ evo whoami      # принимает ли IAM ключ, какой проект 
 
 Коды выхода — в [exit-codes.md](exit-codes.md).
 
+Сообщения ниже — как их печатает CLI по-русски (по умолчанию). С
+`EVO_LANG=en` и в ответах MCP-сервера они английские — английский вариант
+указан в скобках; символьные коды (`AUTH_FAILED`) одинаковы в обоих языках,
+в JSON они в поле `reason`.
+
 ## Ключ и права
 
-### `AUTH_REQUIRED` (код 2): no access key
+### `AUTH_REQUIRED` (код 2): «не задан ключ доступа Cloud.ru» (Cloud.ru credentials not set)
 
 Ключ не найден ни в переменных, ни в профиле. `evo configure` или
 `CLOUDRU_KEY_ID` + `CLOUDRU_SECRET`. Если вы задали `--profile` /
 `CLOUDRU_PROFILE` — проверьте `evo configure list`: профиль из другого
 `CLOUDRU_CONFIG_DIR` не виден.
 
-### `AUTH_FAILED` (код 2): IAM rejected the credentials (status 401/403)
+### `AUTH_FAILED` (код 2): «IAM отклонил ключ доступа (статус 401/403)» (IAM rejected the credentials)
 
 IAM не принял пару Key ID / Key Secret:
 
@@ -27,7 +32,7 @@ IAM не принял пару Key ID / Key Secret:
   новый ([auth.md → ротация](auth.md#ротация-ключа));
 - сервисный аккаунт выключен;
 - одна из `CLOUDRU_KEY_ID` / `CLOUDRU_SECRET` задана в окружении — тогда ключ
-  профиля не используется вовсе: `evo doctor` покажет `key_id from env`.
+  профиля не используется вовсе: `evo doctor` покажет `key_id из env`.
 
 ### `403 Forbidden` от сервиса (код 5)
 
@@ -40,14 +45,14 @@ IAM не принял пару Key ID / Key Secret:
 У compute API (ВМ, диски, `deploy`, `destroy`) тот же отказ приходит как
 `AUTH_FAILED: access denied (403)` с кодом `2`.
 
-### `configure` не показывает проекты: «Could not list projects»
+### `configure` не показывает проекты: «Не удалось получить список проектов» (Could not list projects)
 
 Ожидаемо для сервисного аккаунта: Organization API не отдаёт ему список
 проектов (ответ `400` «user not found», проверено 14.10.2026). Введите UUID
 проекта вручную или передайте `--project-id`. На ключ это не влияет — он уже
 проверен до запроса списка.
 
-### `CLOUDRU_API_KEY … is deprecated`
+### «CLOUDRU_API_KEY=keyId:secret устарел» (is deprecated)
 
 Предупреждение, не ошибка. Замените на `CLOUDRU_KEY_ID` и `CLOUDRU_SECRET`
 или на профиль.
@@ -58,7 +63,7 @@ IAM не принял пару Key ID / Key Secret:
 Перенесите значения: ключ и проект — `evo configure`, настройки проекта —
 `./.evo.yaml` (`evo init`). Потом удалите старый файл.
 
-### `using the legacy directory …/.cloudru-vm`, `reading the legacy …/.cloudru-vm.yaml`
+### «используется старый каталог …/.cloudru-vm», «читается старый …/.cloudru-vm.yaml» (using the legacy directory, reading the legacy)
 
 Проект развёрнут версией, которая называлась `cloudru-vm`. Предупреждение, не
 ошибка: `evo` работает в старом каталоге — state с ВМ и SSH-ключ там. Когда в
@@ -66,7 +71,7 @@ IAM не принял пару Key ID / Key Secret:
 бинарём), переименуйте: `mv .cloudru-vm .evo && mv .cloudru-vm.yaml .evo.yaml`.
 С v1.1 старые имена читаться не будут.
 
-`both … and … have state` — есть оба каталога и в обоих `state.json`: `evo`
+«state есть и в …, и в …» (both … and … have state) — есть оба каталога и в обоих `state.json`: `evo`
 читает `./.evo/`, а ВМ из `./.cloudru-vm/state.json` не видит. Проверьте их
 (`jq .deployments .cloudru-vm/state.json`) и удалите старой версией или в
 консоли, прежде чем удалять каталог.
@@ -86,7 +91,7 @@ evo deploy --region <UUID ru.AZ-2>   # или region: в .evo.yaml
 ВМ в ошибке удалите (`evo destroy` или `evo vm delete <id>`),
 чтобы она не занимала квоту.
 
-### `destroy` ждёт: «VM cannot be deleted yet»
+### `destroy` ждёт: «ВМ … пока нельзя удалить» (VM cannot be deleted yet)
 
 ВМ, которая ещё создаётся (`creating`) или меняет состояние, Cloud.ru удалить
 не даёт — API отвечает `409`/`422`. `evo destroy` в этом случае ждёт до
@@ -97,7 +102,7 @@ evo deploy --region <UUID ru.AZ-2>   # или region: в .evo.yaml
 `evo vm delete <id>` или в консоли, затем освободите её floating IP
 (`evo vpc fip-release <IP>`).
 
-### `deploy`: «VM … did not become active within 10m0s»
+### `deploy`: «ВМ … не стала активной за 10m0s» (did not become active within)
 
 Новая ВМ создаётся несколько минут; 15.10.2026 в ru.AZ-1 это занимало около
 5 минут, иногда дольше. `deploy` ждёт 10 минут (`CLOUDRU_TIMEOUT`, секунды);
@@ -131,7 +136,7 @@ evo tools call list_security_groups --arg rules=true --json
 Развёртывания, записанные версиями до этой, id правил не хранят: их правила
 удалите вручную в консоли (группы безопасности VPC).
 
-### `VM has no public IP address`
+### «у ВМ нет внешнего IP-адреса» (VM has no public IP address)
 
 Floating IP не назначился (квота на публичные IP, временная ошибка API).
 Проверьте квоты (ниже), назначьте IP в консоли или выполните `destroy` и
@@ -143,7 +148,7 @@ Floating IP не назначился (квота на публичные IP, в
 напишет её ID и команду для удаления. ВМ продолжает тарифицироваться, пока
 вы её не удалите.
 
-### `deploy`: «this directory already has deployment … in project A, not in B»
+### `deploy`: «в этом каталоге уже есть развёртывание … в проекте A, а не в B» (this directory already has deployment)
 
 Развёртывание запоминает проект, в котором создана ВМ (`project_id` в
 `.evo/state.json`). Если ключ видит несколько проектов (например, ключ
@@ -191,8 +196,8 @@ VPN часто его закрывают — запустите с другой 
 повторяет подключение сам.
 
 Если порт 22 у вас открыт, а ВМ активна, но SSH не отвечает 15–20 минут
-(или `Docker is not ready` с `Temporary failure in name resolution` в
-выводе), — первая загрузка образа не вышла в сеть: внутри ВМ нет DNS,
+(или «Docker на ВМ … не готов» / `Docker is not ready` с
+`Temporary failure in name resolution` в выводе), — первая загрузка образа не вышла в сеть: внутри ВМ нет DNS,
 зеркало apt образа недоступно, и cloud-init образа задерживает или не
 запускает sshd. Это сеть зоны или подсети, а не проект. Проверьте DNS
 подсети в консоли Cloud.ru; `evo destroy` и `deploy` заново, при повторе —
@@ -213,7 +218,7 @@ SSH-ключ к ВМ лежит в `./.evo/id_ed25519` **каталога, из 
 достался другой ВМ (ВМ пересоздали вне evo). Если вы уверены, что это
 ваша ВМ, — `destroy` и `deploy` заново; иначе не подключайтесь.
 
-### `deploy` отвечает «No changes», хотя приложение не запущено
+### `deploy` отвечает «Compose-файл не изменился», хотя приложение не запущено
 
 Если `docker compose up` упал, запись остаётся в состоянии `running`, а хэш
 compose-файла не изменился. Повторите с `evo deploy --force`.
@@ -223,7 +228,7 @@ compose-файла не изменился. Повторите с `evo deploy --
 Порт приложения не ответил снаружи: соединение не принято, не дождались
 ответа или HTTP-сервис ответил кодом 4xx/5xx. Порт, который принимает
 соединение, но говорит не по HTTP (база, кэш), считается здоровым — в
-таблице `tcp open`. Проверьте `evo logs`, что контейнер слушает `0.0.0.0`,
+таблице `tcp открыт` (`tcp open`). Проверьте `evo logs`, что контейнер слушает `0.0.0.0`,
 и что порт открыт в группе безопасности (`deploy` открывает только порты из
 `ports:`).
 

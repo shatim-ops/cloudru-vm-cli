@@ -18,6 +18,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // The user documentation is checked against the code: docs/commands.md is
@@ -39,15 +41,26 @@ const commandsDocHeader = `# Справка по командам
      ` + regenerateHint + `
      CI сверяет файл с бинарём (TestCommandsDoc). -->
 
-Справка — на английском, как ` + "`--help`" + ` (решение D6); то же самое печатает
-` + "`evo <команда> --help`" + `. Описание по-русски — в [README](../README.md)
-и соседних файлах ` + "`docs/`" + `.
+То же самое печатает ` + "`evo <команда> --help`" + `; с ` + "`EVO_LANG=en`" + ` справка
+английская (решение D6, пересмотр). Заголовки разделов (Synopsis, Options)
+ставит генератор cobra/doc. Описания инструментов в деревьях ` + "`vm`" + `, ` + "`disk`" + ` и
+других и их флаги — на английском, как в MCP. Подробнее — в
+[README](../README.md) и соседних файлах ` + "`docs/`" + `.
 
 `
 
 // genCommandsDoc renders the help of every visible command into one
-// Markdown file, in the order of the command tree.
+// Markdown file, in the order of the command tree. The file is the Russian
+// help, whatever language the tests run in.
 func genCommandsDoc() ([]byte, error) {
+	return genCommandsDocIn(i18n.RU)
+}
+
+// genCommandsDocIn renders the command tree in the given language.
+func genCommandsDocIn(lang string) ([]byte, error) {
+	prev := i18n.Lang()
+	i18n.SetLang(lang)
+	defer i18n.SetLang(prev)
 	root := newRootCmd()
 	// cobra adds these two on Execute; the binary has them, so the docs too.
 	root.InitDefaultHelpCmd()
@@ -89,7 +102,13 @@ func genCommandsDoc() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+	// cobra/doc prints the flags without the help template: translate the
+	// pflag defaults the same way --help does.
+	out := bytes.TrimRight(buf.Bytes(), "\n")
+	if lang == i18n.RU {
+		out = []byte(ruDefaults(string(out)))
+	}
+	return out, nil
 }
 
 // anchor is the GitHub heading anchor of "## <path>".
