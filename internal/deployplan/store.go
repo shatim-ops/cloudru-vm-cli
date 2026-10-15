@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/pricing"
 )
 
@@ -104,7 +105,7 @@ func newPlanID() string {
 // plansDir returns the directory plans are stored in, creating it.
 func plansDir(stateDir string) (string, error) {
 	dir := filepath.Join(stateDir, ".cloudru-vm", "plans")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := config.MkdirPrivate(dir); err != nil {
 		return "", err
 	}
 	return dir, nil

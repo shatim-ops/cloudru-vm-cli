@@ -156,6 +156,14 @@ func readCredentialsFile() (credentialsFile, []string, error) {
 			warnings = append(warnings, fmt.Sprintf(
 				"%s is writable by other users (mode %04o): they can replace credentials.yaml; run: chmod 700 %s", dir, st.Mode().Perm(), dir))
 		}
+	} else {
+		// Windows: the same two checks on the ACL. Files written by older
+		// versions inherited the ACL of the directory.
+		for _, w := range []string{PrivateFileWarning(path), PrivateDirWarning(filepath.Dir(path))} {
+			if w != "" {
+				warnings = append(warnings, w)
+			}
+		}
 	}
 	return f, warnings, nil
 }
@@ -191,7 +199,7 @@ var (
 // 'configure' runs at once lose one of the profiles.
 func lockProfiles() (unlock func(), err error) {
 	dir := Dir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := MkdirPrivate(dir); err != nil {
 		return nil, fmt.Errorf("create %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, lockName)
@@ -359,12 +367,20 @@ func WriteFilePrivate(path string, data []byte) error {
 // temporary file is created 0600 (O_EXCL) and gets perm before the rename;
 // the rename replaces a symlink at path instead of writing through it, and
 // a file already at path never lends its own mode to the new contents.
+// Directories it creates are private (MkdirPrivate). On Windows a file with
+// a private perm (no group/other bits) is created with a DACL for the
+// current user, SYSTEM and Administrators only, without inheritance; a
+// wider perm keeps the inherited ACL.
 func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := MkdirPrivate(dir); err != nil {
 		return fmt.Errorf("create %s: %w", dir, err)
 	}
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*")
+	createTemp := os.CreateTemp
+	if !LooseMode(perm) {
+		createTemp = createPrivateTemp
+	}
+	tmp, err := createTemp(dir, "."+filepath.Base(path)+".*")
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}

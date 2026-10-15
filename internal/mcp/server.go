@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"time"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
 )
@@ -66,6 +67,7 @@ type Server struct {
 	tools    []Tool
 	handlers map[string]toolHandler
 	reg      *tools.Registry
+	inflight inflight // running tool calls, for cancellation
 }
 
 // New creates an MCP server. factory builds engines per tool call (so each call
@@ -138,29 +140,177 @@ var nullID = json.RawMessage("null")
 // a batch per line. A line longer than maxMessageSize is answered with an
 // error and skipped; the loop goes on.
 func (s *Server) Run(in io.Reader, out io.Writer) error {
-	r := bufio.NewReaderSize(in, 64*1024)
-	enc := json.NewEncoder(out)
+	return s.RunContext(context.Background(), in, out)
+}
 
+// stdioQueue is how many lines are read ahead while a tool call runs: the
+// reader must keep reading to see notifications/cancelled and EOF, and a
+// client that floods requests meanwhile waits on the pipe again.
+const stdioQueue = 64
+
+// stdioShutdownGrace is how long RunContext waits, once ctx is done, for
+// the running call to return after its cancellation; one that ignores its
+// context is then left behind (the process exits).
+var stdioShutdownGrace = 10 * time.Second
+
+// stdioLine is one line of input, decoded by the reader goroutine.
+type stdioLine struct {
+	msgs    []incoming
+	batch   bool
+	tooLong bool
+	calls   map[*rpcRequest]stdioCall // registered tools/call requests
+	err     error                     // read error after this line (not EOF)
+}
+
+type stdioCall struct {
+	ctx  context.Context
+	call *inflightCall
+	done func()
+}
+
+// RunContext is Run with cancellation: tool calls run under a context that
+// ends when ctx does (SIGINT/SIGTERM), on a read error, or, for one call,
+// on notifications/cancelled with its id. Closing stdin cancels nothing:
+// lines read before EOF run to the end and are answered. When ctx is done RunContext returns
+// ctx.Err() after the running call returns (at most stdioShutdownGrace).
+func (s *Server) RunContext(ctx context.Context, in io.Reader, out io.Writer) error {
+	serve, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
+	lines := make(chan stdioLine, stdioQueue)
+	go s.readStdio(serve, stop, in, lines)
+
+	enc := json.NewEncoder(out)
 	for {
-		line, tooLong, readErr := readLine(r, maxMessageSize)
+		var ln stdioLine
+		var ok bool
+		select {
+		case ln, ok = <-lines:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if !ok {
+			return nil // EOF
+		}
+		answered := make(chan any, 1)
+		go func() { answered <- s.answerLine(serve, ln) }()
 		var resp any
-		switch {
-		case tooLong:
-			resp = errorResponse(nullID, codeInvalidReq, fmt.Sprintf("message larger than %d bytes", maxMessageSize))
-		case len(bytes.TrimSpace(line)) > 0:
-			resp = s.answer(decodeMessages(line))
+		select {
+		case resp = <-answered:
+		case <-ctx.Done():
+			select {
+			case resp = <-answered:
+			case <-time.After(stdioShutdownGrace):
+				return ctx.Err()
+			}
 		}
 		if resp != nil {
-			if err := enc.Encode(resp); err != nil {
+			if err := enc.Encode(resp); err != nil && serve.Err() == nil {
 				return fmt.Errorf("write response: %w", err)
 			}
 		}
-		if readErr == io.EOF {
-			return nil
+		if ln.err != nil {
+			return ln.err
+		}
+	}
+}
+
+// readStdio reads and decodes lines for RunContext. It acts on
+// notifications/cancelled at once (the main loop may be busy with the very
+// call to cancel) and registers each tools/call when it is read, so a call
+// still waiting in the queue can be cancelled too.
+func (s *Server) readStdio(serve context.Context, stop context.CancelCauseFunc, in io.Reader, lines chan<- stdioLine) {
+	defer close(lines)
+	r := bufio.NewReaderSize(in, 64*1024)
+	for {
+		line, tooLong, readErr := readLine(r, maxMessageSize)
+		ln := stdioLine{tooLong: tooLong}
+		if readErr != nil && readErr != io.EOF {
+			ln.err = readErr
+		}
+		if !tooLong && len(bytes.TrimSpace(line)) > 0 {
+			ln.msgs, ln.batch = decodeMessages(line)
+			for i, m := range ln.msgs {
+				if m.req == nil {
+					continue
+				}
+				switch {
+				case m.req.Method == "notifications/cancelled":
+					s.inflight.cancelRequest("", m.req.Params)
+					ln.msgs[i] = incoming{} // handled; nothing to answer
+				case m.req.Method == "tools/call" && !m.req.isNotification():
+					ctx, call, done := s.inflight.begin(serve, "", m.req.ID)
+					if ln.calls == nil {
+						ln.calls = map[*rpcRequest]stdioCall{}
+					}
+					ln.calls[m.req] = stdioCall{ctx, call, done}
+				}
+			}
+		}
+		if ln.tooLong || len(ln.msgs) > 0 || ln.err != nil {
+			select {
+			case lines <- ln:
+			case <-serve.Done():
+				// RunContext may have returned (signal): nobody reads.
+				for _, c := range ln.calls {
+					c.done()
+				}
+				if readErr != nil {
+					return
+				}
+				continue
+			}
 		}
 		if readErr != nil {
-			return readErr
+			// EOF does not cancel: "printf … | cloudru-vm mcp" and one-shot
+			// clients close stdin right after the request and still wait
+			// for the answer. A deploy cut short half-way costs more than a
+			// finished one nobody reads; the calls already read run to the
+			// end and RunContext returns after answering them.
+			if readErr != io.EOF {
+				stop(readErr)
+			}
+			return
 		}
+	}
+}
+
+// answerLine answers one stdio line. A tool call cancelled by
+// notifications/cancelled gets no answer (MCP: the receiver SHOULD NOT
+// respond to a cancelled request).
+func (s *Server) answerLine(serve context.Context, ln stdioLine) any {
+	if ln.tooLong {
+		return errorResponse(nullID, codeInvalidReq, fmt.Sprintf("message larger than %d bytes", maxMessageSize))
+	}
+	var out []*rpcResponse
+	for _, m := range ln.msgs {
+		switch {
+		case m.bad != nil:
+			out = append(out, m.bad)
+		case m.req != nil:
+			ctx := serve
+			c, registered := ln.calls[m.req]
+			if registered {
+				ctx = c.ctx
+			}
+			resp := s.handle(ctx, "", m.req)
+			if registered {
+				c.done()
+				if c.call.byClient.Load() {
+					resp = nil
+				}
+			}
+			if resp != nil {
+				out = append(out, resp)
+			}
+		}
+	}
+	switch {
+	case len(out) == 0:
+		return nil
+	case ln.batch:
+		return out
+	default:
+		return out[0]
 	}
 }
 
@@ -230,30 +380,6 @@ func decodeMessage(raw json.RawMessage) incoming {
 	return incoming{req: &req}
 }
 
-// answer dispatches decoded messages and returns what to send back: nil
-// (only notifications and responses), one response, or a batch.
-func (s *Server) answer(msgs []incoming, batch bool) any {
-	var out []*rpcResponse
-	for _, m := range msgs {
-		switch {
-		case m.bad != nil:
-			out = append(out, m.bad)
-		case m.req != nil:
-			if resp := s.handle(m.req); resp != nil {
-				out = append(out, resp)
-			}
-		}
-	}
-	switch {
-	case len(out) == 0:
-		return nil
-	case batch:
-		return out
-	default:
-		return out[0]
-	}
-}
-
 // isNotification reports whether the request lacks an id (JSON-RPC notification,
 // which must not receive a response).
 func (r *rpcRequest) isNotification() bool {
@@ -261,16 +387,18 @@ func (r *rpcRequest) isNotification() bool {
 }
 
 // handle dispatches a single request. Notifications are executed, but it
-// returns nil for them: JSON-RPC forbids answering a notification.
-func (s *Server) handle(req *rpcRequest) *rpcResponse {
-	resp := s.call(req)
+// returns nil for them: JSON-RPC forbids answering a notification. ctx is
+// the context of a tool call; scope is the cancellation scope of
+// notifications/cancelled ("" over stdio, the session over HTTP).
+func (s *Server) handle(ctx context.Context, scope string, req *rpcRequest) *rpcResponse {
+	resp := s.call(ctx, scope, req)
 	if req.isNotification() {
 		return nil
 	}
 	return resp
 }
 
-func (s *Server) call(req *rpcRequest) *rpcResponse {
+func (s *Server) call(ctx context.Context, scope string, req *rpcRequest) *rpcResponse {
 	switch req.Method {
 	case "initialize":
 		return s.ok(req, s.initializeResult(req.Params))
@@ -286,7 +414,11 @@ func (s *Server) call(req *rpcRequest) *rpcResponse {
 		return s.ok(req, map[string]any{"tools": s.tools})
 
 	case "tools/call":
-		return s.handleToolCall(req)
+		return s.handleToolCall(ctx, req)
+
+	case "notifications/cancelled":
+		s.inflight.cancelRequest(scope, req.Params)
+		return nil
 
 	default:
 		return s.fail(req, codeMethodNotFound, "method not found: "+req.Method)
@@ -319,7 +451,7 @@ func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 }
 
 // handleToolCall dispatches a tools/call request to the matching handler.
-func (s *Server) handleToolCall(req *rpcRequest) *rpcResponse {
+func (s *Server) handleToolCall(ctx context.Context, req *rpcRequest) *rpcResponse {
 	var p struct {
 		Name      string         `json:"name"`
 		Arguments map[string]any `json:"arguments"`
@@ -340,7 +472,7 @@ func (s *Server) handleToolCall(req *rpcRequest) *rpcResponse {
 		return s.toolResult(req, "unknown tool: "+p.Name, true)
 	}
 
-	text, isErr := callHandler(handler, p.Name, p.Arguments)
+	text, isErr := callHandler(ctx, handler, p.Name, p.Arguments)
 	return s.toolResult(req, text, isErr)
 }
 
@@ -350,14 +482,14 @@ var panicLog io.Writer = os.Stderr
 
 // callHandler runs a tool handler. A panic becomes a tool error: one broken
 // handler must not take the server down, and with it every other session.
-func callHandler(h toolHandler, name string, args map[string]any) (text string, isErr bool) {
+func callHandler(ctx context.Context, h toolHandler, name string, args map[string]any) (text string, isErr bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(panicLog, "cloudru-vm mcp: tool %s panicked: %v\n%s", name, r, debug.Stack())
 			text, isErr = tools.ErrResult(fmt.Errorf("internal error: tool %s panicked: %v", name, r)), true
 		}
 	}()
-	return h(context.Background(), args)
+	return h(ctx, args)
 }
 
 // toolResult wraps a tool's textual output in the MCP tools/call result shape.

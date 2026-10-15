@@ -82,6 +82,11 @@ type HTTPHandler struct {
 
 	done     chan struct{}
 	doneOnce sync.Once
+
+	// base ends when the handler is closed (the server stops): every tool
+	// call runs under it.
+	base     context.Context
+	stopBase context.CancelCauseFunc
 }
 
 // NewHTTPHandler returns the HTTP transport of s. It applies the HTTP-mode
@@ -92,19 +97,25 @@ func NewHTTPHandler(s *Server, opts HTTPOptions) *HTTPHandler {
 		opts.KeepAlive = defaultKeepAlive
 	}
 	s.restrictForHTTP(opts.AllowSecretExport)
+	base, stopBase := context.WithCancelCause(context.Background())
 	return &HTTPHandler{
 		srv:      s,
 		opts:     opts,
 		sessions: map[string]time.Time{},
 		calls:    make(chan struct{}, httpMaxToolCalls),
 		done:     make(chan struct{}),
+		base:     base,
+		stopBase: stopBase,
 	}
 }
 
 // Close ends open SSE streams; http.Server.Shutdown would otherwise wait for
-// them forever.
+// them forever. Running tool calls are cancelled.
 func (h *HTTPHandler) Close() {
-	h.doneOnce.Do(func() { close(h.done) })
+	h.doneOnce.Do(func() {
+		h.stopBase(errServerStopping)
+		close(h.done)
+	})
 }
 
 // ServeHTTP implements http.Handler.
@@ -164,6 +175,8 @@ func (h *HTTPHandler) serveMCP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unknown session", http.StatusNotFound)
 			return
 		}
+		// The client is done with the session: nobody awaits its calls.
+		h.srv.inflight.cancelScope(id, errSessionDeleted)
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		w.Header().Set("Allow", "GET, POST, DELETE")
@@ -271,11 +284,21 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 	}
 	// A client without a session id is served statelessly: the server
 	// keeps no per-session state, the id only lets a client notice a
-	// restart (404 → initialize again).
-	if id := r.Header.Get(headerSessionID); id != "" && !initialize && !h.touchSession(id) {
+	// restart (404 → initialize again) and scopes notifications/cancelled
+	// and DELETE to the session's own calls.
+	scope := r.Header.Get(headerSessionID)
+	if scope != "" && !initialize && !h.touchSession(scope) {
 		http.Error(w, "unknown session", http.StatusNotFound)
 		return
 	}
+	if initialize {
+		scope = ""
+	}
+	// A tool call ends with the server (Close) or with this request: the
+	// client closed the connection, so nobody waits for the answer, and
+	// without resumable streams it could not get it later anyway.
+	ctx, release := mergeCancel(h.base, r.Context(), errClientGone)
+	defer release()
 
 	// Responses and notifications only: nothing to answer.
 	hasRequest := false
@@ -286,7 +309,7 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 	}
 	if !hasRequest {
 		for _, req := range reqs {
-			h.dispatch(req)
+			h.dispatch(ctx, scope, req)
 		}
 		w.WriteHeader(http.StatusAccepted)
 		return
@@ -297,16 +320,18 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !batch && reqs[0].Method == "tools/call" && acceptsSSE(r) {
-		h.postSSE(w, r, reqs[0])
+		h.postSSE(ctx, w, r, scope, reqs[0])
 		return
 	}
 
+	// A plain JSON answer is sent even for a call the client cancelled:
+	// the POST needs a body, and the client ignores it (MCP).
 	var out []*rpcResponse
 	for _, m := range msgs {
 		if m.bad != nil {
 			out = append(out, m.bad)
 		} else if m.req != nil {
-			if resp := h.dispatch(m.req); resp != nil {
+			if resp, _ := h.dispatch(ctx, scope, m.req); resp != nil {
 				out = append(out, resp)
 			}
 		}
@@ -324,17 +349,25 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 // postSSE answers one tools/call as an SSE stream: comments keep the
 // connection alive while a long call (deploy, cluster creation) runs, then
 // the response arrives as a single "message" event.
-func (h *HTTPHandler) postSSE(w http.ResponseWriter, r *http.Request, req *rpcRequest) {
+func (h *HTTPHandler) postSSE(ctx context.Context, w http.ResponseWriter, r *http.Request, scope string, req *rpcRequest) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeJSON(w, http.StatusOK, h.dispatch(req))
+		resp, _ := h.dispatch(ctx, scope, req)
+		writeJSON(w, http.StatusOK, resp)
 		return
 	}
-	result := make(chan *rpcResponse, 1)
-	// The call runs to completion even if the client goes away: a
-	// disconnect is not a cancellation (MCP spec), and stopping a
-	// half-done mutation is worse than finishing it.
-	go func() { result <- h.dispatch(req) }()
+	type answer struct {
+		resp      *rpcResponse
+		cancelled bool
+	}
+	result := make(chan answer, 1)
+	// When the client goes away, ctx ends and the call is cancelled: the
+	// stream has no resumption (Last-Event-ID), the answer would be lost.
+	// Mutating tools leave the state naming what they created.
+	go func() {
+		resp, cancelled := h.dispatch(ctx, scope, req)
+		result <- answer{resp, cancelled}
+	}()
 
 	sseHeaders(w)
 	w.WriteHeader(http.StatusOK)
@@ -344,8 +377,11 @@ func (h *HTTPHandler) postSSE(w http.ResponseWriter, r *http.Request, req *rpcRe
 	defer tick.Stop()
 	for {
 		select {
-		case resp := <-result:
-			data, _ := json.Marshal(resp)
+		case a := <-result:
+			if a.cancelled || a.resp == nil {
+				return // cancelled by the client: no answer (MCP)
+			}
+			data, _ := json.Marshal(a.resp)
 			fmt.Fprintf(w, "event: message\ndata: %s\n\n", data)
 			flusher.Flush()
 			return
@@ -394,10 +430,12 @@ func (h *HTTPHandler) stream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// dispatch runs one message through the shared handler and logs tool calls.
-func (h *HTTPHandler) dispatch(req *rpcRequest) *rpcResponse {
+// dispatch runs one message through the shared handler and logs tool
+// calls. A tools/call with an id runs under its own context, cancellable by
+// notifications/cancelled in scope; cancelled reports that it was.
+func (h *HTTPHandler) dispatch(ctx context.Context, scope string, req *rpcRequest) (resp *rpcResponse, cancelled bool) {
 	if req.Method != "tools/call" {
-		return h.srv.handle(req)
+		return h.srv.handle(ctx, scope, req), false
 	}
 	select {
 	case h.calls <- struct{}{}:
@@ -405,25 +443,38 @@ func (h *HTTPHandler) dispatch(req *rpcRequest) *rpcResponse {
 	default:
 		h.logf(slog.LevelWarn, "tool call refused: too many running", "limit", httpMaxToolCalls)
 		if req.isNotification() {
-			return nil
+			return nil, false
 		}
 		return h.srv.toolResult(req, tools.ErrResult(fmt.Errorf(
-			"server busy: %d tool calls are already running; retry later", httpMaxToolCalls)), true)
+			"server busy: %d tool calls are already running; retry later", httpMaxToolCalls)), true), false
+	}
+	if !req.isNotification() {
+		var call *inflightCall
+		var done func()
+		ctx, call, done = h.srv.inflight.begin(ctx, scope, req.ID)
+		defer func() {
+			cancelled = call.byClient.Load()
+			done()
+		}()
 	}
 	start := time.Now()
-	resp := h.srv.handle(req)
+	resp = h.srv.handle(ctx, scope, req)
 	if h.opts.Logger != nil {
 		var p struct {
 			Name string `json:"name"`
 		}
 		_ = json.Unmarshal(req.Params, &p)
+		status := callStatus(resp)
+		if ctx.Err() != nil {
+			status = "cancelled: " + context.Cause(ctx).Error()
+		}
 		h.opts.Logger.Info("tool call",
 			"tool", p.Name,
-			"status", callStatus(resp),
+			"status", status,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
 	}
-	return resp
+	return resp, false
 }
 
 // callStatus is "ok", "error" (tool-level, isError) or "rpc_error".

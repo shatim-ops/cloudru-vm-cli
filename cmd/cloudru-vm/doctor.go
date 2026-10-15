@@ -130,6 +130,8 @@ func fileChecks() []doctorCheck {
 	case config.PermissionsEnforced() && config.LooseMode(st.Mode()):
 		checks = append(checks, doctorCheck{Name: "config dir", Status: checkWarn,
 			Detail: fmt.Sprintf("%s has mode %04o; run: chmod 700 %s", dir, st.Mode().Perm(), dir)})
+	case !config.PermissionsEnforced() && config.PrivateDirWarning(dir) != "":
+		checks = append(checks, doctorCheck{Name: "config dir", Status: checkWarn, Detail: config.PrivateDirWarning(dir)})
 	default:
 		checks = append(checks, doctorCheck{Name: "config dir", Status: checkOK, Detail: dir})
 	}
@@ -148,7 +150,16 @@ func fileChecks() []doctorCheck {
 		case err != nil:
 			checks = append(checks, doctorCheck{Name: f.name, Status: checkFail, Detail: err.Error(), auth: true})
 		case !config.PermissionsEnforced():
-			checks = append(checks, doctorCheck{Name: f.name, Status: checkOK, Detail: f.path + " (file modes not checked on Windows)"})
+			// Windows: the ACL instead of the mode.
+			if w := config.PrivateFileWarning(f.path); w != "" {
+				status := checkWarn
+				if f.secret {
+					status = checkFail
+				}
+				checks = append(checks, doctorCheck{Name: f.name, Status: status, auth: f.secret, Detail: w})
+			} else {
+				checks = append(checks, doctorCheck{Name: f.name, Status: checkOK, Detail: f.path + " (ACL: no access for other users)"})
+			}
 		case config.LooseMode(st.Mode()):
 			status := checkWarn
 			if f.secret {

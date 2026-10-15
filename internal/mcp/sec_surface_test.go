@@ -312,11 +312,11 @@ func TestSec_HTTPConcurrentToolCallsLimited(t *testing.T) {
 	var done sync.WaitGroup
 	for i := range httpMaxToolCalls {
 		done.Add(1)
-		go func() { defer done.Done(); h.dispatch(req(i)) }()
+		go func() { defer done.Done(); h.dispatch(context.Background(), "", req(i)) }()
 	}
 	started.Wait()
 
-	resp := h.dispatch(req(999))
+	resp, _ := h.dispatch(context.Background(), "", req(999))
 	data, _ := json.Marshal(resp)
 	if !strings.Contains(string(data), "server busy") {
 		t.Errorf("call over the limit: %s", data)
@@ -324,7 +324,7 @@ func TestSec_HTTPConcurrentToolCallsLimited(t *testing.T) {
 	close(release)
 	done.Wait()
 
-	resp = h.dispatch(&rpcRequest{JSONRPC: "2.0", ID: json.RawMessage("1"), Method: "tools/call", Params: json.RawMessage(`{"name":"vm_list"}`)})
+	resp, _ = h.dispatch(context.Background(), "", &rpcRequest{JSONRPC: "2.0", ID: json.RawMessage("1"), Method: "tools/call", Params: json.RawMessage(`{"name":"vm_list"}`)})
 	if data, _ := json.Marshal(resp); strings.Contains(string(data), "busy") {
 		t.Errorf("after the calls finished: %s", data)
 	}

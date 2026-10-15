@@ -119,6 +119,19 @@ func Apply(ctx context.Context, cloud provision.CloudAPI, plan *Plan) (*ApplyRes
 		return nil, fmt.Errorf("create VM: %w", err)
 	}
 
+	// Cancelled from here on (the MCP client went away or cancelled the
+	// call): the VM exists and is billed. The result names it, so the
+	// caller can record it in the state, together with an error that says
+	// what to do with it.
+	interrupted := func(ip string) (*ApplyResult, error) {
+		return &ApplyResult{
+				VMID: vm.ID, Status: "interrupted", PublicIP: ip,
+				ElapsedSec: int(time.Since(start).Seconds()),
+			}, fmt.Errorf("VM %s was created, but deploy_apply was interrupted; it is still running — "+
+				"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
+				"check it with vm_get, or delete it with destroy: %w", vm.ID, ctx.Err())
+	}
+
 	// --- Poll until running (7 min) ---
 	status := "building"
 	deadline := time.After(pollTimeout)
@@ -129,7 +142,7 @@ poll:
 		select {
 		case <-ctx.Done():
 			// The VM exists: say which, or nobody will find it.
-			return nil, fmt.Errorf("VM %s was created, but the wait for it was interrupted; it is still running — check it with vm_get, delete it in the Cloud.ru console if unwanted: %w", vm.ID, ctx.Err())
+			return interrupted("")
 		case <-deadline:
 			return &ApplyResult{
 				VMID: vm.ID, Status: "timeout", Password: password,
@@ -157,6 +170,11 @@ poll:
 
 	// --- Floating IP ---
 	ip, fipNote := ensureFloatingIP(ctx, cloud, plan, vm.ID)
+	if ctx.Err() != nil {
+		// The steps below would only fail on the cancelled context and
+		// report a half-done VM as "running".
+		return interrupted(ip)
+	}
 
 	// --- Wait until SSH (port 22) is actually reachable, so the agent's very
 	// first ssh attempt succeeds instead of hitting a boot-time timeout (which

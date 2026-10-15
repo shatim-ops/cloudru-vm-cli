@@ -208,7 +208,13 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 		Printer:  printer,
 		StateDir: cwd,
 		// Created on first use: list-zones and friends leave no key behind.
-		SSHKeyLoader: func() ([]byte, string, error) { return loadOrGenerateSSHKey(cwd) },
+		SSHKeyLoader: func() ([]byte, string, error) {
+			priv, pub, err := loadOrGenerateSSHKey(cwd)
+			if err == nil {
+				printWarnings(printer, sshKeyWarnings(cwd))
+			}
+			return priv, pub, err
+		},
 	}, nil
 }
 
@@ -266,7 +272,7 @@ func ensureKeyDir(dir string) error {
 	st, err := os.Lstat(dir)
 	switch {
 	case os.IsNotExist(err):
-		if err := os.MkdirAll(dir, 0o700); err != nil {
+		if err := config.MkdirPrivate(dir); err != nil {
 			return fmt.Errorf("create key directory: %w", err)
 		}
 		return nil
@@ -282,7 +288,30 @@ func ensureKeyDir(dir string) error {
 			return fmt.Errorf("restrict key directory: %w", err)
 		}
 	}
+	// Windows: a directory made by an older version inherited the ACL of
+	// the project folder. Best effort (FAT has no ACL to set): what stays
+	// open is reported by sshKeyWarnings.
+	if !config.PermissionsEnforced() && len(config.ForeignAccess(dir, true)) > 0 {
+		_ = config.RestrictToOwner(dir, true)
+	}
 	return nil
+}
+
+// sshKeyWarnings reports a key directory or private key other users can
+// reach. Only Windows ACLs are checked: on Unix ensureKeyDir makes the
+// directory 0700 and the key is written 0600.
+func sshKeyWarnings(projectDir string) []string {
+	keyDir := filepath.Join(projectDir, ".cloudru-vm")
+	var out []string
+	for _, w := range []string{
+		config.PrivateDirWarning(keyDir),
+		config.PrivateFileWarning(filepath.Join(keyDir, "id_ed25519")),
+	} {
+		if w != "" {
+			out = append(out, w)
+		}
+	}
+	return out
 }
 
 // ignoreInGit puts a .gitignore with "*" into dir, so "git add ." in the

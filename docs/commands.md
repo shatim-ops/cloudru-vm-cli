@@ -1699,7 +1699,8 @@ resources directly.
 
 By default it speaks newline-delimited JSON-RPC 2.0 on stdin/stdout; all
 human-readable output is suppressed (stdout is reserved for the protocol).
-Add it to Claude Code with:
+SIGINT/SIGTERM and notifications/cancelled cancel running tool calls;
+closing stdin does not (calls already sent finish and are answered). Add it to Claude Code with:
   claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
 
 With --http ADDR it serves the MCP Streamable HTTP transport on
@@ -1722,7 +1723,9 @@ directory, k8s_kubectl to built-in commands without host flags (--kubeconfig,
 -f, ...), k8s_helm to remote charts on public https/oci hosts.
 k8s_kubectl/k8s_apply/k8s_helm answer with an error when kubectl/helm is not
 installed (the Docker image has neither). At most 32 tool calls run at once
-and a batch holds at most 100 messages. One log line per tool call (name,
+and a batch holds at most 100 messages. A tool call is cancelled when its
+client closes the connection, deletes the session (DELETE /mcp) or sends
+notifications/cancelled, and when the server stops; there is no timeout. One log line per tool call (name,
 status, duration; never the arguments) goes to stderr.
 
 Cloud.ru credentials and project parameters are the server's own, resolved

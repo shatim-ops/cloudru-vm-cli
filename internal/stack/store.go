@@ -178,6 +178,10 @@ type Step struct {
 	Attempts   int            `json:"attempts,omitempty"`  // create retries used (transient-error tolerance)
 	FindArgs   map[string]any `json:"find_args,omitempty"` // extra args for the find-by-name list call (e.g. dns zone_id)
 	Detail     string         `json:"detail,omitempty"`
+	// Interrupted marks a create cut off by a cancelled call: it may have
+	// reached the cloud, so the next crank looks for the resource before
+	// creating it again.
+	Interrupted bool `json:"interrupted,omitempty"`
 }
 
 type Job struct {
@@ -251,7 +255,7 @@ func FindResourcefulJobs(name, excludeID string) []OrphanRef {
 // already in the cloud are dropped first (see redactSpent).
 func (j *Job) Save() error {
 	dir := jobsDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil { // job files hold secret values of the manifest
+	if err := config.MkdirPrivate(dir); err != nil { // job files hold secret values of the manifest
 		return err
 	}
 	// Directories made by older versions were 0755: job names and

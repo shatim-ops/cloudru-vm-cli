@@ -1717,6 +1717,40 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		return errResult(fmt.Errorf("create VM: %w", err)), true
 	}
 
+	// saveState records the VM in the local state, so status and destroy
+	// see it.
+	statePath := state.DefaultPath(eng.StateDir)
+	saveState := func(status, publicIP string) {
+		sf, _ := state.Read(statePath)
+		if sf == nil {
+			return
+		}
+		sf.UpsertDeployment(state.DeploymentRecord{
+			ID:        vm.ID,
+			VMID:      vm.ID,
+			VMIP:      publicIP,
+			VMFlavor:  flavorID,
+			Region:    region,
+			SSHUser:   sshUser,
+			Status:    status,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		})
+		_ = state.Write(statePath, sf)
+	}
+	// interrupted answers a cancelled call (client gone, notifications/
+	// cancelled, server stopping): the VM exists and is billed, so the
+	// answer names it, and the state has it.
+	interrupted := func(publicIP string) (string, bool) {
+		saveState("creating", publicIP)
+		return toJSON(map[string]any{
+			"status": "error",
+			"vm_id":  vm.ID,
+			"error": fmt.Sprintf("VM %s was created, but provision was interrupted (%v); it is still running and recorded in the state — "+
+				"check it with vm_get, delete it with destroy (vm_id %s)", vm.ID, ctx.Err(), vm.ID),
+		}), true
+	}
+
 	// Poll until active
 	pollTimeout := 5 * time.Minute
 	deadline := time.After(pollTimeout)
@@ -1744,25 +1778,10 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					_ = fipErr
 					publicIP = ip
 				}
-
-				// Save state
-				statePath := state.DefaultPath(eng.StateDir)
-				sf, _ := state.Read(statePath)
-				rec := state.DeploymentRecord{
-					ID:        vm.ID,
-					VMID:      vm.ID,
-					VMIP:      publicIP,
-					VMFlavor:  flavorID,
-					Region:    region,
-					SSHUser:   sshUser,
-					Status:    "running",
-					CreatedAt: time.Now(),
-					UpdatedAt: time.Now(),
+				if ctx.Err() != nil {
+					return interrupted(publicIP)
 				}
-				if sf != nil {
-					sf.UpsertDeployment(rec)
-					_ = state.Write(statePath, sf)
-				}
+				saveState("running", publicIP)
 
 				msg := fmt.Sprintf("VM %s is active at %s. SSH: ssh %s@%s", vm.ID, publicIP, sshUser, publicIP)
 				if noPublicIP {
@@ -1783,7 +1802,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				return errResult(fmt.Errorf("VM %s entered error state", vm.ID)), true
 			}
 		case <-ctx.Done():
-			return errResult(ctx.Err()), true
+			return interrupted("")
 		}
 	}
 }
