@@ -572,3 +572,19 @@ func TestProjectListUse(t *testing.T) {
 		t.Errorf("name without a list: exit %d, want %d", code, clerrors.ExitAuth)
 	}
 }
+
+// whoami and doctor show the project the next command would use, so
+// --project-id counts there too.
+func TestWhoamiDoctor_ProjectFlag(t *testing.T) {
+	setupCLI(t)
+	saveProfile(t, "default", "p-1")
+	code, stdout, stderr := runCLI(t, "", "--project-id", "p-flag", "whoami")
+	if code != 0 || !strings.Contains(stdout, "p-flag (from flag)") {
+		t.Fatalf("whoami --project-id: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	newProcess()
+	code, stdout, _ = runCLI(t, "", "--project-id", "p-flag", "--json", "doctor")
+	if code != 0 || !strings.Contains(stdout, "project_id from flag") {
+		t.Fatalf("doctor --project-id: exit %d\n%s", code, stdout)
+	}
+}
