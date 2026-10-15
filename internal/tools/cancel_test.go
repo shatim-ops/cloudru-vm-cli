@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -30,10 +32,14 @@ type cancelCloud struct {
 	creates     int
 	createReq   provision.CreateVMRequest
 	createErr   error
+	fipErr      error
 	deletedFIPs []string
 }
 
-func (*cancelCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+func (c *cancelCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	if c.fipErr != nil {
+		return nil, c.fipErr
+	}
 	return &provision.FloatingIP{ID: "fip-boot", IPAddress: "203.0.113.9", State: "available"}, nil
 }
 func (*cancelCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
@@ -211,5 +217,36 @@ func TestCancel_StackStepInterruptedReconcilesByName(t *testing.T) {
 	job, _ := stack.LoadJob(j.ID)
 	if creates != 1 || job.Steps[0].ResourceID != "pg-1" || job.Steps[0].Status != "waiting" {
 		t.Fatalf("pg_create вызван %d раз, шаг %+v", creates, job.Steps[0])
+	}
+}
+
+// Квота публичных IP исчерпана: ВМ без интернета не создаётся вовсе.
+func TestProvision_FIPQuota_CreatesNothing(t *testing.T) {
+	cloud := &cancelCloud{cancel: func() {}, fipErr: errors.New("403 quota exceeded")}
+	r, _ := cancelRegistry(t, cloud)
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
+	if !isErr || !strings.Contains(text, "quota") {
+		t.Fatalf("ответ: %s", text)
+	}
+	if cloud.creates != 0 {
+		t.Errorf("ВМ создана без публичного IP")
+	}
+}
+
+// State не пишется: ответ говорит, что ВМ в state нет и destroy её не найдёт.
+func TestProvision_StateNotWritable_Warns(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cloud := &cancelCloud{cancel: cancel}
+	r, dir := cancelRegistry(t, cloud)
+	if err := os.MkdirAll(filepath.Dir(state.DefaultPath(dir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(state.DefaultPath(dir), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr := r.handlers["provision"](ctx, map[string]any{"name": "web", "confirmed": true})
+	if !isErr || !strings.Contains(text, "vm-made") || !strings.Contains(text, "NOT in the state") {
+		t.Fatalf("ответ не предупреждает о state: %s", text)
 	}
 }

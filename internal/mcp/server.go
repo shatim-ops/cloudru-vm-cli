@@ -484,7 +484,9 @@ const approvalNote = "Stop here. Show this preview to the user and ask for expli
 	"Call again with confirmed=true only after the user approved this action in the conversation; never decide it yourself."
 
 // withApprovalNote adds approvalNote to a confirmation_required answer and
-// leaves every other answer as it is.
+// leaves every other answer as it is. Re-encoding sorts the keys and
+// indents: tools already answer that way (toJSON over a map), so nothing a
+// client relies on changes.
 func withApprovalNote(text string) string {
 	if !bytes.Contains([]byte(text), []byte(`"confirmation_required"`)) {
 		return text

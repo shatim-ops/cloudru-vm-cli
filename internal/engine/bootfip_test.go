@@ -70,13 +70,14 @@ func TestDeploy_CreateVMFails_ReleasesBootFIP(t *testing.T) {
 	}
 }
 
-// When the IP cannot be reserved up front, deploy goes on and attaches one
-// after boot, as before, and says the first boot may be slow.
+// When the IP cannot be reserved up front for a reason other than quota,
+// deploy goes on, attaches one after boot and says the first boot may be
+// slow.
 func TestDeploy_BootFIPFails_AttachesAfterBoot(t *testing.T) {
 	var calls fipCalls
 	cloud := &mockCloudAPI{createFloatingIPFn: func(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
 		if calls.record(req) == 1 {
-			return nil, stderrors.New("403 quota exceeded")
+			return nil, stderrors.New("503 service unavailable")
 		}
 		return &provision.FloatingIP{ID: "fip-late", IPAddress: "203.0.113.8", State: "in_use"}, nil
 	}}
@@ -125,5 +126,22 @@ func TestDeploy_CreateVMFailsButVMExists_Recorded(t *testing.T) {
 	a := readActive(t, dir)
 	if a == nil || a.VMID != "vm-lost" || a.FloatingIPID != "fip-1" || a.Status != "creating" {
 		t.Fatalf("state: %+v, want vm-lost creating with fip-1", a)
+	}
+}
+
+// No public IP can be had (quota): the VM would be billed with no way in,
+// since the IP after boot hits the same quota — stop before creating it.
+func TestDeploy_FIPQuotaExhausted_CreatesNothing(t *testing.T) {
+	cloud := &mockCloudAPI{createFloatingIPFn: func(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+		return nil, stderrors.New("403 organization_quota_exceeded")
+	}}
+	eng, dir := newTestEngine(t, cloud, newMockDeployer())
+
+	err := eng.Deploy(context.Background(), newDeployOpts(t, dir))
+	if err == nil || !strings.Contains(err.Error(), "quota") {
+		t.Fatalf("deploy error %v, want the quota", err)
+	}
+	if cloud.createCalled {
+		t.Error("VM created although no public IP could be reserved")
 	}
 }

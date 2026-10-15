@@ -493,7 +493,10 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	// boot, the VM boots offline and cloud-init can spend 10+ minutes on
 	// mirror timeouts before sshd starts. A FIP that cannot be made now is
 	// attached after boot, as before.
-	bootFIP := e.createBootFIP(ctx, projectID, region, vmName)
+	bootFIP, err := e.createBootFIP(ctx, projectID, region, vmName)
+	if err != nil {
+		return state.DeploymentRecord{}, err
+	}
 	if bootFIP != nil {
 		req.Interfaces[0].AttachExternalIPID = bootFIP.ID
 	}
@@ -779,20 +782,28 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 }
 
 // createBootFIP makes a free floating IP to attach to the VM at creation.
-// nil when it cannot (quota, API error): the IP is then attached after boot.
-func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName string) *provision.FloatingIP {
+// When that fails the VM still gets an IP after boot (nil, nil) — except on
+// a quota rejection: the IP would fail after boot too, and the VM would be
+// billed with no way in, so that is an error before anything is created.
+func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName string) (*provision.FloatingIP, error) {
 	fip, err := e.Cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
 		Name:               "fip-" + vmName + "-" + strconv.FormatInt(time.Now().Unix(), 36),
 		ProjectID:          projectID,
 		AvailabilityZoneID: azID,
 	})
 	if err != nil || fip == nil || fip.ID == "" {
+		if provision.IsQuotaError(err) {
+			return nil, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
+				"no public IP can be reserved: the floating IP quota is exhausted",
+				"Nothing was created. Delete a floating IP you no longer need (list_floating_ips / release_floating_ip) or raise the quota in the Cloud.ru console, then retry.",
+				err)
+		}
 		if ctx.Err() == nil {
 			e.Printer.Warning(fmt.Sprintf("could not reserve a public IP before creating the VM (%v); it will be attached after boot, which can make the first boot slow", err))
 		}
-		return nil
+		return nil, nil
 	}
-	return fip
+	return fip, nil
 }
 
 // releaseBootFIP deletes a boot FIP whose VM was not created or was deleted.
@@ -1142,7 +1153,7 @@ func (e *Engine) printVerifyResults(results []verify.ProbeResult, ip string) {
 
 // CreateBootFIP, WaitBootFIP and ReleaseBootFIP give the MCP provision tool
 // the same public-IP-at-create path as deploy.
-func (e *Engine) CreateBootFIP(ctx context.Context, projectID, azID, vmName string) *provision.FloatingIP {
+func (e *Engine) CreateBootFIP(ctx context.Context, projectID, azID, vmName string) (*provision.FloatingIP, error) {
 	return e.createBootFIP(ctx, projectID, azID, vmName)
 }
 
