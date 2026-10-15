@@ -160,7 +160,9 @@ go build -o bin/evo ./cmd/evo
 gofmt -l . && go vet ./... && go test -race ./... && govulncheck ./...
 ```
 
-Нужен Go из `go.mod`; CI гоняет то же на Linux, macOS и Windows
+Нужен Go из `go.mod`. `GORACE=atexit_sleep_ms=0` ускоряет `go test -race`
+в несколько раз: без неё race-рантайм ждёт секунду на выходе каждого пакета.
+CI гоняет то же на Linux, macOS и Windows
 (`.github/workflows/ci.yml`). После изменения команд или флагов обновите
 справку: `go test ./internal/cli -run TestCommandsDoc -update-docs`.
 Внутренние планы и история проекта — `docs/internal/`.

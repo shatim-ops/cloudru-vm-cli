@@ -29,7 +29,7 @@ func (s *Registry) kubeconfigForCluster(ctx context.Context, clusterID string) (
 	}
 	keyID, secret := s.accessKey()
 	if keyID == "" || secret == "" {
-		return "", fmt.Errorf("CLOUDRU_KEY_ID/CLOUDRU_SECRET not set — cannot mint a kube token")
+		return "", fmt.Errorf("no Cloud.ru access key configured (evo configure, or CLOUDRU_KEY_ID/CLOUDRU_SECRET) — cannot mint a kube token")
 	}
 	tok, err := mk8s.FetchOIDCToken(ctx, mk8s.OIDCURLFromKubeconfig(plain), keyID, secret)
 	if err != nil {
