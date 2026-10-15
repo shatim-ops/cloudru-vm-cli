@@ -148,3 +148,13 @@ func TestAssignFloatingIP_InterfaceStateFallback(t *testing.T) {
 		t.Errorf("GetVMDetail polls = %d, want %d", n, ifaceFallbackAttempt+1)
 	}
 }
+
+// CLOUDRU_TIMEOUT=0 or a negative value means the default wait, not "give
+// up at once".
+func TestTimings_NonPositiveVMPollTimeoutIsDefault(t *testing.T) {
+	for _, in := range []time.Duration{0, -5 * time.Second} {
+		if got := (Timings{VMPollTimeout: in}).withDefaults().VMPollTimeout; got != vmPollTimeout {
+			t.Errorf("VMPollTimeout %v → %v, want %v", in, got, vmPollTimeout)
+		}
+	}
+}
