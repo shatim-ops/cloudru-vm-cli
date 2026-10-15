@@ -27,9 +27,6 @@ type sgCloud struct {
 }
 
 func (*sgCloud) SetToken(string) {}
-func (c *sgCloud) ListVMs(context.Context) ([]*provision.VM, error) {
-	return []*provision.VM{c.vm}, nil
-}
 func (c *sgCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
 	return []*provision.VM{c.vm}, nil
 }

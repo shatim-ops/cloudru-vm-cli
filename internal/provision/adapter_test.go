@@ -140,38 +140,6 @@ func TestDeleteVM(t *testing.T) {
 	}
 }
 
-func TestListVMs(t *testing.T) {
-	items := []VM{
-		{ID: "vm-1", Status: "running", FlavorID: "f-small", Region: "ru-1"},
-		{ID: "vm-2", Status: "stopped", FlavorID: "f-large", Region: "ru-2"},
-	}
-
-	srv, adapter := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			t.Errorf("expected GET, got %s", r.Method)
-		}
-		if r.URL.Path != "/api/v1/vms" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(paginatedResponse[VM]{Items: items, Total: len(items)})
-	})
-	defer srv.Close()
-
-	got, err := adapter.ListVMs(context.Background())
-	if err != nil {
-		t.Fatalf("ListVMs returned error: %v", err)
-	}
-	if len(got) != len(items) {
-		t.Fatalf("got %d VMs, want %d", len(got), len(items))
-	}
-	for i := range items {
-		if got[i].ID != items[i].ID {
-			t.Errorf("VM[%d].ID = %q, want %q", i, got[i].ID, items[i].ID)
-		}
-	}
-}
-
 func TestListFlavors(t *testing.T) {
 	var callCount atomic.Int32
 	items := []Flavor{

@@ -344,6 +344,25 @@ func isTransientServerError(err error) bool {
 // once left both behind. It retries until Timings.DeletableWaitTimeout, then
 // returns the last refusal.
 func (e *Engine) deleteVMWhenDeletable(ctx context.Context, vmID string) error {
+	return explainDeleteRefusal(vmID, e.waitAndDeleteVM(ctx, vmID))
+}
+
+// explainDeleteRefusal names the documented 405 of DELETE /api/v1/vms/{id}
+// ("the VM has related entities", openapi-v3; api-contract §4.8): without a
+// hint it read as a bare API error.
+func explainDeleteRefusal(vmID string, err error) error {
+	if provision.HTTPStatus(err) != http.StatusMethodNotAllowed {
+		return err
+	}
+	return clerrors.Wrap(clerrors.CodeAPIError,
+		i18n.Tf("Cloud.ru does not delete VM %s: other resources are attached to it (HTTP 405)",
+			"Cloud.ru не удаляет ВМ %s: к ней привязаны другие ресурсы (HTTP 405)", vmID),
+		i18n.T("Detach its extra disks and floating IPs in the Cloud.ru console (or 'evo vpc fip-release'), then run 'evo destroy' again; the deployment record is kept.",
+			"Отвяжите дополнительные диски и floating IP ВМ в консоли Cloud.ru (или 'evo vpc fip-release') и повторите 'evo destroy'; запись развёртывания сохранена."),
+		err)
+}
+
+func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) error {
 	err := e.Cloud.DeleteVM(ctx, vmID)
 	if err == nil || !isNotDeletableYet(err) {
 		return err

@@ -50,8 +50,7 @@ func (c *cancelCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 	return nil
 }
 
-func (*cancelCloud) SetToken(string)                                  {}
-func (*cancelCloud) ListVMs(context.Context) ([]*provision.VM, error) { return nil, nil }
+func (*cancelCloud) SetToken(string) {}
 func (*cancelCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 	return []*provision.Flavor{{ID: "fl-1", Name: "lowcost10-1-1", VCPUs: 1, RAMGB: 1}}, nil
 }

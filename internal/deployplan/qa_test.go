@@ -47,7 +47,6 @@ type applyCloud struct {
 	provision.CloudAPI
 }
 
-func (applyCloud) ListVMs(context.Context) ([]*provision.VM, error) { return nil, nil }
 func (applyCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
 	return nil, nil
 }
@@ -92,7 +91,6 @@ type lostAnswerCloud struct {
 	created bool
 }
 
-func (*lostAnswerCloud) ListVMs(context.Context) ([]*provision.VM, error) { return nil, nil }
 func (c *lostAnswerCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
 	c.created = true
 	return nil, errors.New("context deadline exceeded")
