@@ -6,6 +6,7 @@ import (
 	"time"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/verify"
 )
@@ -25,14 +26,14 @@ func (e *Engine) Verify(ctx context.Context) error {
 	active := stateFile.ActiveDeployment()
 	if active == nil {
 		return clerrors.New(clerrors.CodeVMNotFound,
-			"no active deployment to verify",
-			"Run 'evo deploy' first.")
+			i18n.T("no active deployment to verify", "активного развёртывания нет, проверять нечего"),
+			deployFirst())
 	}
 	if len(active.ExposedPorts) == 0 {
 		if e.Printer.IsJSON() {
 			return e.Printer.JSON([]verify.ProbeResult{})
 		}
-		e.Printer.Success("No exposed ports to verify.")
+		e.Printer.Success(i18n.T("No exposed ports to verify.", "Открытых портов нет, проверять нечего."))
 		return nil
 	}
 
@@ -54,16 +55,16 @@ func (e *Engine) Verify(ctx context.Context) error {
 			return err
 		}
 	} else {
-		headers := []string{"Port", "Status", "Healthy", "Latency"}
+		headers := []string{i18n.T("Port", "Порт"), i18n.T("Status", "Ответ"), i18n.T("Healthy", "Работает"), i18n.T("Latency", "Задержка")}
 		var rows [][]string
 		for _, r := range results {
-			healthy := "yes"
+			healthy := i18n.T("yes", "да")
 			status := fmt.Sprintf("%d", r.StatusCode)
 			if r.Protocol == "tcp" {
-				status = "tcp open"
+				status = i18n.T("tcp open", "tcp открыт")
 			}
 			if !r.Healthy {
-				healthy = "no"
+				healthy = i18n.T("no", "нет")
 				if r.Error != "" {
 					status = r.Error
 				}
@@ -80,8 +81,8 @@ func (e *Engine) Verify(ctx context.Context) error {
 
 	if unhealthy > 0 {
 		return clerrors.New(clerrors.CodeUnhealthy,
-			fmt.Sprintf("%d of %d health check(s) failed on %s", unhealthy, len(results), active.VMIP),
-			"Check the service logs with 'evo logs'.")
+			i18n.Tf("%d of %d health check(s) failed on %s", "не прошли проверки: %d из %d на %s", unhealthy, len(results), active.VMIP),
+			i18n.T("Check the service logs with 'evo logs'.", "Посмотрите журналы сервисов: 'evo logs'."))
 	}
 	return nil
 }

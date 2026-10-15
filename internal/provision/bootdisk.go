@@ -1,6 +1,6 @@
 package provision
 
-import "fmt"
+import "github.com/shatim-ops/evo-cli/internal/i18n"
 
 // DefaultBootDiskGB is the boot disk size used when none is configured.
 const DefaultBootDiskGB = 10
@@ -17,7 +17,8 @@ func BootDiskGB(requested, minDisk int) (int, string) {
 		size = DefaultBootDiskGB
 	}
 	if minDisk > size {
-		note := fmt.Sprintf("boot disk raised from %d to %d GB: the image requires at least %d GB", size, minDisk, minDisk)
+		note := i18n.Tf("boot disk raised from %d to %d GB: the image requires at least %d GB",
+			"загрузочный диск увеличен с %d до %d ГБ: образу нужно не меньше %d ГБ", size, minDisk, minDisk)
 		return minDisk, note
 	}
 	return size, ""

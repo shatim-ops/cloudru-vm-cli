@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Config holds all configuration values for evo.
@@ -177,7 +178,8 @@ func resolve(opts Options) (Config, map[string]string, error) {
 		}
 		if err := setField(&cfg, m.field, val); err != nil {
 			return Config{}, nil, clerrors.Wrap(clerrors.CodeConfigInvalid,
-				fmt.Sprintf("env %s: %v", m.envVar, err), "Fix or unset the variable", err)
+				i18n.Tf("env %s: %v", "переменная %s: %v", m.envVar, err),
+				i18n.T("Fix or unset the variable", "Исправьте или удалите переменную"), err)
 		}
 		origins[m.field] = OriginEnv
 	}
@@ -216,13 +218,15 @@ func applyEnvCredentials(cfg *Config, origins map[string]string) error {
 	id, sec, ok := splitLegacyKey(legacy)
 	if !ok {
 		return clerrors.New(clerrors.CodeAuthRequired,
-			"CLOUDRU_API_KEY must be in format 'keyId:secret'",
-			"Set CLOUDRU_KEY_ID and CLOUDRU_SECRET instead, or run 'evo configure'")
+			i18n.T("CLOUDRU_API_KEY must be in format 'keyId:secret'", "CLOUDRU_API_KEY должен иметь вид 'keyId:secret'"),
+			i18n.T("Set CLOUDRU_KEY_ID and CLOUDRU_SECRET instead, or run 'evo configure'",
+				"Вместо неё задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET или выполните 'evo configure'"))
 	}
 	cfg.KeyID, cfg.Secret = id, sec
 	origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
 	cfg.Warnings = append(cfg.Warnings,
-		"CLOUDRU_API_KEY=keyId:secret is deprecated: set CLOUDRU_KEY_ID and CLOUDRU_SECRET, or run 'evo configure'")
+		i18n.T("CLOUDRU_API_KEY=keyId:secret is deprecated: set CLOUDRU_KEY_ID and CLOUDRU_SECRET, or run 'evo configure'",
+			"CLOUDRU_API_KEY=keyId:secret устарел: задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET или выполните 'evo configure'"))
 	return nil
 }
 
@@ -249,8 +253,9 @@ func applyProfile(cfg *Config, name string, explicit bool, origins map[string]st
 	if !hasSettings && !hasCreds {
 		if explicit {
 			return clerrors.New(clerrors.CodeConfigInvalid,
-				fmt.Sprintf("profile %q not found in %s", name, Dir()),
-				fmt.Sprintf("Run 'evo configure --profile %s' to create it, or 'evo configure list' to see existing profiles", name))
+				i18n.Tf("profile %q not found in %s", "профиль %q не найден в %s", name, Dir()),
+				i18n.Tf("Run 'evo configure --profile %s' to create it, or 'evo configure list' to see existing profiles",
+					"Создайте его: 'evo configure --profile %s'; список профилей — 'evo configure list'", name))
 		}
 		return nil
 	}
@@ -325,20 +330,21 @@ func applyProjectFile(cfg *Config, path string, origins map[string]string) error
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return clerrors.Wrap(clerrors.CodeConfigInvalid, "reading config file: "+err.Error(),
-			"Check the permissions of "+path, err)
+		return clerrors.Wrap(clerrors.CodeConfigInvalid, i18n.T("reading config file: ", "чтение файла настроек: ")+err.Error(),
+			i18n.T("Check the permissions of ", "Проверьте права на ")+path, err)
 	}
 	var fileCfg Config
 	if err := yaml.Unmarshal(data, &fileCfg); err != nil {
-		return clerrors.Wrap(clerrors.CodeConfigInvalid, fmt.Sprintf("parsing %s: %v", path, err),
-			"Fix the YAML syntax", err)
+		return clerrors.Wrap(clerrors.CodeConfigInvalid, i18n.Tf("parsing %s: %v", "разбор %s: %v", path, err),
+			i18n.T("Fix the YAML syntax", "Исправьте синтаксис YAML"), err)
 	}
 	var raw map[string]any
 	_ = yaml.Unmarshal(data, &raw)
 	for _, k := range secretKeys {
 		if _, ok := raw[k]; ok {
-			cfg.Warnings = append(cfg.Warnings, fmt.Sprintf(
-				"%s: %q is ignored, secrets are not read from the project file; run 'evo configure' and remove it", path, k))
+			cfg.Warnings = append(cfg.Warnings, i18n.Tf(
+				"%s: %q is ignored, secrets are not read from the project file; run 'evo configure' and remove it",
+				"%s: %q не учитывается — секреты из файла проекта не читаются; выполните 'evo configure' и удалите ключ из файла", path, k))
 		}
 	}
 
@@ -371,7 +377,7 @@ func setField(cfg *Config, field, val string) error {
 	case "DiskSize", "Timeout":
 		n, err := strconv.Atoi(val)
 		if err != nil {
-			return fmt.Errorf("invalid integer: %w", err)
+			return fmt.Errorf(i18n.T("invalid integer: %w", "не целое число: %w"), err)
 		}
 		return setFieldAny(cfg, field, n)
 	}

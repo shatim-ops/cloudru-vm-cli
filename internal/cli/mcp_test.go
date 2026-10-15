@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"context"
 	stderrors "errors"
+	"strings"
 	"testing"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 func TestHTTPAuthToken(t *testing.T) {
@@ -74,6 +77,27 @@ func TestCheckAllowedProject(t *testing.T) {
 		var ce *clerrors.CLIError
 		if !stderrors.As(err, &ce) || ce.Code != clerrors.CodeConfigInvalid {
 			t.Errorf("project %q: %v, want CONFIG_INVALID", p, err)
+		}
+	}
+}
+
+// A project_id argument goes through the factory as the ProjectID override:
+// with --allow-project, deploy and provision in another project are refused
+// before reaching the cloud (ревью Qwen на #55: «аргумент не проверяется»).
+func TestMCPFactory_AllowProjectCoversToolArguments(t *testing.T) {
+	setupCLI(t)
+	saveProfile(t, "default", "p-a")
+	reg := tools.New(mcpEngineFactory([]string{"p-a"}))
+	for _, name := range []string{"provision", "deploy"} {
+		tl, ok := reg.Lookup(name)
+		if !ok {
+			t.Fatalf("no tool %s", name)
+		}
+		text, isErr := tl.Handler(context.Background(), map[string]any{
+			"project_id": "p-b", "name": "x", "confirmed": true,
+		})
+		if !isErr || !strings.Contains(text, "p-b") || !strings.Contains(text, "not allowed") {
+			t.Errorf("%s with project_id p-b = %s (error %v), want a refusal naming p-b", name, text, isErr)
 		}
 	}
 }

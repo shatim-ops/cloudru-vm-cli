@@ -4,9 +4,11 @@
      go test ./internal/cli -run TestCommandsDoc -update-docs
      CI сверяет файл с бинарём (TestCommandsDoc). -->
 
-Справка — на английском, как `--help` (решение D6); то же самое печатает
-`evo <команда> --help`. Описание по-русски — в [README](../README.md)
-и соседних файлах `docs/`.
+То же самое печатает `evo <команда> --help`; с `EVO_LANG=en` справка
+английская (решение D6, пересмотр). Заголовки разделов (Synopsis, Options)
+ставит генератор cobra/doc. Описания инструментов в деревьях `vm`, `disk` и
+других и их флаги — на английском, как в MCP. Подробнее — в
+[README](../README.md) и соседних файлах `docs/`.
 
 ## Содержание
 
@@ -111,117 +113,118 @@
 
 ## evo
 
-Deploy docker-compose projects to Cloud.ru VMs
+Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ### Synopsis
 
 ```text
-Deploy docker-compose projects to Cloud.ru VMs.
+Развёртывание docker-compose проектов на ВМ Cloud.ru и управление ресурсами
+облака: ВМ, диски, сети, Kubernetes, PostgreSQL, Object Storage, секреты.
 
-Exit codes:
-  0    success
-  1    general error (including unknown command or flag)
-  2    authentication or configuration error
-  3    confirmation required (not given, or stdin is not a terminal; use --yes)
-  4    object not found
-  5    Cloud.ru API error (HTTP 4xx/5xx other than authentication)
-  130  interrupted by the user
+Сообщения по-английски: EVO_LANG=en.
+
+Коды выхода:
+  0    успех
+  1    прочая ошибка (в том числе неизвестная команда или флаг)
+  2    ошибка аутентификации или конфигурации
+  3    нужно подтверждение (не дано или stdin не терминал; используйте --yes)
+  4    объект не найден
+  5    ошибка API Cloud.ru (HTTP 4xx/5xx, кроме аутентификации)
+  130  прервано пользователем
 ```
 
 ### Options
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-  -h, --help                help for evo
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+  -h, --help                Справка по evo
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo completion](#evo-completion)	 - Generate the autocompletion script for the specified shell
-* [evo configure](#evo-configure)	 - Set up credentials and the default project for a profile
-* [evo deploy](#evo-deploy)	 - Deploy a docker-compose project to a Cloud.ru VM
-* [evo destroy](#evo-destroy)	 - Delete the deployed VM and clean up resources
-* [evo disk](#evo-disk)	 - Disks
-* [evo doctor](#evo-doctor)	 - Check configuration, credentials and connectivity
-* [evo init](#evo-init)	 - Create .evo.yaml with a zone and image chosen from the Cloud.ru API
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
-* [evo list-images](#evo-list-images)	 - List available VM boot images
-* [evo list-zones](#evo-list-zones)	 - List available availability zones
-* [evo logs](#evo-logs)	 - View container logs from the deployed VM
-* [evo mcp](#evo-mcp)	 - Run as an MCP server (stdio, or Streamable HTTP with --http) for AI agents
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
-* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
-* [evo secret](#evo-secret)	 - Secret Manager
-* [evo status](#evo-status)	 - Show current deployment status
-* [evo tools](#evo-tools)	 - List, describe and call any of the evo tools (the same ones the MCP server exposes)
-* [evo verify](#evo-verify)	 - Run health checks against the deployed application (exit 1 if unhealthy, 4 if nothing is deployed)
-* [evo version](#evo-version)	 - Print the version, commit, build date, Go version and platform
-* [evo vm](#evo-vm)	 - Virtual machines
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
-* [evo whoami](#evo-whoami)	 - Show the active profile and check its credentials
+* [evo completion](#evo-completion)	 - Скрипт автодополнения для оболочки
+* [evo configure](#evo-configure)	 - Ключ доступа и проект по умолчанию для профиля
+* [evo deploy](#evo-deploy)	 - Развернуть docker-compose проект на ВМ Cloud.ru
+* [evo destroy](#evo-destroy)	 - Удалить развёрнутую ВМ и связанные ресурсы
+* [evo disk](#evo-disk)	 - Диски
+* [evo doctor](#evo-doctor)	 - Проверить настройки, ключ доступа и связь с API
+* [evo init](#evo-init)	 - Создать .evo.yaml с зоной и образом из API Cloud.ru
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+* [evo list-images](#evo-list-images)	 - Список загрузочных образов ВМ
+* [evo list-zones](#evo-list-zones)	 - Список зон доступности
+* [evo logs](#evo-logs)	 - Журналы контейнеров на развёрнутой ВМ
+* [evo mcp](#evo-mcp)	 - MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
+* [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
+* [evo secret](#evo-secret)	 - Secret Manager: секреты
+* [evo status](#evo-status)	 - Состояние текущего развёртывания
+* [evo tools](#evo-tools)	 - Список, описание и вызов инструментов evo (тех же, что у MCP-сервера)
+* [evo verify](#evo-verify)	 - Проверить, отвечает ли приложение (код 1 — не отвечает, 4 — ничего не развёрнуто)
+* [evo version](#evo-version)	 - Версия, коммит, дата сборки, версия Go и платформа
+* [evo vm](#evo-vm)	 - Виртуальные машины
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
+* [evo whoami](#evo-whoami)	 - Активный профиль и проверка его ключа
 
 ## evo completion
 
-Generate the autocompletion script for the specified shell
+Скрипт автодополнения для оболочки
 
 ### Synopsis
 
 ```text
-Generate the autocompletion script for evo for the specified shell.
-See each sub-command's help for details on how to use the generated script.
+Печатает скрипт автодополнения evo для выбранной оболочки.
+Как подключить скрипт — в справке подкоманды (bash, zsh, fish, powershell).
 ```
 
 ### Options
 
 ```
-  -h, --help   help for completion
+  -h, --help   Справка по completion
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [evo completion bash](#evo-completion-bash)	 - Generate the autocompletion script for bash
-* [evo completion fish](#evo-completion-fish)	 - Generate the autocompletion script for fish
-* [evo completion powershell](#evo-completion-powershell)	 - Generate the autocompletion script for powershell
-* [evo completion zsh](#evo-completion-zsh)	 - Generate the autocompletion script for zsh
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo completion bash](#evo-completion-bash)	 - Скрипт автодополнения для bash
+* [evo completion fish](#evo-completion-fish)	 - Скрипт автодополнения для fish
+* [evo completion powershell](#evo-completion-powershell)	 - Скрипт автодополнения для powershell
+* [evo completion zsh](#evo-completion-zsh)	 - Скрипт автодополнения для zsh
 
 ## evo completion bash
 
-Generate the autocompletion script for bash
+Скрипт автодополнения для bash
 
 ### Synopsis
 
 ```text
-Generate the autocompletion script for the bash shell.
+Скрипт автодополнения для bash. Нужен пакет bash-completion (ставится
+пакетным менеджером системы).
 
-This script depends on the 'bash-completion' package.
-If it is not installed already, you can install it via your OS's package manager.
-
-To load completions in your current shell session:
+В текущей сессии:
 
 	source <(evo completion bash)
 
-To load completions for every new session, execute once:
+Для всех новых сессий выполните один раз:
 
 #### Linux:
 
@@ -231,7 +234,7 @@ To load completions for every new session, execute once:
 
 	evo completion bash > $(brew --prefix)/etc/bash_completion.d/evo
 
-You will need to start a new shell for this setup to take effect.
+Настройка действует в новой оболочке.
 ```
 
 ```
@@ -241,45 +244,45 @@ evo completion bash
 ### Options
 
 ```
-  -h, --help              help for bash
-      --no-descriptions   disable completion descriptions
+  -h, --help              Справка по bash
+      --no-descriptions   Без описаний команд в подсказках
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo completion](#evo-completion)	 - Generate the autocompletion script for the specified shell
+* [evo completion](#evo-completion)	 - Скрипт автодополнения для оболочки
 
 ## evo completion fish
 
-Generate the autocompletion script for fish
+Скрипт автодополнения для fish
 
 ### Synopsis
 
 ```text
-Generate the autocompletion script for the fish shell.
+Скрипт автодополнения для fish.
 
-To load completions in your current shell session:
+В текущей сессии:
 
 	evo completion fish | source
 
-To load completions for every new session, execute once:
+Для всех новых сессий выполните один раз:
 
 	evo completion fish > ~/.config/fish/completions/evo.fish
 
-You will need to start a new shell for this setup to take effect.
+Настройка действует в новой оболочке.
 ```
 
 ```
@@ -289,42 +292,41 @@ evo completion fish [flags]
 ### Options
 
 ```
-  -h, --help              help for fish
-      --no-descriptions   disable completion descriptions
+  -h, --help              Справка по fish
+      --no-descriptions   Без описаний команд в подсказках
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo completion](#evo-completion)	 - Generate the autocompletion script for the specified shell
+* [evo completion](#evo-completion)	 - Скрипт автодополнения для оболочки
 
 ## evo completion powershell
 
-Generate the autocompletion script for powershell
+Скрипт автодополнения для powershell
 
 ### Synopsis
 
 ```text
-Generate the autocompletion script for powershell.
+Скрипт автодополнения для PowerShell.
 
-To load completions in your current shell session:
+В текущей сессии:
 
 	evo completion powershell | Out-String | Invoke-Expression
 
-To load completions for every new session, add the output of the above command
-to your powershell profile.
+Для всех новых сессий добавьте вывод этой команды в профиль PowerShell.
 ```
 
 ```
@@ -334,46 +336,44 @@ evo completion powershell [flags]
 ### Options
 
 ```
-  -h, --help              help for powershell
-      --no-descriptions   disable completion descriptions
+  -h, --help              Справка по powershell
+      --no-descriptions   Без описаний команд в подсказках
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo completion](#evo-completion)	 - Generate the autocompletion script for the specified shell
+* [evo completion](#evo-completion)	 - Скрипт автодополнения для оболочки
 
 ## evo completion zsh
 
-Generate the autocompletion script for zsh
+Скрипт автодополнения для zsh
 
 ### Synopsis
 
 ```text
-Generate the autocompletion script for the zsh shell.
-
-If shell completion is not already enabled in your environment you will need
-to enable it.  You can execute the following once:
+Скрипт автодополнения для zsh. Если автодополнение в zsh ещё не включено,
+выполните один раз:
 
 	echo "autoload -U compinit; compinit" >> ~/.zshrc
 
-To load completions in your current shell session:
+В текущей сессии:
 
 	source <(evo completion zsh)
 
-To load completions for every new session, execute once:
+Для всех новых сессий выполните один раз:
 
 #### Linux:
 
@@ -383,7 +383,7 @@ To load completions for every new session, execute once:
 
 	evo completion zsh > $(brew --prefix)/share/zsh/site-functions/_evo
 
-You will need to start a new shell for this setup to take effect.
+Настройка действует в новой оболочке.
 ```
 
 ```
@@ -393,50 +393,50 @@ evo completion zsh [flags]
 ### Options
 
 ```
-  -h, --help              help for zsh
-      --no-descriptions   disable completion descriptions
+  -h, --help              Справка по zsh
+      --no-descriptions   Без описаний команд в подсказках
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo completion](#evo-completion)	 - Generate the autocompletion script for the specified shell
+* [evo completion](#evo-completion)	 - Скрипт автодополнения для оболочки
 
 ## evo configure
 
-Set up credentials and the default project for a profile
+Ключ доступа и проект по умолчанию для профиля
 
 ### Synopsis
 
 ```text
-Store a service account access key and a default project in a profile.
+Сохранить ключ доступа сервисного аккаунта и проект по умолчанию в профиле.
 
-Interactively asks for the key ID and the secret (not echoed), checks them
-against Cloud.ru IAM, then lists the projects the key can see and lets you
-pick one (a single project is picked automatically).
+В интерактивном режиме спрашивает Key ID и секрет (секрет не отображается),
+проверяет их в IAM Cloud.ru, затем показывает проекты, которые видит ключ, и
+предлагает выбрать один (единственный проект выбирается сам).
 
-Non-interactive (CI, scripts) — the secret is read from stdin, never from a flag:
+Без вопросов (CI, скрипты) — секрет читается из stdin, никогда из флага:
   printf '%s' "$SECRET" | evo configure --key-id KEY_ID --secret-stdin --project-id PROJECT_ID
 
-Files (mode 0600, directory 0700; CLOUDRU_CONFIG_DIR overrides the directory):
-  <user config dir>/evo/config.yaml        project_id, region, defaults
-  <user config dir>/evo/credentials.yaml   key_id, secret, optional s3 section
+Файлы (права 0600, каталог 0700; каталог меняет CLOUDRU_CONFIG_DIR):
+  <каталог настроек>/evo/config.yaml        project_id, region, умолчания
+  <каталог настроек>/evo/credentials.yaml   key_id, secret, необязательная секция s3
 
-Required access: the service account needs a project role that allows managing
-Compute and VPC resources; listing projects also needs read access to the
-organization (otherwise pass --project-id). Details:
+Нужные права: сервисному аккаунту нужна роль в проекте, разрешающая управлять
+ресурсами Compute и VPC; для списка проектов — ещё и чтение организации
+(иначе передайте --project-id). Подробнее:
 https://github.com/shatim-ops/evo-cli/blob/main/docs/auth.md
 ```
 
@@ -447,33 +447,33 @@ evo configure [flags]
 ### Options
 
 ```
-  -h, --help                help for configure
-      --key-id string       Access key ID of the service account
-      --project-id string   Cloud.ru project UUID (skips the project list)
-      --region string       Default availability zone UUID for the profile
-      --secret-stdin        Read the secret from the first line of stdin (non-interactive)
+  -h, --help                Справка по configure
+      --key-id string       Key ID ключа доступа сервисного аккаунта
+      --project-id string   UUID проекта Cloud.ru (без выбора из списка)
+      --region string       UUID зоны доступности по умолчанию для профиля
+      --secret-stdin        Прочитать секрет из первой строки stdin (без вопросов)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run          Show what would be created or deleted (with a cost estimate) and exit
-      --json             Output in JSON format
-      --no-color         Disable colored output
-      --profile string   Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --verbose          Enable verbose logging
-  -y, --yes              Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json             Вывод в формате JSON
+      --no-color         Без цвета
+      --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --verbose          Подробный журнал
+  -y, --yes              Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [evo configure delete](#evo-configure-delete)	 - Delete a stored profile and its cached token
-* [evo configure list](#evo-configure-list)	 - List stored profiles
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo configure delete](#evo-configure-delete)	 - Удалить сохранённый профиль и его токен из кэша
+* [evo configure list](#evo-configure-list)	 - Сохранённые профили
 
 ## evo configure delete
 
-Delete a stored profile and its cached token
+Удалить сохранённый профиль и его токен из кэша
 
 ```
 evo configure delete <profile> [flags]
@@ -482,29 +482,29 @@ evo configure delete <profile> [flags]
 ### Options
 
 ```
-  -h, --help   help for delete
+  -h, --help   Справка по delete
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo configure](#evo-configure)	 - Set up credentials and the default project for a profile
+* [evo configure](#evo-configure)	 - Ключ доступа и проект по умолчанию для профиля
 
 ## evo configure list
 
-List stored profiles
+Сохранённые профили
 
 ```
 evo configure list [flags]
@@ -513,66 +513,98 @@ evo configure list [flags]
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help   Справка по list
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo configure](#evo-configure)	 - Set up credentials and the default project for a profile
+* [evo configure](#evo-configure)	 - Ключ доступа и проект по умолчанию для профиля
 
 ## evo deploy
 
-Deploy a docker-compose project to a Cloud.ru VM
+Развернуть docker-compose проект на ВМ Cloud.ru
+
+### Synopsis
+
+```text
+Развернуть docker-compose проект на ВМ Cloud.ru.
+
+Первый запуск создаёт ВМ с floating IP, открывает порты из compose-файла в
+группе безопасности зоны, ставит Docker, загружает compose-файл и выполняет
+'docker compose up -d'. Перед созданием ВМ показывается превью с оценкой цены
+и запрашивается подтверждение: вопрос на терминале, --yes — согласие заранее,
+--dry-run — только превью. Повторный запуск обновляет ту же ВМ, если
+compose-файл изменился (с --force — и без изменений).
+```
 
 ```
 evo deploy [flags]
 ```
 
+### Examples
+
+```
+  evo deploy --dry-run
+  evo deploy --yes
+  evo deploy -f compose.prod.yml --flavor lowcost10-2-4
+```
+
 ### Options
 
 ```
-  -f, --compose-file string   Path to docker-compose file (default: docker-compose.yml)
-      --disk-size int         Boot disk size in GB (default: 10)
-      --flavor string         VM flavor (default: auto)
-      --force                 Force redeploy even if compose hash unchanged
-  -h, --help                  help for deploy
-      --image-id string       Boot image UUID
-      --non-interactive       Never prompt; creating a VM then requires --yes
-      --project-id string     Cloud.ru project UUID
-      --region string         Availability zone UUID
+  -f, --compose-file string   Путь к compose-файлу (по умолчанию docker-compose.yml)
+      --disk-size int         Размер загрузочного диска, ГБ (по умолчанию 10)
+      --flavor string         Flavor ВМ (по умолчанию auto — подбор по сервисам)
+      --force                 Развернуть заново, даже если compose-файл не изменился
+  -h, --help                  Справка по deploy
+      --image-id string       UUID загрузочного образа
+      --non-interactive       Никогда не спрашивать; тогда для создания ВМ нужен --yes
+      --project-id string     UUID проекта Cloud.ru
+      --region string         UUID зоны доступности
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run          Show what would be created or deleted (with a cost estimate) and exit
-      --json             Output in JSON format
-      --no-color         Disable colored output
-      --profile string   Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --verbose          Enable verbose logging
-  -y, --yes              Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json             Вывод в формате JSON
+      --no-color         Без цвета
+      --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --verbose          Подробный журнал
+  -y, --yes              Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo destroy
 
-Delete the deployed VM and clean up resources
+Удалить развёрнутую ВМ и связанные ресурсы
+
+### Synopsis
+
+```text
+Удалить ВМ развёртывания из этого каталога, освободить её floating IP и
+удалить правила группы безопасности, которые создал deploy.
+
+Перед удалением показывается превью и запрашивается подтверждение: вопрос на
+терминале, --yes (или --force) — согласие заранее, --dry-run — только превью.
+Данные на дисках ВМ теряются.
+```
 
 ```
 evo destroy [flags]
@@ -581,30 +613,30 @@ evo destroy [flags]
 ### Options
 
 ```
-      --force   Skip confirmation prompt (same as --yes)
-  -h, --help    help for destroy
+      --force   Не спрашивать подтверждения (то же, что --yes)
+  -h, --help    Справка по destroy
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo disk
 
-Disks
+Диски
 
 ```
 evo disk [flags]
@@ -613,44 +645,48 @@ evo disk [flags]
 ### Options
 
 ```
-  -h, --help   help for disk
+  -h, --help   Справка по disk
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [evo disk attach](#evo-disk-attach)	 - Attach an existing disk to a VM (POST /disks/{id}/attach).
-* [evo disk create](#evo-disk-create)	 - Create a block-storage disk.
-* [evo disk delete](#evo-disk-delete)	 - Permanently delete a disk and all its data (irreversible).
-* [evo disk detach](#evo-disk-detach)	 - Detach a disk from a VM (POST /disks/{id}/detach).
-* [evo disk list](#evo-disk-list)	 - List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs).
-* [evo disk resize](#evo-disk-resize)	 - Grow a disk in place via PUT /disks/{id} (up to 65536 GB).
-* [evo disk types](#evo-disk-types)	 - List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD).
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo disk attach](#evo-disk-attach)	 - Подключить диск к ВМ (диск и ВМ должны быть в одной зоне)
+* [evo disk create](#evo-disk-create)	 - Создать диск (с --attach-to — в зоне ВМ и сразу подключить)
+* [evo disk delete](#evo-disk-delete)	 - Удалить диск и все данные на нём (безвозвратно)
+* [evo disk detach](#evo-disk-detach)	 - Отключить диск от ВМ
+* [evo disk list](#evo-disk-list)	 - Диски: id, имя, размер, состояние, тип, зона, к каким ВМ подключены
+* [evo disk resize](#evo-disk-resize)	 - Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ)
+* [evo disk types](#evo-disk-types)	 - Типы дисков (UUID и имя, например SSD или HDD)
 
 ## evo disk attach
 
-Attach an existing disk to a VM (POST /disks/{id}/attach).
+Подключить диск к ВМ (диск и ВМ должны быть в одной зоне)
 
 ### Synopsis
 
 ```text
+Подключить диск к ВМ (диск и ВМ должны быть в одной зоне).
+
+Вызывает инструмент disk_attach (подробнее: 'evo tools describe disk_attach').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Attach an existing disk to a VM (POST /disks/{id}/attach). Disk and VM must be in the same zone. Mutation: requires confirmed=true.
 
-Runs the disk_attach tool (see 'evo tools describe disk_attach').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -660,38 +696,42 @@ evo disk attach <disk-id> [flags]
 ### Options
 
 ```
-  -h, --help        help for attach
+  -h, --help        Справка по attach
       --vm string   VM name or UUID.
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo disk](#evo-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Диски
 
 ## evo disk create
 
-Create a block-storage disk.
+Создать диск (с --attach-to — в зоне ВМ и сразу подключить)
 
 ### Synopsis
 
 ```text
+Создать диск (с --attach-to — в зоне ВМ и сразу подключить).
+
+Вызывает инструмент disk_create (подробнее: 'evo tools describe disk_create').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Create a block-storage disk. Pass attach_to=<VM name/uuid> to create it in that VM's zone and (with confirmed) attach it in one step — disks must be in the SAME zone as the VM. NB: attaching adds a NEW block device; it does NOT grow the VM's existing filesystem (you then partition/format/mount it on the VM). Resizing the boot disk in place is NOT available via this API (console-only). Mutation (billable): requires confirmed=true.
 
-Runs the disk_create tool (see 'evo tools describe disk_create').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -703,7 +743,7 @@ evo disk create <name> [flags]
 ```
       --attach-to string   VM name or UUID to create-in-zone and auto-attach to (e.g. 'vm-712c44').
       --disk-type string   Disk type name (e.g. from list_disk_types) or UUID. Default: an SSD type.
-  -h, --help               help for create
+  -h, --help               Справка по create
       --size-gb int        Disk size in GB (required).
       --zone string        Availability zone name or UUID (alternative to attach_to; default: configured region).
 ```
@@ -711,31 +751,35 @@ evo disk create <name> [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo disk](#evo-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Диски
 
 ## evo disk delete
 
-Permanently delete a disk and all its data (irreversible).
+Удалить диск и все данные на нём (безвозвратно)
 
 ### Synopsis
 
 ```text
+Удалить диск и все данные на нём (безвозвратно).
+
+Вызывает инструмент disk_delete (подробнее: 'evo tools describe disk_delete').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Permanently delete a disk and all its data (irreversible). Detach it first if attached. Mutation: requires confirmed=true.
 
-Runs the disk_delete tool (see 'evo tools describe disk_delete').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -745,37 +789,41 @@ evo disk delete <disk-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for delete
+  -h, --help   Справка по delete
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo disk](#evo-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Диски
 
 ## evo disk detach
 
-Detach a disk from a VM (POST /disks/{id}/detach).
+Отключить диск от ВМ
 
 ### Synopsis
 
 ```text
+Отключить диск от ВМ.
+
+Вызывает инструмент disk_detach (подробнее: 'evo tools describe disk_detach').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Detach a disk from a VM (POST /disks/{id}/detach). Do NOT detach a bootable/in-use disk carelessly. Mutation: requires confirmed=true.
 
-Runs the disk_detach tool (see 'evo tools describe disk_detach').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -785,37 +833,40 @@ evo disk detach <disk-id> [flags]
 ### Options
 
 ```
-  -h, --help        help for detach
+  -h, --help        Справка по detach
       --vm string   VM name or UUID the disk is attached to.
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo disk](#evo-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Диски
 
 ## evo disk list
 
-List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs).
+Диски: id, имя, размер, состояние, тип, зона, к каким ВМ подключены
 
 ### Synopsis
 
 ```text
-List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs). Read-only.
+Диски: id, имя, размер, состояние, тип, зона, к каким ВМ подключены.
 
-Runs the disk_list tool (see 'evo tools describe disk_list').
+Вызывает инструмент disk_list (подробнее: 'evo tools describe disk_list').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs). Read-only.
 ```
 
 ```
@@ -825,37 +876,41 @@ evo disk list [flags]
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help   Справка по list
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo disk](#evo-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Диски
 
 ## evo disk resize
 
-Grow a disk in place via PUT /disks/{id} (up to 65536 GB).
+Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ)
 
 ### Synopsis
 
 ```text
+Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ).
+
+Вызывает инструмент disk_resize (подробнее: 'evo tools describe disk_resize').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Grow a disk in place via PUT /disks/{id} (up to 65536 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead). Mutation: requires confirmed=true.
 
-Runs the disk_resize tool (see 'evo tools describe disk_resize').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -865,37 +920,40 @@ evo disk resize <disk-id> [flags]
 ### Options
 
 ```
-  -h, --help          help for resize
+  -h, --help          Справка по resize
       --size-gb int   New size in GB (must be larger than current; max 65536).
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo disk](#evo-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Диски
 
 ## evo disk types
 
-List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD).
+Типы дисков (UUID и имя, например SSD или HDD)
 
 ### Synopsis
 
 ```text
-List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD). Use a name as the 'disk_type' argument for deploy_plan in manual mode.
+Типы дисков (UUID и имя, например SSD или HDD).
 
-Runs the list_disk_types tool (see 'evo tools describe list_disk_types').
+Вызывает инструмент list_disk_types (подробнее: 'evo tools describe list_disk_types').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD). Use a name as the 'disk_type' argument for deploy_plan in manual mode.
 ```
 
 ```
@@ -905,39 +963,39 @@ evo disk types [flags]
 ### Options
 
 ```
-  -h, --help   help for types
+  -h, --help   Справка по types
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo disk](#evo-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Диски
 
 ## evo doctor
 
-Check configuration, credentials and connectivity
+Проверить настройки, ключ доступа и связь с API
 
 ### Synopsis
 
 ```text
-Check the setup: config files and their permissions, where each setting
-comes from, reachability of the IAM and Compute APIs, the credentials, and
-kubectl/helm in PATH (needed only by the k8s tools; a warning, not an error).
+Проверить окружение: файлы настроек и их права, откуда взята каждая
+настройка, доступность IAM и Compute API, ключ доступа, kubectl/helm в PATH
+(нужны только инструментам k8s; их отсутствие — предупреждение, не ошибка).
 
-Exits with 2 if the configuration or credentials are broken, 1 if only
-connectivity checks failed.
+Код выхода 2 — сломаны настройки или ключ, 1 — не прошли только проверки
+связи.
 ```
 
 ```
@@ -947,39 +1005,39 @@ evo doctor [flags]
 ### Options
 
 ```
-  -h, --help   help for doctor
+  -h, --help   Справка по doctor
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo init
 
-Create .evo.yaml with a zone and image chosen from the Cloud.ru API
+Создать .evo.yaml с зоной и образом из API Cloud.ru
 
 ### Synopsis
 
 ```text
-Create .evo.yaml for this project.
+Создать .evo.yaml для этого проекта.
 
-The availability zone and the boot image are listed from the Cloud.ru API
-(credentials required). On a terminal you choose from a numbered list;
-with --non-interactive or without a terminal the first zone and the newest
-plain Ubuntu (else Debian) image are taken, and the choice is printed.
+Зона доступности и загрузочный образ берутся из API Cloud.ru (нужен ключ
+доступа). На терминале их выбирают из нумерованного списка; с
+--non-interactive или без терминала берутся первая зона и самый новый
+обычный образ Ubuntu (если его нет — Debian), выбор печатается.
 ```
 
 ```
@@ -989,30 +1047,30 @@ evo init [flags]
 ### Options
 
 ```
-  -h, --help              help for init
-      --non-interactive   Take the first zone and the preferred image without asking
+  -h, --help              Справка по init
+      --non-interactive   Без вопросов взять первую зону и предпочтительный образ
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo k8s
 
-Managed Kubernetes clusters
+Кластеры Managed Kubernetes
 
 ```
 evo k8s [flags]
@@ -1021,49 +1079,53 @@ evo k8s [flags]
 ### Options
 
 ```
-  -h, --help   help for k8s
+  -h, --help   Справка по k8s
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [evo k8s add-nodepool](#evo-k8s-add-nodepool)	 - Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has n…
-* [evo k8s apply](#evo-k8s-apply)	 - Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -…
-* [evo k8s create](#evo-k8s-create)	 - STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan.
-* [evo k8s delete](#evo-k8s-delete)	 - Permanently delete a Managed Kubernetes cluster.
-* [evo k8s get](#evo-k8s-get)	 - Get a Managed Kubernetes cluster by id (full details incl.
-* [evo k8s helm](#evo-k8s-helm)	 - Drive Helm on a cluster: action=install|upgrade|uninstall|list|status.
-* [evo k8s kubeconfig](#evo-k8s-kubeconfig)	 - Get the kubeconfig for a Managed Kubernetes cluster.
-* [evo k8s kubectl](#evo-k8s-kubectl)	 - Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed).
-* [evo k8s list](#evo-k8s-list)	 - List Managed Kubernetes (mk8s) clusters in the project (id, name, status).
-* [evo k8s nodepools](#evo-k8s-nodepools)	 - List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes).
-* [evo k8s options](#evo-k8s-options)	 - List available Kubernetes versions (by release channel), node flavors and zones for mk8s.
-* [evo k8s plan](#evo-k8s-plan)	 - STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master …
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo k8s add-nodepool](#evo-k8s-add-nodepool)	 - Добавить группу рабочих узлов (платно, асинхронно)
+* [evo k8s apply](#evo-k8s-apply)	 - Применить манифест Kubernetes (как kubectl apply -f -)
+* [evo k8s create](#evo-k8s-create)	 - Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут)
+* [evo k8s delete](#evo-k8s-delete)	 - Удалить кластер Managed Kubernetes (асинхронно)
+* [evo k8s get](#evo-k8s-get)	 - Кластер Managed Kubernetes по ID
+* [evo k8s helm](#evo-k8s-helm)	 - Helm в кластере: install, upgrade, uninstall, list, status
+* [evo k8s kubeconfig](#evo-k8s-kubeconfig)	 - kubeconfig кластера (по умолчанию со встроенным токеном примерно на час)
+* [evo k8s kubectl](#evo-k8s-kubectl)	 - Команда kubectl в кластере (изменяющие — с подтверждением)
+* [evo k8s list](#evo-k8s-list)	 - Кластеры Managed Kubernetes проекта
+* [evo k8s nodepools](#evo-k8s-nodepools)	 - Группы узлов кластера
+* [evo k8s options](#evo-k8s-options)	 - Версии Kubernetes, flavor узлов и зоны для кластеров
+* [evo k8s plan](#evo-k8s-plan)	 - Шаг 1: рассчитать конфигурацию кластера, ничего не создавая
 
 ## evo k8s add-nodepool
 
-Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has n…
+Добавить группу рабочих узлов (платно, асинхронно)
 
 ### Synopsis
 
 ```text
+Добавить группу рабочих узлов (платно, асинхронно).
+
+Вызывает инструмент k8s_add_nodepool (подробнее: 'evo tools describe k8s_add_nodepool').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has none). REQUIRES confirmed=true after the user approves (billable). Async. Auto-resolves flavor (cpu/ram or name), nodes subnet and security group. NB: Cloud.ru's node-pool backend occasionally returns 503 'no healthy upstream' (transient outage) — just retry.
 
-Runs the k8s_add_nodepool tool (see 'evo tools describe k8s_add_nodepool').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -1077,7 +1139,7 @@ evo k8s add-nodepool <cluster-id> [flags]
       --cpu int                    Node vCPUs for auto flavor (default 2).
       --disk-gb int                Node disk GB, min 10 (default 20).
       --flavor string              Node flavor name (see k8s_options); overrides cpu/ram_gb.
-  -h, --help                       help for add-nodepool
+  -h, --help                       Справка по add-nodepool
       --name string                Node pool name, 4-60 (default nodepool-1).
       --nodes-subnet-id string     Subnet UUID for worker nodes (default auto zone-matched).
       --ram-gb int                 Node RAM GB for auto flavor (default 4).
@@ -1088,31 +1150,35 @@ evo k8s add-nodepool <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s apply
 
-Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -…
+Применить манифест Kubernetes (как kubectl apply -f -)
 
 ### Synopsis
 
 ```text
+Применить манифест Kubernetes (как kubectl apply -f -).
+
+Вызывает инструмент k8s_apply (подробнее: 'evo tools describe k8s_apply').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.
 
-Runs the k8s_apply tool (see 'evo tools describe k8s_apply').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -1122,7 +1188,7 @@ evo k8s apply <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help               help for apply
+  -h, --help               Справка по apply
       --manifest string    The manifest YAML/JSON to apply (multi-doc allowed).
       --namespace string   Namespace to apply into (optional; manifests may set their own).
 ```
@@ -1130,31 +1196,35 @@ evo k8s apply <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s create
 
-STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan.
+Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут)
 
 ### Synopsis
 
 ```text
+Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут).
+
+Вызывает инструмент k8s_create (подробнее: 'evo tools describe k8s_create').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in ~10-20 min (poll k8s_get). Accepts the same args as k8s_plan.
 
-Runs the k8s_create tool (see 'evo tools describe k8s_create').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -1167,7 +1237,7 @@ evo k8s create [flags]
       --cluster-sa-id string   Cluster service-account UUID.
       --cpu int                Control-plane vCPUs.
       --flavor string          Control-plane flavor name.
-  -h, --help                   help for create
+  -h, --help                   Справка по create
       --kube-api-internet      Publish kube-apiserver to internet.
       --master-count int       1, 3 or 5.
       --name string            Cluster name.
@@ -1181,31 +1251,35 @@ evo k8s create [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s delete
 
-Permanently delete a Managed Kubernetes cluster.
+Удалить кластер Managed Kubernetes (асинхронно)
 
 ### Synopsis
 
 ```text
+Удалить кластер Managed Kubernetes (асинхронно).
+
+Вызывает инструмент k8s_delete (подробнее: 'evo tools describe k8s_delete').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the user approves. Async.
 
-Runs the k8s_delete tool (see 'evo tools describe k8s_delete').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -1215,36 +1289,39 @@ evo k8s delete <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for delete
+  -h, --help   Справка по delete
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s get
 
-Get a Managed Kubernetes cluster by id (full details incl.
+Кластер Managed Kubernetes по ID
 
 ### Synopsis
 
 ```text
-Get a Managed Kubernetes cluster by id (full details incl. status). Read-only.
+Кластер Managed Kubernetes по ID.
 
-Runs the k8s_get tool (see 'evo tools describe k8s_get').
+Вызывает инструмент k8s_get (подробнее: 'evo tools describe k8s_get').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Get a Managed Kubernetes cluster by id (full details incl. status). Read-only.
 ```
 
 ```
@@ -1254,37 +1331,41 @@ evo k8s get <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for get
+  -h, --help   Справка по get
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s helm
 
-Drive Helm on a cluster: action=install|upgrade|uninstall|list|status.
+Helm в кластере: install, upgrade, uninstall, list, status
 
 ### Synopsis
 
 ```text
+Helm в кластере: install, upgrade, uninstall, list, status.
+
+Вызывает инструмент k8s_helm (подробнее: 'evo tools describe k8s_helm').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Drive Helm on a cluster: action=install|upgrade|uninstall|list|status. install/upgrade are idempotent (helm upgrade --install --wait). Optionally add a chart repo via repo_url. Pass values (inline YAML) and/or set (array of key=value). Mutating actions require confirmed=true. Ideal for standard products (e.g. kube-prometheus-stack, databases). NB: nodes need egress (snat_create) to pull chart images; size the node pool for the chart (monitoring stacks want ≥8GB nodes).
 
-Runs the k8s_helm tool (see 'evo tools describe k8s_helm').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -1295,7 +1376,7 @@ evo k8s helm <cluster-id> <action> [flags]
 
 ```
       --chart string       Chart ref, e.g. 'prometheus-community/kube-prometheus-stack' (install/upgrade).
-  -h, --help               help for helm
+  -h, --help               Справка по helm
       --namespace string   Target namespace (created on install/upgrade).
       --release string     Helm release name (install/upgrade/uninstall/status).
       --repo-url string    Chart repo URL to add+update first; repo name taken from the chart's '<repo>/' prefix.
@@ -1307,30 +1388,33 @@ evo k8s helm <cluster-id> <action> [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s kubeconfig
 
-Get the kubeconfig for a Managed Kubernetes cluster.
+kubeconfig кластера (по умолчанию со встроенным токеном примерно на час)
 
 ### Synopsis
 
 ```text
-Get the kubeconfig for a Managed Kubernetes cluster. By DEFAULT it embeds a static bearer token so kubectl/helm work as-is (the raw Cloud.ru kubeconfig needs a 'cloudlogin' exec-plugin that isn't installed → kubectl would fail 'executable cloudlogin not found'). Token TTL ~1h. Pass embed_token=false for the raw exec-plugin kubeconfig.
+kubeconfig кластера (по умолчанию со встроенным токеном примерно на час).
 
-Runs the k8s_kubeconfig tool (see 'evo tools describe k8s_kubeconfig').
+Вызывает инструмент k8s_kubeconfig (подробнее: 'evo tools describe k8s_kubeconfig').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Get the kubeconfig for a Managed Kubernetes cluster. By DEFAULT it embeds a static bearer token so kubectl/helm work as-is (the raw Cloud.ru kubeconfig needs a 'cloudlogin' exec-plugin that isn't installed → kubectl would fail 'executable cloudlogin not found'). Token TTL ~1h. Pass embed_token=false for the raw exec-plugin kubeconfig.
 ```
 
 ```
@@ -1341,39 +1425,43 @@ evo k8s kubeconfig <cluster-id> [flags]
 
 ```
       --embed-token      Embed a static bearer token so kubectl works without the cloudlogin plugin (default true).
-  -h, --help             help for kubeconfig
+  -h, --help             Справка по kubeconfig
       --network string   NETWORK_TYPE_PUBLIC or NETWORK_TYPE_PRIVATE (default: cluster default).
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s kubectl
 
-Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed).
+Команда kubectl в кластере (изменяющие — с подтверждением)
 
 ### Synopsis
 
 ```text
+Команда kubectl в кластере (изменяющие — с подтверждением).
+
+Вызывает инструмент k8s_kubectl (подробнее: 'evo tools describe k8s_kubectl').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true. General escape hatch for whatever a product needs beyond helm/apply. Example args: "get pods -A", "-n db logs deploy/postgres", "create secret generic s --from-literal=k=v".
 
-Runs the k8s_kubectl tool (see 'evo tools describe k8s_kubectl').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
-evo flags (--json, --yes, --dry-run, --profile) go before the arguments: everything after the first one is passed to the tool as is.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+Флаги evo (--json, --yes, --dry-run, --profile) ставятся перед аргументами: всё после первого аргумента передаётся инструменту как есть.
 ```
 
 ```
@@ -1383,36 +1471,39 @@ evo k8s kubectl <cluster-id> <args>... [flags]
 ### Options
 
 ```
-  -h, --help   help for kubectl
+  -h, --help   Справка по kubectl
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s list
 
-List Managed Kubernetes (mk8s) clusters in the project (id, name, status).
+Кластеры Managed Kubernetes проекта
 
 ### Synopsis
 
 ```text
-List Managed Kubernetes (mk8s) clusters in the project (id, name, status). Read-only.
+Кластеры Managed Kubernetes проекта.
 
-Runs the k8s_list tool (see 'evo tools describe k8s_list').
+Вызывает инструмент k8s_list (подробнее: 'evo tools describe k8s_list').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List Managed Kubernetes (mk8s) clusters in the project (id, name, status). Read-only.
 ```
 
 ```
@@ -1422,36 +1513,39 @@ evo k8s list [flags]
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help   Справка по list
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s nodepools
 
-List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes).
+Группы узлов кластера
 
 ### Synopsis
 
 ```text
-List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only.
+Группы узлов кластера.
 
-Runs the k8s_nodepools tool (see 'evo tools describe k8s_nodepools').
+Вызывает инструмент k8s_nodepools (подробнее: 'evo tools describe k8s_nodepools').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only.
 ```
 
 ```
@@ -1461,36 +1555,39 @@ evo k8s nodepools <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for nodepools
+  -h, --help   Справка по nodepools
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s options
 
-List available Kubernetes versions (by release channel), node flavors and zones for mk8s.
+Версии Kubernetes, flavor узлов и зоны для кластеров
 
 ### Synopsis
 
 ```text
-List available Kubernetes versions (by release channel), node flavors and zones for mk8s. Read-only. Use before k8s_plan in manual mode.
+Версии Kubernetes, flavor узлов и зоны для кластеров.
 
-Runs the k8s_options tool (see 'evo tools describe k8s_options').
+Вызывает инструмент k8s_options (подробнее: 'evo tools describe k8s_options').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List available Kubernetes versions (by release channel), node flavors and zones for mk8s. Read-only. Use before k8s_plan in manual mode.
 ```
 
 ```
@@ -1500,36 +1597,39 @@ evo k8s options [flags]
 ### Options
 
 ```
-  -h, --help   help for options
+  -h, --help   Справка по options
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s plan
 
-STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master …
+Шаг 1: рассчитать конфигурацию кластера, ничего не создавая
 
 ### Synopsis
 
 ```text
-STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master count, subnet, service account) WITHOUT creating anything. Show it to the user, then call k8s_create with the same args + confirmed=true.
+Шаг 1: рассчитать конфигурацию кластера, ничего не создавая.
 
-Runs the k8s_plan tool (see 'evo tools describe k8s_plan').
+Вызывает инструмент k8s_plan (подробнее: 'evo tools describe k8s_plan').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master count, subnet, service account) WITHOUT creating anything. Show it to the user, then call k8s_create with the same args + confirmed=true.
 ```
 
 ```
@@ -1542,7 +1642,7 @@ evo k8s plan [flags]
       --cluster-sa-id string   Cluster service-account UUID (default: the agent's own service account).
       --cpu int                Control-plane vCPUs for auto flavor pick (default 2).
       --flavor string          Control-plane flavor name (see k8s_options); overrides cpu/ram_gb.
-  -h, --help                   help for plan
+  -h, --help                   Справка по plan
       --kube-api-internet      Publish kube-apiserver to the internet (default true).
       --master-count int       Control-plane node count: 1, 3 or 5 (default 1).
       --name string            Cluster name (3-60; default k8s-<product>).
@@ -1556,32 +1656,32 @@ evo k8s plan [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo list-images
 
-List available VM boot images
+Список загрузочных образов ВМ
 
 ### Synopsis
 
 ```text
-List boot images from the Cloud.ru API.
+Список загрузочных образов из API Cloud.ru.
 
-Use the image ID as the --image-id flag or CLOUDRU_IMAGE_ID env var for deploy.
-deploy installs Docker on Ubuntu and Debian images (e.g. Ubuntu-24.04).
-Use --json for machine-readable output.
+ID образа передаётся в deploy флагом --image-id или переменной CLOUDRU_IMAGE_ID.
+deploy ставит Docker на образы Ubuntu и Debian (например, Ubuntu-24.04).
+Для машинного разбора — --json.
 ```
 
 ```
@@ -1591,37 +1691,37 @@ evo list-images [flags]
 ### Options
 
 ```
-  -h, --help   help for list-images
+  -h, --help   Справка по list-images
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo list-zones
 
-List available availability zones
+Список зон доступности
 
 ### Synopsis
 
 ```text
-List availability zones from the Cloud.ru API.
+Список зон доступности из API Cloud.ru.
 
-Use the zone ID as the --region flag or CLOUDRU_REGION env var for deploy.
-Use --json for machine-readable output.
+ID зоны передаётся в deploy флагом --region или переменной CLOUDRU_REGION.
+Для машинного разбора — --json.
 ```
 
 ```
@@ -1631,115 +1731,125 @@ evo list-zones [flags]
 ### Options
 
 ```
-  -h, --help   help for list-zones
+  -h, --help   Справка по list-zones
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo logs
 
-View container logs from the deployed VM
+Журналы контейнеров на развёрнутой ВМ
 
 ```
 evo logs [flags]
 ```
 
+### Examples
+
+```
+  evo logs
+  evo logs -s web -n 50
+  evo logs -f
+```
+
 ### Options
 
 ```
-  -f, --follow           Follow log output
-  -h, --help             help for logs
-  -s, --service string   Filter logs by service name
-  -n, --tail int         Number of lines to show (0 = all) (default 100)
+  -f, --follow           Следить за журналом (до Ctrl-C)
+  -h, --help             Справка по logs
+  -s, --service string   Только журнал этого сервиса
+  -n, --tail int         Сколько последних строк показать (0 — все) (по умолчанию 100)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo mcp
 
-Run as an MCP server (stdio, or Streamable HTTP with --http) for AI agents
+MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)
 
 ### Synopsis
 
 ```text
-Run evo as a Model Context Protocol server.
+Запустить evo как сервер Model Context Protocol.
 
-The server exposes the evo tools (VMs, disks, networks, Kubernetes,
-databases, ...) so an AI agent (e.g. Claude Code) can manage Cloud.ru
-resources directly.
+Сервер открывает инструменты evo (ВМ, диски, сети, Kubernetes, базы данных
+и другие), и ИИ-агент (например, Claude Code) управляет ресурсами Cloud.ru
+напрямую. Описания инструментов и их ответы — на английском: их читает агент.
 
-By default it speaks newline-delimited JSON-RPC 2.0 on stdin/stdout; all
-human-readable output is suppressed (stdout is reserved for the protocol).
-SIGINT/SIGTERM and notifications/cancelled cancel running tool calls;
-closing stdin does not (calls already sent finish and are answered). Add it to Claude Code with:
+По умолчанию — JSON-RPC 2.0 построчно через stdin/stdout; текст для человека
+не печатается (stdout занят протоколом). SIGINT/SIGTERM и
+notifications/cancelled отменяют выполняемые вызовы; закрытие stdin — нет
+(уже отправленные вызовы доработают и получат ответ). Подключение к Claude Code:
   claude mcp add --transport stdio --scope project evo -- evo mcp
 
-With --http ADDR it serves the MCP Streamable HTTP transport on
-http://ADDR/mcp (and an unauthenticated liveness probe on /healthz):
+С --http ADDR сервер работает по MCP Streamable HTTP на http://ADDR/mcp
+(и отвечает на проверку живости без аутентификации на /healthz):
   MCP_BEARER_TOKEN=... evo mcp --http :8080
   claude mcp add --transport http evo http://localhost:8080/mcp \
     --header "Authorization: Bearer $MCP_BEARER_TOKEN"
 
-HTTP authentication (--auth):
-  bearer  clients send "Authorization: Bearer <token>"; the token is taken
-          from $MCP_BEARER_TOKEN, and the server refuses to start without it
-  none    no authentication; only allowed on a loopback address
+Аутентификация HTTP (--auth):
+  bearer  клиент передаёт "Authorization: Bearer <токен>"; токен берётся из
+          $MCP_BEARER_TOKEN, без него сервер не запускается
+  none    без аутентификации; только на адресе loopback
           (--http 127.0.0.1:8080)
 
-Over HTTP, k8s_kubeconfig with an embedded token, cert_private_key and
-secret_value are disabled, and credential fields (passwords, keys, tokens) in
-other results are masked, unless --allow-secret-export is set. Arguments that
-reach the server's host are confined: deploy's compose_file to the working
-directory, k8s_kubectl to built-in commands without host flags (--kubeconfig,
--f, ...), k8s_helm to remote charts on public https/oci hosts.
-k8s_kubectl/k8s_apply/k8s_helm answer with an error when kubectl/helm is not
-installed (the Docker image has neither). At most 32 tool calls run at once
-and a batch holds at most 100 messages. A tool call is cancelled when its
-client closes the connection, deletes the session (DELETE /mcp) or sends
-notifications/cancelled, and when the server stops; there is no timeout. One log line per tool call (name,
-status, duration; never the arguments) goes to stderr.
+По HTTP отключены k8s_kubeconfig со встроенным токеном, cert_private_key и
+secret_value, а учётные данные (пароли, ключи, токены) в остальных ответах
+маскируются, если не задан --allow-secret-export. Аргументы, которые
+затрагивают хост сервера, ограничены: compose_file у deploy — рабочим
+каталогом, k8s_kubectl — встроенными командами без флагов хоста (--kubeconfig,
+-f и т. п.), k8s_helm — удалёнными чартами на публичных хостах https/oci.
+k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой, если kubectl/helm не
+установлен (в Docker-образе нет ни того, ни другого). Одновременно выполняется
+не больше 32 вызовов, в пакете — не больше 100 сообщений. Вызов отменяется,
+когда клиент закрывает соединение, удаляет сессию (DELETE /mcp) или
+присылает notifications/cancelled, и при остановке сервера; тайм-аута нет. На
+каждый вызов в stderr пишется одна строка журнала (имя, статус,
+длительность; аргументы — никогда).
 
-Cloud.ru credentials and project parameters are the server's own, resolved
-exactly as for the regular CLI commands (environment, profile from
-'evo configure', .evo.yaml); clients never send them.
+Ключ доступа Cloud.ru и параметры проекта — собственные у сервера и
+определяются так же, как у обычных команд (переменные окружения, профиль из
+'evo configure', .evo.yaml); клиенты их не передают.
 
-Projects: deploy and provision accept a project_id argument, so with a key
-that sees several projects (an organization-level key) any client of the
-server can work in any of them. --allow-project limits the tools to the
-listed projects (repeat the flag or separate with commas): a call in any other
-project, the server's own included, fails. The read-only org_quotas and
-iam_service_accounts still read other projects. Without the flag the server
-warns at start in HTTP mode. Prefer a project-level key for a shared server.
+Проекты: deploy и provision принимают аргумент project_id, поэтому с ключом,
+который видит несколько проектов (ключ уровня организации), любой клиент
+сервера может работать в любом из них. --allow-project ограничивает
+инструменты перечисленными проектами (флаг повторяется или через запятую):
+вызов в любом другом проекте, в том числе в проекте самого сервера,
+отклоняется. org_quotas и iam_service_accounts только читают и по-прежнему
+видят другие проекты. Без флага сервер в режиме HTTP предупреждает при
+запуске. Для общего сервера лучше ключ уровня проекта.
 ```
 
 ```
@@ -1749,33 +1859,33 @@ evo mcp [flags]
 ### Options
 
 ```
-      --allow-project strings   Allow tool calls only in these Cloud.ru projects (UUIDs; repeat or comma-separate). Default: any project the key sees
-      --allow-secret-export     HTTP mode: allow k8s_kubeconfig with an embedded token, cert_private_key, secret_value and unmasked credentials in results
-      --auth string             HTTP authentication: bearer (token from $MCP_BEARER_TOKEN) or none (loopback address only) (default "bearer")
-  -h, --help                    help for mcp
-      --http string             Serve MCP over Streamable HTTP on this address (e.g. :8080) instead of stdio
+      --allow-project strings   Разрешить вызовы инструментов только в этих проектах Cloud.ru (UUID; флаг повторяется или через запятую). По умолчанию — любой проект, который видит ключ
+      --allow-secret-export     Режим HTTP: разрешить k8s_kubeconfig со встроенным токеном, cert_private_key, secret_value и немаскированные учётные данные в ответах
+      --auth string             Аутентификация HTTP: bearer (токен из $MCP_BEARER_TOKEN) или none (только адрес loopback) (по умолчанию "bearer")
+  -h, --help                    Справка по mcp
+      --http string             Обслуживать MCP по Streamable HTTP на этом адресе (например, :8080), а не по stdio
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo pg
 
-Managed PostgreSQL clusters, databases, users, backups
+Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ```
 evo pg [flags]
@@ -1784,52 +1894,56 @@ evo pg [flags]
 ### Options
 
 ```
-  -h, --help   help for pg
+  -h, --help   Справка по pg
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [evo pg backup-create](#evo-pg-backup-create)	 - Start a manual backup of a PostgreSQL cluster (async).
-* [evo pg backups](#evo-pg-backups)	 - List backups of a PostgreSQL cluster (name, status, size, timestamps).
-* [evo pg create](#evo-pg-create)	 - Create a Managed PostgreSQL cluster.
-* [evo pg databases](#evo-pg-databases)	 - List databases in a PostgreSQL cluster (name, owner, size).
-* [evo pg db-create](#evo-pg-db-create)	 - Create a database in a PostgreSQL cluster.
-* [evo pg db-delete](#evo-pg-db-delete)	 - Drop a database in a PostgreSQL cluster.
-* [evo pg delete](#evo-pg-delete)	 - Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data.
-* [evo pg get](#evo-pg-get)	 - Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storag…
-* [evo pg list](#evo-pg-list)	 - List Managed PostgreSQL clusters in the project (id, name, status, version, health).
-* [evo pg operation](#evo-pg-operation)	 - Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create).
-* [evo pg specs](#evo-pg-specs)	 - List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard|business, min_…
-* [evo pg user-create](#evo-pg-user-create)	 - Create a user in a PostgreSQL cluster.
-* [evo pg user-delete](#evo-pg-user-delete)	 - Delete a user in a PostgreSQL cluster.
-* [evo pg users](#evo-pg-users)	 - List users of a PostgreSQL cluster (name, granted roles).
-* [evo pg versions](#evo-pg-versions)	 - List available Managed PostgreSQL versions (e.g. 15/16/17).
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo pg backup-create](#evo-pg-backup-create)	 - Создать резервную копию вручную (асинхронно)
+* [evo pg backups](#evo-pg-backups)	 - Резервные копии кластера
+* [evo pg create](#evo-pg-create)	 - Создать кластер PostgreSQL (платно, асинхронно)
+* [evo pg databases](#evo-pg-databases)	 - Базы данных кластера
+* [evo pg db-create](#evo-pg-db-create)	 - Создать базу данных
+* [evo pg db-delete](#evo-pg-db-delete)	 - Удалить базу данных
+* [evo pg delete](#evo-pg-delete)	 - Удалить кластер PostgreSQL вместе с данными (асинхронно)
+* [evo pg get](#evo-pg-get)	 - Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние
+* [evo pg list](#evo-pg-list)	 - Кластеры Managed PostgreSQL проекта
+* [evo pg operation](#evo-pg-operation)	 - Состояние асинхронной операции PostgreSQL
+* [evo pg specs](#evo-pg-specs)	 - Конфигурации кластера PostgreSQL для версии: CPU, память, минимальный объём
+* [evo pg user-create](#evo-pg-user-create)	 - Создать пользователя (пароль не выводится)
+* [evo pg user-delete](#evo-pg-user-delete)	 - Удалить пользователя
+* [evo pg users](#evo-pg-users)	 - Пользователи кластера и их роли
+* [evo pg versions](#evo-pg-versions)	 - Доступные версии PostgreSQL
 
 ## evo pg backup-create
 
-Start a manual backup of a PostgreSQL cluster (async).
+Создать резервную копию вручную (асинхронно)
 
 ### Synopsis
 
 ```text
+Создать резервную копию вручную (асинхронно).
+
+Вызывает инструмент pg_backup_create (подробнее: 'evo tools describe pg_backup_create').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Start a manual backup of a PostgreSQL cluster (async). Mutation: requires confirmed=true after the user approves.
 
-Runs the pg_backup_create tool (see 'evo tools describe pg_backup_create').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -1839,36 +1953,39 @@ evo pg backup-create <cluster-id> <name> [flags]
 ### Options
 
 ```
-  -h, --help   help for backup-create
+  -h, --help   Справка по backup-create
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg backups
 
-List backups of a PostgreSQL cluster (name, status, size, timestamps).
+Резервные копии кластера
 
 ### Synopsis
 
 ```text
-List backups of a PostgreSQL cluster (name, status, size, timestamps). Read-only.
+Резервные копии кластера.
 
-Runs the pg_backups tool (see 'evo tools describe pg_backups').
+Вызывает инструмент pg_backups (подробнее: 'evo tools describe pg_backups').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List backups of a PostgreSQL cluster (name, status, size, timestamps). Read-only.
 ```
 
 ```
@@ -1878,37 +1995,41 @@ evo pg backups <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for backups
+  -h, --help   Справка по backups
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg create
 
-Create a Managed PostgreSQL cluster.
+Создать кластер PostgreSQL (платно, асинхронно)
 
 ### Synopsis
 
 ```text
+Создать кластер PostgreSQL (платно, асинхронно).
+
+Вызывает инструмент pg_create (подробнее: 'evo tools describe pg_create').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Create a Managed PostgreSQL cluster. Resolves version (default: latest), specification (by specification_id OR cpu+ram), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.
 
-Runs the pg_create tool (see 'evo tools describe pg_create').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -1922,7 +2043,7 @@ evo pg create <name> [flags]
       --backup-schedule string      CRON schedule for automatic backups (default '0 3 * * 0' = weekly Sun 03:00; min once per 6h).
       --cpu int                     vCPU count — used to auto-pick a specification when specification_id is omitted.
       --description string          Optional cluster description.
-  -h, --help                        help for create
+  -h, --help                        Справка по create
       --initial-database string     Name of the default database to create. Default 'defaultdb'.
       --instances int               Number of nodes (1-2 standard, 1-3 business). Default 1.
       --no-backup                   Disable automatic backups. Backups are ENABLED by default and CANNOT be toggled after creation; a cluster without backups rejects pg_backup_create/pg_backups with 'backup disabled'.
@@ -1936,30 +2057,33 @@ evo pg create <name> [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg databases
 
-List databases in a PostgreSQL cluster (name, owner, size).
+Базы данных кластера
 
 ### Synopsis
 
 ```text
-List databases in a PostgreSQL cluster (name, owner, size). Read-only.
+Базы данных кластера.
 
-Runs the pg_databases tool (see 'evo tools describe pg_databases').
+Вызывает инструмент pg_databases (подробнее: 'evo tools describe pg_databases').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List databases in a PostgreSQL cluster (name, owner, size). Read-only.
 ```
 
 ```
@@ -1969,37 +2093,41 @@ evo pg databases <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for databases
+  -h, --help   Справка по databases
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg db-create
 
-Create a database in a PostgreSQL cluster.
+Создать базу данных
 
 ### Synopsis
 
 ```text
+Создать базу данных.
+
+Вызывает инструмент pg_db_create (подробнее: 'evo tools describe pg_db_create').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.
 
-Runs the pg_db_create tool (see 'evo tools describe pg_db_create').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2009,7 +2137,7 @@ evo pg db-create <cluster-id> <name> [flags]
 ### Options
 
 ```
-  -h, --help                help for db-create
+  -h, --help                Справка по db-create
       --lc-collate string   Collation locale (optional, default C).
       --lc-ctype string     Character-set locale (optional, default C).
       --owner string        Owning user (from pg_users). Required.
@@ -2018,31 +2146,35 @@ evo pg db-create <cluster-id> <name> [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg db-delete
 
-Drop a database in a PostgreSQL cluster.
+Удалить базу данных
 
 ### Synopsis
 
 ```text
+Удалить базу данных.
+
+Вызывает инструмент pg_db_delete (подробнее: 'evo tools describe pg_db_delete').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Drop a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.
 
-Runs the pg_db_delete tool (see 'evo tools describe pg_db_delete').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2052,37 +2184,41 @@ evo pg db-delete <cluster-id> <name> [flags]
 ### Options
 
 ```
-  -h, --help   help for db-delete
+  -h, --help   Справка по db-delete
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg delete
 
-Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data.
+Удалить кластер PostgreSQL вместе с данными (асинхронно)
 
 ### Synopsis
 
 ```text
+Удалить кластер PostgreSQL вместе с данными (асинхронно).
+
+Вызывает инструмент pg_delete (подробнее: 'evo tools describe pg_delete').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data. Mutation (async): requires confirmed=true after the user approves.
 
-Runs the pg_delete tool (see 'evo tools describe pg_delete').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2092,37 +2228,40 @@ evo pg delete <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help        help for delete
+  -h, --help        Справка по delete
       --id string   Cluster UUID (from pg_list). Required (alias: cluster_id).
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg get
 
-Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storag…
+Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние
 
 ### Synopsis
 
 ```text
-Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status. Read-only.
+Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние.
 
-Runs the pg_get tool (see 'evo tools describe pg_get').
+Вызывает инструмент pg_get (подробнее: 'evo tools describe pg_get').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status. Read-only.
 ```
 
 ```
@@ -2132,37 +2271,40 @@ evo pg get <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help        help for get
+  -h, --help        Справка по get
       --id string   PostgreSQL cluster UUID (from pg_list). Required (alias: cluster_id).
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg list
 
-List Managed PostgreSQL clusters in the project (id, name, status, version, health).
+Кластеры Managed PostgreSQL проекта
 
 ### Synopsis
 
 ```text
-List Managed PostgreSQL clusters in the project (id, name, status, version, health). Read-only. Managed PostgreSQL is Cloud.ru's managed database service (postgresql.api.cloud.ru).
+Кластеры Managed PostgreSQL проекта.
 
-Runs the pg_list tool (see 'evo tools describe pg_list').
+Вызывает инструмент pg_list (подробнее: 'evo tools describe pg_list').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List Managed PostgreSQL clusters in the project (id, name, status, version, health). Read-only. Managed PostgreSQL is Cloud.ru's managed database service (postgresql.api.cloud.ru).
 ```
 
 ```
@@ -2172,36 +2314,39 @@ evo pg list [flags]
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help   Справка по list
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg operation
 
-Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create).
+Состояние асинхронной операции PostgreSQL
 
 ### Synopsis
 
 ```text
-Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). Returns {done, error}. Read-only.
+Состояние асинхронной операции PostgreSQL.
 
-Runs the pg_operation tool (see 'evo tools describe pg_operation').
+Вызывает инструмент pg_operation (подробнее: 'evo tools describe pg_operation').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). Returns {done, error}. Read-only.
 ```
 
 ```
@@ -2211,37 +2356,40 @@ evo pg operation <operation-id> [flags]
 ### Options
 
 ```
-  -h, --help               help for operation
+  -h, --help               Справка по operation
       --wait-seconds int   Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of the agent re-checking every few seconds. Omit for a single instant check.
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg specs
 
-List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard|business, min_…
+Конфигурации кластера PostgreSQL для версии: CPU, память, минимальный объём
 
 ### Synopsis
 
 ```text
-List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard|business, min_storage_gb) for a version. Read-only. Use to choose specification_id for pg_create.
+Конфигурации кластера PostgreSQL для версии: CPU, память, минимальный объём.
 
-Runs the pg_specs tool (see 'evo tools describe pg_specs').
+Вызывает инструмент pg_specs (подробнее: 'evo tools describe pg_specs').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard|business, min_storage_gb) for a version. Read-only. Use to choose specification_id for pg_create.
 ```
 
 ```
@@ -2251,38 +2399,42 @@ evo pg specs [flags]
 ### Options
 
 ```
-  -h, --help             help for specs
+  -h, --help             Справка по specs
       --version string   Product version (e.g. '17'); optional — filters specs to that version.
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg user-create
 
-Create a user in a PostgreSQL cluster.
+Создать пользователя (пароль не выводится)
 
 ### Synopsis
 
 ```text
+Создать пользователя (пароль не выводится).
+
+Вызывает инструмент pg_user_create (подробнее: 'evo tools describe pg_user_create').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The password is never echoed back.
 
-Runs the pg_user_create tool (see 'evo tools describe pg_user_create').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2292,38 +2444,42 @@ evo pg user-create <cluster-id> <name> [flags]
 ### Options
 
 ```
-  -h, --help              help for user-create
+  -h, --help              Справка по user-create
       --password string   User password. Required.
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg user-delete
 
-Delete a user in a PostgreSQL cluster.
+Удалить пользователя
 
 ### Synopsis
 
 ```text
+Удалить пользователя.
+
+Вызывает инструмент pg_user_delete (подробнее: 'evo tools describe pg_user_delete').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Delete a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.
 
-Runs the pg_user_delete tool (see 'evo tools describe pg_user_delete').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2333,36 +2489,39 @@ evo pg user-delete <cluster-id> <name> [flags]
 ### Options
 
 ```
-  -h, --help   help for user-delete
+  -h, --help   Справка по user-delete
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg users
 
-List users of a PostgreSQL cluster (name, granted roles).
+Пользователи кластера и их роли
 
 ### Synopsis
 
 ```text
-List users of a PostgreSQL cluster (name, granted roles). Read-only.
+Пользователи кластера и их роли.
 
-Runs the pg_users tool (see 'evo tools describe pg_users').
+Вызывает инструмент pg_users (подробнее: 'evo tools describe pg_users').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List users of a PostgreSQL cluster (name, granted roles). Read-only.
 ```
 
 ```
@@ -2372,36 +2531,39 @@ evo pg users <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for users
+  -h, --help   Справка по users
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo pg versions
 
-List available Managed PostgreSQL versions (e.g. 15/16/17).
+Доступные версии PostgreSQL
 
 ### Synopsis
 
 ```text
-List available Managed PostgreSQL versions (e.g. 15/16/17). Read-only. Use before pg_create.
+Доступные версии PostgreSQL.
 
-Runs the pg_versions tool (see 'evo tools describe pg_versions').
+Вызывает инструмент pg_versions (подробнее: 'evo tools describe pg_versions').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List available Managed PostgreSQL versions (e.g. 15/16/17). Read-only. Use before pg_create.
 ```
 
 ```
@@ -2411,29 +2573,29 @@ evo pg versions [flags]
 ### Options
 
 ```
-  -h, --help   help for versions
+  -h, --help   Справка по versions
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
 ## evo s3
 
-Object Storage: buckets and objects
+Object Storage: бакеты и объекты
 
 ```
 evo s3 [flags]
@@ -2442,44 +2604,48 @@ evo s3 [flags]
 ### Options
 
 ```
-  -h, --help   help for s3
+  -h, --help   Справка по s3
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [evo s3 bucket-create](#evo-s3-bucket-create)	 - Create an Object Storage (S3) bucket.
-* [evo s3 bucket-delete](#evo-s3-bucket-delete)	 - Delete an EMPTY S3 bucket.
-* [evo s3 buckets](#evo-s3-buckets)	 - List Object Storage (S3) buckets.
-* [evo s3 get](#evo-s3-get)	 - Download an S3 object.
-* [evo s3 ls](#evo-s3-ls)	 - List objects in an S3 bucket (key, size, last_modified).
-* [evo s3 put](#evo-s3-put)	 - Upload an S3 object from inline content (content) or base64 (content_base64).
-* [evo s3 rm](#evo-s3-rm)	 - Delete an S3 object.
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo s3 bucket-create](#evo-s3-bucket-create)	 - Создать бакет
+* [evo s3 bucket-delete](#evo-s3-bucket-delete)	 - Удалить пустой бакет
+* [evo s3 buckets](#evo-s3-buckets)	 - Бакеты Object Storage
+* [evo s3 get](#evo-s3-get)	 - Скачать объект (небольшой текст — как есть, остальное — в base64)
+* [evo s3 ls](#evo-s3-ls)	 - Объекты бакета: ключ, размер, время изменения
+* [evo s3 put](#evo-s3-put)	 - Загрузить объект (существующий ключ перезаписывается)
+* [evo s3 rm](#evo-s3-rm)	 - Удалить объект
 
 ## evo s3 bucket-create
 
-Create an Object Storage (S3) bucket.
+Создать бакет
 
 ### Synopsis
 
 ```text
+Создать бакет.
+
+Вызывает инструмент s3_bucket_create (подробнее: 'evo tools describe s3_bucket_create').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the user approves.
 
-Runs the s3_bucket_create tool (see 'evo tools describe s3_bucket_create').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2489,38 +2655,42 @@ evo s3 bucket-create <bucket> [flags]
 ### Options
 
 ```
-  -h, --help               help for bucket-create
+  -h, --help               Справка по bucket-create
       --s3-region string   Region (optional; defaults to the configured S3 region, e.g. ru-central-1).
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 
 ## evo s3 bucket-delete
 
-Delete an EMPTY S3 bucket.
+Удалить пустой бакет
 
 ### Synopsis
 
 ```text
+Удалить пустой бакет.
+
+Вызывает инструмент s3_bucket_delete (подробнее: 'evo tools describe s3_bucket_delete').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Delete an EMPTY S3 bucket. Destructive mutation: requires confirmed=true after the user approves.
 
-Runs the s3_bucket_delete tool (see 'evo tools describe s3_bucket_delete').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2530,36 +2700,39 @@ evo s3 bucket-delete <bucket> [flags]
 ### Options
 
 ```
-  -h, --help   help for bucket-delete
+  -h, --help   Справка по bucket-delete
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 
 ## evo s3 buckets
 
-List Object Storage (S3) buckets.
+Бакеты Object Storage
 
 ### Synopsis
 
 ```text
-List Object Storage (S3) buckets. Read-only. s3.cloud.ru (S3-compatible).
+Бакеты Object Storage.
 
-Runs the s3_buckets tool (see 'evo tools describe s3_buckets').
+Вызывает инструмент s3_buckets (подробнее: 'evo tools describe s3_buckets').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List Object Storage (S3) buckets. Read-only. s3.cloud.ru (S3-compatible).
 ```
 
 ```
@@ -2569,36 +2742,39 @@ evo s3 buckets [flags]
 ### Options
 
 ```
-  -h, --help   help for buckets
+  -h, --help   Справка по buckets
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 
 ## evo s3 get
 
-Download an S3 object.
+Скачать объект (небольшой текст — как есть, остальное — в base64)
 
 ### Synopsis
 
 ```text
-Download an S3 object. Returns text inline (utf-8) when small & valid, else base64. Read-only.
+Скачать объект (небольшой текст — как есть, остальное — в base64).
 
-Runs the s3_get tool (see 'evo tools describe s3_get').
+Вызывает инструмент s3_get (подробнее: 'evo tools describe s3_get').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Download an S3 object. Returns text inline (utf-8) when small & valid, else base64. Read-only.
 ```
 
 ```
@@ -2608,36 +2784,39 @@ evo s3 get <bucket> <key> [flags]
 ### Options
 
 ```
-  -h, --help   help for get
+  -h, --help   Справка по get
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 
 ## evo s3 ls
 
-List objects in an S3 bucket (key, size, last_modified).
+Объекты бакета: ключ, размер, время изменения
 
 ### Synopsis
 
 ```text
-List objects in an S3 bucket (key, size, last_modified). Read-only.
+Объекты бакета: ключ, размер, время изменения.
 
-Runs the s3_ls tool (see 'evo tools describe s3_ls').
+Вызывает инструмент s3_ls (подробнее: 'evo tools describe s3_ls').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List objects in an S3 bucket (key, size, last_modified). Read-only.
 ```
 
 ```
@@ -2647,7 +2826,7 @@ evo s3 ls <bucket> [flags]
 ### Options
 
 ```
-  -h, --help            help for ls
+  -h, --help            Справка по ls
       --max-keys int    Max objects to return (default 1000).
       --prefix string   Key prefix filter (optional).
 ```
@@ -2655,31 +2834,35 @@ evo s3 ls <bucket> [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 
 ## evo s3 put
 
-Upload an S3 object from inline content (content) or base64 (content_base64).
+Загрузить объект (существующий ключ перезаписывается)
 
 ### Synopsis
 
 ```text
+Загрузить объект (существующий ключ перезаписывается).
+
+Вызывает инструмент s3_put (подробнее: 'evo tools describe s3_put').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves.
 
-Runs the s3_put tool (see 'evo tools describe s3_put').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2692,37 +2875,41 @@ evo s3 put <bucket> <key> [flags]
       --content string          Inline text content to upload.
       --content-base64 string   Base64-encoded binary content (alternative to content).
       --content-type string     MIME type (default application/octet-stream).
-  -h, --help                    help for put
+  -h, --help                    Справка по put
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 
 ## evo s3 rm
 
-Delete an S3 object.
+Удалить объект
 
 ### Synopsis
 
 ```text
+Удалить объект.
+
+Вызывает инструмент s3_rm (подробнее: 'evo tools describe s3_rm').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Delete an S3 object. Destructive mutation: requires confirmed=true after the user approves.
 
-Runs the s3_rm tool (see 'evo tools describe s3_rm').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2732,29 +2919,29 @@ evo s3 rm <bucket> <key> [flags]
 ### Options
 
 ```
-  -h, --help   help for rm
+  -h, --help   Справка по rm
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 
 ## evo secret
 
-Secret Manager
+Secret Manager: секреты
 
 ```
 evo secret [flags]
@@ -2763,43 +2950,47 @@ evo secret [flags]
 ### Options
 
 ```
-  -h, --help   help for secret
+  -h, --help   Справка по secret
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [evo secret add-version](#evo-secret-add-version)	 - Add a new value version to an existing secret (rotation).
-* [evo secret create](#evo-secret-create)	 - Store a new secret at a path (value is Base64-encoded internally; never echoed back).
-* [evo secret delete](#evo-secret-delete)	 - Delete a secret by path AND all its versions.
-* [evo secret get](#evo-secret-get)	 - Get one secret's metadata by path (from secret_list): folder, labels, versions, KMS key.
-* [evo secret list](#evo-secret-list)	 - List secrets in the project (id, name, path, description) from Cloud.ru Secret Management.
-* [evo secret value](#evo-secret-value)	 - Retrieve the DECRYPTED value of a secret by path.
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo secret add-version](#evo-secret-add-version)	 - Добавить новую версию значения секрета (ротация)
+* [evo secret create](#evo-secret-create)	 - Создать секрет
+* [evo secret delete](#evo-secret-delete)	 - Удалить секрет со всеми версиями
+* [evo secret get](#evo-secret-get)	 - Метаданные секрета: папка, метки, версии, ключ KMS (без значения)
+* [evo secret list](#evo-secret-list)	 - Секреты проекта (без значений)
+* [evo secret value](#evo-secret-value)	 - Расшифрованное значение секрета
 
 ## evo secret add-version
 
-Add a new value version to an existing secret (rotation).
+Добавить новую версию значения секрета (ротация)
 
 ### Synopsis
 
 ```text
+Добавить новую версию значения секрета (ротация).
+
+Вызывает инструмент secret_add_version (подробнее: 'evo tools describe secret_add_version').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Add a new value version to an existing secret (rotation). Mutation: requires confirmed=true after the user approves.
 
-Runs the secret_add_version tool (see 'evo tools describe secret_add_version').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2809,38 +3000,42 @@ evo secret add-version <path> [flags]
 ### Options
 
 ```
-  -h, --help           help for add-version
+  -h, --help           Справка по add-version
       --value string   New secret value (plaintext). Required.
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo secret](#evo-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager: секреты
 
 ## evo secret create
 
-Store a new secret at a path (value is Base64-encoded internally; never echoed back).
+Создать секрет
 
 ### Synopsis
 
 ```text
+Создать секрет.
+
+Вызывает инструмент secret_create (подробнее: 'evo tools describe secret_create').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Store a new secret at a path (value is Base64-encoded internally; never echoed back). Path 'folder/name' places it in a folder. Mutation: requires confirmed=true after the user approves.
 
-Runs the secret_create tool (see 'evo tools describe secret_create').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2851,7 +3046,7 @@ evo secret create <path> [flags]
 
 ```
       --description string   Optional description.
-  -h, --help                 help for create
+  -h, --help                 Справка по create
       --kms-key-id string    Optional KMS key id for encryption.
       --value string         Secret value (plaintext; stored encrypted). Required.
 ```
@@ -2859,31 +3054,35 @@ evo secret create <path> [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo secret](#evo-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager: секреты
 
 ## evo secret delete
 
-Delete a secret by path AND all its versions.
+Удалить секрет со всеми версиями
 
 ### Synopsis
 
 ```text
+Удалить секрет со всеми версиями.
+
+Вызывает инструмент secret_delete (подробнее: 'evo tools describe secret_delete').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Delete a secret by path AND all its versions. Set force=true to delete one that is in use. Mutation: requires confirmed=true after the user approves.
 
-Runs the secret_delete tool (see 'evo tools describe secret_delete').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -2894,36 +3093,39 @@ evo secret delete <path> [flags]
 
 ```
       --force   Delete even if the secret is in use by other resources.
-  -h, --help    help for delete
+  -h, --help    Справка по delete
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo secret](#evo-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager: секреты
 
 ## evo secret get
 
-Get one secret's metadata by path (from secret_list): folder, labels, versions, KMS key.
+Метаданные секрета: папка, метки, версии, ключ KMS (без значения)
 
 ### Synopsis
 
 ```text
-Get one secret's metadata by path (from secret_list): folder, labels, versions, KMS key. Read-only — does NOT return the value.
+Метаданные секрета: папка, метки, версии, ключ KMS (без значения).
 
-Runs the secret_get tool (see 'evo tools describe secret_get').
+Вызывает инструмент secret_get (подробнее: 'evo tools describe secret_get').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Get one secret's metadata by path (from secret_list): folder, labels, versions, KMS key. Read-only — does NOT return the value.
 ```
 
 ```
@@ -2933,36 +3135,39 @@ evo secret get <path> [flags]
 ### Options
 
 ```
-  -h, --help   help for get
+  -h, --help   Справка по get
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo secret](#evo-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager: секреты
 
 ## evo secret list
 
-List secrets in the project (id, name, path, description) from Cloud.ru Secret Management.
+Секреты проекта (без значений)
 
 ### Synopsis
 
 ```text
-List secrets in the project (id, name, path, description) from Cloud.ru Secret Management. Read-only — does NOT return values. secretmanager.api.cloud.ru (v2).
+Секреты проекта (без значений).
 
-Runs the secret_list tool (see 'evo tools describe secret_list').
+Вызывает инструмент secret_list (подробнее: 'evo tools describe secret_list').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List secrets in the project (id, name, path, description) from Cloud.ru Secret Management. Read-only — does NOT return values. secretmanager.api.cloud.ru (v2).
 ```
 
 ```
@@ -2972,36 +3177,39 @@ evo secret list [flags]
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help   Справка по list
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo secret](#evo-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager: секреты
 
 ## evo secret value
 
-Retrieve the DECRYPTED value of a secret by path.
+Расшифрованное значение секрета
 
 ### Synopsis
 
 ```text
-Retrieve the DECRYPTED value of a secret by path. Sensitive — returns the plaintext value; never store it in logs or files. Read-only.
+Расшифрованное значение секрета.
 
-Runs the secret_value tool (see 'evo tools describe secret_value').
+Вызывает инструмент secret_value (подробнее: 'evo tools describe secret_value').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Retrieve the DECRYPTED value of a secret by path. Sensitive — returns the plaintext value; never store it in logs or files. Read-only.
 ```
 
 ```
@@ -3011,30 +3219,30 @@ evo secret value <path> [flags]
 ### Options
 
 ```
-  -h, --help          help for value
+  -h, --help          Справка по value
       --version int   Specific version number (default: latest).
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo secret](#evo-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager: секреты
 
 ## evo status
 
-Show current deployment status
+Состояние текущего развёртывания
 
 ```
 evo status [flags]
@@ -3043,43 +3251,43 @@ evo status [flags]
 ### Options
 
 ```
-  -h, --help   help for status
+  -h, --help   Справка по status
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo tools
 
-List, describe and call any of the evo tools (the same ones the MCP server exposes)
+Список, описание и вызов инструментов evo (тех же, что у MCP-сервера)
 
 ### Synopsis
 
 ```text
-Every operation the MCP server exposes is available here as a tool.
+Любая операция MCP-сервера доступна здесь как инструмент.
 
   evo tools list [--group vm]
   evo tools describe vm_get
   evo tools call vm_get --arg name=web
 
-Tools that create paid resources or delete data ask for confirmation the same
-way as the other commands: a prompt on a terminal, --yes to confirm in
-advance, --dry-run to see the preview only; without a terminal and without
---yes the call stops with exit code 3.
+Инструменты, которые создают платные ресурсы или удаляют данные, спрашивают
+подтверждение так же, как остальные команды: вопрос на терминале, --yes —
+согласие заранее, --dry-run — только превью; без терминала и без --yes вызов
+завершается с кодом 3. Описания и ответы инструментов — на английском, как в MCP.
 ```
 
 ```
@@ -3089,51 +3297,51 @@ evo tools [flags]
 ### Options
 
 ```
-  -h, --help   help for tools
+  -h, --help   Справка по tools
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [evo tools call](#evo-tools-call)	 - Call a tool and print its JSON result
-* [evo tools describe](#evo-tools-describe)	 - Show a tool's description and arguments
-* [evo tools list](#evo-tools-list)	 - List the tools: name, group, whether it changes anything, description
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo tools call](#evo-tools-call)	 - Вызвать инструмент и напечатать его ответ (JSON)
+* [evo tools describe](#evo-tools-describe)	 - Описание и аргументы инструмента
+* [evo tools list](#evo-tools-list)	 - Список инструментов: имя, группа, меняет ли что-то, описание
 
 ## evo tools call
 
-Call a tool and print its JSON result
+Вызвать инструмент и напечатать его ответ (JSON)
 
 ### Synopsis
 
 ```text
-Call a tool and print its JSON result as is.
+Вызвать инструмент и напечатать его ответ (JSON) как есть.
 
-Arguments come from --args-file, then --args-json, then --arg (later ones
-win). --arg values are converted by the tool's schema: integer, number and
-boolean are parsed; an array is a comma-separated list (or a JSON array);
-an object is JSON. Names and types from the JSON sources are checked
-against the schema too; null means "not given".
+Аргументы берутся из --args-file, затем из --args-json, затем из --arg
+(более поздние перекрывают ранние). Значения --arg приводятся к типам схемы
+инструмента: integer, number и boolean разбираются; array — список через
+запятую (или массив JSON); object — JSON. Имена и типы из JSON тоже
+сверяются со схемой; null означает «не задан».
 
   evo tools call list_zones
   evo tools call vm_get --arg name=web
   evo tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
   evo tools call pg_operation --arg operation_id=OP --wait
 
-Exit codes: 0 success; 3 confirmation not given; 4 the tool reported that
-something was not found; 5 any other error reported by the tool.
+Коды выхода: 0 — успех; 3 — нет подтверждения; 4 — инструмент сообщил, что
+объект не найден; 5 — любая другая ошибка инструмента.
 ```
 
 ```
@@ -3143,33 +3351,33 @@ evo tools call <name> [flags]
 ### Options
 
 ```
-      --arg stringArray    Tool argument as name=value (repeatable)
-      --args-file string   Read tool arguments from a JSON file
-      --args-json string   Tool arguments as a JSON object
-  -h, --help               help for call
-      --wait               For tools that take wait_seconds (*_operation, stack_status): wait for the final state, polling with backoff up to the tool's limit
+      --arg stringArray    Аргумент инструмента: имя=значение (флаг повторяется)
+      --args-file string   Прочитать аргументы инструмента из файла JSON
+      --args-json string   Аргументы инструмента объектом JSON
+  -h, --help               Справка по call
+      --wait               Для инструментов с wait_seconds (*_operation, stack_status): ждать конечного состояния, опрашивая с нарастающей паузой до предела инструмента
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo tools](#evo-tools)	 - List, describe and call any of the evo tools (the same ones the MCP server exposes)
+* [evo tools](#evo-tools)	 - Список, описание и вызов инструментов evo (тех же, что у MCP-сервера)
 
 ## evo tools describe
 
-Show a tool's description and arguments
+Описание и аргументы инструмента
 
 ```
 evo tools describe <name> [flags]
@@ -3178,29 +3386,29 @@ evo tools describe <name> [flags]
 ### Options
 
 ```
-  -h, --help   help for describe
+  -h, --help   Справка по describe
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo tools](#evo-tools)	 - List, describe and call any of the evo tools (the same ones the MCP server exposes)
+* [evo tools](#evo-tools)	 - Список, описание и вызов инструментов evo (тех же, что у MCP-сервера)
 
 ## evo tools list
 
-List the tools: name, group, whether it changes anything, description
+Список инструментов: имя, группа, меняет ли что-то, описание
 
 ```
 evo tools list [flags]
@@ -3209,30 +3417,30 @@ evo tools list [flags]
 ### Options
 
 ```
-      --group string   Show only this group (ar, audit, billing, ca, cert, deploy, disk, dns, iam, image, k8s, kafka, monitoring, nlb, org, pg, redis, s3, secret, snat, stack, vm, vpc)
-  -h, --help           help for list
+      --group string   Только эта группа (ar, audit, billing, ca, cert, deploy, disk, dns, iam, image, k8s, kafka, monitoring, nlb, org, pg, redis, s3, secret, snat, stack, vm, vpc)
+  -h, --help           Справка по list
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo tools](#evo-tools)	 - List, describe and call any of the evo tools (the same ones the MCP server exposes)
+* [evo tools](#evo-tools)	 - Список, описание и вызов инструментов evo (тех же, что у MCP-сервера)
 
 ## evo verify
 
-Run health checks against the deployed application (exit 1 if unhealthy, 4 if nothing is deployed)
+Проверить, отвечает ли приложение (код 1 — не отвечает, 4 — ничего не развёрнуто)
 
 ```
 evo verify [flags]
@@ -3241,29 +3449,29 @@ evo verify [flags]
 ### Options
 
 ```
-  -h, --help   help for verify
+  -h, --help   Справка по verify
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo version
 
-Print the version, commit, build date, Go version and platform
+Версия, коммит, дата сборки, версия Go и платформа
 
 ```
 evo version [flags]
@@ -3272,29 +3480,29 @@ evo version [flags]
 ### Options
 
 ```
-  -h, --help   help for version
+  -h, --help   Справка по version
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
 
 ## evo vm
 
-Virtual machines
+Виртуальные машины
 
 ```
 evo vm [flags]
@@ -3303,43 +3511,47 @@ evo vm [flags]
 ### Options
 
 ```
-  -h, --help   help for vm
+  -h, --help   Справка по vm
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [evo vm create](#evo-vm-create)	 - Provision a bare Cloud.ru VM.
-* [evo vm delete](#evo-vm-delete)	 - Permanently delete a VM and all data on it (irreversible).
-* [evo vm flavors](#evo-vm-flavors)	 - List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate e…
-* [evo vm get](#evo-vm-get)	 - Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (…
-* [evo vm list](#evo-vm-list)	 - List the project's VMs from the LIVE API: id, name, state, availability zone and creation time.
-* [evo vm zones](#evo-vm-zones)	 - List available Cloud.ru availability zones (UUID + name).
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo vm create](#evo-vm-create)	 - Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip)
+* [evo vm delete](#evo-vm-delete)	 - Удалить ВМ и все данные на ней (безвозвратно)
+* [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, RAM, бесплатный уровень, оценка цены за месяц
+* [evo vm get](#evo-vm-get)	 - ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы
+* [evo vm list](#evo-vm-list)	 - Список ВМ проекта: id, имя, состояние, зона, время создания
+* [evo vm zones](#evo-vm-zones)	 - Зоны доступности (UUID и имя)
 
 ## evo vm create
 
-Provision a bare Cloud.ru VM.
+Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip)
 
 ### Synopsis
 
 ```text
+Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip).
+
+Вызывает инструмент provision (подробнее: 'evo tools describe provision').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only.
 
-Runs the provision tool (see 'evo tools describe provision').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -3351,7 +3563,7 @@ evo vm create <name> [flags]
 ```
       --disk-size int      Boot disk size in GB (default: 10, raised to the image's min_disk).
       --flavor string      VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier).
-  -h, --help               help for create
+  -h, --help               Справка по create
       --image-id string    Boot image UUID (see list_images).
       --no-public-ip       Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes.
       --subnet-id string   Subnet UUID for the interface (default: a subnet in the target zone).
@@ -3360,31 +3572,35 @@ evo vm create <name> [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vm](#evo-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Виртуальные машины
 
 ## evo vm delete
 
-Permanently delete a VM and all data on it (irreversible).
+Удалить ВМ и все данные на ней (безвозвратно)
 
 ### Synopsis
 
 ```text
+Удалить ВМ и все данные на ней (безвозвратно).
+
+Вызывает инструмент destroy (подробнее: 'evo tools describe destroy').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy.
 
-Runs the destroy tool (see 'evo tools describe destroy').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -3394,37 +3610,40 @@ evo vm delete <vm-id|name> [flags]
 ### Options
 
 ```
-  -h, --help         help for delete
+  -h, --help         Справка по delete
       --release-ip   Also release the VM's floating IP (default: true).
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vm](#evo-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Виртуальные машины
 
 ## evo vm flavors
 
-List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate e…
+Flavor ВМ: vCPU, RAM, бесплатный уровень, оценка цены за месяц
 
 ### Synopsis
 
 ```text
-List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each. Use a flavor name as the 'flavor' argument for deploy_plan in manual mode.
+Flavor ВМ: vCPU, RAM, бесплатный уровень, оценка цены за месяц.
 
-Runs the list_flavors tool (see 'evo tools describe list_flavors').
+Вызывает инструмент list_flavors (подробнее: 'evo tools describe list_flavors').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each. Use a flavor name as the 'flavor' argument for deploy_plan in manual mode.
 ```
 
 ```
@@ -3434,36 +3653,39 @@ evo vm flavors [flags]
 ### Options
 
 ```
-  -h, --help   help for flavors
+  -h, --help   Справка по flavors
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vm](#evo-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Виртуальные машины
 
 ## evo vm get
 
-Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (…
+ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы
 
 ### Synopsis
 
 ```text
-Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. Use this whenever you need a VM's IP — e.g. to wire a private service endpoint into a config or secret after creating the VM. Unlike 'list'/'status' (which read local state and omit the private IP), this calls the live API. Never shell out to curl/ssh to discover a VM's IP — use this tool.
+ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы.
 
-Runs the vm_get tool (see 'evo tools describe vm_get').
+Вызывает инструмент vm_get (подробнее: 'evo tools describe vm_get').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. Use this whenever you need a VM's IP — e.g. to wire a private service endpoint into a config or secret after creating the VM. Unlike 'list'/'status' (which read local state and omit the private IP), this calls the live API. Never shell out to curl/ssh to discover a VM's IP — use this tool.
 ```
 
 ```
@@ -3473,36 +3695,39 @@ evo vm get <vm-id|name> [flags]
 ### Options
 
 ```
-  -h, --help   help for get
+  -h, --help   Справка по get
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vm](#evo-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Виртуальные машины
 
 ## evo vm list
 
-List the project's VMs from the LIVE API: id, name, state, availability zone and creation time.
+Список ВМ проекта: id, имя, состояние, зона, время создания
 
 ### Synopsis
 
 ```text
-List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. Read-only. For IPs and interfaces of one VM use vm_get. Unlike 'list' (local deployment records of this directory), this shows every VM in the project.
+Список ВМ проекта: id, имя, состояние, зона, время создания.
 
-Runs the vm_list tool (see 'evo tools describe vm_list').
+Вызывает инструмент vm_list (подробнее: 'evo tools describe vm_list').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. Read-only. For IPs and interfaces of one VM use vm_get. Unlike 'list' (local deployment records of this directory), this shows every VM in the project.
 ```
 
 ```
@@ -3512,36 +3737,39 @@ evo vm list [flags]
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help   Справка по list
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vm](#evo-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Виртуальные машины
 
 ## evo vm zones
 
-List available Cloud.ru availability zones (UUID + name).
+Зоны доступности (UUID и имя)
 
 ### Synopsis
 
 ```text
-List available Cloud.ru availability zones (UUID + name). Use a zone UUID as the 'region' argument for deploy or provision.
+Зоны доступности (UUID и имя).
 
-Runs the list_zones tool (see 'evo tools describe list_zones').
+Вызывает инструмент list_zones (подробнее: 'evo tools describe list_zones').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List available Cloud.ru availability zones (UUID + name). Use a zone UUID as the 'region' argument for deploy or provision.
 ```
 
 ```
@@ -3551,29 +3779,29 @@ evo vm zones [flags]
 ### Options
 
 ```
-  -h, --help   help for zones
+  -h, --help   Справка по zones
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vm](#evo-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Виртуальные машины
 
 ## evo vpc
 
-Networks: VPCs, routes, subnets, security groups, floating IPs
+Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ```
 evo vpc [flags]
@@ -3582,50 +3810,54 @@ evo vpc [flags]
 ### Options
 
 ```
-  -h, --help   help for vpc
+  -h, --help   Справка по vpc
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [evo vpc create](#evo-vpc-create)	 - Create a new VPC (virtual private cloud) (async).
-* [evo vpc delete](#evo-vpc-delete)	 - Delete a VPC by id (from vpc_list) (async).
-* [evo vpc fip-attach](#evo-vpc-fip-attach)	 - Bind an existing FREE floating IP to a VM's primary interface, giving it a public address.
-* [evo vpc fip-release](#evo-vpc-fip-release)	 - Release (delete) a floating IP, freeing it from the project.
-* [evo vpc fips](#evo-vpc-fips)	 - List Cloud.ru floating IPs (address, state, whether available to attach).
-* [evo vpc get](#evo-vpc-get)	 - Get full details of one VPC by id (from vpc_list).
-* [evo vpc list](#evo-vpc-list)	 - List Evolution VPCs (virtual private clouds) in the project (id, name, default, type).
-* [evo vpc operation](#evo-vpc-operation)	 - Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete).
-* [evo vpc route-create](#evo-vpc-route-create)	 - Add a static route to a VPC (async).
-* [evo vpc route-delete](#evo-vpc-route-delete)	 - Delete a static route from a VPC by id (from vpc_routes) (async).
-* [evo vpc routes](#evo-vpc-routes)	 - List static routes of a VPC (id, subnet, next_hop_type, status).
-* [evo vpc security-groups](#evo-vpc-security-groups)	 - List Cloud.ru security groups (UUID, name, availability zone).
-* [evo vpc subnets](#evo-vpc-subnets)	 - List Cloud.ru subnets (UUID, name, availability zone).
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo vpc create](#evo-vpc-create)	 - Создать VPC (асинхронно)
+* [evo vpc delete](#evo-vpc-delete)	 - Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы)
+* [evo vpc fip-attach](#evo-vpc-fip-attach)	 - Привязать свободный floating IP к основному интерфейсу ВМ
+* [evo vpc fip-release](#evo-vpc-fip-release)	 - Освободить floating IP (адрес, занятый ВМ, не освобождается)
+* [evo vpc fips](#evo-vpc-fips)	 - Floating IP: адрес, состояние, свободен ли
+* [evo vpc get](#evo-vpc-get)	 - VPC по ID: все сведения
+* [evo vpc list](#evo-vpc-list)	 - Список VPC проекта
+* [evo vpc operation](#evo-vpc-operation)	 - Состояние асинхронной операции VPC
+* [evo vpc route-create](#evo-vpc-route-create)	 - Добавить статический маршрут в VPC (асинхронно)
+* [evo vpc route-delete](#evo-vpc-route-delete)	 - Удалить статический маршрут из VPC (асинхронно)
+* [evo vpc routes](#evo-vpc-routes)	 - Статические маршруты VPC
+* [evo vpc security-groups](#evo-vpc-security-groups)	 - Группы безопасности (с --rules — вместе с правилами)
+* [evo vpc subnets](#evo-vpc-subnets)	 - Подсети: UUID, имя, зона доступности
 
 ## evo vpc create
 
-Create a new VPC (virtual private cloud) (async).
+Создать VPC (асинхронно)
 
 ### Synopsis
 
 ```text
+Создать VPC (асинхронно).
+
+Вызывает инструмент vpc_create (подробнее: 'evo tools describe vpc_create').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Create a new VPC (virtual private cloud) (async). Mutation: requires confirmed=true after the user approves.
 
-Runs the vpc_create tool (see 'evo tools describe vpc_create').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -3636,37 +3868,41 @@ evo vpc create <name> [flags]
 
 ```
       --description string   Optional description.
-  -h, --help                 help for create
+  -h, --help                 Справка по create
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc delete
 
-Delete a VPC by id (from vpc_list) (async).
+Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы)
 
 ### Synopsis
 
 ```text
+Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы).
+
+Вызывает инструмент vpc_delete (подробнее: 'evo tools describe vpc_delete').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the user approves.
 
-Runs the vpc_delete tool (see 'evo tools describe vpc_delete').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -3676,37 +3912,41 @@ evo vpc delete <id> [flags]
 ### Options
 
 ```
-  -h, --help   help for delete
+  -h, --help   Справка по delete
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc fip-attach
 
-Bind an existing FREE floating IP to a VM's primary interface, giving it a public address.
+Привязать свободный floating IP к основному интерфейсу ВМ
 
 ### Synopsis
 
 ```text
+Привязать свободный floating IP к основному интерфейсу ВМ.
+
+Вызывает инструмент fip_attach (подробнее: 'evo tools describe fip_attach').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Bind an existing FREE floating IP to a VM's primary interface, giving it a public address. Use when a VM has no public_ip — e.g. provisioning from a large custom image outran the wizard's wait and it returned before assigning one. Pick a free address from list_floating_ips. Mutation: requires confirmed=true.
 
-Runs the fip_attach tool (see 'evo tools describe fip_attach').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -3716,38 +3956,42 @@ evo vpc fip-attach <fip> [flags]
 ### Options
 
 ```
-  -h, --help        help for fip-attach
+  -h, --help        Справка по fip-attach
       --vm string   VM name or UUID to attach it to.
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc fip-release
 
-Release (delete) a floating IP, freeing it from the project.
+Освободить floating IP (адрес, занятый ВМ, не освобождается)
 
 ### Synopsis
 
 ```text
+Освободить floating IP (адрес, занятый ВМ, не освобождается).
+
+Вызывает инструмент release_floating_ip (подробнее: 'evo tools describe release_floating_ip').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first). Mutation: requires confirmed=true after the user approves.
 
-Runs the release_floating_ip tool (see 'evo tools describe release_floating_ip').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -3757,37 +4001,40 @@ evo vpc fip-release [id] [flags]
 ### Options
 
 ```
-  -h, --help                help for fip-release
+  -h, --help                Справка по fip-release
       --ip-address string   Floating IP address, e.g. '213.171.25.19' (alternative to id).
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc fips
 
-List Cloud.ru floating IPs (address, state, whether available to attach).
+Floating IP: адрес, состояние, свободен ли
 
 ### Synopsis
 
 ```text
-List Cloud.ru floating IPs (address, state, whether available to attach). Read-only.
+Floating IP: адрес, состояние, свободен ли.
 
-Runs the list_floating_ips tool (see 'evo tools describe list_floating_ips').
+Вызывает инструмент list_floating_ips (подробнее: 'evo tools describe list_floating_ips').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List Cloud.ru floating IPs (address, state, whether available to attach). Read-only.
 ```
 
 ```
@@ -3797,36 +4044,39 @@ evo vpc fips [flags]
 ### Options
 
 ```
-  -h, --help   help for fips
+  -h, --help   Справка по fips
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc get
 
-Get full details of one VPC by id (from vpc_list).
+VPC по ID: все сведения
 
 ### Synopsis
 
 ```text
-Get full details of one VPC by id (from vpc_list). Read-only.
+VPC по ID: все сведения.
 
-Runs the vpc_get tool (see 'evo tools describe vpc_get').
+Вызывает инструмент vpc_get (подробнее: 'evo tools describe vpc_get').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Get full details of one VPC by id (from vpc_list). Read-only.
 ```
 
 ```
@@ -3836,36 +4086,39 @@ evo vpc get <id> [flags]
 ### Options
 
 ```
-  -h, --help   help for get
+  -h, --help   Справка по get
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc list
 
-List Evolution VPCs (virtual private clouds) in the project (id, name, default, type).
+Список VPC проекта
 
 ### Synopsis
 
 ```text
-List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). Read-only. vpc.api.cloud.ru.
+Список VPC проекта.
 
-Runs the vpc_list tool (see 'evo tools describe vpc_list').
+Вызывает инструмент vpc_list (подробнее: 'evo tools describe vpc_list').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). Read-only. vpc.api.cloud.ru.
 ```
 
 ```
@@ -3875,36 +4128,39 @@ evo vpc list [flags]
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help   Справка по list
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc operation
 
-Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete).
+Состояние асинхронной операции VPC
 
 ### Synopsis
 
 ```text
-Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). Returns {done, error}. Read-only.
+Состояние асинхронной операции VPC.
 
-Runs the vpc_operation tool (see 'evo tools describe vpc_operation').
+Вызывает инструмент vpc_operation (подробнее: 'evo tools describe vpc_operation').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). Returns {done, error}. Read-only.
 ```
 
 ```
@@ -3914,38 +4170,42 @@ evo vpc operation <operation-id> [flags]
 ### Options
 
 ```
-  -h, --help               help for operation
+  -h, --help               Справка по operation
       --wait-seconds int   Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc route-create
 
-Add a static route to a VPC (async).
+Добавить статический маршрут в VPC (асинхронно)
 
 ### Synopsis
 
 ```text
+Добавить статический маршрут в VPC (асинхронно).
+
+Вызывает инструмент vpc_route_create (подробнее: 'evo tools describe vpc_route_create').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az). Mutation: requires confirmed=true after the user approves.
 
-Runs the vpc_route_create tool (see 'evo tools describe vpc_route_create').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -3956,7 +4216,7 @@ evo vpc route-create <vpc-id> [flags]
 
 ```
       --description string                Optional route description.
-  -h, --help                              help for route-create
+  -h, --help                              Справка по route-create
       --next-hop-az string                Availability zone name (e.g. 'ru.AZ-1') for a Magic-Router next hop.
       --next-hop-interface-id string      VM network interface UUID.
       --next-hop-magic-router-id string   Magic Router UUID for a Magic-Router next hop (with next_hop_az).
@@ -3968,31 +4228,35 @@ evo vpc route-create <vpc-id> [flags]
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc route-delete
 
-Delete a static route from a VPC by id (from vpc_routes) (async).
+Удалить статический маршрут из VPC (асинхронно)
 
 ### Synopsis
 
 ```text
+Удалить статический маршрут из VPC (асинхронно).
+
+Вызывает инструмент vpc_route_delete (подробнее: 'evo tools describe vpc_route_delete').
+Описание инструмента и его флагов — на английском, как в MCP:
+
 Delete a static route from a VPC by id (from vpc_routes) (async). Mutation: requires confirmed=true after the user approves.
 
-Runs the vpc_route_delete tool (see 'evo tools describe vpc_route_delete').
-Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
 
 ```
@@ -4002,36 +4266,39 @@ evo vpc route-delete <vpc-id> <route-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for route-delete
+  -h, --help   Справка по route-delete
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc routes
 
-List static routes of a VPC (id, subnet, next_hop_type, status).
+Статические маршруты VPC
 
 ### Synopsis
 
 ```text
-List static routes of a VPC (id, subnet, next_hop_type, status). Read-only.
+Статические маршруты VPC.
 
-Runs the vpc_routes tool (see 'evo tools describe vpc_routes').
+Вызывает инструмент vpc_routes (подробнее: 'evo tools describe vpc_routes').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List static routes of a VPC (id, subnet, next_hop_type, status). Read-only.
 ```
 
 ```
@@ -4041,36 +4308,39 @@ evo vpc routes <vpc-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for routes
+  -h, --help   Справка по routes
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc security-groups
 
-List Cloud.ru security groups (UUID, name, availability zone).
+Группы безопасности (с --rules — вместе с правилами)
 
 ### Synopsis
 
 ```text
-List Cloud.ru security groups (UUID, name, availability zone). Read-only. With rules=true each group carries its rules (id, direction, protocol, port range, source, description, state).
+Группы безопасности (с --rules — вместе с правилами).
 
-Runs the list_security_groups tool (see 'evo tools describe list_security_groups').
+Вызывает инструмент list_security_groups (подробнее: 'evo tools describe list_security_groups').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List Cloud.ru security groups (UUID, name, availability zone). Read-only. With rules=true each group carries its rules (id, direction, protocol, port range, source, description, state).
 ```
 
 ```
@@ -4080,37 +4350,40 @@ evo vpc security-groups [flags]
 ### Options
 
 ```
-  -h, --help    help for security-groups
+  -h, --help    Справка по security-groups
       --rules   Also list each group's rules (one more API call per group).
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc subnets
 
-List Cloud.ru subnets (UUID, name, availability zone).
+Подсети: UUID, имя, зона доступности
 
 ### Synopsis
 
 ```text
-List Cloud.ru subnets (UUID, name, availability zone). Read-only.
+Подсети: UUID, имя, зона доступности.
 
-Runs the list_subnets tool (see 'evo tools describe list_subnets').
+Вызывает инструмент list_subnets (подробнее: 'evo tools describe list_subnets').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List Cloud.ru subnets (UUID, name, availability zone). Read-only.
 ```
 
 ```
@@ -4120,39 +4393,39 @@ evo vpc subnets [flags]
 ### Options
 
 ```
-  -h, --help   help for subnets
+  -h, --help   Справка по subnets
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo whoami
 
-Show the active profile and check its credentials
+Активный профиль и проверка его ключа
 
 ### Synopsis
 
 ```text
-Exchange the access key of the active profile for an IAM token and show
-the profile, the key ID (masked), the project and the token expiry.
+Обменять ключ доступа активного профиля на токен IAM и показать профиль,
+Key ID (маскированный), проект и срок действия токена.
 
-A valid token cached by an earlier command is reused; IAM is not contacted
-again until it is about to expire. Exits with 2 when the credentials are
-missing or rejected.
+Действующий токен, сохранённый предыдущей командой, используется повторно:
+к IAM команда обращается, только когда срок токена подходит к концу. Код
+выхода 2 — ключа нет или IAM его отклонил.
 ```
 
 ```
@@ -4162,22 +4435,22 @@ evo whoami [flags]
 ### Options
 
 ```
-  -h, --help   help for whoami
+  -h, --help   Справка по whoami
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-      --json                Output in JSON format
-      --no-color            Disable colored output
-      --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
-      --project-id string   Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)
-      --region string       Availability zone UUID (default: from the profile or $CLOUDRU_REGION)
-      --verbose             Enable verbose logging
-  -y, --yes                 Confirm operations that create paid resources or delete data, without a prompt
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru

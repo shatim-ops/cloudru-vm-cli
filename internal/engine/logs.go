@@ -6,6 +6,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -27,8 +28,8 @@ func (e *Engine) Logs(ctx context.Context, opts LogsOptions) error {
 	active := stateFile.ActiveDeployment()
 	if active == nil {
 		return clerrors.New(clerrors.CodeVMNotFound,
-			"no active deployment",
-			"Run 'evo deploy' first.")
+			i18n.T("no active deployment", "активного развёртывания нет"),
+			deployFirst())
 	}
 
 	// Auth.
@@ -62,11 +63,15 @@ func (e *Engine) Logs(ctx context.Context, opts LogsOptions) error {
 			return ctx.Err()
 		}
 		return clerrors.Wrap(clerrors.CodeSSHTimeout,
-			"failed to retrieve logs",
-			"Check that containers are running.",
+			i18n.T("failed to retrieve logs", "не удалось получить журналы"),
+			i18n.T("Check that containers are running.", "Проверьте, что контейнеры запущены."),
 			err)
 	}
 	return nil
+}
+
+func deployFirst() string {
+	return i18n.T("Run 'evo deploy' first.", "Сначала выполните 'evo deploy'.")
 }
 
 // logsCommand builds the remote `docker compose logs` command. The service

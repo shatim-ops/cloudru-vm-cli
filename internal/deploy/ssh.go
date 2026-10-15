@@ -12,6 +12,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // SSHDeployer implements Deployer using real SSH connections.
@@ -51,7 +52,7 @@ func NewSSHDeployer() *SSHDeployer {
 func (d *SSHDeployer) Connect(ctx context.Context, host string, port int, user string, keyPEM []byte, knownHostKey string) error {
 	signer, err := ssh.ParsePrivateKey(keyPEM)
 	if err != nil {
-		return clerrors.Wrap(clerrors.CodeSSHAuthFailed, "failed to parse SSH private key", "Check that the key is a valid PEM-encoded Ed25519 private key.", err)
+		return clerrors.Wrap(clerrors.CodeSSHAuthFailed, i18n.T("failed to parse SSH private key", "не удалось разобрать закрытый SSH-ключ"), i18n.T("Check that the key is a valid PEM-encoded Ed25519 private key.", "Ключ должен быть закрытым ключом Ed25519 в формате PEM."), err)
 	}
 
 	hostKeyCallback := d.buildHostKeyCallback(knownHostKey)
@@ -80,7 +81,7 @@ func (d *SSHDeployer) Connect(ctx context.Context, host string, port int, user s
 
 	select {
 	case <-ctx.Done():
-		return clerrors.Wrap(clerrors.CodeSSHTimeout, "SSH connection cancelled", "The operation was cancelled before the connection could be established.", ctx.Err())
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("SSH connection cancelled", "подключение по SSH отменено"), i18n.T("The operation was cancelled before the connection could be established.", "Операция отменена до установки соединения."), ctx.Err())
 	case res := <-ch:
 		if res.err != nil {
 			return classifyDialError(res.err)
@@ -146,12 +147,12 @@ func (d *SSHDeployer) HostKeyLine() string {
 // Each file is written using a heredoc to avoid requiring an SFTP subsystem.
 func (d *SSHDeployer) Upload(ctx context.Context, files []FileEntry) error {
 	if d.client == nil {
-		return clerrors.New(clerrors.CodeSSHTimeout, "not connected", "Call Connect before Upload.")
+		return clerrors.New(clerrors.CodeSSHTimeout, i18n.T("not connected", "нет соединения"), i18n.T("Call Connect before Upload.", "Сначала нужно подключение (Connect), затем Upload."))
 	}
 
 	for _, f := range files {
 		if err := ctx.Err(); err != nil {
-			return clerrors.Wrap(clerrors.CodeSSHTimeout, "upload cancelled", "The operation was cancelled during file upload.", err)
+			return clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("upload cancelled", "загрузка отменена"), i18n.T("The operation was cancelled during file upload.", "Операция отменена во время загрузки файла."), err)
 		}
 
 		if err := d.uploadFile(ctx, f); err != nil {
@@ -169,12 +170,12 @@ func (d *SSHDeployer) Exec(ctx context.Context, cmd string) (string, error) {
 // exec is Exec with stdin for the remote command (nil: none).
 func (d *SSHDeployer) exec(ctx context.Context, cmd string, stdin []byte) (string, error) {
 	if d.client == nil {
-		return "", clerrors.New(clerrors.CodeSSHTimeout, "not connected", "Call Connect before Exec.")
+		return "", clerrors.New(clerrors.CodeSSHTimeout, i18n.T("not connected", "нет соединения"), i18n.T("Call Connect before Exec.", "Сначала нужно подключение (Connect), затем Exec."))
 	}
 
 	session, err := d.client.NewSession()
 	if err != nil {
-		return "", clerrors.Wrap(clerrors.CodeSSHTimeout, "failed to create SSH session", "The SSH connection may have been lost.", err)
+		return "", clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("failed to create SSH session", "не удалось открыть сеанс SSH"), i18n.T("The SSH connection may have been lost.", "Возможно, соединение SSH потеряно."), err)
 	}
 	defer session.Close()
 	if stdin != nil {
@@ -198,13 +199,13 @@ func (d *SSHDeployer) exec(ctx context.Context, cmd string, stdin []byte) (strin
 	select {
 	case <-ctx.Done():
 		_ = session.Signal(ssh.SIGTERM)
-		return "", clerrors.Wrap(clerrors.CodeSSHTimeout, "command execution cancelled", "The operation was cancelled during command execution.", ctx.Err())
+		return "", clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("command execution cancelled", "выполнение команды отменено"), i18n.T("The operation was cancelled during command execution.", "Операция отменена во время выполнения команды."), ctx.Err())
 	case <-timer.C:
 		_ = session.Signal(ssh.SIGTERM)
-		return "", clerrors.New(clerrors.CodeSSHTimeout, "command execution timed out", fmt.Sprintf("The command did not complete within %s.", execTimeout))
+		return "", clerrors.New(clerrors.CodeSSHTimeout, i18n.T("command execution timed out", "время выполнения команды истекло"), i18n.Tf("The command did not complete within %s.", "Команда не завершилась за %s.", execTimeout))
 	case res := <-ch:
 		if res.err != nil {
-			return string(res.output), clerrors.Wrap(clerrors.CodeSSHTimeout, "command execution failed", "Check the command and remote host state.", res.err)
+			return string(res.output), clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("command execution failed", "команда завершилась ошибкой"), i18n.T("Check the command and remote host state.", "Проверьте команду и состояние удалённого хоста."), res.err)
 		}
 		return string(res.output), nil
 	}
@@ -219,19 +220,19 @@ func (d *SSHDeployer) ExecStream(ctx context.Context, cmd string, stdout, stderr
 	open := d.newStreamSession
 	if open == nil {
 		if d.client == nil {
-			return clerrors.New(clerrors.CodeSSHTimeout, "not connected", "Call Connect before ExecStream.")
+			return clerrors.New(clerrors.CodeSSHTimeout, i18n.T("not connected", "нет соединения"), i18n.T("Call Connect before ExecStream.", "Сначала нужно подключение (Connect), затем ExecStream."))
 		}
 		open = d.openStreamSession
 	}
 
 	session, err := open(stdout, stderr)
 	if err != nil {
-		return clerrors.Wrap(clerrors.CodeSSHTimeout, "failed to create SSH session", "The SSH connection may have been lost.", err)
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("failed to create SSH session", "не удалось открыть сеанс SSH"), i18n.T("The SSH connection may have been lost.", "Возможно, соединение SSH потеряно."), err)
 	}
 	defer session.Close()
 
 	if err := session.Start(cmd); err != nil {
-		return clerrors.Wrap(clerrors.CodeSSHTimeout, "failed to start remote command", "Check the remote host state.", err)
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("failed to start remote command", "не удалось запустить команду на удалённом хосте"), i18n.T("Check the remote host state.", "Проверьте состояние удалённого хоста."), err)
 	}
 
 	done := make(chan error, 1)
@@ -242,10 +243,10 @@ func (d *SSHDeployer) ExecStream(ctx context.Context, cmd string, stdout, stderr
 		_ = session.Signal(ssh.SIGTERM)
 		_ = session.Close() // unblocks Wait; without a pty the server may ignore the signal
 		<-done
-		return clerrors.Wrap(clerrors.CodeSSHTimeout, "command execution cancelled", "The operation was cancelled during command execution.", ctx.Err())
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("command execution cancelled", "выполнение команды отменено"), i18n.T("The operation was cancelled during command execution.", "Операция отменена во время выполнения команды."), ctx.Err())
 	case err := <-done:
 		if err != nil {
-			return clerrors.Wrap(clerrors.CodeSSHTimeout, "command execution failed", "Check the command and remote host state.", err)
+			return clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("command execution failed", "команда завершилась ошибкой"), i18n.T("Check the command and remote host state.", "Проверьте команду и состояние удалённого хоста."), err)
 		}
 		return nil
 	}
@@ -286,8 +287,8 @@ func (d *SSHDeployer) buildHostKeyCallback(knownHostKey string) ssh.HostKeyCallb
 		if fingerprint != knownHostKey {
 			return clerrors.New(
 				clerrors.CodeSSHHostKeyChanged,
-				fmt.Sprintf("host key mismatch for %s: expected %s, got %s", hostname, knownHostKey, fingerprint),
-				"The remote host key has changed. This could indicate a MITM attack or server reinstall. Update the stored host key if the change is expected.",
+				i18n.Tf("host key mismatch for %s: expected %s, got %s", "ключ хоста %s не совпадает: ожидался %s, получен %s", hostname, knownHostKey, fingerprint),
+				i18n.T("The remote host key has changed. This could indicate a MITM attack or server reinstall. Update the stored host key if the change is expected.", "Ключ удалённого хоста изменился. Это может быть атака «человек посередине» или переустановка сервера. Если смена ожидаема, обновите сохранённый ключ хоста."),
 			)
 		}
 		return nil
@@ -304,7 +305,7 @@ func (d *SSHDeployer) uploadFile(ctx context.Context, f FileEntry) error {
 
 	_, err := d.exec(ctx, cmd, f.Content)
 	if err != nil {
-		return clerrors.Wrap(clerrors.CodeSSHTimeout, fmt.Sprintf("failed to upload %s", f.RemotePath), "Check remote path permissions and disk space.", err)
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.Tf("failed to upload %s", "не удалось загрузить %s", f.RemotePath), i18n.T("Check remote path permissions and disk space.", "Проверьте права на удалённый путь и свободное место на диске."), err)
 	}
 	return nil
 }
@@ -326,17 +327,17 @@ func classifyDialError(err error) *clerrors.CLIError {
 	}
 
 	if isTimeoutError(err) {
-		return clerrors.Wrap(clerrors.CodeSSHTimeout, "SSH connection timed out", "Check that the host is reachable and the port is open.", err)
+		return clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("SSH connection timed out", "истекло время подключения по SSH"), i18n.T("Check that the host is reachable and the port is open.", "Проверьте, что хост доступен и порт открыт."), err)
 	}
 
 	// Only a rejected key is an auth failure. Any other "handshake failed"
 	// (EOF, connection reset from an sshd that is still starting) is
 	// retryable: deploy stops retrying on SSH_AUTH_FAILED.
 	if strings.Contains(msg, "unable to authenticate") || strings.Contains(msg, "no supported methods remain") {
-		return clerrors.Wrap(clerrors.CodeSSHAuthFailed, "SSH authentication failed", "Check your SSH key and username.", err)
+		return clerrors.Wrap(clerrors.CodeSSHAuthFailed, i18n.T("SSH authentication failed", "аутентификация SSH не прошла"), i18n.T("Check your SSH key and username.", "Проверьте SSH-ключ и имя пользователя."), err)
 	}
 
-	return clerrors.Wrap(clerrors.CodeSSHTimeout, "SSH connection failed", "Check host, port, and network connectivity.", err)
+	return clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("SSH connection failed", "не удалось подключиться по SSH"), i18n.T("Check host, port, and network connectivity.", "Проверьте хост, порт и сеть."), err)
 }
 
 // isTimeoutError checks whether err is a network timeout.

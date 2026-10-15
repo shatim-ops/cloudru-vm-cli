@@ -24,3 +24,9 @@ const (
 	CodeUsage                = "USAGE"     // unknown command or flag, bad arguments
 	CodeNotFound             = "NOT_FOUND" // any object other than a VM; exit 4
 )
+
+// Reasons of JSON errors that carry no CLIError (see Reason).
+const (
+	ReasonInterrupted = "INTERRUPTED" // Ctrl-C, SIGTERM; exit 130
+	ReasonGeneral     = "ERROR"       // an error without a symbolic code; exit 1
+)

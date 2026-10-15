@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -19,10 +20,10 @@ func (e *Engine) Status(ctx context.Context) error {
 	if active == nil {
 		if e.Printer.IsJSON() {
 			// The same answer as the MCP status tool: --json must print JSON.
-			return e.Printer.JSON(map[string]any{"status": "none", "message": "No active deployment."})
+			return e.Printer.JSON(map[string]any{"status": "none", "message": i18n.T("No active deployment.", "Активного развёртывания нет.")})
 		}
-		e.Printer.Success("No active deployment.")
-		e.Printer.Hint("Run 'evo deploy' to create one.")
+		e.Printer.Success(i18n.T("No active deployment.", "Активного развёртывания нет."))
+		e.Printer.Hint(i18n.T("Run 'evo deploy' to create one.", "Создать: 'evo deploy'."))
 		return nil
 	}
 
@@ -30,22 +31,22 @@ func (e *Engine) Status(ctx context.Context) error {
 		return e.Printer.JSON(active)
 	}
 
-	headers := []string{"Property", "Value"}
+	headers := []string{i18n.T("Property", "Параметр"), i18n.T("Value", "Значение")}
 	rows := [][]string{
 		{"ID", active.ID},
-		{"VM ID", active.VMID},
-		{"VM IP", active.VMIP},
+		{i18n.T("VM ID", "ID ВМ"), active.VMID},
+		{i18n.T("VM IP", "IP ВМ"), active.VMIP},
 		{"Flavor", active.VMFlavor},
-		{"Region", active.Region},
-		{"Status", active.Status},
-		{"Compose Hash", active.ComposeHash},
-		{"Created", active.CreatedAt.Format("2006-01-02 15:04:05")},
-		{"Updated", active.UpdatedAt.Format("2006-01-02 15:04:05")},
+		{i18n.T("Region", "Зона"), active.Region},
+		{i18n.T("Status", "Состояние"), active.Status},
+		{i18n.T("Compose Hash", "Хеш compose"), active.ComposeHash},
+		{i18n.T("Created", "Создано"), active.CreatedAt.Format("2006-01-02 15:04:05")},
+		{i18n.T("Updated", "Обновлено"), active.UpdatedAt.Format("2006-01-02 15:04:05")},
 	}
 
 	if len(active.ExposedPorts) > 0 {
 		ports := fmt.Sprintf("%v", active.ExposedPorts)
-		rows = append(rows, []string{"Exposed Ports", ports})
+		rows = append(rows, []string{i18n.T("Exposed Ports", "Открытые порты"), ports})
 	}
 
 	e.Printer.Table(headers, rows)
@@ -61,7 +62,7 @@ func (e *Engine) List(ctx context.Context) error {
 	}
 
 	if len(stateFile.Deployments) == 0 {
-		e.Printer.Success("No deployments found.")
+		e.Printer.Success(i18n.T("No deployments found.", "Развёртываний нет."))
 		return nil
 	}
 
@@ -69,7 +70,7 @@ func (e *Engine) List(ctx context.Context) error {
 		return e.Printer.JSON(stateFile.Deployments)
 	}
 
-	headers := []string{"ID", "VM IP", "Status", "Flavor", "Created"}
+	headers := []string{"ID", i18n.T("VM IP", "IP ВМ"), i18n.T("Status", "Состояние"), "Flavor", i18n.T("Created", "Создано")}
 	var rows [][]string
 	for _, d := range stateFile.Deployments {
 		rows = append(rows, []string{

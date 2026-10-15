@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	clierr "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,15 +21,15 @@ func Parse(path string) (*Project, error) {
 		if os.IsNotExist(err) {
 			return nil, clierr.Wrap(
 				clierr.CodeComposeNotFound,
-				fmt.Sprintf("compose file not found: %s", path),
-				"Check the file path and try again.",
+				i18n.Tf("compose file not found: %s", "compose-файл не найден: %s", path),
+				i18n.T("Check the file path and try again.", "Проверьте путь (по умолчанию docker-compose.yml; другой — флаг -f) и повторите."),
 				err,
 			)
 		}
 		return nil, clierr.Wrap(
 			clierr.CodeComposeNotFound,
-			fmt.Sprintf("cannot read compose file: %s", path),
-			"Check file permissions.",
+			i18n.Tf("cannot read compose file: %s", "не удалось прочитать compose-файл: %s", path),
+			i18n.T("Check file permissions.", "Проверьте права на файл."),
 			err,
 		)
 	}
@@ -43,8 +44,8 @@ func parseData(data []byte) (*Project, error) {
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return nil, clierr.Wrap(
 			clierr.CodeComposeInvalid,
-			"invalid YAML in compose file",
-			"Ensure the file contains valid YAML.",
+			i18n.T("invalid YAML in compose file", "в compose-файле ошибка YAML"),
+			i18n.T("Ensure the file contains valid YAML.", "Проверьте синтаксис YAML."),
 			err,
 		)
 	}
@@ -53,8 +54,8 @@ func parseData(data []byte) (*Project, error) {
 	if !ok {
 		return nil, clierr.New(
 			clierr.CodeComposeInvalid,
-			"no services defined in compose file",
-			"Add a 'services' section to your docker-compose.yml.",
+			noServices(),
+			addServices(),
 		)
 	}
 
@@ -62,8 +63,8 @@ func parseData(data []byte) (*Project, error) {
 	if !ok || len(servicesMap) == 0 {
 		return nil, clierr.New(
 			clierr.CodeComposeInvalid,
-			"no services defined in compose file",
-			"Add a 'services' section to your docker-compose.yml.",
+			noServices(),
+			addServices(),
 		)
 	}
 
@@ -99,12 +100,13 @@ func parseData(data []byte) (*Project, error) {
 		ports, warns, err := parsePorts(svcMap)
 		if err != nil {
 			return nil, clierr.New(clierr.CodeComposeInvalid,
-				fmt.Sprintf("service %q: %v", name, err),
-				"Ports are [IP:][HOST:]CONTAINER[/tcp|udp], each port 1-65535.")
+				i18n.Tf("service %q: %v", "сервис %q: %v", name, err),
+				i18n.T("Ports are [IP:][HOST:]CONTAINER[/tcp|udp], each port 1-65535.",
+					"Порт задаётся как [IP:][HOST:]CONTAINER[/tcp|udp], номер — от 1 до 65535."))
 		}
 		svc.Ports = ports
 		for _, w := range warns {
-			warnings = append(warnings, fmt.Sprintf("service %q: %s", name, w))
+			warnings = append(warnings, i18n.Tf("service %q: %s", "сервис %q: %s", name, w))
 		}
 		for _, p := range svc.Ports {
 			if !p.Public() {
@@ -120,8 +122,9 @@ func parseData(data []byte) (*Project, error) {
 		svc.Resources, err = parseResources(svcMap)
 		if err != nil {
 			return nil, clierr.New(clierr.CodeComposeInvalid,
-				fmt.Sprintf("service %q: %v", name, err),
-				"Use deploy.resources.limits like cpus: \"0.5\" and memory: 512M.")
+				i18n.Tf("service %q: %v", "сервис %q: %v", name, err),
+				i18n.T("Use deploy.resources.limits like cpus: \"0.5\" and memory: 512M.",
+					"Задайте deploy.resources.limits, например cpus: \"0.5\" и memory: 512M."))
 		}
 		totalCPU += svc.Resources.CPUCores
 		totalMem += svc.Resources.MemoryMB
@@ -134,8 +137,8 @@ func parseData(data []byte) (*Project, error) {
 	if len(services) == 0 {
 		return nil, clierr.New(
 			clierr.CodeComposeInvalid,
-			"no valid services found in compose file",
-			"Ensure services are properly defined.",
+			i18n.T("no valid services found in compose file", "в compose-файле нет ни одного корректного сервиса"),
+			i18n.T("Ensure services are properly defined.", "Проверьте описание сервисов."),
 		)
 	}
 
@@ -147,6 +150,14 @@ func parseData(data []byte) (*Project, error) {
 		Hash:      hash,
 		Warnings:  warnings,
 	}, nil
+}
+
+func noServices() string {
+	return i18n.T("no services defined in compose file", "в compose-файле нет сервисов")
+}
+
+func addServices() string {
+	return i18n.T("Add a 'services' section to your docker-compose.yml.", "Добавьте в compose-файл раздел 'services'.")
 }
 
 func sortedKeys(set map[int]struct{}) []int {
@@ -188,8 +199,9 @@ func parsePorts(svc map[string]interface{}) ([]PortMapping, []string, error) {
 		case string:
 			s, unset := interpolate(v)
 			if len(unset) > 0 {
-				warnings = append(warnings, fmt.Sprintf(
+				warnings = append(warnings, i18n.Tf(
 					"port %q uses %s, which is not set on the VM (deploy uploads only the compose file); the port is not opened",
+					"порт %q использует %s, а на ВМ этой переменной нет (deploy загружает только compose-файл); порт не открывается",
 					v, strings.Join(unset, ", ")))
 				continue
 			}

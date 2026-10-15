@@ -1,6 +1,10 @@
 package engine
 
-import "context"
+import (
+	"context"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
+)
 
 // ListImages fetches and displays available boot images from the Cloud.ru API.
 func (e *Engine) ListImages(ctx context.Context) error {
@@ -16,7 +20,7 @@ func (e *Engine) ListImages(ctx context.Context) error {
 	}
 
 	if len(images) == 0 {
-		e.Printer.Success("No images found.")
+		e.Printer.Success(i18n.T("No images found.", "Образы не найдены."))
 		return nil
 	}
 
@@ -24,7 +28,7 @@ func (e *Engine) ListImages(ctx context.Context) error {
 		return e.Printer.JSON(images)
 	}
 
-	headers := []string{"ID", "Name", "OS", "Status"}
+	headers := []string{"ID", i18n.T("Name", "Имя"), i18n.T("OS", "ОС"), i18n.T("Status", "Состояние")}
 	rows := make([][]string, 0, len(images))
 	for _, img := range images {
 		rows = append(rows, []string{

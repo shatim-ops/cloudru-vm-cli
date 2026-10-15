@@ -10,6 +10,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -45,14 +46,14 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			return e.finishPendingRules(ctx, opts, statePath, stateFile, pending)
 		}
 		if e.Printer.IsJSON() {
-			return e.Printer.JSON(map[string]any{"status": "none", "message": "No active deployment to destroy."})
+			return e.Printer.JSON(map[string]any{"status": "none", "message": noDeploymentToDestroy()})
 		}
-		e.Printer.Success("No active deployment to destroy.")
+		e.Printer.Success(noDeploymentToDestroy())
 		return nil
 	}
 
-	e.Printer.Step(1, 3, "Reading deployment info...")
-	e.Printer.StepDone(fmt.Sprintf("VM %s (%s) in %s", active.VMID, active.VMIP, active.Region))
+	e.Printer.Step(1, 3, i18n.T("Reading deployment info...", "Чтение сведений о развёртывании..."))
+	e.Printer.StepDone(i18n.Tf("VM %s (%s) in %s", "ВМ %s (%s), зона %s", active.VMID, active.VMIP, active.Region))
 
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
@@ -65,7 +66,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 
 	// Auth.
-	e.Printer.Step(2, 3, "Authenticating...")
+	e.Printer.Step(2, 3, i18n.T("Authenticating...", "Аутентификация..."))
 	tok, err := e.Auth.Token(ctx)
 	if err != nil {
 		return err
@@ -73,10 +74,10 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	if ts, ok := e.Cloud.(interface{ SetToken(string) }); ok {
 		ts.SetToken(tok.Value)
 	}
-	e.Printer.StepDone("Authenticated")
+	e.Printer.StepDone(i18n.T("Authenticated", "Аутентификация пройдена"))
 
 	// Delete VM, then its floating IP and the port rules deploy created.
-	e.Printer.Step(3, 3, "Deleting VM, floating IP and port rules...")
+	e.Printer.Step(3, 3, i18n.T("Deleting VM, floating IP and port rules...", "Удаление ВМ, floating IP и правил портов..."))
 	prevStatus := active.Status
 	active.Status = "destroying"
 	active.UpdatedAt = time.Now()
@@ -85,12 +86,12 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	if active.VMID == "" {
 		// No ID to delete by: DELETE /vms/ with an empty ID is not a VM.
-		e.Printer.Warning("No VM ID in state; nothing to delete in the cloud")
+		e.Printer.Warning(i18n.T("No VM ID in state; nothing to delete in the cloud", "В state нет ID ВМ; удалять в облаке нечего"))
 	} else if err = e.deleteVMWhenDeletable(ctx, active.VMID); err != nil {
 		// If VM is already gone (VM_NOT_FOUND), that's fine.
 		var cliErr *clerrors.CLIError
 		if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound {
-			e.Printer.StepDone("VM already deleted")
+			e.Printer.StepDone(i18n.T("VM already deleted", "ВМ уже удалена"))
 		} else {
 			// The VM is still there: the record keeps saying what it was.
 			active.Status = prevStatus
@@ -98,9 +99,11 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			_ = state.Write(statePath, stateFile)
 			if st := provision.HTTPStatus(err); st == http.StatusConflict || st == http.StatusUnprocessableEntity {
 				return clerrors.Wrap(clerrors.CodeAPIError,
-					fmt.Sprintf("VM %s cannot be deleted in its current state", active.VMID),
-					fmt.Sprintf("It is probably still being created or changing state (waited %s). Wait until it is running "+
+					i18n.Tf("VM %s cannot be deleted in its current state", "ВМ %s нельзя удалить в её текущем состоянии", active.VMID),
+					i18n.Tf("It is probably still being created or changing state (waited %s). Wait until it is running "+
 						"(Cloud.ru console, or 'evo vm get %s') and re-run 'evo destroy': the record is kept, nothing is lost.",
+						"Вероятно, она ещё создаётся или меняет состояние (ждали %s). Дождитесь, пока она заработает "+
+							"(консоль Cloud.ru или 'evo vm get %s'), и повторите 'evo destroy': запись сохранена, ничего не потеряно.",
 						e.timings().DeletableWaitTimeout, active.VMID),
 					err)
 			}
@@ -117,7 +120,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		for {
 			select {
 			case <-deadline:
-				e.Printer.Warning("Timeout waiting for VM deletion confirmation")
+				e.Printer.Warning(i18n.T("Timeout waiting for VM deletion confirmation", "Не дождались подтверждения удаления ВМ"))
 				break pollLoop
 			case <-ticker.C:
 				_, getErr := e.Cloud.GetVM(ctx, active.VMID)
@@ -132,9 +135,10 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			}
 		}
 		if confirmed {
-			e.Printer.StepDone("VM deleted")
+			e.Printer.StepDone(i18n.T("VM deleted", "ВМ удалена"))
 		} else {
-			e.Printer.StepDone(fmt.Sprintf("VM deletion requested (not confirmed within %s)", t.DestroyPollTimeout))
+			e.Printer.StepDone(i18n.Tf("VM deletion requested (not confirmed within %s)",
+				"Удаление ВМ запрошено (подтверждения за %s не было)", t.DestroyPollTimeout))
 		}
 	}
 
@@ -169,8 +173,12 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		}
 		return e.Printer.JSON(out)
 	}
-	e.Printer.Success("Deployment destroyed successfully.")
+	e.Printer.Success(i18n.T("Deployment destroyed successfully.", "Развёртывание удалено."))
 	return nil
+}
+
+func noDeploymentToDestroy() string {
+	return i18n.T("No active deployment to destroy.", "Активного развёртывания нет, удалять нечего.")
 }
 
 // closeRules deletes the port rules the given deployments created and
@@ -181,14 +189,16 @@ func (e *Engine) closeRules(ctx context.Context, sf *state.File, ids []string) s
 		res.Add(sgrules.Close(ctx, e.Cloud, sf, id))
 	}
 	if len(res.Closed) > 0 {
-		e.Printer.StepDone("Closed ports " + strings.Join(res.Closed, ",") + " in the security group")
+		e.Printer.StepDone(i18n.Tf("Closed ports %s in the security group", "Закрыты порты %s в группе безопасности", strings.Join(res.Closed, ",")))
 	}
 	for _, k := range res.Kept {
-		e.Printer.StepDone("Kept port " + k)
+		e.Printer.StepDone(i18n.T("Kept port ", "Оставлен порт ") + k)
 	}
 	if len(res.Failed) > 0 {
-		e.Printer.Warning("Could not delete the security group rules for ports " + strings.Join(res.Failed, "; ") +
-			". They stay in state: re-run 'evo destroy' to retry, or delete them in the Cloud.ru console.")
+		e.Printer.Warning(i18n.Tf("Could not delete the security group rules for ports %s"+
+			". They stay in state: re-run 'evo destroy' to retry, or delete them in the Cloud.ru console.",
+			"Не удалось удалить правила группы безопасности для портов %s"+
+				". Они остаются в state: повторите 'evo destroy' или удалите их в консоли Cloud.ru.", strings.Join(res.Failed, "; ")))
 	}
 	return res
 }
@@ -210,7 +220,7 @@ func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, st
 	if ts, ok := e.Cloud.(interface{ SetToken(string) }); ok {
 		ts.SetToken(tok.Value)
 	}
-	e.Printer.Step(1, 1, "Deleting port rules left by an earlier destroy...")
+	e.Printer.Step(1, 1, i18n.T("Deleting port rules left by an earlier destroy...", "Удаление правил портов, оставшихся от прошлого destroy..."))
 	rules := e.closeRules(ctx, sf, pending)
 	for _, id := range pending {
 		sgrules.Retire(sf, id)
@@ -226,7 +236,7 @@ func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, st
 		return e.Printer.JSON(map[string]any{"status": status, "security_group_rules": rules})
 	}
 	if len(rules.Failed) == 0 {
-		e.Printer.Success("Security group rules deleted.")
+		e.Printer.Success(i18n.T("Security group rules deleted.", "Правила группы безопасности удалены."))
 	}
 	return nil
 }
@@ -247,8 +257,9 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		fips, err := e.Cloud.ListFloatingIPs(ctx, projectID)
 		if err != nil {
 			return clerrors.Wrap(clerrors.CodeAPIError,
-				fmt.Sprintf("cannot look up floating IP %s", fipLabel(rec.VMIP, fipName(rec.VMID))),
-				"The VM is deleted. Re-run 'evo destroy --force' to release the floating IP, or release it in the Cloud.ru console.",
+				i18n.Tf("cannot look up floating IP %s", "не удалось найти floating IP %s", fipLabel(rec.VMIP, fipName(rec.VMID))),
+				i18n.T("The VM is deleted. Re-run 'evo destroy --force' to release the floating IP, or release it in the Cloud.ru console.",
+					"ВМ удалена. Чтобы освободить floating IP, повторите 'evo destroy --force' или освободите его в консоли Cloud.ru."),
 				err)
 		}
 		for _, f := range fips {
@@ -267,12 +278,12 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 	for attempt := 0; attempt < fipReleaseAttempts; attempt++ {
 		err := e.Cloud.DeleteFloatingIP(ctx, fipID, projectID)
 		if err == nil {
-			e.Printer.StepDone(fmt.Sprintf("Floating IP %s released", fipLabel(rec.VMIP, fipID)))
+			e.Printer.StepDone(i18n.Tf("Floating IP %s released", "Floating IP %s освобождён", fipLabel(rec.VMIP, fipID)))
 			return nil
 		}
 		var cliErr *clerrors.CLIError
 		if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound {
-			e.Printer.StepDone("Floating IP already released")
+			e.Printer.StepDone(i18n.T("Floating IP already released", "Floating IP уже освобождён"))
 			return nil
 		}
 		lastErr = err
@@ -286,8 +297,9 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		}
 	}
 	return clerrors.Wrap(clerrors.CodeAPIError,
-		fmt.Sprintf("VM deleted, but floating IP %s was not released", fipLabel(rec.VMIP, fipID)),
-		"The floating IP is still billed. Re-run 'evo destroy --force' or release it in the Cloud.ru console.",
+		i18n.Tf("VM deleted, but floating IP %s was not released", "ВМ удалена, но floating IP %s не освобождён", fipLabel(rec.VMIP, fipID)),
+		i18n.T("The floating IP is still billed. Re-run 'evo destroy --force' or release it in the Cloud.ru console.",
+			"Floating IP по-прежнему тарифицируется. Повторите 'evo destroy --force' или освободите его в консоли Cloud.ru."),
 		lastErr)
 }
 
@@ -301,8 +313,8 @@ func (e *Engine) projectOf(rec *state.DeploymentRecord) string {
 }
 
 func fipLabel(ip, id string) string {
-	if ip == "" {
-		return id
+	if ip == "" || id == "" {
+		return ip + id
 	}
 	return fmt.Sprintf("%s (%s)", ip, id)
 }
@@ -339,7 +351,8 @@ func (e *Engine) deleteVMWhenDeletable(ctx context.Context, vmID string) error {
 	t := e.timings()
 	start := time.Now()
 	deadline := start.Add(t.DeletableWaitTimeout)
-	e.Printer.StepDone(fmt.Sprintf("VM %s cannot be deleted yet (still being created or changing state); waiting up to %s...",
+	e.Printer.StepDone(i18n.Tf("VM %s cannot be deleted yet (still being created or changing state); waiting up to %s...",
+		"ВМ %s пока нельзя удалить (ещё создаётся или меняет состояние); ждём до %s...",
 		vmID, t.DeletableWaitTimeout))
 	lastReport := start
 	for time.Now().Before(deadline) {
@@ -354,11 +367,12 @@ func (e *Engine) deleteVMWhenDeletable(ctx context.Context, vmID string) error {
 		}
 		if time.Since(lastReport) >= time.Minute {
 			lastReport = time.Now()
-			status := "unknown (the status request failed)"
+			status := i18n.T("unknown (the status request failed)", "неизвестно (запрос состояния не удался)")
 			if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
 				status = vm.Status
 			}
-			e.Printer.StepDone(fmt.Sprintf("still waiting: VM is %s (%s elapsed)", status, time.Since(start).Round(time.Second)))
+			e.Printer.StepDone(i18n.Tf("still waiting: VM is %s (%s elapsed)", "всё ещё ждём: состояние ВМ — %s (прошло %s)",
+				status, time.Since(start).Round(time.Second)))
 		}
 	}
 	return err

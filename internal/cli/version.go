@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -72,7 +73,8 @@ func printVersion(w io.Writer, jsonMode bool, v versionInfo) error {
 	if jsonMode {
 		return output.NewWithWriter(w, output.ModeJSON, false).JSON(v)
 	}
-	_, err := fmt.Fprintf(w, "evo %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
+	_, err := fmt.Fprintf(w, i18n.T("evo %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
+		"evo %s\n  коммит:  %s\n  собран:  %s\n  go:      %s\n  os/arch: %s/%s\n"),
 		v.Version, v.Commit, v.Date, v.Go, v.OS, v.Arch)
 	return err
 }

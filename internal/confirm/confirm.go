@@ -19,6 +19,7 @@ import (
 	"golang.org/x/term"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Stdin is where answers are read from; StdinIsTTY tells whether a human can
@@ -67,7 +68,26 @@ type envelope struct {
 	Hint    string  `json:"hint,omitempty"`
 }
 
-const hintYes = "Re-run with --yes to confirm, or with --dry-run to only see the preview."
+func hintYes() string {
+	return i18n.T("Re-run with --yes to confirm, or with --dry-run to only see the preview.",
+		"Повторите с --yes, чтобы подтвердить, или с --dry-run, чтобы только посмотреть превью.")
+}
+
+// Prompt is the question after the preview on a terminal.
+func Prompt() string {
+	return i18n.T("Proceed? [y/N] ", "Продолжить? (y/д — да, Enter — нет) ")
+}
+
+// IsYes reports whether answer is consent: "y" or "yes", and in Russian
+// "д" or "да", in any case. Both languages are accepted whatever the
+// language of the CLI: the keyboard layout is not the reader's choice.
+func IsYes(answer string) bool {
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "y", "yes", "д", "да":
+		return true
+	}
+	return false
+}
 
 // Ask shows the preview and reports whether the operation may proceed.
 //
@@ -77,8 +97,9 @@ const hintYes = "Re-run with --yes to confirm, or with --dry-run to only see the
 //   - no terminal (or NoPrompt): the preview goes to Err (with --json, a
 //     {"status":"confirmation_required","preview":{…}} object goes to Out);
 //     returns an error matching ErrConfirmationRequired (exit code 3).
-//   - terminal: the preview goes to Err followed by "[y/N]"; "y"/"yes" returns
-//     (true, nil), anything else an ErrConfirmationRequired error. A cancelled
+//   - terminal: the preview goes to Err followed by Prompt; consent (IsYes:
+//     y, yes, д, да) returns (true, nil), anything else an
+//     ErrConfirmationRequired error. A cancelled
 //     ctx (Ctrl-C at the prompt) returns ctx.Err().
 func Ask(ctx context.Context, p Preview, opts Options) (bool, error) {
 	out, errOut := opts.Out, opts.Err
@@ -93,7 +114,7 @@ func Ask(ctx context.Context, p Preview, opts Options) (bool, error) {
 		if opts.JSON {
 			writeJSON(out, envelope{Status: "dry_run", Preview: p}, true)
 		} else {
-			fmt.Fprint(out, render(p, "Dry run: would "))
+			fmt.Fprint(out, render(p, i18n.T("Dry run: would ", "Пробный запуск, ничего не меняется. План: ")))
 		}
 		return false, nil
 	}
@@ -102,7 +123,7 @@ func Ask(ctx context.Context, p Preview, opts Options) (bool, error) {
 		if opts.JSON {
 			writeJSON(errOut, envelope{Status: "confirmed", Preview: p}, false)
 		} else {
-			fmt.Fprintf(errOut, "Confirmed: %s\n", p.Summary)
+			fmt.Fprintf(errOut, i18n.T("Confirmed: %s\n", "Подтверждено: %s\n"), p.Summary)
 		}
 		return true, nil
 	}
@@ -112,22 +133,23 @@ func Ask(ctx context.Context, p Preview, opts Options) (bool, error) {
 		isTTY = StdinIsTTY
 	}
 	if opts.NoPrompt || !isTTY() {
-		why := "stdin is not a terminal"
+		why := i18n.T("stdin is not a terminal", "stdin — не терминал")
 		if opts.NoPrompt {
-			why = "--non-interactive is set"
+			why = i18n.T("--non-interactive is set", "задан --non-interactive")
 		}
 		if opts.JSON {
-			writeJSON(out, envelope{Status: "confirmation_required", Preview: p, Hint: hintYes}, true)
+			writeJSON(out, envelope{Status: "confirmation_required", Preview: p, Hint: hintYes()}, true)
 		} else {
-			fmt.Fprint(errOut, render(p, "About to "))
+			fmt.Fprint(errOut, render(p, aboutTo()))
 		}
 		return false, clerrors.New(clerrors.CodeConfirmationRequired,
-			fmt.Sprintf("refusing to %s: confirmation required and %s", p.Action, why),
-			hintYes)
+			i18n.Tf("refusing to %s: confirmation required and %s",
+				"%s не выполняется: нужно подтверждение, а %s", p.Action, why),
+			hintYes())
 	}
 
-	fmt.Fprint(errOut, render(p, "About to "))
-	fmt.Fprint(errOut, "Proceed? [y/N] ")
+	fmt.Fprint(errOut, render(p, aboutTo()))
+	fmt.Fprint(errOut, Prompt())
 	in := opts.In
 	if in == nil {
 		in = Stdin
@@ -136,21 +158,25 @@ func Ask(ctx context.Context, p Preview, opts Options) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	switch strings.ToLower(answer) {
-	case "y", "yes":
+	if IsYes(answer) {
 		return true, nil
 	}
 	return false, clerrors.New(clerrors.CodeConfirmationRequired,
-		fmt.Sprintf("%s cancelled: confirmation not given", p.Action),
-		"Answer 'y' at the prompt, or re-run with --yes.")
+		i18n.Tf("%s cancelled: confirmation not given", "%s отменён: подтверждение не получено", p.Action),
+		i18n.T("Answer 'y' at the prompt, or re-run with --yes.",
+			"Ответьте y (или д) на вопрос либо повторите с --yes."))
 }
 
-// render formats the preview as a heading line and indented details.
+func aboutTo() string { return i18n.T("About to ", "План: ") }
+
+// render formats the preview as a heading line and indented details. In
+// Russian the heading ends without a colon: it already has one after "План".
 func render(p Preview, lead string) string {
 	var b strings.Builder
 	b.WriteString(lead)
 	b.WriteString(p.Summary)
-	b.WriteString(":\n")
+	b.WriteString(i18n.T(":", ""))
+	b.WriteString("\n")
 	for _, l := range p.Lines {
 		b.WriteString("  ")
 		b.WriteString(l)

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Names of the tool and of what it keeps on disk. The tool used to be
@@ -36,8 +38,10 @@ var dataMarkers = []string{"state.json", "stack-jobs"}
 
 var (
 	warnMu   sync.Mutex
-	warnFunc = func(msg string) { fmt.Fprintf(os.Stderr, "Warning: %s\n", msg) }
-	warned   = map[string]bool{}
+	warnFunc = func(msg string) {
+		fmt.Fprintf(os.Stderr, "%s%s\n", i18n.T("Warning: ", "Предупреждение: "), msg)
+	}
+	warned = map[string]bool{}
 )
 
 // SetWarnFunc sets where warnings about legacy names go (stderr by
@@ -97,17 +101,20 @@ func DataDir(root string) string {
 		return dir
 	}
 	if !exists(dir) {
-		warnOnce(fmt.Sprintf("using the legacy directory %s; rename it to %s when no older %s works in this directory (support ends in v1.1)",
+		warnOnce(i18n.Tf("using the legacy directory %s; rename it to %s when no older %s works in this directory (support ends in v1.1)",
+			"используется старый каталог %s; переименуйте его в %s, когда в этом каталоге не будет работать старый %s (поддержка — до v1.1)",
 			legacy, DataDirName, LegacyAppName))
 		return legacy
 	}
 	if hasData(legacy) && !hasData(dir) {
-		warnOnce(fmt.Sprintf("both %s and %s exist; using the legacy %s, which has the state: move its contents to %s and remove it",
+		warnOnce(i18n.Tf("both %s and %s exist; using the legacy %s, which has the state: move its contents to %s and remove it",
+			"есть и %s, и %s; используется старый %s — в нём state: перенесите содержимое в %s и удалите старый каталог",
 			dir, legacy, legacy, DataDirName))
 		return legacy
 	}
 	if hasData(legacy) {
-		warnOnce(fmt.Sprintf("both %s and %s have state; using %s, the legacy %s is ignored — check it for VMs still running",
+		warnOnce(i18n.Tf("both %s and %s have state; using %s, the legacy %s is ignored — check it for VMs still running",
+			"state есть и в %s, и в %s; используется %s, старый %s не учитывается — проверьте, нет ли в нём ещё работающих ВМ",
 			dir, legacy, dir, legacy))
 	}
 	return dir
@@ -128,10 +135,12 @@ func ProjectFile(dir string) string {
 	}
 	if exists(path) || !exists(legacy) {
 		if exists(legacy) {
-			warnOnce(fmt.Sprintf("%s is ignored: %s is read instead; remove the legacy file", abs(legacy), abs(path)))
+			warnOnce(i18n.Tf("%s is ignored: %s is read instead; remove the legacy file",
+				"%s не учитывается, читается %s; удалите старый файл", abs(legacy), abs(path)))
 		}
 		return path
 	}
-	warnOnce(fmt.Sprintf("reading the legacy %s; rename it to %s (support ends in v1.1)", abs(legacy), ProjectFileName))
+	warnOnce(i18n.Tf("reading the legacy %s; rename it to %s (support ends in v1.1)",
+		"читается старый %s; переименуйте его в %s (поддержка — до v1.1)", abs(legacy), ProjectFileName))
 	return legacy
 }

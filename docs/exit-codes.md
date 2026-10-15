@@ -37,24 +37,28 @@
 Текстом (stderr) — сообщение и подсказка следующей строкой:
 
 ```text
-Error: IAM rejected the credentials (status 401)
-Verify the key ID and secret: 'evo configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET
+Ошибка: IAM отклонил ключ доступа (статус 401)
+Проверьте Key ID и секрет: 'evo configure' или CLOUDRU_KEY_ID / CLOUDRU_SECRET
 ```
 
 С `--json` — один объект JSON в stderr, stdout остаётся для данных:
 
 ```json
-{"error":{"code":2,"message":"IAM rejected the credentials (status 401)","hint":"Verify the key ID and secret: 'evo configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET"}}
+{"error":{"code":2,"reason":"AUTH_FAILED","message":"IAM отклонил ключ доступа (статус 401)","hint":"Проверьте Key ID и секрет: 'evo configure' или CLOUDRU_KEY_ID / CLOUDRU_SECRET"}}
 ```
+
+Сообщения и подсказки — на языке CLI (по умолчанию русский, `EVO_LANG=en` —
+английский), ключи JSON и коды — всегда английские.
 
 Предупреждения (устаревшая переменная, права `credentials.yaml`, порты, которые
 не удалось открыть) с `--json` — тоже строки JSON в stderr, перед ошибкой:
 `{"warning":"…"}`. Так каждая строка stderr разбирается `jq`.
 
-`code` — код выхода. Символьный код из таблицы (`AUTH_FAILED`) попадает в
-`message` только у ошибок с добавленным контекстом
-(`checking the access key: AUTH_FAILED: …`); опирайтесь на `code`, а не на
-текст.
+`code` — код выхода. `reason` — символьный код из таблицы (`AUTH_FAILED`);
+у прерванной команды — `INTERRUPTED`, у ошибки без символьного кода —
+`ERROR`. В `message` символьный код попадает только у ошибок с добавленным
+контекстом (`проверка ключа доступа: AUTH_FAILED: …`). Опирайтесь на `code`
+и `reason`, а не на текст: он зависит от языка.
 
 Отказ без подтверждения с `--json` дополнительно печатает в **stdout**
 `{"status":"confirmation_required","preview":{…},"hint":"…"}` — превью того,

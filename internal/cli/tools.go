@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -46,9 +47,10 @@ func cmdPrinter(cmd *cobra.Command) *output.Printer {
 
 func newToolsCmd() *cobra.Command {
 	cmd := asGroup(&cobra.Command{
-		Use:   "tools",
-		Short: "List, describe and call any of the evo tools (the same ones the MCP server exposes)",
-		Long: `Every operation the MCP server exposes is available here as a tool.
+		Use: "tools",
+		Short: i18n.T("List, describe and call any of the evo tools (the same ones the MCP server exposes)",
+			"Список, описание и вызов инструментов evo (тех же, что у MCP-сервера)"),
+		Long: i18n.T(`Every operation the MCP server exposes is available here as a tool.
 
   evo tools list [--group vm]
   evo tools describe vm_get
@@ -57,7 +59,16 @@ func newToolsCmd() *cobra.Command {
 Tools that create paid resources or delete data ask for confirmation the same
 way as the other commands: a prompt on a terminal, --yes to confirm in
 advance, --dry-run to see the preview only; without a terminal and without
---yes the call stops with exit code 3.`,
+--yes the call stops with exit code 3.`, `Любая операция MCP-сервера доступна здесь как инструмент.
+
+  evo tools list [--group vm]
+  evo tools describe vm_get
+  evo tools call vm_get --arg name=web
+
+Инструменты, которые создают платные ресурсы или удаляют данные, спрашивают
+подтверждение так же, как остальные команды: вопрос на терминале, --yes —
+согласие заранее, --dry-run — только превью; без терминала и без --yes вызов
+завершается с кодом 3. Описания и ответы инструментов — на английском, как в MCP.`),
 	})
 	cmd.AddCommand(newToolsListCmd(), newToolsDescribeCmd(), newToolsCallCmd())
 	return cmd
@@ -77,14 +88,15 @@ type toolInfo struct {
 func newToolsListCmd() *cobra.Command {
 	var group string
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List the tools: name, group, whether it changes anything, description",
-		Args:  cobra.NoArgs,
+		Use: "list",
+		Short: i18n.T("List the tools: name, group, whether it changes anything, description",
+			"Список инструментов: имя, группа, меняет ли что-то, описание"),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p := cmdPrinter(cmd)
 			if group != "" && !knownGroup(group) {
-				return clerrors.New(clerrors.CodeUsage, fmt.Sprintf("unknown group %q", group),
-					"Groups: "+strings.Join(tools.Groups(), ", "))
+				return clerrors.New(clerrors.CodeUsage, i18n.Tf("unknown group %q", "неизвестная группа %q", group),
+					i18n.T("Groups: ", "Группы: ")+strings.Join(tools.Groups(), ", "))
 			}
 			var list []toolInfo
 			for _, t := range newRegistry().Tools() {
@@ -98,17 +110,14 @@ func newToolsListCmd() *cobra.Command {
 			}
 			rows := make([][]string, len(list))
 			for i, t := range list {
-				mut := "no"
-				if t.Mutating {
-					mut = "yes"
-				}
-				rows[i] = []string{t.Name, t.Group, mut, summary(t.Description, 80)}
+				rows[i] = []string{t.Name, t.Group, yesNo(t.Mutating), summary(t.Description, 80)}
 			}
-			p.Table([]string{"NAME", "GROUP", "MUTATING", "DESCRIPTION"}, rows)
+			p.Table([]string{i18n.T("NAME", "ИМЯ"), i18n.T("GROUP", "ГРУППА"), i18n.T("MUTATING", "МЕНЯЕТ"),
+				i18n.T("DESCRIPTION", "ОПИСАНИЕ")}, rows)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&group, "group", "", "Show only this group ("+strings.Join(tools.Groups(), ", ")+")")
+	cmd.Flags().StringVar(&group, "group", "", i18n.T("Show only this group (", "Только эта группа (")+strings.Join(tools.Groups(), ", ")+")")
 	_ = cmd.RegisterFlagCompletionFunc("group", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 		return tools.Groups(), cobra.ShellCompDirectiveNoFileComp
 	})
@@ -144,7 +153,7 @@ func summary(s string, max int) string {
 func newToolsDescribeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:               "describe <name>",
-		Short:             "Show a tool's description and arguments",
+		Short:             i18n.T("Show a tool's description and arguments", "Описание и аргументы инструмента"),
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeToolNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -158,26 +167,27 @@ func newToolsDescribeCmd() *cobra.Command {
 					Description: t.Description, InputSchema: t.InputSchema})
 			}
 			w := cmd.OutOrStdout()
-			fmt.Fprintf(w, "%s (group %s", t.Name, t.Group)
+			fmt.Fprintf(w, i18n.T("%s (group %s", "%s (группа %s"), t.Name, t.Group)
 			if t.Mutating {
-				fmt.Fprint(w, ", mutating: asks for confirmation")
+				fmt.Fprint(w, i18n.T(", mutating: asks for confirmation", ", меняет ресурсы: спрашивает подтверждение"))
 			}
 			fmt.Fprintf(w, ")\n\n%s\n\n", t.Description)
 			params := schemaParams(t)
 			if len(params) == 0 {
-				fmt.Fprintln(w, "No arguments.")
+				fmt.Fprintln(w, i18n.T("No arguments.", "Аргументов нет."))
 				return nil
 			}
-			fmt.Fprintln(w, "Arguments (--arg name=value):")
+			fmt.Fprintln(w, i18n.T("Arguments (--arg name=value):", "Аргументы (--arg имя=значение):"))
 			rows := make([][]string, len(params))
 			for i, a := range params {
 				req := ""
 				if a.Required {
-					req = "required"
+					req = i18n.T("required", "обязателен")
 				}
 				rows[i] = []string{a.Name, a.Type, req, a.Description}
 			}
-			p.Table([]string{"NAME", "TYPE", "REQUIRED", "DESCRIPTION"}, rows)
+			p.Table([]string{i18n.T("NAME", "ИМЯ"), i18n.T("TYPE", "ТИП"), i18n.T("REQUIRED", "ОБЯЗАТЕЛЬНЫЙ"),
+				i18n.T("DESCRIPTION", "ОПИСАНИЕ")}, rows)
 			return nil
 		},
 	}
@@ -235,8 +245,8 @@ func schemaParams(t tools.Tool) []param {
 func lookupTool(reg *tools.Registry, name string) (tools.Tool, error) {
 	t, ok := reg.Lookup(name)
 	if !ok {
-		return tools.Tool{}, clerrors.New(clerrors.CodeUsage, fmt.Sprintf("unknown tool %q", name),
-			"Run 'evo tools list' to see the tools.")
+		return tools.Tool{}, clerrors.New(clerrors.CodeUsage, i18n.Tf("unknown tool %q", "неизвестный инструмент %q", name),
+			i18n.T("Run 'evo tools list' to see the tools.", "Список инструментов: 'evo tools list'."))
 	}
 	return t, nil
 }
@@ -262,9 +272,40 @@ func newToolsCallCmd() *cobra.Command {
 		wait     bool
 	)
 	cmd := &cobra.Command{
-		Use:   "call <name>",
-		Short: "Call a tool and print its JSON result",
-		Long: `Call a tool and print its JSON result as is.
+		Use:               "call <name>",
+		Short:             i18n.T("Call a tool and print its JSON result", "Вызвать инструмент и напечатать его ответ (JSON)"),
+		Long:              i18n.T(toolsCallHelpEN, toolsCallHelpRU),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeToolNames,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runToolsCall(cmd, args[0], argsFile, argsJSON, argPairs, wait)
+		},
+	}
+	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, i18n.T("Tool argument as name=value (repeatable)", "Аргумент инструмента: имя=значение (флаг повторяется)"))
+	cmd.Flags().StringVar(&argsJSON, "args-json", "", i18n.T("Tool arguments as a JSON object", "Аргументы инструмента объектом JSON"))
+	cmd.Flags().StringVar(&argsFile, "args-file", "", i18n.T("Read tool arguments from a JSON file", "Прочитать аргументы инструмента из файла JSON"))
+	cmd.Flags().BoolVar(&wait, "wait", false, i18n.T("For tools that take wait_seconds (*_operation, stack_status): wait for the final state, polling with backoff up to the tool's limit",
+		"Для инструментов с wait_seconds (*_operation, stack_status): ждать конечного состояния, опрашивая с нарастающей паузой до предела инструмента"))
+	return cmd
+}
+
+const toolsCallHelpRU = `Вызвать инструмент и напечатать его ответ (JSON) как есть.
+
+Аргументы берутся из --args-file, затем из --args-json, затем из --arg
+(более поздние перекрывают ранние). Значения --arg приводятся к типам схемы
+инструмента: integer, number и boolean разбираются; array — список через
+запятую (или массив JSON); object — JSON. Имена и типы из JSON тоже
+сверяются со схемой; null означает «не задан».
+
+  evo tools call list_zones
+  evo tools call vm_get --arg name=web
+  evo tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
+  evo tools call pg_operation --arg operation_id=OP --wait
+
+Коды выхода: 0 — успех; 3 — нет подтверждения; 4 — инструмент сообщил, что
+объект не найден; 5 — любая другая ошибка инструмента.`
+
+const toolsCallHelpEN = `Call a tool and print its JSON result as is.
 
 Arguments come from --args-file, then --args-json, then --arg (later ones
 win). --arg values are converted by the tool's schema: integer, number and
@@ -278,35 +319,27 @@ against the schema too; null means "not given".
   evo tools call pg_operation --arg operation_id=OP --wait
 
 Exit codes: 0 success; 3 confirmation not given; 4 the tool reported that
-something was not found; 5 any other error reported by the tool.`,
-		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: completeToolNames,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := lookupTool(newRegistry(), args[0])
-			if err != nil {
-				return err
-			}
-			callArgs, err := buildToolArgs(t, argsFile, argsJSON, argPairs)
-			if err != nil {
-				return err
-			}
-			if wait {
-				if err := applyWait(t, callArgs); err != nil {
-					return err
-				}
-			}
-			text, err := invokeTool(cmd.Context(), cmd, t, callArgs)
-			if text != "" {
-				fmt.Fprintln(cmd.OutOrStdout(), text)
-			}
-			return err
-		},
+something was not found; 5 any other error reported by the tool.`
+
+func runToolsCall(cmd *cobra.Command, name, argsFile, argsJSON string, argPairs []string, wait bool) error {
+	t, err := lookupTool(newRegistry(), name)
+	if err != nil {
+		return err
 	}
-	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "Tool argument as name=value (repeatable)")
-	cmd.Flags().StringVar(&argsJSON, "args-json", "", "Tool arguments as a JSON object")
-	cmd.Flags().StringVar(&argsFile, "args-file", "", "Read tool arguments from a JSON file")
-	cmd.Flags().BoolVar(&wait, "wait", false, "For tools that take wait_seconds (*_operation, stack_status): wait for the final state, polling with backoff up to the tool's limit")
-	return cmd
+	callArgs, err := buildToolArgs(t, argsFile, argsJSON, argPairs)
+	if err != nil {
+		return err
+	}
+	if wait {
+		if err := applyWait(t, callArgs); err != nil {
+			return err
+		}
+	}
+	text, err := invokeTool(cmd.Context(), cmd, t, callArgs)
+	if text != "" {
+		fmt.Fprintln(cmd.OutOrStdout(), text)
+	}
+	return err
 }
 
 // buildToolArgs merges the argument sources and checks them against the
@@ -316,7 +349,7 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 	if file != "" {
 		data, err := os.ReadFile(file)
 		if err != nil {
-			return nil, clerrors.Wrap(clerrors.CodeUsage, "read --args-file: "+err.Error(), "", err)
+			return nil, clerrors.Wrap(clerrors.CodeUsage, i18n.T("read --args-file: ", "чтение --args-file: ")+err.Error(), "", err)
 		}
 		if err := mergeJSONArgs(args, data, "--args-file"); err != nil {
 			return nil, err
@@ -347,14 +380,14 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 			return nil, unknownArgError(t, name)
 		}
 		if err := checkArgType(p, v); err != nil {
-			return nil, clerrors.New(clerrors.CodeUsage, fmt.Sprintf("argument %s: %v", name, err),
-				fmt.Sprintf("Run 'evo tools describe %s'.", t.Name))
+			return nil, clerrors.New(clerrors.CodeUsage, i18n.Tf("argument %s: %v", "аргумент %s: %v", name, err),
+				describeHint(t.Name))
 		}
 	}
 	for _, pair := range pairs {
 		name, value, ok := strings.Cut(pair, "=")
 		if !ok || name == "" {
-			return nil, clerrors.New(clerrors.CodeUsage, fmt.Sprintf("--arg %q: want name=value", pair), "")
+			return nil, clerrors.New(clerrors.CodeUsage, i18n.Tf("--arg %q: want name=value", "--arg %q: нужно имя=значение", pair), "")
 		}
 		p, known := params[name]
 		if !known {
@@ -367,8 +400,9 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 		args[name] = v
 	}
 	if _, ok := args["confirmed"]; ok {
-		return nil, clerrors.New(clerrors.CodeUsage, "confirmed is not an argument here",
-			"Confirm with --yes or at the prompt; --dry-run shows the preview only.")
+		return nil, clerrors.New(clerrors.CodeUsage, i18n.T("confirmed is not an argument here", "confirmed здесь не аргумент"),
+			i18n.T("Confirm with --yes or at the prompt; --dry-run shows the preview only.",
+				"Подтвердите флагом --yes или ответом на вопрос; --dry-run покажет только превью."))
 	}
 	var missing []string
 	for _, p := range schemaParams(t) {
@@ -380,16 +414,20 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 	}
 	if len(missing) > 0 {
 		return nil, clerrors.New(clerrors.CodeUsage,
-			fmt.Sprintf("%s: missing required argument(s): %s", t.Name, strings.Join(missing, ", ")),
-			fmt.Sprintf("Run 'evo tools describe %s'.", t.Name))
+			i18n.Tf("%s: missing required argument(s): %s", "%s: не заданы обязательные аргументы: %s", t.Name, strings.Join(missing, ", ")),
+			describeHint(t.Name))
 	}
 	return args, nil
+}
+
+func describeHint(tool string) string {
+	return i18n.Tf("Run 'evo tools describe %s'.", "Аргументы инструмента: 'evo tools describe %s'.", tool)
 }
 
 func mergeJSONArgs(dst map[string]any, data []byte, from string) error {
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
-		return clerrors.New(clerrors.CodeUsage, fmt.Sprintf("%s: not a JSON object: %v", from, err), "")
+		return clerrors.New(clerrors.CodeUsage, i18n.Tf("%s: not a JSON object: %v", "%s: не объект JSON: %v", from, err), "")
 	}
 	for k, v := range m {
 		dst[k] = v
@@ -402,12 +440,12 @@ func unknownArgError(t tools.Tool, name string) error {
 	for _, p := range schemaParams(t) {
 		names = append(names, p.Name)
 	}
-	takes := "no arguments"
+	takes := i18n.T("no arguments", "нет аргументов")
 	if len(names) > 0 {
 		takes = strings.Join(names, ", ")
 	}
-	return clerrors.New(clerrors.CodeUsage, fmt.Sprintf("%s has no argument %q", t.Name, name),
-		fmt.Sprintf("%s takes: %s. See 'evo tools describe %s'.", t.Name, takes, t.Name))
+	return clerrors.New(clerrors.CodeUsage, i18n.Tf("%s has no argument %q", "у %s нет аргумента %q", t.Name, name),
+		i18n.Tf("%s takes: %s. See 'evo tools describe %s'.", "Аргументы %s: %s. Подробнее: 'evo tools describe %s'.", t.Name, takes, t.Name))
 }
 
 // coerceArg converts a --arg value to the type the schema declares, in the
@@ -417,27 +455,27 @@ func coerceArg(p param, value string) (any, error) {
 	case "integer":
 		n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("%q is not an integer", value)
+			return nil, fmt.Errorf(i18n.T("%q is not an integer", "%q — не целое число"), value)
 		}
 		return float64(n), nil
 	case "number":
 		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 		// NaN and ±Inf parse, but JSON cannot carry them.
 		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
-			return nil, fmt.Errorf("%q is not a number", value)
+			return nil, fmt.Errorf(i18n.T("%q is not a number", "%q — не число"), value)
 		}
 		return f, nil
 	case "boolean":
 		b, err := strconv.ParseBool(strings.TrimSpace(value))
 		if err != nil {
-			return nil, fmt.Errorf("%q is not true or false", value)
+			return nil, fmt.Errorf(i18n.T("%q is not true or false", "%q — не true и не false"), value)
 		}
 		return b, nil
 	case "array":
 		if strings.HasPrefix(strings.TrimSpace(value), "[") {
 			var a []any
 			if err := json.Unmarshal([]byte(value), &a); err != nil {
-				return nil, fmt.Errorf("not a JSON array: %v", err)
+				return nil, fmt.Errorf(i18n.T("not a JSON array: %v", "не массив JSON: %v"), err)
 			}
 			if err := checkArgType(p, a); err != nil {
 				return nil, err
@@ -468,7 +506,7 @@ func coerceArg(p param, value string) (any, error) {
 	case "object":
 		var m map[string]any
 		if err := json.Unmarshal([]byte(value), &m); err != nil {
-			return nil, fmt.Errorf("not a JSON object: %v", err)
+			return nil, fmt.Errorf(i18n.T("not a JSON object: %v", "не объект JSON: %v"), err)
 		}
 		return m, nil
 	}
@@ -500,18 +538,21 @@ func checkArgType(p param, v any) error {
 		}
 		for i, item := range a {
 			if err := checkArgType(param{Type: p.ItemType}, item); err != nil {
-				return fmt.Errorf("item %d: %v", i, err)
+				return fmt.Errorf(i18n.T("item %d: %v", "элемент %d: %v"), i, err)
 			}
 		}
 	}
 	if !ok {
 		b, _ := json.Marshal(v)
-		return fmt.Errorf("want %s, got %s", article(p.Type), summary(string(b), 40))
+		return fmt.Errorf(i18n.T("want %s, got %s", "нужен %s, передано %s"), article(p.Type), summary(string(b), 40))
 	}
 	return nil
 }
 
 func article(typ string) string {
+	if i18n.Lang() == i18n.RU {
+		return typ
+	}
 	switch typ {
 	case "integer", "array", "object":
 		return "an " + typ
@@ -524,8 +565,9 @@ func article(typ string) string {
 func applyWait(t tools.Tool, args map[string]any) error {
 	props, _ := t.InputSchema["properties"].(map[string]any)
 	if _, ok := props["wait_seconds"]; !ok {
-		return clerrors.New(clerrors.CodeUsage, fmt.Sprintf("%s does not support --wait", t.Name),
-			"--wait works with tools that take wait_seconds: the *_operation tools and stack_status.")
+		return clerrors.New(clerrors.CodeUsage, i18n.Tf("%s does not support --wait", "%s не поддерживает --wait", t.Name),
+			i18n.T("--wait works with tools that take wait_seconds: the *_operation tools and stack_status.",
+				"--wait работает с инструментами, у которых есть wait_seconds: *_operation и stack_status."))
 	}
 	if _, ok := args["wait_seconds"]; !ok {
 		args["wait_seconds"] = float64(tools.OpWaitMaxSeconds)
@@ -543,7 +585,7 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 		Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr()}
 
 	if t.Mutating && !takesConfirmed(t) {
-		ok, err := confirm.Ask(ctx, confirm.Preview{Action: t.Name, Summary: "call " + t.Name,
+		ok, err := confirm.Ask(ctx, confirm.Preview{Action: t.Name, Summary: callSummary(t.Name),
 			Lines: argLines(args), Details: args}, opts)
 		if !ok {
 			return "", err
@@ -586,7 +628,7 @@ func parseObject(text string) map[string]any {
 // toolPreview turns a confirmation_required answer into a confirm.Preview:
 // the message first, then every other field.
 func toolPreview(name string, resp map[string]any) confirm.Preview {
-	p := confirm.Preview{Action: name, Summary: "call " + name, Details: resp}
+	p := confirm.Preview{Action: name, Summary: callSummary(name), Details: resp}
 	if msg, ok := resp["message"].(string); ok && msg != "" {
 		p.Lines = append(p.Lines, msg)
 	}
@@ -599,6 +641,8 @@ func toolPreview(name string, resp map[string]any) confirm.Preview {
 	p.Lines = append(p.Lines, argLines(rest)...)
 	return p
 }
+
+func callSummary(tool string) string { return i18n.T("call ", "вызвать ") + tool }
 
 // argLines renders a map as "key: value" lines in key order.
 func argLines(m map[string]any) []string {
@@ -638,14 +682,15 @@ func toolError(name, text string) error {
 	if prefix, rest, ok := strings.Cut(msg, ": "); ok && isErrorCode(prefix) {
 		switch prefix {
 		case clerrors.CodeUsage: // the tool refused its arguments; nothing reached the cloud
-			return clerrors.New(prefix, name+": "+rest, "Check the arguments: 'evo tools describe "+name+"'.")
+			return clerrors.New(prefix, name+": "+rest, i18n.T("Check the arguments: 'evo tools describe ", "Проверьте аргументы: 'evo tools describe ")+name+"'.")
 		case clerrors.CodeConfigInvalid: // the message names what to set
 			return clerrors.New(prefix, name+": "+rest, "")
 		}
 		switch clerrors.ExitCode(clerrors.New(prefix, "", "")) {
 		case clerrors.ExitAuth:
 			return clerrors.New(prefix, name+": "+rest,
-				"Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.")
+				i18n.T("Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.",
+					"Выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET."))
 		case clerrors.ExitNotFound, clerrors.ExitAPI:
 			return clerrors.New(prefix, name+": "+rest, "")
 		}
@@ -679,8 +724,10 @@ var (
 )
 
 func addScopeFlags(root *cobra.Command) {
-	root.PersistentFlags().StringVar(&flagProjectID, "project-id", "", "Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)")
-	root.PersistentFlags().StringVar(&flagRegion, "region", "", "Availability zone UUID (default: from the profile or $CLOUDRU_REGION)")
+	root.PersistentFlags().StringVar(&flagProjectID, "project-id", "", i18n.T("Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)",
+		"UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)"))
+	root.PersistentFlags().StringVar(&flagRegion, "region", "", i18n.T("Availability zone UUID (default: from the profile or $CLOUDRU_REGION)",
+		"UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)"))
 }
 
 // applyScopeFlags adds --project-id and --region to the engine overrides

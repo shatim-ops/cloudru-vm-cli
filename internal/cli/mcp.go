@@ -14,6 +14,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	clog "github.com/shatim-ops/evo-cli/internal/log"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 )
@@ -37,9 +38,28 @@ func newMCPCmd() *cobra.Command {
 		allowProjects     []string
 	)
 	cmd := &cobra.Command{
-		Use:   "mcp",
-		Short: "Run as an MCP server (stdio, or Streamable HTTP with --http) for AI agents",
-		Long: `Run evo as a Model Context Protocol server.
+		Use: "mcp",
+		Short: i18n.T("Run as an MCP server (stdio, or Streamable HTTP with --http) for AI agents",
+			"MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)"),
+		Long: i18n.T(mcpHelpEN, mcpHelpRU),
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runMCP(cmd, httpAddr, authMode, allowSecretExport, allowProjects)
+		},
+	}
+	cmd.Flags().StringVar(&httpAddr, "http", "", i18n.T("Serve MCP over Streamable HTTP on this address (e.g. :8080) instead of stdio",
+		"Обслуживать MCP по Streamable HTTP на этом адресе (например, :8080), а не по stdio"))
+	cmd.Flags().StringVar(&authMode, "auth", authBearer, i18n.T("HTTP authentication: bearer (token from $MCP_BEARER_TOKEN) or none (loopback address only)",
+		"Аутентификация HTTP: bearer (токен из $MCP_BEARER_TOKEN) или none (только адрес loopback)"))
+	cmd.Flags().StringSliceVar(&allowProjects, "allow-project", nil, i18n.T("Allow tool calls only in these Cloud.ru projects (UUIDs; repeat or comma-separate). Default: any project the key sees",
+		"Разрешить вызовы инструментов только в этих проектах Cloud.ru (UUID; флаг повторяется или через запятую). По умолчанию — любой проект, который видит ключ"))
+	cmd.Flags().BoolVar(&allowSecretExport, "allow-secret-export", false, i18n.T("HTTP mode: allow k8s_kubeconfig with an embedded token, cert_private_key, secret_value and unmasked credentials in results",
+		"Режим HTTP: разрешить k8s_kubeconfig со встроенным токеном, cert_private_key, secret_value и немаскированные учётные данные в ответах"))
+	cmd.AddCommand(newMCPHealthcheckCmd())
+	return cmd
+}
+
+const mcpHelpEN = `Run evo as a Model Context Protocol server.
 
 The server exposes the evo tools (VMs, disks, networks, Kubernetes,
 databases, ...) so an AI agent (e.g. Claude Code) can manage Cloud.ru
@@ -86,59 +106,117 @@ server can work in any of them. --allow-project limits the tools to the
 listed projects (repeat the flag or separate with commas): a call in any other
 project, the server's own included, fails. The read-only org_quotas and
 iam_service_accounts still read other projects. Without the flag the server
-warns at start in HTTP mode. Prefer a project-level key for a shared server.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			srv := mcp.New(func(overrides map[string]any) (*engine.Engine, error) {
-				if overrides == nil {
-					overrides = map[string]any{}
-				}
-				// The SSH key stays lazy here too: only the tools that
-				// reach a VM call EnsureSSHKey.
-				eng, err := buildEngine(overrides)
-				if err != nil {
-					return nil, err
-				}
-				if err := checkAllowedProject(allowProjects, eng.Config.ProjectID); err != nil {
-					return nil, err
-				}
-				return eng, nil
-			}, version)
+warns at start in HTTP mode. Prefer a project-level key for a shared server.`
 
-			if httpAddr == "" {
-				if cmd.Flags().Changed("auth") || allowSecretExport {
-					return clerrors.New(clerrors.CodeUsage,
-						"--auth and --allow-secret-export apply to the HTTP transport only",
-						"Add --http ADDR, e.g. --http 127.0.0.1:8080")
-				}
-				return runMCPStdio(cmd.Context(), srv)
-			}
+const mcpHelpRU = `Запустить evo как сервер Model Context Protocol.
 
-			token, err := httpAuthToken(httpAddr, authMode, os.Getenv(envBearerToken))
-			if err != nil {
-				return err
-			}
-			logger := clog.New(cmd.ErrOrStderr(), flagVerbose)
-			if token != "" && len(token) < 16 {
-				logger.Warn(envBearerToken + " is shorter than 16 characters; use a long random token")
-			}
-			if len(allowProjects) == 0 {
-				logger.Warn("no --allow-project: a client can pass project_id to deploy/provision and work in any project the key sees; " +
-					"limit it with --allow-project <UUID> or use a project-level key")
-			}
-			return srv.ListenAndServe(cmd.Context(), httpAddr, mcp.HTTPOptions{
-				BearerToken:       token,
-				AllowSecretExport: allowSecretExport,
-				Logger:            logger.Logger,
-			}, nil)
-		},
+Сервер открывает инструменты evo (ВМ, диски, сети, Kubernetes, базы данных
+и другие), и ИИ-агент (например, Claude Code) управляет ресурсами Cloud.ru
+напрямую. Описания инструментов и их ответы — на английском: их читает агент.
+
+По умолчанию — JSON-RPC 2.0 построчно через stdin/stdout; текст для человека
+не печатается (stdout занят протоколом). SIGINT/SIGTERM и
+notifications/cancelled отменяют выполняемые вызовы; закрытие stdin — нет
+(уже отправленные вызовы доработают и получат ответ). Подключение к Claude Code:
+  claude mcp add --transport stdio --scope project evo -- evo mcp
+
+С --http ADDR сервер работает по MCP Streamable HTTP на http://ADDR/mcp
+(и отвечает на проверку живости без аутентификации на /healthz):
+  MCP_BEARER_TOKEN=... evo mcp --http :8080
+  claude mcp add --transport http evo http://localhost:8080/mcp \
+    --header "Authorization: Bearer $MCP_BEARER_TOKEN"
+
+Аутентификация HTTP (--auth):
+  bearer  клиент передаёт "Authorization: Bearer <токен>"; токен берётся из
+          $MCP_BEARER_TOKEN, без него сервер не запускается
+  none    без аутентификации; только на адресе loopback
+          (--http 127.0.0.1:8080)
+
+По HTTP отключены k8s_kubeconfig со встроенным токеном, cert_private_key и
+secret_value, а учётные данные (пароли, ключи, токены) в остальных ответах
+маскируются, если не задан --allow-secret-export. Аргументы, которые
+затрагивают хост сервера, ограничены: compose_file у deploy — рабочим
+каталогом, k8s_kubectl — встроенными командами без флагов хоста (--kubeconfig,
+-f и т. п.), k8s_helm — удалёнными чартами на публичных хостах https/oci.
+k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой, если kubectl/helm не
+установлен (в Docker-образе нет ни того, ни другого). Одновременно выполняется
+не больше 32 вызовов, в пакете — не больше 100 сообщений. Вызов отменяется,
+когда клиент закрывает соединение, удаляет сессию (DELETE /mcp) или
+присылает notifications/cancelled, и при остановке сервера; тайм-аута нет. На
+каждый вызов в stderr пишется одна строка журнала (имя, статус,
+длительность; аргументы — никогда).
+
+Ключ доступа Cloud.ru и параметры проекта — собственные у сервера и
+определяются так же, как у обычных команд (переменные окружения, профиль из
+'evo configure', .evo.yaml); клиенты их не передают.
+
+Проекты: deploy и provision принимают аргумент project_id, поэтому с ключом,
+который видит несколько проектов (ключ уровня организации), любой клиент
+сервера может работать в любом из них. --allow-project ограничивает
+инструменты перечисленными проектами (флаг повторяется или через запятую):
+вызов в любом другом проекте, в том числе в проекте самого сервера,
+отклоняется. org_quotas и iam_service_accounts только читают и по-прежнему
+видят другие проекты. Без флага сервер в режиме HTTP предупреждает при
+запуске. Для общего сервера лучше ключ уровня проекта.`
+
+// runMCP validates the transport flags and serves. From the moment it
+// serves, the process speaks English: the engine's progress captured into
+// tool results (deploy's "log") and the server's log are read by agents
+// and operators, not by the person at the terminal.
+func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport bool, allowProjects []string) error {
+	srv := mcp.New(mcpEngineFactory(allowProjects), version)
+
+	if httpAddr == "" {
+		if cmd.Flags().Changed("auth") || allowSecretExport {
+			return clerrors.New(clerrors.CodeUsage,
+				i18n.T("--auth and --allow-secret-export apply to the HTTP transport only",
+					"--auth и --allow-secret-export действуют только для транспорта HTTP"),
+				i18n.T("Add --http ADDR, e.g. --http 127.0.0.1:8080", "Добавьте --http ADDR, например --http 127.0.0.1:8080"))
+		}
+		i18n.SetLang(i18n.EN)
+		return runMCPStdio(cmd.Context(), srv)
 	}
-	cmd.Flags().StringVar(&httpAddr, "http", "", "Serve MCP over Streamable HTTP on this address (e.g. :8080) instead of stdio")
-	cmd.Flags().StringVar(&authMode, "auth", authBearer, "HTTP authentication: bearer (token from $MCP_BEARER_TOKEN) or none (loopback address only)")
-	cmd.Flags().StringSliceVar(&allowProjects, "allow-project", nil, "Allow tool calls only in these Cloud.ru projects (UUIDs; repeat or comma-separate). Default: any project the key sees")
-	cmd.Flags().BoolVar(&allowSecretExport, "allow-secret-export", false, "HTTP mode: allow k8s_kubeconfig with an embedded token, cert_private_key, secret_value and unmasked credentials in results")
-	cmd.AddCommand(newMCPHealthcheckCmd())
-	return cmd
+
+	token, err := httpAuthToken(httpAddr, authMode, os.Getenv(envBearerToken))
+	if err != nil {
+		return err
+	}
+	i18n.SetLang(i18n.EN)
+	logger := clog.New(cmd.ErrOrStderr(), flagVerbose)
+	if token != "" && len(token) < 16 {
+		logger.Warn(envBearerToken + " is shorter than 16 characters; use a long random token")
+	}
+	if len(allowProjects) == 0 {
+		logger.Warn("no --allow-project: a client can pass project_id to deploy/provision and work in any project the key sees; " +
+			"limit it with --allow-project <UUID> or use a project-level key")
+	}
+	return srv.ListenAndServe(cmd.Context(), httpAddr, mcp.HTTPOptions{
+		BearerToken:       token,
+		AllowSecretExport: allowSecretExport,
+		Logger:            logger.Logger,
+	}, nil)
+}
+
+// mcpEngineFactory builds the engine of every tool call. Tools that take a
+// project_id argument (deploy, provision) pass it as the ProjectID override,
+// so the check sees the project the call resolves to, not only the
+// server's own.
+func mcpEngineFactory(allowProjects []string) func(map[string]any) (*engine.Engine, error) {
+	return func(overrides map[string]any) (*engine.Engine, error) {
+		if overrides == nil {
+			overrides = map[string]any{}
+		}
+		// The SSH key stays lazy here too: only the tools that
+		// reach a VM call EnsureSSHKey.
+		eng, err := buildEngine(overrides)
+		if err != nil {
+			return nil, err
+		}
+		if err := checkAllowedProject(allowProjects, eng.Config.ProjectID); err != nil {
+			return nil, err
+		}
+		return eng, nil
+	}
 }
 
 // checkAllowedProject refuses an engine for a project outside --allow-project
@@ -176,28 +254,35 @@ func runMCPStdio(ctx context.Context, srv *mcp.Server) error {
 func httpAuthToken(addr, mode, envToken string) (string, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return "", clerrors.Wrap(clerrors.CodeUsage, fmt.Sprintf("invalid --http address %q", addr),
-			"Use HOST:PORT or :PORT, e.g. --http :8080 or --http 127.0.0.1:8080", err)
+		return "", clerrors.Wrap(clerrors.CodeUsage, i18n.Tf("invalid --http address %q", "недопустимый адрес --http %q", addr),
+			i18n.T("Use HOST:PORT or :PORT, e.g. --http :8080 or --http 127.0.0.1:8080",
+				"Укажите ХОСТ:ПОРТ или :ПОРТ, например --http :8080 или --http 127.0.0.1:8080"), err)
 	}
 	switch mode {
 	case authBearer:
 		if envToken == "" {
 			return "", clerrors.New(clerrors.CodeConfigInvalid,
-				envBearerToken+" is not set: the HTTP server does not start without authentication",
-				"Set "+envBearerToken+" to a long random string (e.g. openssl rand -hex 32), "+
-					"or use --auth none with a loopback address (--http 127.0.0.1:8080)")
+				envBearerToken+i18n.T(" is not set: the HTTP server does not start without authentication",
+					" не задан: без аутентификации HTTP-сервер не запускается"),
+				i18n.Tf("Set %s to a long random string (e.g. openssl rand -hex 32), "+
+					"or use --auth none with a loopback address (--http 127.0.0.1:8080)",
+					"Задайте в %s длинную случайную строку (например, openssl rand -hex 32) "+
+						"или используйте --auth none с адресом loopback (--http 127.0.0.1:8080)", envBearerToken))
 		}
 		return envToken, nil
 	case authNone:
 		if !mcp.LoopbackHost(host) { // an empty host (":8080") is every interface
 			return "", clerrors.New(clerrors.CodeUsage,
-				fmt.Sprintf("--auth none is only allowed on a loopback address, not %q", addr),
-				"Use --http 127.0.0.1:PORT for a local server, or --auth bearer with "+envBearerToken)
+				i18n.Tf("--auth none is only allowed on a loopback address, not %q",
+					"--auth none допускается только на адресе loopback, а не на %q", addr),
+				i18n.T("Use --http 127.0.0.1:PORT for a local server, or --auth bearer with ",
+					"Для локального сервера — --http 127.0.0.1:ПОРТ, иначе --auth bearer с ")+envBearerToken)
 		}
 		return "", nil
 	default:
 		return "", clerrors.New(clerrors.CodeUsage,
-			fmt.Sprintf("unknown --auth %q", mode), "Use --auth bearer or --auth none")
+			i18n.Tf("unknown --auth %q", "неизвестное значение --auth %q", mode),
+			i18n.T("Use --auth bearer or --auth none", "Допустимо --auth bearer или --auth none"))
 	}
 }
 
@@ -207,7 +292,7 @@ func newMCPHealthcheckCmd() *cobra.Command {
 	var url string
 	cmd := &cobra.Command{
 		Use:    "healthcheck",
-		Short:  "Probe /healthz of a running HTTP MCP server (exit 0 when healthy)",
+		Short:  i18n.T("Probe /healthz of a running HTTP MCP server (exit 0 when healthy)", "Проверить /healthz работающего HTTP MCP-сервера (код 0 — работает)"),
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -235,6 +320,7 @@ func newMCPHealthcheckCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&url, "url", "", "Health endpoint (default $MCP_HEALTHCHECK_URL or http://127.0.0.1:8080/healthz)")
+	cmd.Flags().StringVar(&url, "url", "", i18n.T("Health endpoint (default $MCP_HEALTHCHECK_URL or http://127.0.0.1:8080/healthz)",
+		"Адрес проверки (по умолчанию $MCP_HEALTHCHECK_URL или http://127.0.0.1:8080/healthz)"))
 	return cmd
 }

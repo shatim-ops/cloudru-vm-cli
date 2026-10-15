@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -57,12 +58,30 @@ Compute and VPC resources; listing projects also needs read access to the
 organization (otherwise pass --project-id). Details:
 https://github.com/shatim-ops/evo-cli/blob/main/docs/auth.md`
 
+const configureHelpRU = `Сохранить ключ доступа сервисного аккаунта и проект по умолчанию в профиле.
+
+В интерактивном режиме спрашивает Key ID и секрет (секрет не отображается),
+проверяет их в IAM Cloud.ru, затем показывает проекты, которые видит ключ, и
+предлагает выбрать один (единственный проект выбирается сам).
+
+Без вопросов (CI, скрипты) — секрет читается из stdin, никогда из флага:
+  printf '%s' "$SECRET" | evo configure --key-id KEY_ID --secret-stdin --project-id PROJECT_ID
+
+Файлы (права 0600, каталог 0700; каталог меняет CLOUDRU_CONFIG_DIR):
+  <каталог настроек>/evo/config.yaml        project_id, region, умолчания
+  <каталог настроек>/evo/credentials.yaml   key_id, secret, необязательная секция s3
+
+Нужные права: сервисному аккаунту нужна роль в проекте, разрешающая управлять
+ресурсами Compute и VPC; для списка проектов — ещё и чтение организации
+(иначе передайте --project-id). Подробнее:
+https://github.com/shatim-ops/evo-cli/blob/main/docs/auth.md`
+
 func newConfigureCmd() *cobra.Command {
 	var opts configureOptions
 	cmd := &cobra.Command{
 		Use:   "configure",
-		Short: "Set up credentials and the default project for a profile",
-		Long:  configureHelp,
+		Short: i18n.T("Set up credentials and the default project for a profile", "Ключ доступа и проект по умолчанию для профиля"),
+		Long:  i18n.T(configureHelp, configureHelpRU),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)
@@ -70,10 +89,13 @@ func newConfigureCmd() *cobra.Command {
 			return runConfigure(cmd.Context(), opts, con, printer)
 		},
 	}
-	cmd.Flags().StringVar(&opts.keyID, "key-id", "", "Access key ID of the service account")
-	cmd.Flags().BoolVar(&opts.secretStdin, "secret-stdin", false, "Read the secret from the first line of stdin (non-interactive)")
-	cmd.Flags().StringVar(&opts.projectID, "project-id", "", "Cloud.ru project UUID (skips the project list)")
-	cmd.Flags().StringVar(&opts.region, "region", "", "Default availability zone UUID for the profile")
+	cmd.Flags().StringVar(&opts.keyID, "key-id", "", i18n.T("Access key ID of the service account", "Key ID ключа доступа сервисного аккаунта"))
+	cmd.Flags().BoolVar(&opts.secretStdin, "secret-stdin", false, i18n.T("Read the secret from the first line of stdin (non-interactive)",
+		"Прочитать секрет из первой строки stdin (без вопросов)"))
+	cmd.Flags().StringVar(&opts.projectID, "project-id", "", i18n.T("Cloud.ru project UUID (skips the project list)",
+		"UUID проекта Cloud.ru (без выбора из списка)"))
+	cmd.Flags().StringVar(&opts.region, "region", "", i18n.T("Default availability zone UUID for the profile",
+		"UUID зоны доступности по умолчанию для профиля"))
 
 	cmd.AddCommand(newConfigureListCmd(), newConfigureDeleteCmd())
 	return cmd
@@ -166,18 +188,18 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 		return err
 	}
 	if con.interactive {
-		fmt.Fprintf(con.out, "Configuring profile %q in %s\n", name, config.Dir())
+		fmt.Fprintf(con.out, i18n.T("Configuring profile %q in %s\n", "Настройка профиля %q в %s\n"), name, config.Dir())
 	}
 
 	// Key ID.
 	keyID := opts.keyID
 	if keyID == "" && con.interactive {
-		prompt := "Access key ID: "
+		prompt := i18n.T("Access key ID: ", "Key ID: ")
 		if creds.KeyID != "" {
-			prompt = fmt.Sprintf("Access key ID [%s]: ", config.MaskKeyID(creds.KeyID))
+			prompt = i18n.Tf("Access key ID [%s]: ", "Key ID [%s]: ", config.MaskKeyID(creds.KeyID))
 		}
 		if keyID, err = con.ask(ctx, prompt); err != nil {
-			return fmt.Errorf("read key ID: %w", err)
+			return fmt.Errorf(i18n.T("read key ID: %w", "чтение Key ID: %w"), err)
 		}
 	}
 	if keyID == "" {
@@ -192,24 +214,25 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 			if ctx.Err() != nil {
 				return err
 			}
-			return clerrors.Wrap(clerrors.CodeConfigInvalid, "no secret on stdin",
-				"Pipe the secret into 'evo configure --secret-stdin'", err)
+			return clerrors.Wrap(clerrors.CodeConfigInvalid, i18n.T("no secret on stdin", "в stdin нет секрета"),
+				i18n.T("Pipe the secret into 'evo configure --secret-stdin'", "Подайте секрет на stdin: printf '%s' \"$SECRET\" | evo configure --secret-stdin"), err)
 		}
 	case con.interactive:
-		prompt := "Secret: "
+		prompt := i18n.T("Secret: ", "Секрет: ")
 		if creds.Secret != "" && keyID == creds.KeyID {
-			prompt = "Secret [keep current]: "
+			prompt = i18n.T("Secret [keep current]: ", "Секрет [Enter — оставить текущий]: ")
 		}
 		if secret, err = con.askSecret(ctx, prompt); err != nil {
-			return fmt.Errorf("read secret: %w", err)
+			return fmt.Errorf(i18n.T("read secret: %w", "чтение секрета: %w"), err)
 		}
 	}
 	if secret == "" && keyID == creds.KeyID {
 		secret = creds.Secret
 	}
 	if keyID == "" || secret == "" {
-		return clerrors.New(clerrors.CodeConfigInvalid, "key ID and secret are required",
-			"Run 'evo configure' in a terminal, or pass --key-id and --secret-stdin")
+		return clerrors.New(clerrors.CodeConfigInvalid, i18n.T("key ID and secret are required", "нужны Key ID и секрет"),
+			i18n.T("Run 'evo configure' in a terminal, or pass --key-id and --secret-stdin",
+				"Запустите 'evo configure' в терминале или передайте --key-id и --secret-stdin"))
 	}
 
 	// Check the key with IAM itself: a cached token of the same key ID
@@ -217,7 +240,7 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 	provider := auth.NewIAMProvider(auth.Credentials{KeyID: keyID, Secret: secret}, httpClient, nil)
 	tok, err := provider.Token(ctx)
 	if err != nil {
-		return fmt.Errorf("checking the access key: %w", err)
+		return fmt.Errorf(i18n.T("checking the access key: %w", "проверка ключа доступа: %w"), err)
 	}
 	_ = auth.FileCache{Path: config.TokenCachePath(name)}.Store(auth.CacheKey(auth.Credentials{KeyID: keyID, Secret: secret}), tok)
 
@@ -245,9 +268,9 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 			"config_dir": config.Dir(),
 		})
 	}
-	printer.Success(fmt.Sprintf("Profile %q saved to %s", name, config.Dir()))
+	printer.Success(i18n.Tf("Profile %q saved to %s", "Профиль %q сохранён в %s", name, config.Dir()))
 	if name != config.DefaultProfile {
-		printer.Hint(fmt.Sprintf("Use it with --profile %s or CLOUDRU_PROFILE=%s", name, name))
+		printer.Hint(i18n.Tf("Use it with --profile %s or CLOUDRU_PROFILE=%s", "Выбирается флагом --profile %s или CLOUDRU_PROFILE=%s", name, name))
 	}
 	return nil
 }
@@ -267,8 +290,8 @@ func listProjects(ctx context.Context, token string) ([]orgProject, error) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, clerrors.Wrap(clerrors.CodeAPIUnreachable, "failed to reach the Organization API",
-			"Check your network connection, or pass --project-id", err)
+		return nil, clerrors.Wrap(clerrors.CodeAPIUnreachable, i18n.T("failed to reach the Organization API", "Organization API недоступен"),
+			i18n.T("Check your network connection, or pass --project-id", "Проверьте сеть или передайте --project-id"), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -276,7 +299,7 @@ func listProjects(ctx context.Context, token string) ([]orgProject, error) {
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			code = clerrors.CodeAuthFailed
 		}
-		msg := fmt.Sprintf("listing projects failed with status %d", resp.StatusCode)
+		msg := i18n.Tf("listing projects failed with status %d", "не удалось получить список проектов: статус %d", resp.StatusCode)
 		var apiErr struct {
 			Message string `json:"message"`
 		}
@@ -286,14 +309,15 @@ func listProjects(ctx context.Context, token string) ([]orgProject, error) {
 		// Observed 2026-10-14: for a service account the API answers
 		// 400 "(user_id) is invalid argument: user not found".
 		return nil, clerrors.New(code, msg,
-			"The Organization API may not list projects for this key; pass --project-id (find it in the Cloud.ru console)")
+			i18n.T("The Organization API may not list projects for this key; pass --project-id (find it in the Cloud.ru console)",
+				"Organization API может не отдавать список проектов для этого ключа; передайте --project-id (он есть в консоли Cloud.ru)"))
 	}
 	var body struct {
 		Projects []orgProject `json:"projects"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, clerrors.Wrap(clerrors.CodeAPIError, "unexpected response from the Organization API",
-			"Pass --project-id", err)
+		return nil, clerrors.Wrap(clerrors.CodeAPIError, i18n.T("unexpected response from the Organization API", "неожиданный ответ Organization API"),
+			i18n.T("Pass --project-id", "Передайте --project-id"), err)
 	}
 	return body.Projects, nil
 }
@@ -306,12 +330,13 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 		if !con.interactive {
 			if current != "" {
 				// Re-running configure to rotate the key keeps the project.
-				printer.Warning(fmt.Sprintf("could not list projects (%v); keeping project %s", err, current))
+				printer.Warning(i18n.Tf("could not list projects (%v); keeping project %s",
+					"не удалось получить список проектов (%v); проект остаётся прежним: %s", err, current))
 				return current, nil
 			}
 			return "", err
 		}
-		fmt.Fprintf(con.out, "Could not list projects (%v).\n", err)
+		fmt.Fprintf(con.out, i18n.T("Could not list projects (%v).\n", "Не удалось получить список проектов (%v).\n"), err)
 		return askProjectID(ctx, con, current)
 	}
 
@@ -319,15 +344,16 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 	case len(projects) == 1:
 		p := projects[0]
 		if !printer.IsJSON() {
-			fmt.Fprintf(con.out, "Using project %s (%s)\n", p.Name, p.ID)
+			fmt.Fprintf(con.out, i18n.T("Using project %s (%s)\n", "Проект: %s (%s)\n"), p.Name, p.ID)
 		}
 		return p.ID, nil
 	case len(projects) == 0:
 		if !con.interactive {
-			return "", clerrors.New(clerrors.CodeConfigInvalid, "the key sees no projects",
-				"Pass --project-id, or grant the service account access to a project")
+			return "", clerrors.New(clerrors.CodeConfigInvalid, i18n.T("the key sees no projects", "ключ не видит ни одного проекта"),
+				i18n.T("Pass --project-id, or grant the service account access to a project",
+					"Передайте --project-id или выдайте сервисному аккаунту доступ к проекту"))
 		}
-		fmt.Fprintln(con.out, "The key sees no projects.")
+		fmt.Fprintln(con.out, i18n.T("The key sees no projects.", "Ключ не видит ни одного проекта."))
 		return askProjectID(ctx, con, current)
 	}
 
@@ -341,12 +367,13 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 		for i, p := range projects {
 			ids[i] = p.ID + " (" + p.Name + ")"
 		}
-		return "", clerrors.New(clerrors.CodeConfigInvalid, "several projects available, none selected",
-			"Pass --project-id, one of: "+strings.Join(ids, ", "))
+		return "", clerrors.New(clerrors.CodeConfigInvalid, i18n.T("several projects available, none selected",
+			"доступно несколько проектов, ни один не выбран"),
+			i18n.T("Pass --project-id, one of: ", "Передайте --project-id, один из: ")+strings.Join(ids, ", "))
 	}
 
 	def := 0
-	fmt.Fprintln(con.out, "Projects:")
+	fmt.Fprintln(con.out, i18n.T("Projects:", "Проекты:"))
 	for i, p := range projects {
 		mark := " "
 		if p.ID == current {
@@ -355,13 +382,13 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 		fmt.Fprintf(con.out, " %s%2d) %s  %s\n", mark, i+1, p.ID, p.Name)
 	}
 	for {
-		prompt := "Choose a project (number or ID): "
+		prompt := i18n.T("Choose a project (number or ID): ", "Выберите проект (номер или ID): ")
 		if def > 0 {
-			prompt = fmt.Sprintf("Choose a project (number or ID) [%d]: ", def)
+			prompt = i18n.Tf("Choose a project (number or ID) [%d]: ", "Выберите проект (номер или ID) [%d]: ", def)
 		}
 		ans, err := con.ask(ctx, prompt)
 		if err != nil {
-			return "", fmt.Errorf("read project: %w", err)
+			return "", fmt.Errorf(i18n.T("read project: %w", "чтение проекта: %w"), err)
 		}
 		if ans == "" && def > 0 {
 			return projects[def-1].ID, nil
@@ -374,25 +401,25 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 				return p.ID, nil
 			}
 		}
-		fmt.Fprintln(con.out, "Not in the list, try again.")
+		fmt.Fprintln(con.out, i18n.T("Not in the list, try again.", "Такого нет в списке, попробуйте ещё раз."))
 	}
 }
 
 func askProjectID(ctx context.Context, con *console, current string) (string, error) {
-	prompt := "Project ID: "
+	prompt := i18n.T("Project ID: ", "ID проекта: ")
 	if current != "" {
-		prompt = fmt.Sprintf("Project ID [%s]: ", current)
+		prompt = i18n.Tf("Project ID [%s]: ", "ID проекта [%s]: ", current)
 	}
 	id, err := con.ask(ctx, prompt)
 	if err != nil {
-		return "", fmt.Errorf("read project ID: %w", err)
+		return "", fmt.Errorf(i18n.T("read project ID: %w", "чтение ID проекта: %w"), err)
 	}
 	if id == "" {
 		id = current
 	}
 	if id == "" {
-		return "", clerrors.New(clerrors.CodeConfigInvalid, "project ID is required",
-			"Find it in the Cloud.ru console, or pass --project-id")
+		return "", clerrors.New(clerrors.CodeConfigInvalid, i18n.T("project ID is required", "нужен ID проекта"),
+			i18n.T("Find it in the Cloud.ru console, or pass --project-id", "Он есть в консоли Cloud.ru; можно передать --project-id"))
 	}
 	return id, nil
 }
@@ -400,7 +427,7 @@ func askProjectID(ctx context.Context, con *console, current string) (string, er
 func newConfigureListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List stored profiles",
+		Short: i18n.T("List stored profiles", "Сохранённые профили"),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)
@@ -413,8 +440,8 @@ func newConfigureListCmd() *cobra.Command {
 				return printer.JSON(map[string]any{"profiles": profiles, "active": active, "config_dir": config.Dir()})
 			}
 			if len(profiles) == 0 {
-				printer.Success("No profiles in " + config.Dir())
-				printer.Hint("Run 'evo configure' to create one.")
+				printer.Success(i18n.T("No profiles in ", "Нет профилей в ") + config.Dir())
+				printer.Hint(i18n.T("Run 'evo configure' to create one.", "Создать профиль: 'evo configure'."))
 				return nil
 			}
 			rows := make([][]string, len(profiles))
@@ -425,7 +452,7 @@ func newConfigureListCmd() *cobra.Command {
 				}
 				rows[i] = []string{name, p.ProjectID, p.KeyID, yesNo(p.HasSecret), yesNo(p.HasS3)}
 			}
-			printer.Table([]string{"Profile", "Project ID", "Key ID", "Secret", "S3"}, rows)
+			printer.Table([]string{i18n.T("Profile", "Профиль"), i18n.T("Project ID", "Проект"), "Key ID", i18n.T("Secret", "Секрет"), "S3"}, rows)
 			return nil
 		},
 	}
@@ -434,7 +461,7 @@ func newConfigureListCmd() *cobra.Command {
 func newConfigureDeleteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <profile>",
-		Short: "Delete a stored profile and its cached token",
+		Short: i18n.T("Delete a stored profile and its cached token", "Удалить сохранённый профиль и его токен из кэша"),
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)
@@ -444,7 +471,7 @@ func newConfigureDeleteCmd() *cobra.Command {
 			if printer.IsJSON() {
 				return printer.JSON(map[string]any{"deleted": args[0]})
 			}
-			printer.Success(fmt.Sprintf("Profile %q deleted", args[0]))
+			printer.Success(i18n.Tf("Profile %q deleted", "Профиль %q удалён", args[0]))
 			return nil
 		},
 	}
@@ -452,7 +479,7 @@ func newConfigureDeleteCmd() *cobra.Command {
 
 func yesNo(b bool) string {
 	if b {
-		return "yes"
+		return i18n.T("yes", "да")
 	}
-	return "no"
+	return i18n.T("no", "нет")
 }

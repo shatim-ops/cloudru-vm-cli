@@ -8,6 +8,8 @@ import (
 	"strings"
 	"text/tabwriter"
 	"unicode"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Mode determines the output format.
@@ -116,9 +118,9 @@ func (p *Printer) Warning(msg string) {
 		return
 	}
 	if p.errColor {
-		fmt.Fprintf(p.errOut, "%s%sWarning: %s%s\n", colorBold, colorYellow, msg, colorReset)
+		fmt.Fprintf(p.errOut, "%s%s%s%s%s\n", colorBold, colorYellow, warningPrefix(), msg, colorReset)
 	} else {
-		fmt.Fprintf(p.errOut, "Warning: %s\n", msg)
+		fmt.Fprintf(p.errOut, "%s%s\n", warningPrefix(), msg)
 	}
 }
 
@@ -126,9 +128,9 @@ func (p *Printer) Warning(msg string) {
 func (p *Printer) Errorf(msg string, args ...any) {
 	formatted := fmt.Sprintf(msg, args...)
 	if p.errColor {
-		fmt.Fprintf(p.errOut, "%s%sError: %s%s\n", colorBold, colorRed, formatted, colorReset)
+		fmt.Fprintf(p.errOut, "%s%s%s%s%s\n", colorBold, colorRed, errorPrefix(), formatted, colorReset)
 	} else {
-		fmt.Fprintf(p.errOut, "Error: %s\n", formatted)
+		fmt.Fprintf(p.errOut, "%s%s\n", errorPrefix(), formatted)
 	}
 }
 
@@ -220,16 +222,26 @@ func (p *Printer) ErrWriter() io.Writer {
 
 // ErrorBody is the payload of a JSON-mode error.
 type ErrorBody struct {
-	Code    int    `json:"code"`
+	// Code is the process exit code.
+	Code int `json:"code"`
+	// Reason is the symbolic code ("AUTH_FAILED"), the same in every
+	// language of the CLI: scripts match on it, not on Message.
+	Reason  string `json:"reason"`
 	Message string `json:"message"`
 	Hint    string `json:"hint"`
 }
 
-// JSONError writes {"error": {"code": N, "message": "...", "hint": "..."}}
-// to the error writer. code is the process exit code.
-func (p *Printer) JSONError(code int, message, hint string) error {
+// JSONError writes
+// {"error": {"code": N, "reason": "...", "message": "...", "hint": "..."}}
+// to the error writer. code is the process exit code, reason the symbolic
+// code of the error.
+func (p *Printer) JSONError(code int, reason, message, hint string) error {
 	enc := json.NewEncoder(p.errOut)
 	return enc.Encode(struct {
 		Error ErrorBody `json:"error"`
-	}{ErrorBody{Code: code, Message: message, Hint: hint}})
+	}{ErrorBody{Code: code, Reason: reason, Message: message, Hint: hint}})
 }
+
+func warningPrefix() string { return i18n.T("Warning: ", "Предупреждение: ") }
+
+func errorPrefix() string { return i18n.T("Error: ", "Ошибка: ") }
