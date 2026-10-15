@@ -565,7 +565,21 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	interrupted := func(sig string) (state.DeploymentRecord, error) {
 		deleted, err := e.handleInterrupt(sig, vm.ID, opts.NonInteractive)
 		if deleted {
-			e.releaseBootFIP(bootFIP, projectID)
+			// The VM goes asynchronously and its FIP stays attached until
+			// it is gone: wait, then release with retries, like destroy.
+			// Only then the record goes; if the FIP stays, the record keeps
+			// its floating_ip_id so 'evo destroy' finishes the job (QA H2).
+			rctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			e.waitVMGone(rctx, vm.ID)
+			if ferr := e.releaseFloatingIP(rctx, &rec); ferr != nil {
+				e.Printer.Warning(ferr.Error())
+				rec.Status = "destroying"
+				rec.UpdatedAt = time.Now()
+				stateFile.UpsertDeployment(rec)
+				_ = state.Write(statePath, stateFile)
+				return rec, err
+			}
 			// Gone in the cloud, gone from state: a kept record would be
 			// "reused" by the next deploy.
 			stateFile.RemoveDeployment(rec.ID)
@@ -1117,9 +1131,11 @@ func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) (
 
 	if answer == "y" || answer == "Y" {
 		e.Printer.StepDone("Deleting VM...")
-		deleteCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// A VM still being created cannot be deleted yet: wait as destroy
+		// does instead of leaving it behind (QA H2).
+		deleteCtx, cancel := context.WithTimeout(context.Background(), e.timings().DeletableWaitTimeout+time.Minute)
 		defer cancel()
-		if err := e.Cloud.DeleteVM(deleteCtx, vmID); err != nil {
+		if err := e.deleteVMWhenDeletable(deleteCtx, vmID); err != nil {
 			e.Printer.Warning(fmt.Sprintf("Failed to delete VM: %v", err))
 		} else {
 			e.Printer.StepDone("VM deleted")
@@ -1170,3 +1186,25 @@ func (e *Engine) WaitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmI
 func (e *Engine) ReleaseBootFIP(fip *provision.FloatingIP, projectID string) {
 	e.releaseBootFIP(fip, projectID)
 }
+
+// waitVMGone polls until the VM is not found, ctx ends or
+// Timings.DestroyPollTimeout passes. Best effort: the FIP release after it
+// retries on its own.
+func (e *Engine) waitVMGone(ctx context.Context, vmID string) {
+	t := e.timings()
+	deadline := time.Now().Add(t.DestroyPollTimeout)
+	for time.Now().Before(deadline) {
+		if _, err := e.Cloud.GetVM(ctx, vmID); err != nil {
+			var ce *clerrors.CLIError
+			if stderrors.As(err, &ce) && ce.Code == clerrors.CodeVMNotFound {
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(t.DestroyPollInterval):
+		}
+	}
+}
+

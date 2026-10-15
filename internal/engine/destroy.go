@@ -306,6 +306,17 @@ func isNotDeletableYet(err error) bool {
 	return st == http.StatusConflict || st == http.StatusUnprocessableEntity
 }
 
+// isTransientServerError is a 502/503/504 from DELETE: the compute adapter
+// repeats those only for GET, and while waiting for a deletable VM one of
+// them should not end the wait.
+func isTransientServerError(err error) bool {
+	switch provision.HTTPStatus(err) {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
+}
+
 // deleteVMWhenDeletable deletes the VM, waiting while Cloud.ru refuses
 // because it is still being created: a VM stuck in "creating" (seen in
 // cloud-e2e on 15.10.2026) is billed with its floating IP, and giving up at
@@ -329,12 +340,12 @@ func (e *Engine) deleteVMWhenDeletable(ctx context.Context, vmID string) error {
 		case <-time.After(t.DeletablePollInterval):
 		}
 		err = e.Cloud.DeleteVM(ctx, vmID)
-		if err == nil || !isNotDeletableYet(err) {
+		if err == nil || !(isNotDeletableYet(err) || isTransientServerError(err)) {
 			return err
 		}
 		if time.Since(lastReport) >= time.Minute {
 			lastReport = time.Now()
-			status := "unknown"
+			status := "unknown (the status request failed)"
 			if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
 				status = vm.Status
 			}

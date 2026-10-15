@@ -21,6 +21,12 @@ type interruptCloud struct {
 	provision.CloudAPI
 	deleted     []string
 	deletedFIPs []string
+	fipErr      error // DeleteFloatingIP fails with it, if set
+}
+
+// The deleted VM is gone at once.
+func (c *interruptCloud) GetVM(context.Context, string) (*provision.VM, error) {
+	return nil, clerrors.New(clerrors.CodeVMNotFound, "gone", "")
 }
 
 // The public IP is reserved before the VM is created.
@@ -29,6 +35,9 @@ func (c *interruptCloud) CreateFloatingIP(context.Context, provision.CreateFloat
 }
 
 func (c *interruptCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
+	if c.fipErr != nil {
+		return c.fipErr
+	}
 	c.deletedFIPs = append(c.deletedFIPs, id)
 	return nil
 }
@@ -79,14 +88,19 @@ func (c *interruptCloud) DeleteVM(_ context.Context, id string) error {
 // is deterministic and needs no sleeps.
 func provisionInterrupted(t *testing.T, nonInteractive bool) (*interruptCloud, *Engine, *bytes.Buffer, error) {
 	t.Helper()
+	return provisionInterruptedWith(t, nonInteractive, &interruptCloud{})
+}
+
+func provisionInterruptedWith(t *testing.T, nonInteractive bool, cloud *interruptCloud) (*interruptCloud, *Engine, *bytes.Buffer, error) {
+	t.Helper()
 	dir := t.TempDir()
-	cloud := &interruptCloud{}
 	var stdout, stderr bytes.Buffer
 	e := &Engine{
 		Config:   config.Config{ProjectID: "p", ImageID: "img"},
 		Cloud:    cloud,
 		Printer:  output.NewWithWriters(&stdout, &stderr, output.ModePlain, false),
 		StateDir: dir,
+		Timings:  fastTimings,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -179,4 +193,29 @@ func TestProvisionVM_CancelledInteractive_KeepsVMOnNo(t *testing.T) {
 		t.Errorf("VM deleted on 'no': %v", cloud.deleted)
 	}
 	assertVMRecorded(t, e)
+}
+
+// Ctrl-C, "y": the VM is deleted, but its FIP cannot be released (still
+// attached, API error). The record stays, marked destroying and still
+// naming the FIP, so 'evo destroy' releases it; it used to be dropped with
+// the FIP left billed and unknown to evo (QA H2).
+func TestProvisionVM_CancelledInteractive_FIPNotReleasedKeepsRecord(t *testing.T) {
+	withPromptStdin(t, strings.NewReader("y\n"), true)
+
+	cloud, e, stderr, _ := provisionInterruptedWith(t, false, &interruptCloud{fipErr: stderrors.New("floating IP is attached")})
+
+	if len(cloud.deleted) != 1 {
+		t.Fatalf("VM not deleted: %v", cloud.deleted)
+	}
+	sf, err := state.Read(state.DefaultPath(e.StateDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := sf.ActiveDeployment()
+	if a == nil || a.Status != "destroying" || a.FloatingIPID != "fip-boot" {
+		t.Fatalf("record = %+v, want destroying with floating_ip_id fip-boot", a)
+	}
+	if !strings.Contains(stderr.String(), "not released") {
+		t.Errorf("no warning about the FIP: %q", stderr.String())
+	}
 }
