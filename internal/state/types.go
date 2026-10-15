@@ -4,10 +4,14 @@ import "time"
 
 // DeploymentRecord is the persisted form of a deployment.
 type DeploymentRecord struct {
-	ID                    string `json:"id"`
-	VMID                  string `json:"vm_id"`
-	VMIP                  string `json:"vm_ip"`
-	FloatingIPID          string `json:"floating_ip_id,omitempty"` // released by destroy
+	ID           string `json:"id"`
+	VMID         string `json:"vm_id"`
+	VMIP         string `json:"vm_ip"`
+	FloatingIPID string `json:"floating_ip_id,omitempty"` // released by destroy
+	// ProjectID is the Cloud.ru project the VM was created in: destroy and
+	// a re-run of deploy work there, whatever project the config now names.
+	// Empty in records from before this field existed.
+	ProjectID             string `json:"project_id,omitempty"`
 	VMFlavor              string `json:"vm_flavor"`
 	Region                string `json:"region"`
 	Status                string `json:"status"` // creating, provisioned, deploying, running, ssh_timeout, docker_failed, destroying, destroyed

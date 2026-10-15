@@ -75,6 +75,13 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			fmt.Sprintf("deployment %s is being destroyed", existing.ID),
 			"Run 'evo destroy' to finish it, then deploy again.")
 	}
+	// One directory holds one deployment: never send this compose file to
+	// a VM of another project, nor open its ports there.
+	if !isNewDeploy && existing.ProjectID != "" && e.Config.ProjectID != "" && existing.ProjectID != e.Config.ProjectID {
+		return clerrors.New(clerrors.CodeConfigInvalid,
+			fmt.Sprintf("this directory already has deployment %s in project %s, not in %s", existing.ID, existing.ProjectID, e.Config.ProjectID),
+			fmt.Sprintf("Update it with --project-id %s, or run 'evo destroy' first and deploy to the new project.", existing.ProjectID))
+	}
 
 	// Skip only a deployment that finished: after an SSH or Docker failure the
 	// hash is already recorded, and a plain re-run must retry.
@@ -162,7 +169,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		// the compose file publishes new ones: open what is missing. Records
 		// from before security_group_id existed have no group to open in.
 		if rec.SecurityGroupID != "" {
-			e.openPorts(ctx, e.Config.ProjectID, rec.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
+			e.openPorts(ctx, e.projectOf(&rec), rec.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
 			stateFile.UpsertDeployment(rec)
 			_ = state.Write(statePath, stateFile)
 		}
@@ -524,6 +531,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		ID:           vm.ID,
 		VMID:         vm.ID,
 		VMIP:         vm.PublicIP,
+		ProjectID:    projectID,
 		VMFlavor:     flavorName,
 		Region:       region,
 		SSHUser:      sshUser,
@@ -926,7 +934,7 @@ func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		rec.VMIP = f.IPAddress
 		return
 	}
-	ip, fipID, err := e.assignFloatingIP(ctx, rec.VMID, e.Config.ProjectID, rec.Region)
+	ip, fipID, err := e.assignFloatingIP(ctx, rec.VMID, e.projectOf(rec), rec.Region)
 	if fipID != "" {
 		rec.FloatingIPID = fipID
 	}

@@ -1738,6 +1738,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				ID:           vmID,
 				VMID:         vmID,
 				VMIP:         publicIP,
+				ProjectID:    projectID,
 				VMFlavor:     flavorID,
 				Region:       region,
 				SSHUser:      sshUser,
@@ -2009,6 +2010,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 				if d.FloatingIPID != "" {
 					fipRec.FloatingIPID = d.FloatingIPID
 				}
+				fipRec.ProjectID = d.ProjectID
 				if d.VMIP != "" {
 					fipRec.VMIP = d.VMIP
 				}

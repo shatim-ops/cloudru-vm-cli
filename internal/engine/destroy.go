@@ -239,7 +239,7 @@ const fipReleaseAttempts = 5
 // state; records written before floating_ip_id existed fall back to looking
 // the address up in list_floating_ips. Nothing to release is not an error.
 func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRecord) error {
-	projectID := e.Config.ProjectID
+	projectID := e.projectOf(rec)
 	fipID := rec.FloatingIPID
 	// Without an ID: by address, else by the name deploy gives it (its
 	// create response may have been lost, leaving neither in state).
@@ -289,6 +289,15 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		fmt.Sprintf("VM deleted, but floating IP %s was not released", fipLabel(rec.VMIP, fipID)),
 		"The floating IP is still billed. Re-run 'evo destroy --force' or release it in the Cloud.ru console.",
 		lastErr)
+}
+
+// projectOf is the project a deployment lives in: the one recorded at
+// deploy, else (records from older versions) the configured one.
+func (e *Engine) projectOf(rec *state.DeploymentRecord) string {
+	if rec.ProjectID != "" {
+		return rec.ProjectID
+	}
+	return e.Config.ProjectID
 }
 
 func fipLabel(ip, id string) string {

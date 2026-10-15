@@ -138,6 +138,7 @@ func recordDeployment(stateDir string, plan *deployplan.Plan, res *deployplan.Ap
 			ID:                 res.VMID,
 			VMID:               res.VMID,
 			VMIP:               res.PublicIP,
+			ProjectID:          plan.ProjectID,
 			VMFlavor:           plan.VM.Flavor.Name,
 			Region:             plan.VM.Zone.ID,
 			SSHUser:            plan.SSH.Login,
