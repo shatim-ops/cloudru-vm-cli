@@ -43,6 +43,8 @@ Windows, ручная установка, проверка подписи, Gatek
 
 ## Быстрый старт
 
+Впервые? Пошаговое руководство — [docs/guide.md](docs/guide.md).
+
 Нужен ключ доступа сервисного аккаунта (Key ID и Key Secret) и UUID проекта —
 как их получить, в [docs/auth.md](docs/auth.md).
 
@@ -107,6 +109,7 @@ API цен у Cloud.ru нет.
 
 | | |
 |---|---|
+| [docs/guide.md](docs/guide.md) | **начните отсюда**: установка, ключ, первые команды, deploy, агент, ограничения |
 | [docs/install.md](docs/install.md) | установка на Linux, macOS, Windows; проверка подписи; kubectl/helm |
 | [docs/auth.md](docs/auth.md) | сервисный аккаунт и ключ, роли, профили, все переменные окружения, что хранится на диске, ротация ключа |
 | [docs/mcp.md](docs/mcp.md) | MCP по stdio и HTTP, конфиги Claude Code и Cursor, Docker-образ |
