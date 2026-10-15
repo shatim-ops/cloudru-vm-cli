@@ -57,6 +57,14 @@ archives:
       - LICENSE*
       - NOTICE*
       - README.md
+      # README ссылается на docs/*.md — в распакованном архиве они должны
+      # быть рядом. Внутренние документы (docs/internal, RELEASING) — нет.
+      - docs/auth.md
+      - docs/commands.md
+      - docs/exit-codes.md
+      - docs/install.md
+      - docs/mcp.md
+      - docs/troubleshooting.md
 
 checksum:
   name_template: checksums.txt
