@@ -65,7 +65,11 @@ func (s *Registry) handleIamServiceAccounts(ctx context.Context, args map[string
 	if err != nil {
 		return errResult(err), true
 	}
+	// serviceAccounts in the spec, service_accounts as read so far.
 	raw, _ := m["service_accounts"].([]any)
+	if raw == nil {
+		raw, _ = m["serviceAccounts"].([]any)
+	}
 	out := make([]map[string]any, 0, len(raw))
 	for _, x := range raw {
 		sa, _ := x.(map[string]any)

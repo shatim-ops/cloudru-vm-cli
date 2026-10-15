@@ -12,6 +12,10 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
+// fallbackTokenTTL is the lifetime assumed when the IAM answer names none;
+// tokens live about an hour.
+const fallbackTokenTTL = 50 * time.Minute
+
 // IAMEndpoint is the Cloud.ru IAM token exchange URL.
 var IAMEndpoint = "https://iam.api.cloud.ru/api/v1/auth/token"
 
@@ -199,9 +203,14 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 		)
 	}
 
+	// The spec (iam-gw-public) names the fields accessToken/expiresIn; the
+	// live answer has used access_token/expires_in. Both are read
+	// (api-contract §4.12).
 	var result struct {
-		AccessToken string `json:"access_token"`
-		ExpiresIn   int    `json:"expires_in"` // seconds
+		AccessToken      string `json:"access_token"`
+		ExpiresIn        int    `json:"expires_in"` // seconds
+		AccessTokenCamel string `json:"accessToken"`
+		ExpiresInCamel   int    `json:"expiresIn"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		// Usually a connection reset mid-body: worth another attempt.
@@ -211,6 +220,17 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 			i18n.T("Unexpected response from IAM API", "Неожиданный ответ IAM API; повторите позже"),
 			err,
 		)
+	}
+	if result.AccessToken == "" {
+		result.AccessToken = result.AccessTokenCamel
+	}
+	if result.ExpiresIn == 0 {
+		result.ExpiresIn = result.ExpiresInCamel
+	}
+	if result.ExpiresIn <= 0 {
+		// No lifetime in the answer: assume a conservative one instead of
+		// "expired now", which would exchange the key before every call.
+		result.ExpiresIn = int(fallbackTokenTTL / time.Second)
 	}
 	if result.AccessToken == "" {
 		return Token{}, false, clerrors.New(
