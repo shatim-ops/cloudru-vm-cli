@@ -535,7 +535,10 @@ func (s *Registry) lockJob(id string) (unlock func(), err error) {
 const jobLockWait = time.Minute
 
 // crankJob loads the job and, while it is in progress, advances and saves
-// it, all under the job's lock.
+// it, all under the job's lock. Only a "running" job moves: stack_apply with
+// confirmed=true sets it. A "planned" job is shown, never advanced —
+// stack_status is a read-only poll, and advancing a planned job would create
+// every billable step without the user's approval (QA 15.10.2026, C1).
 func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) {
 	unlock, err := s.lockJob(id)
 	if err != nil {
@@ -546,7 +549,7 @@ func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) 
 	if err != nil {
 		return nil, err
 	}
-	if job.Status == "running" || job.Status == "planned" {
+	if job.Status == "running" {
 		s.advance(ctx, job)
 		if e := job.Save(); e != nil {
 			return nil, fmt.Errorf("persist job: %w", e)
@@ -584,7 +587,12 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 		if err != nil {
 			return errResult(err), true
 		}
-		if job.Status != "running" && job.Status != "planned" {
+		if job.Status == "planned" {
+			out := job.Compact()
+			out["note"] = "Not started: call stack_apply with this job_id and confirmed=true after the user approved the plan. stack_status only reports progress."
+			return toJSON(out), false
+		}
+		if job.Status != "running" {
 			return toJSON(job.Compact()), false // terminal (done/error)
 		}
 		rem := time.Until(deadline)

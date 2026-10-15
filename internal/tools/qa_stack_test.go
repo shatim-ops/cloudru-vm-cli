@@ -241,3 +241,30 @@ func TestQA_StackStatusHonoursShortBudget(t *testing.T) {
 		t.Fatalf("status: %v", got)
 	}
 }
+
+// stack_status is a read-only poll: on a planned job it must not start any
+// step. It used to advance "planned" jobs, creating every billable resource
+// of a stack_plan without stack_apply/confirmed=true (QA 15.10.2026, C1).
+func TestQA_StackStatusDoesNotStartPlannedJob(t *testing.T) {
+	stackHome(t)
+	r := newTestServer()
+	j := planJob(t, `{"name":"g","postgres":{"name":"p"},"secrets":[{"path":"a","value":"b"}]}`)
+	var calls atomic.Int32
+	for _, name := range []string{"pg_create", "secret_create", "pg_list", "pg_get"} {
+		r.handlers[name] = func(context.Context, map[string]any) (string, bool) {
+			calls.Add(1)
+			return toJSON(map[string]any{"status": "created", "id": "x"}), false
+		}
+	}
+	got := callTool(t, r.handleStackStatus, map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
+	if n := calls.Load(); n != 0 {
+		t.Fatalf("stack_status on a planned job called %d handlers, want 0", n)
+	}
+	if got["status"] != "planned" || !strings.Contains(stringArg(got, "note"), "stack_apply") {
+		t.Fatalf("answer = %v, want planned with a note naming stack_apply", got)
+	}
+	again, err := stack.LoadJob(j.ID)
+	if err != nil || again.Status != "planned" {
+		t.Fatalf("job after stack_status = %+v %v, want planned", again, err)
+	}
+}
