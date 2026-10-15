@@ -9,6 +9,7 @@ import (
 	"net/url"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // listPageSize is the documented maximum of limit on compute lists
@@ -59,7 +60,7 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 		body, err := io.ReadAll(io.LimitReader(resp.Body, maxListBody))
 		resp.Body.Close()
 		if err != nil {
-			return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to read response for "+path, "API returned unexpected format", err)
+			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.Tf("failed to read response for %s", "не удалось прочитать ответ %s", path), hintUnexpectedFormat(), err)
 		}
 
 		var page paginatedResponse[T]
@@ -85,7 +86,7 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			}
 			return out, nil
 		}
-		return nil, clierrors.New(clierrors.CodeAPIError, "failed to decode list response for "+path, "API returned unexpected format — run with --verbose to debug")
+		return nil, clierrors.New(clierrors.CodeAPIError, i18n.Tf("failed to decode list response for %s", "не удалось разобрать список %s", path), hintUnexpectedFormatVerbose())
 	}
 	return out, nil
 }
@@ -117,7 +118,7 @@ func (a *CloudRuAdapter) DeleteVMInProject(ctx context.Context, id, projectID st
 func (a *CloudRuAdapter) AddSecurityGroupRule(ctx context.Context, sgID, projectID string, rule SGRule) (*SGRule, error) {
 	body, err := json.Marshal(rule)
 	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to marshal SG rule", "Check parameters", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to marshal SG rule", "не удалось сформировать правило группы безопасности"), i18n.T("Check parameters", "Проверьте параметры"), err)
 	}
 	path := fmt.Sprintf("/api/v1/security-groups/%s/rules", seg(sgID))
 	if projectID != "" {
@@ -160,7 +161,7 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 		err = json.NewDecoder(io.LimitReader(resp.Body, maxListBody)).Decode(&page)
 		resp.Body.Close()
 		if err != nil {
-			return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode security group rules", "API returned unexpected format — run with --verbose to debug", err)
+			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode security group rules", "не удалось разобрать правила группы безопасности"), hintUnexpectedFormatVerbose(), err)
 		}
 		for i := range page.Items {
 			out = append(out, &page.Items[i])
@@ -220,7 +221,7 @@ func (a *CloudRuAdapter) AttachFloatingIP(ctx context.Context, fipID, projectID,
 	}
 	body, err := json.Marshal(map[string]string{"interface_id": interfaceID, "name": name})
 	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to marshal attach request", "Check parameters", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to marshal attach request", "не удалось сформировать запрос на привязку floating IP"), i18n.T("Check parameters", "Проверьте параметры"), err)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodPut, path, body)
 	if err != nil {

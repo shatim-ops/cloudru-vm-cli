@@ -663,7 +663,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 					return rec, ctx.Err()
 				}
 				if err != nil {
-					e.Printer.Warning(fmt.Sprintf("floating IP: %v", err))
+					e.Printer.Warning(i18n.Tf("floating IP: %v", "floating IP не назначен: %v", err))
 					// Continue without public IP — user can assign manually.
 				}
 				if publicIP != "" {
@@ -986,7 +986,7 @@ func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		// Never a second one next to the recorded FIP.
 		f, err := e.Cloud.GetFloatingIP(ctx, rec.FloatingIPID)
 		if err != nil {
-			e.Printer.Warning(fmt.Sprintf("floating IP %s: %v", rec.FloatingIPID, err))
+			e.Printer.Warning(i18n.Tf("floating IP %s: %v", "не удалось прочитать floating IP %s: %v", rec.FloatingIPID, err))
 			return
 		}
 		rec.VMIP = f.IPAddress
@@ -998,7 +998,7 @@ func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRec
 	}
 	rec.VMIP = ip
 	if err != nil {
-		e.Printer.Warning(fmt.Sprintf("floating IP: %v", err))
+		e.Printer.Warning(i18n.Tf("floating IP: %v", "floating IP не назначен: %v", err))
 	}
 }
 

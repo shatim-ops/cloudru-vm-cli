@@ -690,12 +690,14 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		}
 	}
 	// Reverse teardown of what was created. 404/not-found is idempotent success.
+	// The code (VM_NOT_FOUND, NOT_FOUND) is checked too: in the CLI the
+	// message is in the language of the CLI.
 	var deleted, failed []string
 	del := func(label, tool string, dargs map[string]any) {
 		dargs["confirmed"] = true
 		if _, e := s.callTool(ctx, tool, dargs); e != nil {
 			msg := e.Error()
-			if strings.Contains(msg, "404") || strings.Contains(strings.ToLower(msg), "not found") {
+			if strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") || strings.Contains(strings.ToLower(msg), "not found") {
 				deleted = append(deleted, label+" (already gone)")
 			} else {
 				failed = append(failed, label+": "+msg)
