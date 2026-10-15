@@ -82,9 +82,13 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	}
 
 	// --- Disk type ---
-	diskGB := p.DiskGB
-	if diskGB <= 0 {
-		diskGB = 10
+	minDisk := 0
+	if d, e := cloud.GetImage(ctx, image.ID); e == nil {
+		minDisk = d.MinDisk
+	}
+	diskGB, diskNote := provision.BootDiskGB(p.DiskGB, minDisk)
+	if diskNote != "" {
+		warnings = append(warnings, diskNote)
 	}
 	diskName, diskID := "SSD", ""
 	if dts, e := cloud.ListDiskTypes(ctx, projectID); e == nil && len(dts) > 0 {

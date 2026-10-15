@@ -29,7 +29,7 @@ func (s *Registry) registerTools() {
 				"region":       strProp("Availability zone UUID (see list_zones)."),
 				"project_id":   strProp("Cloud.ru project UUID."),
 				"image_id":     strProp("Boot image UUID (see list_images)."),
-				"disk_size":    intProp("Boot disk size in GB (default: 10)."),
+				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
 				"force":        boolProp("Redeploy even if the compose hash is unchanged."),
 				"confirmed":    boolProp("Must be true — set only after the captain approved. Omit for a preview."),
 			}),
@@ -43,7 +43,7 @@ func (s *Registry) registerTools() {
 				"region":       strProp("Availability zone UUID (see list_zones)."),
 				"project_id":   strProp("Cloud.ru project UUID."),
 				"image_id":     strProp("Boot image UUID (see list_images)."),
-				"disk_size":    intProp("Boot disk size in GB (default: 10)."),
+				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
 				"subnet_id":    strProp("Subnet UUID for the interface (default: a subnet in the target zone)."),
 				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
 				"confirmed":    boolProp("Must be true — set only after the captain approved. Omit for a preview."),
@@ -1474,11 +1474,6 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		vmName = "cloudru-vm-" + fmt.Sprintf("%d", time.Now().Unix())
 	}
 
-	diskSize := eng.Config.DiskSize
-	if diskSize <= 0 {
-		diskSize = 10
-	}
-
 	// Resolve flavor: name -> UUID, "auto" -> smallest lowcost, UUID passthrough.
 	// Free-tier is limited to 1 VM (usually already in use), so auto skips it.
 	flavorID := eng.Config.Flavor
@@ -1548,6 +1543,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	if err != nil {
 		return errResult(fmt.Errorf("get image details: %w", err)), true
 	}
+	diskSize, diskNote := provision.BootDiskGB(eng.Config.DiskSize, imgDetail.MinDisk)
 
 	if err := eng.EnsureSSHKey(); err != nil {
 		return errResult(err), true
@@ -1787,7 +1783,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				if noPublicIP {
 					msg = fmt.Sprintf("VM %s is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC.", vm.ID)
 				}
-				return toJSON(map[string]any{
+				res := map[string]any{
 					"status":   "ok",
 					"vm_id":    vm.ID,
 					"vm_ip":    publicIP,
@@ -1795,8 +1791,13 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					"ssh_user": sshUser,
 					"flavor":   flavorID,
 					"region":   region,
+					"disk_gb":  diskSize,
 					"message":  msg,
-				}), false
+				}
+				if diskNote != "" {
+					res["warning"] = diskNote
+				}
+				return toJSON(res), false
 			}
 			if updated.Status == "error" {
 				return errResult(fmt.Errorf("VM %s entered error state", vm.ID)), true

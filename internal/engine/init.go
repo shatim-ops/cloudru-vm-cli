@@ -96,7 +96,7 @@ image_id: %s  # %s
 # VM flavor: auto picks the smallest that fits your compose services
 flavor: auto
 
-# Boot disk size in GB
+# Boot disk size in GB (raised to the image minimum if smaller)
 disk_size: 10
 
 # Docker Compose file to deploy

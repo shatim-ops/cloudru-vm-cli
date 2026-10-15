@@ -344,15 +344,14 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	}
 	vmName := vmNameFor(projectName)
 
-	diskSize := e.Config.DiskSize
-	if diskSize <= 0 {
-		diskSize = 10
-	}
-
 	// Fetch image details to discover required metadata field names.
 	imgDetail, err := e.Cloud.GetImage(ctx, imageID)
 	if err != nil {
 		return state.DeploymentRecord{}, fmt.Errorf("get image details: %w", err)
+	}
+	diskSize, diskNote := provision.BootDiskGB(e.Config.DiskSize, imgDetail.MinDisk)
+	if diskNote != "" {
+		e.Printer.Warning(diskNote)
 	}
 
 	// Build image_metadata dict: keys are field names from the image definition.
