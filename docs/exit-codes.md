@@ -2,7 +2,7 @@
 
 Коды — часть публичного контракта: скрипты на них опираются, поэтому значения
 не меняются, только добавляются новые. Тот же список печатает
-`cloudru-vm --help`.
+`evo --help`.
 
 | Код | Значение | Типичные причины (внутренний код ошибки) |
 |---|---|---|
@@ -33,13 +33,13 @@
 
 ```text
 Error: IAM rejected the credentials (status 401)
-Verify the key ID and secret: 'cloudru-vm configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET
+Verify the key ID and secret: 'evo configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET
 ```
 
 С `--json` — один объект JSON в stderr, stdout остаётся для данных:
 
 ```json
-{"error":{"code":2,"message":"IAM rejected the credentials (status 401)","hint":"Verify the key ID and secret: 'cloudru-vm configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET"}}
+{"error":{"code":2,"message":"IAM rejected the credentials (status 401)","hint":"Verify the key ID and secret: 'evo configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET"}}
 ```
 
 Предупреждения (устаревшая переменная, права `credentials.yaml`, порты, которые
@@ -59,10 +59,10 @@ Verify the key ID and secret: 'cloudru-vm configure', or CLOUDRU_KEY_ID / CLOUDR
 ## В скриптах
 
 ```sh
-cloudru-vm deploy --yes --json > deploy.json
+evo deploy --yes --json > deploy.json
 case $? in
   0)   echo "развёрнуто" ;;
-  2)   echo "проверьте ключ: cloudru-vm whoami" ;;
+  2)   echo "проверьте ключ: evo whoami" ;;
   3)   echo "нужно подтверждение" ;;
   130) echo "прервано" ;;
   *)   echo "ошибка" ;;

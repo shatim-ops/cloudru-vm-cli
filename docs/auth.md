@@ -1,6 +1,6 @@
 # Доступ к Cloud.ru: ключ, проект, профили, переменные окружения
 
-cloudru-vm ходит в API Cloud.ru от имени **сервисного аккаунта**: пара
+evo ходит в API Cloud.ru от имени **сервисного аккаунта**: пара
 Key ID + Key Secret его ключа доступа обменивается в IAM
 (`iam.api.cloud.ru`) на токен на час, токен кэшируется на диске. Кроме ключа
 нужен **UUID проекта**, в котором создаются ресурсы.
@@ -10,7 +10,7 @@ Secret, тот же обмен), но для скриптов, CI и MCP-сер�
 сервисный аккаунт с правами только на нужный проект.
 
 > Термины. У Cloud.ru есть ещё «API-ключ» — отдельная сущность
-> (`Authorization: Api-Key …`), cloudru-vm её **не использует**. Переменная
+> (`Authorization: Api-Key …`), evo её **не использует**. Переменная
 > `CLOUDRU_API_KEY` исторически означает пару `keyId:secret` и устарела.
 
 ## 1. Сервисный аккаунт
@@ -19,7 +19,7 @@ Secret, тот же обмен), но для скриптов, CI и MCP-сер�
 по документации Cloud.ru на 14.10.2026; подписи кнопок могут меняться.
 
 1. «Пользователи» → «Сервисные аккаунты» → «Создать аккаунт» (справа вверху).
-2. Название и описание (например, `cloudru-vm-ci`).
+2. Название и описание (например, `evo-ci`).
 3. Уровень аккаунта — **«Проект»**, если аккаунт нужен для одного проекта.
 4. «Продолжить» → назначьте роли (см. [раздел 3](#3-роли)) → «Создать».
 
@@ -34,7 +34,7 @@ Secret, тот же обмен), но для скриптов, CI и MCP-сер�
    жизни**: по его истечении ключ перестаёт работать. Бессрочный ключ Cloud.ru
    не рекомендует; ограничьте срок или меняйте ключ сами не реже раза в год.
 4. «Создать». **Key Secret показывается один раз** — сохраните его сразу
-   (в менеджер паролей или сразу в `cloudru-vm configure`).
+   (в менеджер паролей или сразу в `evo configure`).
 
 На один сервисный аккаунт — до 20 ключей.
 Документация: [создание ключа доступа](https://cloud.ru/docs/console_api/ug/topics/guides__service_accounts_key-create?source-platform=Evolution).
@@ -71,18 +71,18 @@ UUID проекта (вида `3f2a8c1e-…`) возьмите в консоли
 проекте, в котором сервисный аккаунт получил роли. Персональный ключ
 пользователя видит свои проекты сам — `configure` покажет список.
 
-## 5. `cloudru-vm configure`
+## 5. `evo configure`
 
 Интерактивно (в терминале):
 
 ```console
-$ cloudru-vm configure
-Configuring profile "default" in /home/me/.config/cloudru-vm
+$ evo configure
+Configuring profile "default" in /home/me/.config/evo
 Access key ID: 7b1e…
 Secret:                                   ← не отображается
 Could not list projects (…).              ← для сервисного аккаунта это нормально
 Project ID: 3f2a8c1e-…
-Profile "default" saved to /home/me/.config/cloudru-vm
+Profile "default" saved to /home/me/.config/evo
 ```
 
 `configure` сначала обменивает ключ на токен — неверный ключ не сохранится.
@@ -92,7 +92,7 @@ Profile "default" saved to /home/me/.config/cloudru-vm
 виден в `ps` и истории оболочки.
 
 ```sh
-printf '%s' "$CLOUDRU_SECRET" | cloudru-vm configure \
+printf '%s' "$CLOUDRU_SECRET" | evo configure \
   --key-id "$CLOUDRU_KEY_ID" --secret-stdin --project-id "$CLOUDRU_PROJECT_ID"
 ```
 
@@ -102,8 +102,8 @@ printf '%s' "$CLOUDRU_SECRET" | cloudru-vm configure \
 Проверка:
 
 ```sh
-cloudru-vm whoami        # профиль, Key ID (маскирован), проект, срок токена; код 2 при отказе IAM
-cloudru-vm doctor        # файлы и права, откуда взята каждая настройка, доступность API, kubectl/helm
+evo whoami        # профиль, Key ID (маскирован), проект, срок токена; код 2 при отказе IAM
+evo doctor        # файлы и права, откуда взята каждая настройка, доступность API, kubectl/helm
 ```
 
 ### Профили
@@ -112,11 +112,11 @@ cloudru-vm doctor        # файлы и права, откуда взята к�
 `default`.
 
 ```sh
-cloudru-vm configure --profile staging        # создать/изменить профиль
-cloudru-vm --profile staging vm list          # использовать разово
+evo configure --profile staging        # создать/изменить профиль
+evo --profile staging vm list          # использовать разово
 export CLOUDRU_PROFILE=staging                # использовать в этой оболочке
-cloudru-vm configure list                     # профили; активный помечен *
-cloudru-vm configure delete staging           # удалить профиль и его кэш токена
+evo configure list                     # профили; активный помечен *
+evo configure delete staging           # удалить профиль и его кэш токена
 ```
 
 Имя профиля: латиница, цифры, `-`, `_`, `.`, до 64 символов. Профиль, названный
@@ -147,20 +147,20 @@ profiles:
 
 1. **флаги** (`--project-id`, `--region`, `--profile`, флаги `deploy`…);
 2. **переменные окружения** (таблица ниже); пустая переменная = не задана;
-3. **файл проекта** `./.cloudru-vm.yaml` в текущем каталоге (его создаёт
+3. **файл проекта** `./.evo.yaml` в текущем каталоге (его создаёт
    `init`; его можно коммитить — секреты из него **не читаются**, `doctor`
    предупредит, если они там есть);
 4. **профиль** — `config.yaml` и `credentials.yaml` (см. [раздел 8](#что-хранится-на-машине));
 5. значения по умолчанию.
 
 Ключ берётся парой целиком: если задана хотя бы одна из `CLOUDRU_KEY_ID` /
-`CLOUDRU_SECRET`, ключ профиля не используется. `cloudru-vm doctor` показывает,
+`CLOUDRU_SECRET`, ключ профиля не используется. `evo doctor` показывает,
 откуда взята каждая настройка (`flag`, `env`, `project`, `profile`,
 `default`).
 
 ## 7. Переменные окружения
 
-Полный список переменных, которые читает cloudru-vm. Тест в CI
+Полный список переменных, которые читает evo. Тест в CI
 (`TestAuthDoc_ListsEveryEnvVar`) проверяет, что каждая переменная из кода
 упомянута в этом файле.
 
@@ -176,11 +176,11 @@ profiles:
 
 ### Проект и параметры развёртывания
 
-| Переменная | Что задаёт | Флаг / ключ в `.cloudru-vm.yaml` и профиле |
+| Переменная | Что задаёт | Флаг / ключ в `.evo.yaml` и профиле |
 |---|---|---|
 | `CLOUDRU_PROJECT_ID` | UUID проекта (обязателен для команд, создающих ресурсы) | `--project-id` / `project_id` |
-| `CLOUDRU_REGION` | UUID зоны доступности (`cloudru-vm list-zones`) | `--region` / `region` |
-| `CLOUDRU_IMAGE_ID` | UUID загрузочного образа для `deploy` (`cloudru-vm list-images`) | `deploy --image-id` / `image_id` |
+| `CLOUDRU_REGION` | UUID зоны доступности (`evo list-zones`) | `--region` / `region` |
+| `CLOUDRU_IMAGE_ID` | UUID загрузочного образа для `deploy` (`evo list-images`) | `deploy --image-id` / `image_id` |
 | `CLOUDRU_FLAVOR` | конфигурация ВМ, например `lowcost10-2-4`; `auto` — подобрать (по умолчанию) | `deploy --flavor` / `flavor` |
 | `CLOUDRU_DISK_SIZE` | размер загрузочного диска, ГБ (по умолчанию 10) | `deploy --disk-size` / `disk_size` |
 | `CLOUDRU_COMPOSE_FILE` | путь к compose-файлу (по умолчанию `docker-compose.yml`) | `deploy -f` / `compose_file` |
@@ -202,7 +202,7 @@ profiles:
 | Переменная | Что задаёт |
 |---|---|
 | `MCP_BEARER_TOKEN` | токен, который клиенты `mcp --http` присылают в `Authorization: Bearer …`; без него HTTP-сервер не стартует (кроме `--auth none` на loopback). Только переменной — флага нет, чтобы токен не светился в `ps` |
-| `MCP_HEALTHCHECK_URL` | адрес для `cloudru-vm mcp healthcheck` (HEALTHCHECK Docker-образа); по умолчанию `http://127.0.0.1:8080/healthz` |
+| `MCP_HEALTHCHECK_URL` | адрес для `evo mcp healthcheck` (HEALTHCHECK Docker-образа); по умолчанию `http://127.0.0.1:8080/healthz` |
 
 ### Вывод
 
@@ -224,35 +224,39 @@ profiles:
 | настройки профилей (проект, зона, умолчания) | `config.yaml` в каталоге конфигурации | `0600`, каталог `0700` |
 | ключи профилей (Key ID, Key Secret, S3) | `credentials.yaml` там же | `0600` |
 | кэш IAM-токена (на час, привязан к Key ID) | `token-<профиль>.json` в каталоге кэша | `0600` |
-| настройки проекта (без секретов) | `./.cloudru-vm.yaml` | `0644`, можно коммитить |
-| состояние развёртываний (ID ВМ, IP, floating IP, порты) | `./.cloudru-vm/state.json` | `0644` в каталоге `0700` |
-| **приватный SSH-ключ к созданным ВМ** | `./.cloudru-vm/id_ed25519` (+ `.pub`) | `0600`, каталог `0700` |
-| планы MCP `deploy_plan` | `./.cloudru-vm/plans/` | `0600`, каталог `0700` |
-| задания `stack_*` (MCP) | `~/.cloudru-vm/stack-jobs/` | `0600`, каталог `0700` |
-| своя таблица цен (необязательно, создаёте вы) | `~/.cloudru-vm/pricing.json` | |
+| настройки проекта (без секретов) | `./.evo.yaml` | `0644`, можно коммитить |
+| состояние развёртываний (ID ВМ, IP, floating IP, порты) | `./.evo/state.json` | `0644` в каталоге `0700` |
+| **приватный SSH-ключ к созданным ВМ** | `./.evo/id_ed25519` (+ `.pub`) | `0600`, каталог `0700` |
+| планы MCP `deploy_plan` | `./.evo/plans/` | `0600`, каталог `0700` |
+| задания `stack_*` (MCP) | `~/.evo/stack-jobs/` | `0600`, каталог `0700` |
+| своя таблица цен (необязательно, создаёте вы) | `~/.evo/pricing.json` | |
 
 Каталоги конфигурации и кэша:
 
 | ОС | Конфигурация | Кэш токена |
 |---|---|---|
-| Linux | `~/.config/cloudru-vm` (или `$XDG_CONFIG_HOME/cloudru-vm`) | `~/.cache/cloudru-vm` (`$XDG_CACHE_HOME`) |
-| macOS | `~/Library/Application Support/cloudru-vm` | `~/Library/Caches/cloudru-vm` |
-| Windows | `%AppData%\cloudru-vm` | `%LocalAppData%\cloudru-vm` |
+| Linux | `~/.config/evo` (или `$XDG_CONFIG_HOME/evo`) | `~/.cache/evo` (`$XDG_CACHE_HOME`) |
+| macOS | `~/Library/Application Support/evo` | `~/Library/Caches/evo` |
+| Windows | `%AppData%\evo` | `%LocalAppData%\evo` |
 | с `CLOUDRU_CONFIG_DIR=D` | `D` | `D/cache` |
+
+Профили и проекты, созданные под старым именем `cloudru-vm` (каталог
+конфигурации `…/cloudru-vm`, `./.cloudru-vm/`, `./.cloudru-vm.yaml`), до v1.1
+читаются — как именно, в [README → «Переименование»](../README.md#переименование).
 
 `./` — каталог, из которого запущена команда (для MCP по stdio — рабочий
 каталог, в котором клиент запускает сервер). SSH-ключ создаётся по одному на
 каталог проекта при первом `deploy` после подтверждения (`deploy --dry-run`
-и отказ без `--yes` ключа не создают). **`.cloudru-vm/` не коммитьте**:
+и отказ без `--yes` ключа не создают). **`.evo/` не коммитьте**:
 утёкший ключ — это доступ к вашим ВМ. Вместе с ключом в каталоге создаётся
-`.cloudru-vm/.gitignore` со строкой `*`, так что `git add .` его не берёт.
+`.evo/.gitignore` со строкой `*`, так что `git add .` его не берёт.
 
 Как пишутся эти файлы:
 
 - секреты и ключ — через временный файл, который создаётся сразу с правами
   `0600`, и `rename`: ни на миг не читаемы другими, а прерванная запись не
   оставляет половину файла;
-- символическая ссылка на месте `.cloudru-vm/`, `id_ed25519` или
+- символическая ссылка на месте `.evo/`, `id_ed25519` или
   `id_ed25519.pub` (такое может прийти с чужим репозиторием) — ошибка, а не
   запись по ссылке: иначе ключ переписал бы, например, `~/.ssh/authorized_keys`
   или достался бы владельцу файла, на который ведёт ссылка. Удалите ссылку —
@@ -267,23 +271,23 @@ profiles:
 **Windows.** Права `0600`/`0700` там ничего не значат (`chmod` меняет только
 атрибут «только чтение»), а новый файл по умолчанию наследует ACL каталога: в
 папке из корня диска (`C:\work`) его читали бы все «Прошедшие проверку».
-Поэтому `credentials.yaml`, `config.yaml`, кэш токена, `.cloudru-vm\id_ed25519`,
+Поэтому `credentials.yaml`, `config.yaml`, кэш токена, `.evo\id_ed25519`,
 задания `stack_*` и каталоги с ними создаются сразу (через `SECURITY_ATTRIBUTES`
 у `CreateFile`/`CreateDirectory`) с собственным ACL без наследования: полный
 доступ только у вас, SYSTEM и Администраторов — тот же набор, который OpenSSH
 для Windows требует от `~\.ssh` и приватных ключей. Файлы, созданные внутри
-`.cloudru-vm\` (`state.json`, планы), наследуют ACL этого каталога.
+`.evo\` (`state.json`, планы), наследуют ACL этого каталога.
 
-Файлы и каталоги прежних версий: каталог `.cloudru-vm\`, открытый другим,
+Файлы и каталоги прежних версий: каталог `.evo\` (или `.cloudru-vm\`), открытый другим,
 закрывается при первом обращении к ключу (как `chmod 700` на Unix), а если
 `credentials.yaml`, его каталог или ключ доступны кому-то ещё, команды и
 `doctor` предупреждают с готовой командой `icacls`. `credentials.yaml` и
-`config.yaml` можно и просто пересоздать: `cloudru-vm configure` переписывает
+`config.yaml` можно и просто пересоздать: `evo configure` переписывает
 оба файла с новым ACL. Закрыть вручную:
 
 ```powershell
-icacls "$env:APPDATA\cloudru-vm\credentials.yaml" /inheritance:r /grant:r "$($env:USERNAME):F"
-icacls .cloudru-vm /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F"
+icacls "$env:APPDATA\evo\credentials.yaml" /inheritance:r /grant:r "$($env:USERNAME):F"
+icacls .evo /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F"
 ```
 
 На FAT/exFAT (флешки) ACL нет вовсе — держите проекты на NTFS.
@@ -291,10 +295,12 @@ icacls .cloudru-vm /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F"
 ### Удалить всё
 
 ```sh
-cloudru-vm destroy                          # в каждом каталоге проекта: ВМ и floating IP
-cloudru-vm configure delete default         # профиль и его кэш токена (и другие профили)
-rm -rf ./.cloudru-vm ./.cloudru-vm.yaml     # состояние и SSH-ключ проекта
-rm -rf ~/.config/cloudru-vm ~/.cache/cloudru-vm ~/.cloudru-vm   # Linux; пути других ОС — в таблице выше
+evo destroy                          # в каждом каталоге проекта: ВМ и floating IP
+evo configure delete default         # профиль и его кэш токена (и другие профили)
+rm -rf ./.evo ./.evo.yaml            # состояние и SSH-ключ проекта
+rm -rf ~/.config/evo ~/.cache/evo ~/.evo   # Linux; пути других ОС — в таблице выше
+# то же под старым именем, если остались (см. README, «Переименование»):
+rm -rf ./.cloudru-vm ./.cloudru-vm.yaml ~/.config/cloudru-vm ~/.cache/cloudru-vm ~/.cloudru-vm
 ```
 
 Затем удалите ключ доступа в консоли (раздел «Ключи доступа» сервисного
@@ -304,10 +310,10 @@ rm -rf ~/.config/cloudru-vm ~/.cache/cloudru-vm ~/.cloudru-vm   # Linux; пут�
 ## Ротация ключа
 
 1. Создайте новый ключ у того же сервисного аккаунта ([раздел 2](#2-ключ-доступа)).
-2. `cloudru-vm configure` (или `--profile …`): введите новый Key ID и секрет;
+2. `evo configure` (или `--profile …`): введите новый Key ID и секрет;
    проект сохранится. Без терминала — та же команда с `--key-id` и
    `--secret-stdin`. Кэш старого токена не мешает: он привязан к Key ID.
-3. `cloudru-vm whoami` — новый ключ принят.
+3. `evo whoami` — новый ключ принят.
 4. Обновите ключ везде, где он задан переменными: секреты CI, окружение
    MCP-сервера / контейнера.
 5. Удалите старый ключ в консоли. Токены, выданные по нему, перестают

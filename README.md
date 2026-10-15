@@ -1,16 +1,18 @@
-# cloudru-vm
+# evo
+
+> Раньше — `cloudru-vm`: см. [«Переименование»](#переименование).
 
 Командная строка и MCP-сервер для [Cloud.ru Evolution](https://cloud.ru):
 виртуальные машины, диски, сети, Managed Kubernetes, PostgreSQL, Object
 Storage, Secret Manager — и развёртывание `docker-compose`-проекта на ВМ одной
 командой.
 
-- **CLI для человека и скриптов**: `cloudru-vm vm list`, `cloudru-vm deploy`,
-  `cloudru-vm k8s kubeconfig …`; у каждой команды есть `--json` и
+- **CLI для человека и скриптов**: `evo vm list`, `evo deploy`,
+  `evo k8s kubeconfig …`; у каждой команды есть `--json` и
   [стабильные коды выхода](docs/exit-codes.md).
-- **MCP-сервер для AI-агентов** (Claude Code, Cursor и др.): `cloudru-vm mcp`
+- **MCP-сервер для AI-агентов** (Claude Code, Cursor и др.): `evo mcp`
   по stdio или Streamable HTTP, в том числе из Docker-образа. Те же
-  инструменты доступны из CLI: `cloudru-vm tools list|describe|call`.
+  инструменты доступны из CLI: `evo tools list|describe|call`.
 - **Ничего платного без согласия**: создание ресурсов и удаление данных
   показывают превью (с оценкой цены, где она есть) и ждут подтверждения —
   одинаково у человека и у агента ([модель подтверждений](#подтверждения)).
@@ -21,7 +23,7 @@ Linux и macOS:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | sh
-cloudru-vm version
+evo version
 ```
 
 Скрипт проверяет sha256 архива и, если установлен `cosign`, подпись релиза.
@@ -34,18 +36,18 @@ Windows, ручная установка, проверка подписи, Gatek
 как их получить, в [docs/auth.md](docs/auth.md).
 
 ```sh
-cloudru-vm configure          # ключ и проект → профиль "default"
-cloudru-vm whoami             # ключ принят IAM, какой проект выбран
-cloudru-vm doctor             # конфиг, права файлов, доступность API
-cloudru-vm vm list            # ВМ проекта
+evo configure          # ключ и проект → профиль "default"
+evo whoami             # ключ принят IAM, какой проект выбран
+evo doctor             # конфиг, права файлов, доступность API
+evo vm list            # ВМ проекта
 
 cd my-app                     # каталог с docker-compose.yml
-cloudru-vm init               # .cloudru-vm.yaml: зона и образ из API
-cloudru-vm deploy --dry-run   # что будет создано и сколько стоит; ничего не создаёт
-cloudru-vm deploy             # ВМ + публичный IP + docker compose up -d
-cloudru-vm verify             # порты приложения отвечают
-cloudru-vm logs -f            # логи контейнеров
-cloudru-vm destroy            # удалить ВМ и освободить IP
+evo init               # .evo.yaml: зона и образ из API
+evo deploy --dry-run   # что будет создано и сколько стоит; ничего не создаёт
+evo deploy             # ВМ + публичный IP + docker compose up -d
+evo verify             # порты приложения отвечают
+evo logs -f            # логи контейнеров
+evo destroy            # удалить ВМ и освободить IP
 ```
 
 Для `deploy` машине, с которой он запускается, нужен исходящий доступ к
@@ -82,9 +84,9 @@ MCP-сервер держит ту же границу: изменяющий и�
 только повторным вызовом с `confirmed=true` — после согласия человека.
 
 ```sh
-cloudru-vm disk delete 1b2c… --dry-run   # что будет удалено
-cloudru-vm disk delete 1b2c… --yes       # удалить без вопроса (скрипт, CI)
-cloudru-vm disk delete 1b2c… </dev/null; echo $?   # 3: без терминала и без --yes ничего не удалено
+evo disk delete 1b2c… --dry-run   # что будет удалено
+evo disk delete 1b2c… --yes       # удалить без вопроса (скрипт, CI)
+evo disk delete 1b2c… </dev/null; echo $?   # 3: без терминала и без --yes ничего не удалено
 ```
 
 Цена в превью — **оценка** по встроенной таблице тарифов, а не счёт: публичного
@@ -103,28 +105,52 @@ API цен у Cloud.ru нет.
 | [docs/RELEASING.md](docs/RELEASING.md) | для сопровождающих: выпуск релиза |
 
 **Переход со старых версий:** файл `~/.cloudru-vm.yaml` больше не читается —
-ключ и проект живут в профиле (`cloudru-vm configure`), а настройки проекта —
-в `./.cloudru-vm.yaml`. `cloudru-vm doctor` предупреждает, если старый файл
+ключ и проект живут в профиле (`evo configure`), а настройки проекта —
+в `./.evo.yaml`. `evo doctor` предупреждает, если старый файл
 остался. `CLOUDRU_API_KEY=keyId:secret` пока работает, но устарел: используйте
 `CLOUDRU_KEY_ID` и `CLOUDRU_SECRET`.
+
+## Переименование
+
+До версии 1.0 инструмент назывался `cloudru-vm`. Что изменилось и что
+продолжает работать до v1.1:
+
+| Было | Стало | До v1.1 |
+|---|---|---|
+| бинарь `cloudru-vm` | `evo` | в архиве релиза и в `install.sh` есть alias `cloudru-vm` — тот же бинарь; печатает в stderr «cloudru-vm переименован в evo, alias будет удалён в v1.1» и работает как `evo` |
+| профили в `<каталог конфигурации>/cloudru-vm/` | `<каталог конфигурации>/evo/` | при первом запуске `evo` копирует `config.yaml` и `credentials.yaml` (права `0600`, каталог `0700`, на Windows — свой ACL); старый каталог не трогается, кэш токена не копируется — токен выписывается заново |
+| `./.cloudru-vm.yaml` | `./.evo.yaml` | старый файл читается с предупреждением, если нового нет |
+| `./.cloudru-vm/` (state, SSH-ключ, планы), `~/.cloudru-vm/` (задания `stack_*`, цены) | `./.evo/`, `~/.evo/` | старый каталог используется на месте, с предупреждением; `destroy` и `status` видят ВМ из его `state.json` |
+| MCP-сервер `cloudru-vm` (`serverInfo.name`) | `evo` | имена инструментов не менялись; в конфиге клиента поменяйте команду на `evo mcp` |
+| Docker-образ `<реестр>/cloudru-vm` | `<реестр>/evo` | |
+| ВМ `cloudru-vm-<проект>`, правила групп безопасности «cloudru-vm: port N» | `evo-<проект>`, «evo: port N» для новых ресурсов | уже созданные ресурсы не переименовываются; `destroy` удаляет их по ID из state |
+
+Переменные окружения `CLOUDRU_*` не переименованы: это имя провайдера, а не
+инструмента. Каталог проекта переименуйте сами, когда в нём не работает
+старая версия (например, MCP-сервер со старым бинарём):
+
+```sh
+evo status                  # ВМ на месте, предупреждение о ./.cloudru-vm/
+mv .cloudru-vm .evo && mv .cloudru-vm.yaml .evo.yaml
+```
 
 ## Поддержка
 
 Ошибки и вопросы — в [Issues](https://github.com/shatim-ops/cloudru-vm-cli/issues)
-этого репозитория. Приложите вывод `cloudru-vm doctor --json` и
-`cloudru-vm version` (секретов в них нет) — подробнее в
+этого репозитория. Приложите вывод `evo doctor --json` и
+`evo version` (секретов в них нет) — подробнее в
 [docs/troubleshooting.md](docs/troubleshooting.md#обращение-в-поддержку).
 
 ## Сборка из исходников
 
 ```sh
-go build -o bin/cloudru-vm ./cmd/cloudru-vm
+go build -o bin/evo ./cmd/evo
 gofmt -l . && go vet ./... && go test -race ./... && govulncheck ./...
 ```
 
 Нужен Go из `go.mod`; CI гоняет то же на Linux, macOS и Windows
 (`.github/workflows/ci.yml`). После изменения команд или флагов обновите
-справку: `go test ./cmd/cloudru-vm -run TestCommandsDoc -update-docs`.
+справку: `go test ./cmd/evo -run TestCommandsDoc -update-docs`.
 Внутренние планы и история проекта — `docs/internal/`.
 
 ## Лицензия

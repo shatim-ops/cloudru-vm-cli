@@ -3,8 +3,8 @@
 Первое, что стоит запустить при любой проблеме:
 
 ```sh
-cloudru-vm doctor      # конфиг, права файлов, откуда взята каждая настройка, IAM/Compute API, ключ, kubectl/helm
-cloudru-vm whoami      # принимает ли IAM ключ, какой проект выбран
+evo doctor      # конфиг, права файлов, откуда взята каждая настройка, IAM/Compute API, ключ, kubectl/helm
+evo whoami      # принимает ли IAM ключ, какой проект выбран
 ```
 
 Коды выхода — в [exit-codes.md](exit-codes.md).
@@ -13,21 +13,21 @@ cloudru-vm whoami      # принимает ли IAM ключ, какой про
 
 ### `AUTH_REQUIRED` (код 2): no access key
 
-Ключ не найден ни в переменных, ни в профиле. `cloudru-vm configure` или
+Ключ не найден ни в переменных, ни в профиле. `evo configure` или
 `CLOUDRU_KEY_ID` + `CLOUDRU_SECRET`. Если вы задали `--profile` /
-`CLOUDRU_PROFILE` — проверьте `cloudru-vm configure list`: профиль из другого
+`CLOUDRU_PROFILE` — проверьте `evo configure list`: профиль из другого
 `CLOUDRU_CONFIG_DIR` не виден.
 
 ### `AUTH_FAILED` (код 2): IAM rejected the credentials (status 401/403)
 
 IAM не принял пару Key ID / Key Secret:
 
-- опечатка или пробел в секрете — введите заново через `cloudru-vm configure`;
+- опечатка или пробел в секрете — введите заново через `evo configure`;
 - ключ удалён или истёк его срок жизни (задаётся при создании) — создайте
   новый ([auth.md → ротация](auth.md#ротация-ключа));
 - сервисный аккаунт выключен;
 - одна из `CLOUDRU_KEY_ID` / `CLOUDRU_SECRET` задана в окружении — тогда ключ
-  профиля не используется вовсе: `cloudru-vm doctor` покажет `key_id from env`.
+  профиля не используется вовсе: `evo doctor` покажет `key_id from env`.
 
 ### `403 Forbidden` от сервиса (код 5)
 
@@ -55,8 +55,21 @@ IAM не принял пару Key ID / Key Secret:
 ### `legacy config` в `doctor`
 
 Найден `~/.cloudru-vm.yaml` от старых версий — он больше не читается.
-Перенесите значения: ключ и проект — `cloudru-vm configure`, настройки проекта —
-`./.cloudru-vm.yaml` (`cloudru-vm init`). Потом удалите старый файл.
+Перенесите значения: ключ и проект — `evo configure`, настройки проекта —
+`./.evo.yaml` (`evo init`). Потом удалите старый файл.
+
+### `using the legacy directory …/.cloudru-vm`, `reading the legacy …/.cloudru-vm.yaml`
+
+Проект развёрнут версией, которая называлась `cloudru-vm`. Предупреждение, не
+ошибка: `evo` работает в старом каталоге — state с ВМ и SSH-ключ там. Когда в
+этом каталоге не работает старая версия (в том числе MCP-сервер со старым
+бинарём), переименуйте: `mv .cloudru-vm .evo && mv .cloudru-vm.yaml .evo.yaml`.
+С v1.1 старые имена читаться не будут.
+
+`both … and … have state` — есть оба каталога и в обоих `state.json`: `evo`
+читает `./.evo/`, а ВМ из `./.cloudru-vm/state.json` не видит. Проверьте их
+(`jq .deployments .cloudru-vm/state.json`) и удалите старой версией или в
+консоли, прежде чем удалять каталог.
 
 ## Создание и удаление ВМ
 
@@ -66,28 +79,28 @@ IAM не принял пару Key ID / Key Secret:
 другую зону, например **ru.AZ-2**:
 
 ```sh
-cloudru-vm list-zones                       # ID и имена зон
-cloudru-vm deploy --region <UUID ru.AZ-2>   # или region: в .cloudru-vm.yaml
+evo list-zones                       # ID и имена зон
+evo deploy --region <UUID ru.AZ-2>   # или region: в .evo.yaml
 ```
 
-ВМ в ошибке удалите (`cloudru-vm destroy` или `cloudru-vm vm delete <id>`),
+ВМ в ошибке удалите (`evo destroy` или `evo vm delete <id>`),
 чтобы она не занимала квоту.
 
 ### Удаление отвечает `422`, ВМ в состоянии `creating`
 
 ВМ, которая ещё создаётся, удалить нельзя — API отвечает `422`. Подождите,
-пока она перейдёт в `running` или `error` (`cloudru-vm vm get <id>`), и
+пока она перейдёт в `running` или `error` (`evo vm get <id>`), и
 повторите `destroy`. В скриптах — повтор с паузой:
 
 ```sh
-for i in 1 2 3; do cloudru-vm destroy --yes && break; sleep 30; done
+for i in 1 2 3; do evo destroy --yes && break; sleep 30; done
 ```
 
 ### Порты в группе безопасности после `destroy`
 
 `deploy` открывает порты из `ports:` compose-файла правилом в **общей группе
 безопасности зоны** (входящий TCP/UDP с `0.0.0.0/0`, описание
-`cloudru-vm: port N`) и записывает в `.cloudru-vm/state.json` id группы и
+`evo: port N`) и записывает в `.evo/state.json` id группы и
 id правил, которые создал сам. Правило, которое уже было в группе до
 `deploy`, своим не считается и не удаляется. `destroy` удаляет свои правила
 **после** удаления ВМ (если ВМ удалить не удалось, приложение продолжает
@@ -97,15 +110,15 @@ id правил, которые создал сам. Правило, котор�
 Группа общая: ВМ, развёрнутая из **другого** каталога, могла полагаться на
 правило, которое создал этот `deploy`, — превью `destroy` об этом
 предупреждает. После такого `destroy` выполните в том каталоге
-`cloudru-vm deploy --force`: повторный `deploy` открывает недостающие порты.
+`evo deploy --force`: повторный `deploy` открывает недостающие порты.
 
 Если правило удалить не удалось (например, оно ещё в состоянии `creating`),
 `destroy` завершается успешно с предупреждением, а запись остаётся в
 `state.json` со статусом `destroyed` и ошибкой у правила (`delete_error`).
-Повторный `cloudru-vm destroy` доудаляет правила. Посмотреть правила групп:
+Повторный `evo destroy` доудаляет правила. Посмотреть правила групп:
 
 ```sh
-cloudru-vm tools call list_security_groups --arg rules=true --json
+evo tools call list_security_groups --arg rules=true --json
 ```
 
 Развёртывания, записанные версиями до этой, id правил не хранят: их правила
@@ -130,7 +143,7 @@ Floating IP не назначился (квота на публичные IP, в
 Ошибка API с текстом про квоту/лимит (код 5). Текущие лимиты и использование:
 
 ```sh
-cloudru-vm tools call org_quotas
+evo tools call org_quotas
 ```
 
 Увеличение квоты — через поддержку Cloud.ru.
@@ -143,7 +156,7 @@ Cloud.ru ограничил частоту запросов. Запросы к c
 
 ### `API_UNREACHABLE` (код 1)
 
-Нет связи с `*.api.cloud.ru`: сеть, DNS, прокси. `cloudru-vm doctor`
+Нет связи с `*.api.cloud.ru`: сеть, DNS, прокси. `evo doctor`
 покажет, какие API недоступны. Обрывы бывают и разовыми (при облачной
 приёмке `list-zones` из контейнера падал так примерно в одном запуске из
 трёх) — повторите команду.
@@ -155,32 +168,32 @@ Cloud.ru ограничил частоту запросов. Запросы к c
 `deploy` ставит Docker и загружает compose-файлы по SSH **с вашей машины**.
 Нужен **исходящий доступ к порту 22** публичного IP ВМ. Корпоративные сети и
 VPN часто его закрывают — запустите с другой сети или с ВМ/раннера, где
-порт 22 открыт наружу. Проверка: `nc -vz <IP> 22` (IP — в `cloudru-vm status`).
+порт 22 открыт наружу. Проверка: `nc -vz <IP> 22` (IP — в `evo status`).
 Сразу после создания ВМ SSH поднимается не мгновенно; `deploy` ждёт и
 повторяет подключение сам.
 
 ### `SSH_AUTH_FAILED`
 
-SSH-ключ к ВМ лежит в `./.cloudru-vm/id_ed25519` **каталога, из которого
+SSH-ключ к ВМ лежит в `./.evo/id_ed25519` **каталога, из которого
 делался `deploy`**. Запуск `status`, `logs`, `deploy` из другого каталога или
-после удаления `.cloudru-vm/` — это другой ключ, и ВМ его не примет.
-Вернитесь в исходный каталог (или восстановите `.cloudru-vm/`). Если ключ
+после удаления `.evo/` — это другой ключ, и ВМ его не примет.
+Вернитесь в исходный каталог (или восстановите `.evo/`). Если ключ
 потерян — `destroy` и новый `deploy`.
 
 ### `SSH_HOST_KEY_CHANGED`
 
 Ключ хоста ВМ не совпал с сохранённым при первом подключении. Обычно IP
-достался другой ВМ (ВМ пересоздали вне cloudru-vm). Если вы уверены, что это
+достался другой ВМ (ВМ пересоздали вне evo). Если вы уверены, что это
 ваша ВМ, — `destroy` и `deploy` заново; иначе не подключайтесь.
 
 ### `deploy` отвечает «No changes», хотя приложение не запущено
 
 Если `docker compose up` упал, запись остаётся в состоянии `running`, а хэш
-compose-файла не изменился. Повторите с `cloudru-vm deploy --force`.
+compose-файла не изменился. Повторите с `evo deploy --force`.
 
 ### `verify`: `UNHEALTHY` (код 1)
 
-Порт приложения не ответил снаружи. Проверьте `cloudru-vm logs`, что
+Порт приложения не ответил снаружи. Проверьте `evo logs`, что
 контейнер слушает `0.0.0.0`, и что порт открыт в группе безопасности
 (`deploy` открывает только порты из `ports:`).
 
@@ -197,18 +210,18 @@ compose-файла не изменился. Повторите с `cloudru-vm de
 
 ## Обращение в поддержку
 
-Ошибки cloudru-vm — в [Issues](https://github.com/shatim-ops/cloudru-vm-cli/issues)
+Ошибки evo — в [Issues](https://github.com/shatim-ops/cloudru-vm-cli/issues)
 репозитория; проблемы самого облака (квоты, ресурсы в ошибке, биллинг) — в
 [поддержку Cloud.ru](https://cloud.ru/docs/evolution/overview/contacts/technical-support).
 
 Приложите:
 
-1. `cloudru-vm version --json`;
-2. `cloudru-vm doctor --json` — Key ID в нём маскирован, секретов нет;
+1. `evo version --json`;
+2. `evo doctor --json` — Key ID в нём маскирован, секретов нет;
 3. точную команду, её вывод с `--json` и код выхода (`echo $?`);
-4. время (с часовым поясом), зону, ID ВМ или ресурса (`cloudru-vm status --json`).
+4. время (с часовым поясом), зону, ID ВМ или ресурса (`evo status --json`).
 
 **Не прикладывайте**: Key Secret, `credentials.yaml`, `CLOUDRU_SECRET`,
-`MCP_BEARER_TOKEN`, ключи S3, содержимое `.cloudru-vm/` (там приватный
+`MCP_BEARER_TOKEN`, ключи S3, содержимое `.evo/` (там приватный
 SSH-ключ к вашим ВМ), kubeconfig со встроенным токеном. Если секрет всё же
 попал в сообщение — удалите ключ в консоли и создайте новый.

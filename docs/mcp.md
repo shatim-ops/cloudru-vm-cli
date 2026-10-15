@@ -1,18 +1,18 @@
 # MCP-сервер
 
-`cloudru-vm mcp` — сервер [Model Context Protocol](https://modelcontextprotocol.io):
+`evo mcp` — сервер [Model Context Protocol](https://modelcontextprotocol.io):
 AI-агент (Claude Code, Cursor и любой другой MCP-клиент) получает ~150
 инструментов Cloud.ru — ВМ, диски, сети, DNS, балансировщики, Kubernetes,
 PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact Registry,
 мониторинг, биллинг, `deploy` docker-compose на ВМ. Список с описаниями и
-схемами аргументов — `cloudru-vm tools list` и `cloudru-vm tools describe <имя>`;
-любой инструмент можно вызвать и без агента: `cloudru-vm tools call`.
+схемами аргументов — `evo tools list` и `evo tools describe <имя>`;
+любой инструмент можно вызвать и без агента: `evo tools call`.
 
 Два транспорта:
 
 | | stdio | Streamable HTTP |
 |---|---|---|
-| Запуск | клиент сам запускает `cloudru-vm mcp` | `cloudru-vm mcp --http :8080` или Docker-образ |
+| Запуск | клиент сам запускает `evo mcp` | `evo mcp --http :8080` или Docker-образ |
 | Для чего | агент на вашей машине | общий сервер, контейнер, Marketplace |
 | Аутентификация клиента | не нужна (локальный процесс) | `Authorization: Bearer $MCP_BEARER_TOKEN` |
 | Креды Cloud.ru | ваш профиль / переменные окружения | профиль / переменные окружения **сервера** |
@@ -22,7 +22,7 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 
 Креды Cloud.ru всегда принадлежат серверу и находятся так же, как для
 обычных команд ([auth.md](auth.md#6-откуда-берутся-настройки)): переменные
-окружения, профиль из `cloudru-vm configure`, `./.cloudru-vm.yaml` в рабочем
+окружения, профиль из `evo configure`, `./.evo.yaml` в рабочем
 каталоге. Клиент их не передаёт и не видит.
 
 ## Подтверждения
@@ -40,7 +40,7 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 Агент должен показать превью человеку и, получив согласие, вызвать тот же
 инструмент с теми же аргументами и `"confirmed": true`. Граница проходит в
 сервере, до обращения к облаку: агент, который «сам решил» удалить кластер,
-упирается в неё. Поле `mutating` в `cloudru-vm tools list --json` показывает,
+упирается в неё. Поле `mutating` в `evo tools list --json` показывает,
 какие инструменты так устроены. CLI ведёт себя так же (`--yes`, `--dry-run`,
 код выхода `3`, см. [README](../README.md#подтверждения)).
 
@@ -62,7 +62,7 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
   завершения прерванного вызова до 10 с; повторный Ctrl-C убивает процесс
   сразу. Закрытый stdin вызовы **не** отменяет: строки, прочитанные до конца
   stdin, выполняются до конца и получают ответ, потом сервер завершается —
-  `printf … | cloudru-vm mcp` с долгим `deploy` дождётся результата.
+  `printf … | evo mcp` с долгим `deploy` дождётся результата.
   Недоведённый до конца `deploy` дороже законченного, ответ на который никто
   не прочитал;
 - **HTTP:** клиент закрыл соединение запроса (возобновления SSE-потока по
@@ -74,7 +74,7 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
   с причиной.
 
 Отмена после того, как запрос создания ушёл в облако, не теряет ресурс:
-`provision` и `deploy_apply` записывают ВМ в `.cloudru-vm/state.json`
+`provision` и `deploy_apply` записывают ВМ в `.evo/state.json`
 (статус `creating`) и называют её `vm_id` в ошибке — `status`/`destroy` её
 видят; план `deploy_apply` остаётся, повтор с тем же `plan_id` подхватывает
 ВМ по имени, а не создаёт вторую. `deploy` пишет запись до ожидания ВМ, как в
@@ -88,22 +88,26 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 ## stdio
 
 ```sh
-cloudru-vm configure      # один раз: ключ и проект в профиль
+evo configure      # один раз: ключ и проект в профиль
 ```
 
 ### Claude Code
 
 ```sh
-claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
+claude mcp add --transport stdio --scope project evo -- evo mcp
 ```
+
+Сервер, добавленный под старым именем (`… cloudru-vm -- cloudru-vm mcp`), до
+v1.1 работает через alias, но лучше заменить: `claude mcp remove cloudru-vm`
+и команда выше. Имена инструментов не менялись.
 
 или файл `.mcp.json` в корне проекта:
 
 ```json
 {
   "mcpServers": {
-    "cloudru-vm": {
-      "command": "cloudru-vm",
+    "evo": {
+      "command": "evo",
       "args": ["mcp"]
     }
   }
@@ -122,8 +126,8 @@ claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
 ```json
 {
   "mcpServers": {
-    "cloudru-vm": {
-      "command": "cloudru-vm",
+    "evo": {
+      "command": "evo",
       "args": ["mcp"]
     }
   }
@@ -131,10 +135,10 @@ claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
 ```
 
 Если клиент не находит бинарь (у GUI-приложений на macOS свой `PATH`), укажите
-полный путь: `"command": "/Users/me/.local/bin/cloudru-vm"`.
+полный путь: `"command": "/Users/me/.local/bin/evo"`.
 
 Рабочий каталог сервера — тот, в котором клиент его запускает (обычно корень
-проекта). Там же `deploy` и другие инструменты ведут `./.cloudru-vm/` —
+проекта). Там же `deploy` и другие инструменты ведут `./.evo/` —
 состояние и SSH-ключ к созданным ВМ ([auth.md](auth.md#что-хранится-на-машине)).
 По stdio stdout занят протоколом; человекочитаемого вывода нет.
 
@@ -142,7 +146,7 @@ claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
 
 ```sh
 export MCP_BEARER_TOKEN="$(openssl rand -hex 32)"
-cloudru-vm mcp --http :8080
+evo mcp --http :8080
 ```
 
 - `POST /mcp` — MCP Streamable HTTP; без верного `Authorization: Bearer …` —
@@ -175,7 +179,7 @@ cloudru-vm mcp --http :8080
 ### Claude Code
 
 ```sh
-claude mcp add --transport http cloudru-vm http://localhost:8080/mcp \
+claude mcp add --transport http evo http://localhost:8080/mcp \
   --header "Authorization: Bearer $MCP_BEARER_TOKEN"
 ```
 
@@ -184,7 +188,7 @@ claude mcp add --transport http cloudru-vm http://localhost:8080/mcp \
 ```json
 {
   "mcpServers": {
-    "cloudru-vm": {
+    "evo": {
       "type": "http",
       "url": "http://localhost:8080/mcp",
       "headers": {"Authorization": "Bearer ${MCP_BEARER_TOKEN}"}
@@ -198,7 +202,7 @@ claude mcp add --transport http cloudru-vm http://localhost:8080/mcp \
 ```json
 {
   "mcpServers": {
-    "cloudru-vm": {
+    "evo": {
       "url": "http://localhost:8080/mcp",
       "headers": {"Authorization": "Bearer <токен>"}
     }
@@ -258,13 +262,13 @@ claude mcp add --transport http cloudru-vm http://localhost:8080/mcp \
 
 ## Docker-образ
 
-Образ `cloudru-vm` — distroless, без shell, пользователь `nonroot`, слушает
-`:8080`, `HEALTHCHECK` встроен (`cloudru-vm mcp healthcheck`). Релизные образы
-публикуются в Artifact Registry Cloud.ru (`<реестр>.cr.cloud.ru/cloudru-vm:<версия>`,
+Образ `evo` — distroless, без shell, пользователь `nonroot`, слушает
+`:8080`, `HEALTHCHECK` встроен (`evo mcp healthcheck`). Релизные образы
+публикуются в Artifact Registry Cloud.ru (`<реестр>.cr.cloud.ru/evo:<версия>`,
 адрес реестра — в карточке Marketplace); собрать самому:
 
 ```sh
-docker build -t cloudru-vm:local .
+docker build -t evo:local .
 ```
 
 Запуск — креды Cloud.ru и токен передаются переменными окружения (в образе
@@ -272,23 +276,24 @@ docker build -t cloudru-vm:local .
 
 ```sh
 export MCP_BEARER_TOKEN="$(openssl rand -hex 32)"
-docker run -d --name cloudru-vm -p 127.0.0.1:8080:8080 \
+docker run -d --name evo -p 127.0.0.1:8080:8080 \
   -e MCP_BEARER_TOKEN \
   -e CLOUDRU_KEY_ID -e CLOUDRU_SECRET -e CLOUDRU_PROJECT_ID \
   -e CLOUDRU_REGION \
-  cloudru-vm:local
+  evo:local
 
 curl -s localhost:8080/healthz
-docker logs -f cloudru-vm
+docker logs -f evo
 ```
 
 `-e NAME` без значения берёт его из вашего окружения — секрет не попадает в
 историю оболочки. Лучше — `--env-file` с правами `0600`. Все переменные — в
 [auth.md](auth.md#7-переменные-окружения); для S3 добавьте `CLOUDRU_S3_*`.
 
-Состояние (`.cloudru-vm/` с SSH-ключом к созданным `deploy` ВМ, кэш токена)
+Состояние (`.evo/` с SSH-ключом к созданным `deploy` ВМ, кэш токена)
 живёт в `/home/nonroot` контейнера и пропадает вместе с ним. Если сервер будет
-создавать ВМ, подключите том: `-v cloudru-vm-data:/home/nonroot` — иначе после
-пересоздания контейнера к этим ВМ не будет SSH-доступа.
+создавать ВМ, подключите том: `-v evo-data:/home/nonroot` — иначе после
+пересоздания контейнера к этим ВМ не будет SSH-доступа. Том от образа
+`cloudru-vm` подходит как есть: старый `.cloudru-vm/` в нём читается до v1.1.
 
 Без `MCP_BEARER_TOKEN` контейнер завершается с кодом `2`.
