@@ -481,3 +481,48 @@ func TestBuildEngine_TimeoutSetsVMWait(t *testing.T) {
 		t.Errorf("VMPollTimeout = %v, want 42s", e.Timings.VMPollTimeout)
 	}
 }
+
+// A key that sees several projects (organization level) is named as such by
+// whoami and doctor; the project's source is shown (QA P5).
+func TestWhoamiDoctor_KeyScope(t *testing.T) {
+	fc := setupCLI(t)
+	saveProfile(t, "default", "p-1")
+	fc.orgProject = `[{"id":"p-1","name":"one"},{"id":"p-2","name":"two"}]`
+
+	code, stdout, stderr := runCLI(t, "", "whoami")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	for _, want := range []string{"p-1 (from profile)", "Projects:    2 visible to the key"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("whoami lacks %q:\n%s", want, stdout)
+		}
+	}
+	if !strings.Contains(stderr, "sees 2 projects") {
+		t.Errorf("no warning about the key scope:\n%s", stderr)
+	}
+
+	newProcess()
+	code, stdout, _ = runCLI(t, "", "--json", "doctor")
+	if code != 0 {
+		t.Fatalf("doctor exit %d: %s", code, stdout)
+	}
+	if !strings.Contains(stdout, `"key scope"`) || !strings.Contains(stdout, "sees 2 projects") {
+		t.Errorf("doctor lacks the key scope warning:\n%s", stdout)
+	}
+
+	// The Organization API refuses to list: the scope is unknown, not an error.
+	fc.orgStatus = http.StatusBadRequest
+	newProcess()
+	code, stdout, _ = runCLI(t, "", "--json", "whoami")
+	if code != 0 {
+		t.Fatalf("whoami with no project list: exit %d", code)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("not JSON: %q", stdout)
+	}
+	if _, ok := got["visible_projects"]; ok {
+		t.Errorf("visible_projects reported without a list: %v", got)
+	}
+}
