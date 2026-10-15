@@ -582,7 +582,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		case <-pollDeadline:
 			return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
 				fmt.Sprintf("VM %s did not become active within %s", vm.ID, t.VMPollTimeout),
-				"Check VM status in Cloud.ru console.")
+				"Check VM status in Cloud.ru console ('evo status'); to wait longer, set CLOUDRU_TIMEOUT (seconds).")
 		case <-ticker.C:
 			updated, err := e.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {

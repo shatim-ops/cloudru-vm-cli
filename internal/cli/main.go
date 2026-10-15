@@ -257,6 +257,9 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 		Deployer: deploy.NewSSHDeployer(),
 		Printer:  printer,
 		StateDir: cwd,
+		// CLOUDRU_TIMEOUT / timeout: how long deploy waits for the VM to
+		// become active (default 300 s, the engine's own default).
+		Timings: engine.Timings{VMPollTimeout: time.Duration(cfg.Timeout) * time.Second},
 		// Created on first use: list-zones and friends leave no key behind.
 		SSHKeyLoader: func() ([]byte, string, error) {
 			priv, pub, err := loadOrGenerateSSHKey(cwd)
