@@ -86,6 +86,9 @@ func apiError(status int, body []byte) error {
 type EventPage struct {
 	Events        []map[string]any `json:"events"`
 	NextPageToken string           `json:"nextPageToken"`
+	// Logs is the array the spec (audit openapi-v3) names; Events is what
+	// evo read so far. List merges them (api-contract §4.2).
+	Logs []map[string]any `json:"logs,omitempty"`
 }
 
 // ListOptions filter an audit-events query. Start/End are RFC3339 (required by
@@ -132,5 +135,9 @@ func (c *Client) List(ctx context.Context, opts ListOptions) (*EventPage, error)
 	if err := json.Unmarshal(data, page); err != nil {
 		return nil, fmt.Errorf("parse audit events: %w", err)
 	}
+	if len(page.Events) == 0 && len(page.Logs) > 0 {
+		page.Events = page.Logs
+	}
+	page.Logs = nil
 	return page, nil
 }

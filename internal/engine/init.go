@@ -203,8 +203,7 @@ func deployableImages(images []*provision.Image) []*provision.Image {
 	}
 	var out []ranked
 	for _, img := range images {
-		switch strings.ToLower(img.Status) {
-		case "deleted", "error", "creating":
+		if !img.Usable() {
 			continue
 		}
 		if m := ubuntuImageRe.FindStringSubmatch(img.Name); m != nil {

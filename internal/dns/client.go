@@ -49,6 +49,25 @@ type Operation struct {
 	Error      *OperationError `json:"error,omitempty"`
 }
 
+// UnmarshalJSON also reads resourceId, the name in the spec: with only
+// resource_id, dns_zone_create could not return the new zone's id
+// (api-contract §4.10).
+func (o *Operation) UnmarshalJSON(b []byte) error {
+	type plain Operation
+	var r struct {
+		plain
+		ResourceIDCamel string `json:"resourceId"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	*o = Operation(r.plain)
+	if o.ResourceID == "" {
+		o.ResourceID = r.ResourceIDCamel
+	}
+	return nil
+}
+
 // OperationError is rpcStatus.
 type OperationError struct {
 	Code    int    `json:"code"`

@@ -219,17 +219,16 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	}
 	total, bySvc := aggregateConsumption(cons)
 
-	// Balance.
-	bal, err := cli.Balance(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
+	// Balance: billing.api.cloud.ru/v1/agreement is in none of Cloud.ru's
+	// published specs (api-contract §4.1). If it fails, the cost part of the
+	// summary still stands: the balance is "unknown", not an error.
+	bal, balErr := cli.Balance(ctx)
 	balance := billNum(bal, "balance")
 	active, _ := bal["active"].(bool)
 
 	daily := total / float64(periodDays)
 	var runway float64
-	if daily > 0 {
+	if daily > 0 && balErr == nil {
 		runway = balance / daily
 	}
 
@@ -296,6 +295,10 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 		"by_service":  breakdown,
 		"anomalies":   anomalies,
 		"line_items":  len(cons),
+	}
+	if balErr != nil {
+		out["balance"], out["active"] = nil, nil
+		out["balance_error"] = "balance unavailable (undocumented billing endpoint): " + balErr.Error()
 	}
 	if svcTrunc > 0 {
 		out["by_service_truncated"] = svcTrunc

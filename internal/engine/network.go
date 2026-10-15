@@ -22,8 +22,8 @@ type vmNetwork struct {
 	SecurityGroup   string
 }
 
-// resolveNetwork picks a subnet and a security group for the zone. The API
-// leaves availability_zone_id empty on both, so they are matched by a name
+// resolveNetwork picks a subnet and a security group for the zone: by the
+// zone id the list returns nested (availability_zone.id), else by a name
 // that contains the zone name ("Default_ru.AZ-1", "SSH-access_ru.AZ-1"),
 // the same rule as the MCP vm_create path. A security group from another
 // zone keeps the VM from booting, hence no blind "first one" for groups
