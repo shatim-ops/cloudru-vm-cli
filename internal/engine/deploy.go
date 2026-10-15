@@ -579,8 +579,14 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			// its floating_ip_id so 'evo destroy' finishes the job (QA H2).
 			rctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
-			e.waitVMGone(rctx, vm.ID)
-			if ferr := e.releaseFloatingIP(rctx, &rec); ferr != nil {
+			gone := e.waitVMGone(rctx, vm.ID)
+			ferr := e.releaseFloatingIP(rctx, &rec)
+			if !gone && ferr == nil {
+				// Deletion accepted but not confirmed: keep the record, or
+				// a VM stuck in deleting would be billed without a trace.
+				ferr = fmt.Errorf("deletion of VM %s is not confirmed yet; run 'evo destroy' to finish", vm.ID)
+			}
+			if ferr != nil {
 				e.Printer.Warning(ferr.Error())
 				rec.Status = "destroying"
 				rec.UpdatedAt = time.Now()
@@ -1198,26 +1204,28 @@ func (e *Engine) ReleaseBootFIP(fip *provision.FloatingIP, projectID string) {
 // waitVMGone polls until the VM is not found, ctx ends or
 // Timings.DestroyPollTimeout passes. Best effort: the FIP release after it
 // retries on its own.
-func (e *Engine) waitVMGone(ctx context.Context, vmID string) {
+func (e *Engine) waitVMGone(ctx context.Context, vmID string) bool {
 	t := e.timings()
 	deadline := time.Now().Add(t.DestroyPollTimeout)
 	for time.Now().Before(deadline) {
 		if _, err := e.Cloud.GetVM(ctx, vmID); err != nil {
 			var ce *clerrors.CLIError
 			if stderrors.As(err, &ce) && ce.Code == clerrors.CodeVMNotFound {
-				return
+				return true
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return
+			return false
 		case <-time.After(t.DestroyPollInterval):
 		}
 	}
+	return false
 }
 
-// WaitVMGone is waitVMGone for MCP destroy by vm_id.
-func (e *Engine) WaitVMGone(ctx context.Context, vmID string) { e.waitVMGone(ctx, vmID) }
+// WaitVMGone is waitVMGone for MCP destroy by vm_id: true once the VM is
+// not found.
+func (e *Engine) WaitVMGone(ctx context.Context, vmID string) bool { return e.waitVMGone(ctx, vmID) }
 
 // ReleaseFloatingIP releases the FIP a record names (floating_ip_id, else
 // its address or the after-boot name), retrying while the platform still

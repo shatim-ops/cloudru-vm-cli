@@ -190,7 +190,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return errResult(err), true
 	}
-	res, err := deployplan.Apply(ctx, eng.Cloud, plan)
+	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.Timings.VMPollTimeout)
 	if err != nil {
 		// Interrupted after the VM was created: record it, so status and
 		// destroy see it; the plan stays for a retry, which adopts the VM.

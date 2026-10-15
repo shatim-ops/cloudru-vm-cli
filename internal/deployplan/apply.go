@@ -14,7 +14,10 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
-const pollTimeout = 7 * time.Minute // Cloud.ru VMs take 2-5 min; protocol v5 minimum
+// DefaultPollTimeout is how long Apply waits for the VM to run when the
+// caller sets nothing: the same 10 minutes as the CLI deploy (a new VM in
+// ru.AZ-1 took about 5, 15.10.2026).
+const DefaultPollTimeout = 10 * time.Minute
 
 // pollInterval is how often Apply asks for the VM state (a variable for tests).
 var pollInterval = 10 * time.Second
@@ -38,6 +41,15 @@ type ApplyResult struct {
 // Apply executes a resolved plan. It is idempotent: if a VM with the plan's name
 // already exists, it adopts that VM instead of creating a duplicate.
 func Apply(ctx context.Context, cloud provision.CloudAPI, plan *Plan) (*ApplyResult, error) {
+	return ApplyWithTimeout(ctx, cloud, plan, DefaultPollTimeout)
+}
+
+// ApplyWithTimeout is Apply waiting at most pollTimeout for the VM to run
+// (CLOUDRU_TIMEOUT through the engine's timings; zero means the default).
+func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan, pollTimeout time.Duration) (*ApplyResult, error) {
+	if pollTimeout <= 0 {
+		pollTimeout = DefaultPollTimeout
+	}
 	start := time.Now()
 
 	// --- Idempotency: adopt an existing VM with the same name ---
@@ -150,7 +162,7 @@ func Apply(ctx context.Context, cloud provision.CloudAPI, plan *Plan) (*ApplyRes
 				"check it with vm_get, or delete it with destroy: %w", vm.ID, ctx.Err())
 	}
 
-	// --- Poll until running (7 min) ---
+	// --- Poll until running ---
 	status := "building"
 	deadline := time.After(pollTimeout)
 	ticker := time.NewTicker(pollInterval)

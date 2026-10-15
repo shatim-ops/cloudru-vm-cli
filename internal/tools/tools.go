@@ -1793,6 +1793,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// Poll until active: 10 minutes, as the CLI deploy (a new VM took ~5 in
 	// ru.AZ-1 on 15.10.2026).
 	pollTimeout := 10 * time.Minute
+	if eng.Timings.VMPollTimeout > 0 {
+		pollTimeout = eng.Timings.VMPollTimeout // CLOUDRU_TIMEOUT, as in the CLI deploy
+	}
 	deadline := time.After(pollTimeout)
 	pollEvery := 5 * time.Second
 	if eng.Timings.VMPollInterval > 0 {
@@ -2077,7 +2080,9 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	msg := "VM deleted"
 	if releaseIP && hasFIP {
 		// The FIP stays attached until the VM is gone: wait, then retry.
-		eng.WaitVMGone(ctx, target.ID)
+		if !eng.WaitVMGone(ctx, target.ID) {
+			msg += "; WARNING: the deletion is not confirmed yet (the VM is still listed) — check it with vm_get"
+		}
 		if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
 			msg += fmt.Sprintf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
 				"release it with release_floating_ip", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr)
