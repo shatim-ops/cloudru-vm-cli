@@ -18,6 +18,7 @@ import (
 type SSHDeployer struct {
 	client          *ssh.Client
 	hostFingerprint string
+	hostKeyLine     string        // "<type> <base64>" of the key seen on Connect
 	connectTimeout  time.Duration // per-attempt timeout (default 10s)
 
 	// keepAliveInterval is how often the connection is probed; after
@@ -133,6 +134,12 @@ func keepAlive(c *ssh.Client, every time.Duration) {
 // HostKeyFingerprint returns the SSH host key fingerprint from the current connection.
 func (d *SSHDeployer) HostKeyFingerprint() string {
 	return d.hostFingerprint
+}
+
+// HostKeyLine returns the host key seen on the last Connect in
+// known_hosts form ("ssh-ed25519 AAAA…"), or "".
+func (d *SSHDeployer) HostKeyLine() string {
+	return d.hostKeyLine
 }
 
 // Upload sends files to the remote host by executing shell commands over SSH.
@@ -269,6 +276,7 @@ func (d *SSHDeployer) buildHostKeyCallback(knownHostKey string) ssh.HostKeyCallb
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		fingerprint := fingerprintKey(key)
 		d.hostFingerprint = fingerprint
+		d.hostKeyLine = strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
 
 		if knownHostKey == "" {
 			// TOFU: accept and store the fingerprint.
