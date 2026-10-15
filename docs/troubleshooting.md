@@ -205,7 +205,7 @@ compose-файла не изменился. Повторите с `evo deploy --
 - `kubectl not found on the host` / `not available in this mode` — установите
   `kubectl`/`helm` ([install.md](install.md#kubectl-и-helm)); в Docker-образе
   их нет.
-- `S3 credentials not configured` (код 5) — задайте ключи Object Storage
+- `S3 credentials not configured` (код 2) — задайте ключи Object Storage
   (`CLOUDRU_S3_ACCESS_KEY`, `CLOUDRU_S3_SECRET_KEY` или секция `s3` профиля,
   [auth.md](auth.md#ключи-object-storage-s3)).
 - `agreement_id not configured` — для инструментов биллинга задайте
