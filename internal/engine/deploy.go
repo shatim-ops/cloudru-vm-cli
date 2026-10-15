@@ -947,7 +947,10 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 	}
 	return clerrors.Wrap(clerrors.CodeSSHTimeout,
 		fmt.Sprintf("SSH connection failed after %d attempts", maxRetries),
-		"VM may still be booting. Try again in a few minutes.",
+		"VM may still be booting: try 'evo deploy' again in a few minutes. If it stays unreachable, its first boot "+
+			"probably could not reach the network (seen on Cloud.ru: no DNS inside the VM, the image's apt mirror unreachable), "+
+			"so sshd never started: check the subnet's DNS in the Cloud.ru console, or 'evo destroy' and deploy again, "+
+			"in another zone if it repeats.",
 		lastErr)
 }
 
@@ -1009,7 +1012,8 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		}
 	}
 
-	hint := "Check that the VM reaches its apt mirror and get.docker.com, then re-run 'evo deploy'."
+	hint := "Check that the VM resolves names (the subnet's DNS) and reaches its apt mirror and get.docker.com, " +
+		"then re-run 'evo deploy'. \"Temporary failure in name resolution\" above means no DNS inside the VM: a network problem of the zone or subnet, not of the compose project; if it repeats, destroy and deploy in another zone."
 	if tail := lastLines(lastOut, 15); tail != "" {
 		hint = "Last output of the Docker install:\n" + tail + "\n" + hint
 	}
