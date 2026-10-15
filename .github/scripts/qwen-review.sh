@@ -119,6 +119,9 @@ Markdown, по-русски. Первая строка — вердикт одн
   {
     model: $model,
     temperature: 0.2,
+    # Qwen3.5 thinks before answering; without an explicit limit the
+    # server default can be spent on reasoning alone (finish_reason length).
+    max_tokens: 32768,
     messages: [
       {role: "system", content: ($guide + "\n" + rules)},
       {role: "user", content: (
@@ -132,10 +135,19 @@ Markdown, по-русски. Первая строка — вердикт одн
     ]
   }' >"$work/req.json"
 
-code=$(curl -sS -o "$work/resp.json" -w '%{http_code}' --max-time 600 \
-  -X POST "$FM_BASE_URL/chat/completions" \
-  -H "Authorization: Bearer $FM_API_KEY" -H 'Content-Type: application/json' \
-  --data-binary @"$work/req.json") || fail 'запрос к Foundation Models не прошёл (сеть или таймаут 10 мин).'
+# One repeat on a dropped connection, 429 or 502/503/504: the review costs
+# tokens, so no more than that.
+for attempt in 1 2; do
+  code=$(curl -sS -o "$work/resp.json" -w '%{http_code}' --max-time 600 \
+    -X POST "$FM_BASE_URL/chat/completions" \
+    -H "Authorization: Bearer $FM_API_KEY" -H 'Content-Type: application/json' \
+    --data-binary @"$work/req.json") || code=000
+  case "$code" in
+    000|429|502|503|504) [ "$attempt" = 2 ] || { echo "Foundation Models: $code, повтор через 15 с" >&2; sleep 15; } ;;
+    *) break ;;
+  esac
+done
+[ "$code" != 000 ] || fail 'запрос к Foundation Models не прошёл дважды (сеть или таймаут 10 мин).'
 
 if [ "$code" != 200 ]; then
   msg=$(jq -r '.error.message // .error // .detail // .message // "без описания"' "$work/resp.json" 2>/dev/null |
@@ -153,10 +165,12 @@ fi
 # Рассуждения модели (reasoning_content или блок <think>) в комментарий не идут.
 jq -r '.choices[0].message.content // "" | gsub("<think>[\\s\\S]*?</think>"; "") | sub("^\\s+"; "")' \
   "$work/resp.json" >"$work/text.md"
+reason=$(jq -r '.choices[0].finish_reason // "неизвестно"' "$work/resp.json")
+jq -c '.usage // {}' "$work/resp.json" >&2 || true
 if [ ! -s "$work/text.md" ] || ! grep -q '[^[:space:]]' "$work/text.md"; then
-  reason=$(jq -r '.choices[0].finish_reason // "неизвестно"' "$work/resp.json")
   fail "модель вернула пустой ответ (причина: $reason)."
 fi
+[ "$reason" != length ] || printf '\n\n_Ответ обрезан по лимиту токенов._\n' >>"$work/text.md"
 
 {
   printf '**[Qwen · `%s`]** ревью `%s`' "$MODEL" "${head:0:7}"
