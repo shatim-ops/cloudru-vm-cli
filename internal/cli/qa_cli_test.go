@@ -165,12 +165,20 @@ func TestRun_JSONModeKeepsBothStreamsParseable(t *testing.T) {
 		}
 		assertJSONLines(t, strings.Join(path, " ")+" stderr", stderr)
 	}
-	for _, cmd := range []string{"status", "verify", "destroy"} {
+	// Without a deployment: status reports it and destroy has nothing to do
+	// (exit 0); logs and verify inspect a running deployment (exit 4,
+	// DECISIONS D11). Success prints one JSON document on stdout, an error
+	// JSON lines on stderr.
+	for cmd, want := range map[string]int{"status": 0, "destroy": 0, "verify": 4, "logs": 4} {
 		newProcess()
-		code, stdout, _ := runCLI(t, "", cmd, "--json")
-		if code != 0 || !json.Valid([]byte(stdout)) {
-			t.Errorf("%s --json without a deployment: exit %d, stdout %q", cmd, code, stdout)
+		code, stdout, stderr := runCLI(t, "", cmd, "--json")
+		if code != want {
+			t.Errorf("%s --json without a deployment: exit %d, want %d", cmd, code, want)
 		}
+		if want == 0 && !json.Valid([]byte(stdout)) {
+			t.Errorf("%s --json: stdout is not JSON: %q", cmd, stdout)
+		}
+		assertJSONLines(t, cmd+" stderr", stderr)
 	}
 }
 

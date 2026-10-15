@@ -161,7 +161,7 @@ Exit codes:
 * [evo secret](#evo-secret)	 - Secret Manager
 * [evo status](#evo-status)	 - Show current deployment status
 * [evo tools](#evo-tools)	 - List, describe and call any of the evo tools (the same ones the MCP server exposes)
-* [evo verify](#evo-verify)	 - Run health checks against the deployed application (exit 1 if unhealthy)
+* [evo verify](#evo-verify)	 - Run health checks against the deployed application (exit 1 if unhealthy, 4 if nothing is deployed)
 * [evo version](#evo-version)	 - Print the version, commit, build date, Go version and platform
 * [evo vm](#evo-vm)	 - Virtual machines
 * [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
@@ -3222,7 +3222,7 @@ evo tools list [flags]
 
 ## evo verify
 
-Run health checks against the deployed application (exit 1 if unhealthy)
+Run health checks against the deployed application (exit 1 if unhealthy, 4 if nothing is deployed)
 
 ```
 evo verify [flags]
