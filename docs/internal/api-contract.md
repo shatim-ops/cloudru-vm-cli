@@ -679,3 +679,24 @@ Workflow `api-contract.yml`:
   `cloudru-api.md`); false positives гасятся через `accepted` с причиной.
   Риск: сайт docs меняет URL спецификаций — тогда `cloudru-specs.py` отдаёт
   `missing`, и job должен падать явно, а не «всё ок, 0 проверок».
+
+## 7. Живая проверка 15.10.2026 (`api-probe`)
+
+Workflow `.github/workflows/api-probe.yml` (только GET, в логе — коды HTTP,
+имена полей и количества), тестовый сервисный аккаунт уровня проекта,
+прогон 15.10.2026 20:23 UTC.
+
+| Вопрос (§) | Ответ живого API | Итог |
+|---|---|---|
+| Токен IAM (§4.12, §5.11) | `access_token`, `expires_in` (число), а также `id_token`, `refresh_token`, `not_before`, `scopes`, `token_type` | расходится со спецификацией (`accessToken`): верен код, читаются оба написания |
+| `limit=200` (§4.5, §5.3) | 200, сервер отдаёт больше 100 (`/images` — 86 из 86) | не ошибка сейчас, но вне спецификации; списки переведены на 100 со страницами |
+| Флейворы (§4.7) | без `limit` — 50 из 78; с `limit=100` — 78 | **подтверждено**: флейворы за первой страницей были не видны; исправлено пагинацией |
+| `/disk-types` | голый массив, не `{items}` | код и так принимает оба вида |
+| ВМ (§4.4) | `flavor{…}`, `image_id`, `availability_zone{…}`, `interfaces[].floating_ip{id,ip_address,name,state}`; плоских `public_ip`/`floating_ip`/`flavor_id` нет | подтверждено; исправлено чтением вложенных полей |
+| Подсети, группы безопасности (§4.3, §5.6) | только `availability_zone{id,name,enabled}` | подтверждено; исправлено |
+| Образы (§4.6) | `availability_zones[]{availability_zone_id,availability_zone_name,state,enabled,size,default}`, `type`; верхних `status`/`os` нет | подтверждено; пригодность — по зонам |
+| Состояния | ВМ — `running`, FIP — `in_use` (`active` не встретился) | совпадает со спецификацией |
+| VPC, DNS (§4.9, §5.15) | `projectId` и `project_id` — одинаковый ответ | оба работают; оставлено как есть |
+| `serviceAccounts` (§5.12) | `service_accounts`, `next_page_token` | расходится со спецификацией: верен код, читаются оба |
+| Аудит (§4.2, §5.25) | `limit` → 401, `pageSize` → 415 | не проверено: у тестового ключа нет прав на аудит; код читает и `logs`, и `events` |
+| `/v3/projects` (§5.10) | 400 | как и раньше для сервисного аккаунта проекта |
