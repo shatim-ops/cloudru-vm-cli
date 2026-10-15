@@ -302,8 +302,10 @@ const toolsCallHelpRU = `Вызвать инструмент и напечата
   evo tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
   evo tools call pg_operation --arg operation_id=OP --wait
 
-Коды выхода: 0 — успех; 3 — нет подтверждения; 4 — инструмент сообщил, что
-объект не найден; 5 — любая другая ошибка инструмента.`
+Коды выхода: 0 — успех; 3 — нет подтверждения; ошибка инструмента с кодом
+(API_UNREACHABLE, AUTH_FAILED, …) — код выхода этого кода, как у других
+команд (см. docs/exit-codes.md); без кода — 4, если инструмент сообщил, что
+объект не найден, иначе 5.`
 
 const toolsCallHelpEN = `Call a tool and print its JSON result as is.
 
@@ -318,8 +320,10 @@ against the schema too; null means "not given".
   evo tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
   evo tools call pg_operation --arg operation_id=OP --wait
 
-Exit codes: 0 success; 3 confirmation not given; 4 the tool reported that
-something was not found; 5 any other error reported by the tool.`
+Exit codes: 0 success; 3 confirmation not given; an error the tool reports
+with a code (API_UNREACHABLE, AUTH_FAILED, ...) exits as that code does for
+any other command (see docs/exit-codes.md); without a code, 4 when the tool
+reported that something was not found, 5 otherwise.`
 
 func runToolsCall(cmd *cobra.Command, name, argsFile, argsJSON string, argPairs []string, wait bool) error {
 	t, err := lookupTool(newRegistry(), name)
@@ -665,12 +669,15 @@ func argLines(m map[string]any) []string {
 	return lines
 }
 
-// toolError maps a tool's error answer to an exit code. An error that
-// carries a CLI error code ("AUTH_REQUIRED: …") keeps its exit code when it
-// is 2, 4 or 5, as for every other command; otherwise 4 when the answer says
-// something was not found, and 5 for the rest.
+// toolError maps a tool's error answer to a CLIError, as the same failure
+// of any other command would be: the code ("reason" of the answer, else the
+// "API_UNREACHABLE: …" prefix of its message) keeps its exit code — 1 for
+// API_UNREACHABLE, 2 for credentials, 4 for not found — and the hint of the
+// answer is kept. An answer without a code gives 4 when it says something
+// was not found, and API_ERROR (5) otherwise.
 func toolError(name, text string) error {
 	msg := text
+	var reason, hint string
 	if m := parseObject(text); m != nil {
 		for _, k := range []string{"error", "message"} {
 			if s, ok := m[k].(string); ok && s != "" {
@@ -678,41 +685,33 @@ func toolError(name, text string) error {
 				break
 			}
 		}
+		reason, _ = m["reason"].(string)
+		hint, _ = m["hint"].(string)
 	}
-	if prefix, rest, ok := strings.Cut(msg, ": "); ok && isErrorCode(prefix) {
-		switch prefix {
-		case clerrors.CodeUsage: // the tool refused its arguments; nothing reached the cloud
-			return clerrors.New(prefix, name+": "+rest, i18n.T("Check the arguments: 'evo tools describe ", "Проверьте аргументы: 'evo tools describe ")+name+"'.")
-		case clerrors.CodeConfigInvalid: // the message names what to set
-			return clerrors.New(prefix, name+": "+rest, "")
-		}
-		switch clerrors.ExitCode(clerrors.New(prefix, "", "")) {
-		case clerrors.ExitAuth:
-			return clerrors.New(prefix, name+": "+rest,
-				i18n.T("Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.",
-					"Выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET."))
-		case clerrors.ExitNotFound, clerrors.ExitAPI:
-			return clerrors.New(prefix, name+": "+rest, "")
-		}
+	code := ""
+	if clerrors.IsCode(reason) {
+		code = reason
 	}
-	code := clerrors.CodeAPIError
-	if strings.Contains(strings.ToLower(text), "not found") {
-		code = clerrors.CodeNotFound
+	if prefix, rest, ok := strings.Cut(msg, ": "); ok && clerrors.IsCode(prefix) && (code == "" || code == prefix) {
+		code, msg = prefix, rest
 	}
-	return clerrors.New(code, name+": "+msg, "")
-}
-
-// isErrorCode reports whether s looks like a CLI error code (AUTH_REQUIRED).
-func isErrorCode(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if (r < 'A' || r > 'Z') && r != '_' {
-			return false
+	if code == "" {
+		code = clerrors.CodeAPIError
+		if strings.Contains(strings.ToLower(text), "not found") {
+			code = clerrors.CodeNotFound
 		}
 	}
-	return true
+	if hint == "" {
+		switch {
+		case code == clerrors.CodeUsage: // the tool refused its arguments; nothing reached the cloud
+			hint = i18n.T("Check the arguments: 'evo tools describe ", "Проверьте аргументы: 'evo tools describe ") + name + "'."
+		case code == clerrors.CodeConfigInvalid: // the message names what to set
+		case clerrors.ExitCode(clerrors.New(code, "", "")) == clerrors.ExitAuth:
+			hint = i18n.T("Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.",
+				"Выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET.")
+		}
+	}
+	return clerrors.New(code, name+": "+msg, hint)
 }
 
 // Root flags that pick the project and the zone for every command that

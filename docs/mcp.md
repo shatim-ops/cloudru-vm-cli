@@ -55,6 +55,11 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 стоит различать исход по полю `status`, а не по `isError`. Без исключений:
 `s3_bucket_create` тоже ждёт `confirmed=true`.
 
+Ошибка инструмента — `{"status":"error","error":"…"}` с `isError: true`.
+Если у ошибки есть символьный код из [таблицы](exit-codes.md), он приходит
+в поле `reason` (`API_UNREACHABLE`, `AUTH_FAILED`), подсказка — в `hint`;
+у ошибок без кода этих полей нет.
+
 ## Отмена вызовов
 
 Общего таймаута на вызов нет: `deploy` или создание кластера идут столько,

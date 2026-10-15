@@ -5,6 +5,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -2356,9 +2357,22 @@ func usageResult(err error) string {
 	return errResult(fmt.Errorf("%s: %w", clierrors.CodeUsage, err))
 }
 
-// errResult formats an error as a JSON tool result.
+// errResult formats an error as a JSON tool result. A CLIError in the chain
+// adds its code as "reason" and its hint as "hint": the CLI keeps the exit
+// code and the hint of the error (evo vm list fails like evo whoami), an
+// agent learns what to do next.
 func errResult(err error) string {
-	return toJSON(map[string]any{"status": "error", "error": err.Error()})
+	res := map[string]any{"status": "error", "error": err.Error()}
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) {
+		if ce.Code != "" {
+			res["reason"] = ce.Code
+		}
+		if ce.Hint != "" {
+			res["hint"] = ce.Hint
+		}
+	}
+	return toJSON(res)
 }
 
 // isUUID checks if a string looks like a UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).

@@ -30,3 +30,20 @@ const (
 	ReasonInterrupted = "INTERRUPTED" // Ctrl-C, SIGTERM; exit 130
 	ReasonGeneral     = "ERROR"       // an error without a symbolic code; exit 1
 )
+
+// knownCodes is every code above: the symbolic codes a CLIError carries.
+var knownCodes = map[string]bool{
+	CodeAuthRequired: true, CodeAuthExpired: true, CodeAuthFailed: true,
+	CodeAPIUnreachable: true, CodeAPIRateLimited: true, CodeAPIError: true,
+	CodeVMNotFound: true, CodeVMProvisionFailed: true,
+	CodeSSHTimeout: true, CodeSSHAuthFailed: true, CodeSSHHostKeyChanged: true,
+	CodeComposeInvalid: true, CodeComposeNotFound: true,
+	CodeConfigInvalid: true, CodeStateCorrupted: true, CodeStateLocked: true,
+	CodeUnhealthy: true, CodeConfirmationRequired: true, CodeUsage: true,
+	CodeNotFound: true,
+}
+
+// IsCode reports whether s is one of the codes above ("API_UNREACHABLE").
+// A tool answer carries its error as text ("API_UNREACHABLE: …"); this tells
+// a code prefix from any other upper-case word.
+func IsCode(s string) bool { return knownCodes[s] }
