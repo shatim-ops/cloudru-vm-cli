@@ -24,16 +24,16 @@ var pollInterval = 10 * time.Second
 
 // ApplyResult is the compact result returned to the agent after a deploy.
 type ApplyResult struct {
-	VMID       string `json:"vm_id"`
-	Status     string `json:"status"`
-	PublicIP   string `json:"public_ip,omitempty"`
+	VMID     string `json:"vm_id"`
+	Status   string `json:"status"`
+	PublicIP string `json:"public_ip,omitempty"`
 	// FloatingIPID is the VM's floating IP, kept in the state so destroy
 	// releases exactly it (QA r3 R2).
 	FloatingIPID string `json:"floating_ip_id,omitempty"`
 	SSH          string `json:"ssh,omitempty"`
-	Password   string `json:"password,omitempty"` // shown ONCE; not persisted
-	ElapsedSec int    `json:"elapsed_sec"`
-	Note       string `json:"note,omitempty"`
+	Password     string `json:"password,omitempty"` // shown ONCE; not persisted
+	ElapsedSec   int    `json:"elapsed_sec"`
+	Note         string `json:"note,omitempty"`
 
 	// Ports is what Apply recorded about the security group: the group, the
 	// ports the VM needs and the rules Apply created (the caller keeps them
@@ -85,9 +85,9 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			Status:       status,
 			PublicIP:     ip,
 			FloatingIPID: fipID,
-			SSH:        sshString(plan.SSH.Login, ip),
-			ElapsedSec: int(time.Since(start).Seconds()),
-			Note:       joinNotes("VM already existed — adopted (idempotent), nothing recreated", fipNote),
+			SSH:          sshString(plan.SSH.Login, ip),
+			ElapsedSec:   int(time.Since(start).Seconds()),
+			Note:         joinNotes("VM already existed — adopted (idempotent), nothing recreated", fipNote),
 		}, nil
 	}
 
@@ -244,10 +244,10 @@ poll:
 		PublicIP:     ip,
 		FloatingIPID: fipID,
 		SSH:          sshString(plan.SSH.Login, ip),
-		Password:   password,
-		ElapsedSec: int(time.Since(start).Seconds()),
-		Note:       joinNotes(fipNote, sshNote, opened.Note()),
-		Ports:      ports,
+		Password:     password,
+		ElapsedSec:   int(time.Since(start).Seconds()),
+		Note:         joinNotes(fipNote, sshNote, opened.Note()),
+		Ports:        ports,
 	}, nil
 }
 
