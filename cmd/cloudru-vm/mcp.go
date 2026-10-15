@@ -45,8 +45,8 @@ resources directly.
 
 By default it speaks newline-delimited JSON-RPC 2.0 on stdin/stdout; all
 human-readable output is suppressed (stdout is reserved for the protocol).
-Closing stdin, SIGINT/SIGTERM and notifications/cancelled cancel running
-tool calls. Add it to Claude Code with:
+SIGINT/SIGTERM and notifications/cancelled cancel running tool calls;
+closing stdin does not (calls already sent finish and are answered). Add it to Claude Code with:
   claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
 
 With --http ADDR it serves the MCP Streamable HTTP transport on
@@ -121,9 +121,9 @@ exactly as for the regular CLI commands (environment, profile from
 
 // runMCPStdio serves the stdio transport.
 func runMCPStdio(ctx context.Context, srv *mcp.Server) error {
-	// SIGINT/SIGTERM (ctx) and the end of stdin cancel the running tool
-	// call; RunContext returns once it has wound down (the call records
-	// what it created), at most a few seconds later.
+	// SIGINT/SIGTERM (ctx) cancel the running tool call; RunContext
+	// returns once it has wound down (the call records what it created),
+	// at most a few seconds later. The end of stdin cancels nothing.
 	return srv.RunContext(ctx, os.Stdin, os.Stdout)
 }
 

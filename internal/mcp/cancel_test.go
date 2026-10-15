@@ -158,15 +158,41 @@ func TestCancel_StdioNotificationCancelsQueuedCall(t *testing.T) {
 	}
 }
 
-// Закрытый stdin — клиент ушёл: вызов отменяется, Run завершается.
-func TestCancel_StdioEOFCancelsCall(t *testing.T) {
+// Закрытый stdin вызов не отменяет: клиенты вида «printf … | cloudru-vm mcp»
+// закрывают stdin сразу после запроса и ждут ответа. Вызов доходит до
+// конца, ответ пишется, затем Run завершается.
+func TestCancel_StdioEOFLetsCallFinish(t *testing.T) {
 	s := newTestServer()
-	b := blockTool(s)
-	in, _, done := runStdio(t, context.Background(), s)
+	started, release := make(chan struct{}), make(chan struct{})
+	cause := make(chan error, 1)
+	s.wrapHandler("vm_list", func(tools.Handler) tools.Handler {
+		return func(ctx context.Context, _ map[string]any) (string, bool) {
+			close(started)
+			select {
+			case <-release:
+				cause <- nil
+			case <-ctx.Done():
+				cause <- context.Cause(ctx)
+			}
+			return `{"status":"ok"}`, false
+		}
+	})
+	in, out, done := runStdio(t, context.Background(), s)
 	write(t, in, callLine)
-	b.waitStarted(t)
+	select {
+	case <-started:
+	case <-time.After(waitLimit):
+		t.Fatal("обработчик не запустился")
+	}
 	in.Close()
-	b.wantCause(t, errStdinClosed)
+	time.Sleep(50 * time.Millisecond) // reader видит EOF раньше, чем вызов завершится
+	close(release)
+	if err := <-cause; err != nil {
+		t.Fatalf("EOF отменил вызов: %v", err)
+	}
+	if line := nextLine(t, out); !strings.Contains(line, `"id":7`) {
+		t.Fatalf("нет ответа на вызов после EOF: %s", line)
+	}
 	if err := waitRun(t, done); err != nil {
 		t.Fatal(err)
 	}

@@ -169,9 +169,9 @@ type stdioCall struct {
 }
 
 // RunContext is Run with cancellation: tool calls run under a context that
-// ends when ctx does (SIGINT/SIGTERM), when stdin is closed (the client is
-// gone), or, for one call, on notifications/cancelled with its id. Lines
-// read before EOF are still answered. When ctx is done RunContext returns
+// ends when ctx does (SIGINT/SIGTERM), on a read error, or, for one call,
+// on notifications/cancelled with its id. Closing stdin cancels nothing:
+// lines read before EOF run to the end and are answered. When ctx is done RunContext returns
 // ctx.Err() after the running call returns (at most stdioShutdownGrace).
 func (s *Server) RunContext(ctx context.Context, in io.Reader, out io.Writer) error {
 	serve, stop := context.WithCancelCause(ctx)
@@ -217,8 +217,7 @@ func (s *Server) RunContext(ctx context.Context, in io.Reader, out io.Writer) er
 // readStdio reads and decodes lines for RunContext. It acts on
 // notifications/cancelled at once (the main loop may be busy with the very
 // call to cancel) and registers each tools/call when it is read, so a call
-// still waiting in the queue can be cancelled too. At EOF it cancels serve:
-// the client is gone.
+// still waiting in the queue can be cancelled too.
 func (s *Server) readStdio(serve context.Context, stop context.CancelCauseFunc, in io.Reader, lines chan<- stdioLine) {
 	defer close(lines)
 	r := bufio.NewReaderSize(in, 64*1024)
@@ -262,9 +261,12 @@ func (s *Server) readStdio(serve context.Context, stop context.CancelCauseFunc, 
 			}
 		}
 		if readErr != nil {
-			if readErr == io.EOF {
-				stop(errStdinClosed)
-			} else {
+			// EOF does not cancel: "printf … | cloudru-vm mcp" and one-shot
+			// clients close stdin right after the request and still wait
+			// for the answer. A deploy cut short half-way costs more than a
+			// finished one nobody reads; the calls already read run to the
+			// end and RunContext returns after answering them.
+			if readErr != io.EOF {
 				stop(readErr)
 			}
 			return

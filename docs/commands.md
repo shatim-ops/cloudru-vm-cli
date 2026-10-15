@@ -1699,8 +1699,8 @@ resources directly.
 
 By default it speaks newline-delimited JSON-RPC 2.0 on stdin/stdout; all
 human-readable output is suppressed (stdout is reserved for the protocol).
-Closing stdin, SIGINT/SIGTERM and notifications/cancelled cancel running
-tool calls. Add it to Claude Code with:
+SIGINT/SIGTERM and notifications/cancelled cancel running tool calls;
+closing stdin does not (calls already sent finish and are answered). Add it to Claude Code with:
   claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
 
 With --http ADDR it serves the MCP Streamable HTTP transport on

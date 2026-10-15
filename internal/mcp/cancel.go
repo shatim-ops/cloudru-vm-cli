@@ -24,7 +24,6 @@ import (
 // Reasons a call is cancelled (context.Cause of its context).
 var (
 	errCancelledByClient = errors.New("cancelled by the client (notifications/cancelled)")
-	errStdinClosed       = errors.New("stdin closed: the MCP client is gone")
 	errClientGone        = errors.New("the HTTP client closed the connection")
 	errSessionDeleted    = errors.New("the MCP session was deleted")
 	errServerStopping    = errors.New("the MCP server is shutting down")
