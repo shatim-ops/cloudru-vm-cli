@@ -135,39 +135,57 @@ Markdown, по-русски. Первая строка — вердикт одн
     ]
   }' >"$work/req.json"
 
-# One repeat on a dropped connection, 429 or 502/503/504: the review costs
-# tokens, so no more than that.
-for attempt in 1 2; do
-  code=$(curl -sS -o "$work/resp.json" -w '%{http_code}' --max-time 600 \
-    -X POST "$FM_BASE_URL/chat/completions" \
-    -H "Authorization: Bearer $FM_API_KEY" -H 'Content-Type: application/json' \
-    --data-binary @"$work/req.json") || code=000
-  case "$code" in
-    000|429|502|503|504) [ "$attempt" = 2 ] || { echo "Foundation Models: $code, повтор через 15 с" >&2; sleep 15; } ;;
-    *) break ;;
-  esac
-done
-[ "$code" != 000 ] || fail 'запрос к Foundation Models не прошёл дважды (сеть или таймаут 10 мин).'
+# ask REQ sends one request file: one repeat on a dropped connection, 429
+# or 502/503/504 (the review costs tokens, so no more than that). Leaves the
+# answer without reasoning in $work/text.md and finish_reason in $reason.
+ask() {
+  local attempt
+  for attempt in 1 2; do
+    code=$(curl -sS -o "$work/resp.json" -w '%{http_code}' --max-time 600 \
+      -X POST "$FM_BASE_URL/chat/completions" \
+      -H "Authorization: Bearer $FM_API_KEY" -H 'Content-Type: application/json' \
+      --data-binary @"$1") || code=000
+    case "$code" in
+      000|429|502|503|504) [ "$attempt" = 2 ] || { echo "Foundation Models: $code, повтор через 15 с" >&2; sleep 15; } ;;
+      *) break ;;
+    esac
+  done
+  [ "$code" != 000 ] || fail 'запрос к Foundation Models не прошёл дважды (сеть или таймаут 10 мин).'
 
-if [ "$code" != 200 ]; then
-  msg=$(jq -r '.error.message // .error // .detail // .message // "без описания"' "$work/resp.json" 2>/dev/null |
-    head -c 500 || true)
-  hint=""
-  if [ "$code" = 404 ] || [ "$code" = 400 ]; then
-    # Неверный id модели: подскажем доступные, чтобы выбрать в QWEN_MODEL.
-    models=$(curl -sS --max-time 30 -H "Authorization: Bearer $FM_API_KEY" "$FM_BASE_URL/models" |
-      jq -r '[.data[]?.id] | map("`" + . + "`") | join(", ")' 2>/dev/null || true)
-    [ -z "$models" ] || hint=" Доступные модели: $models. Нужную задайте в переменной репозитория \`QWEN_MODEL\`."
+  if [ "$code" != 200 ]; then
+    msg=$(jq -r '.error.message // .error // .detail // .message // "без описания"' "$work/resp.json" 2>/dev/null |
+      head -c 500 || true)
+    hint=""
+    if [ "$code" = 404 ] || [ "$code" = 400 ]; then
+      # Неверный id модели: подскажем доступные, чтобы выбрать в QWEN_MODEL.
+      models=$(curl -sS --max-time 30 -H "Authorization: Bearer $FM_API_KEY" "$FM_BASE_URL/models" |
+        jq -r '[.data[]?.id] | map("`" + . + "`") | join(", ")' 2>/dev/null || true)
+      [ -z "$models" ] || hint=" Доступные модели: $models. Нужную задайте в переменной репозитория \`QWEN_MODEL\`."
+    fi
+    fail "Foundation Models ответил $code: ${msg}.${hint}"
   fi
-  fail "Foundation Models ответил $code: ${msg}.${hint}"
-fi
 
-# Рассуждения модели (reasoning_content или блок <think>) в комментарий не идут.
-jq -r '.choices[0].message.content // "" | gsub("<think>[\\s\\S]*?</think>"; "") | sub("^\\s+"; "")' \
-  "$work/resp.json" >"$work/text.md"
-reason=$(jq -r '.choices[0].finish_reason // "неизвестно"' "$work/resp.json")
-jq -c '.usage // {}' "$work/resp.json" >&2 || true
-if [ ! -s "$work/text.md" ] || ! grep -q '[^[:space:]]' "$work/text.md"; then
+  # Рассуждения модели (reasoning_content или блок <think>) в комментарий не идут.
+  jq -r '.choices[0].message.content // "" | gsub("<think>[\\s\\S]*?</think>"; "") | sub("^\\s+"; "")' \
+    "$work/resp.json" >"$work/text.md"
+  reason=$(jq -r '.choices[0].finish_reason // "неизвестно"' "$work/resp.json")
+  jq -c '.usage // {}' "$work/resp.json" >&2 || true
+}
+
+empty() { [ ! -s "$work/text.md" ] || ! grep -q '[^[:space:]]' "$work/text.md"; }
+
+ask "$work/req.json"
+no_think=""
+if empty && [ "$reason" = length ]; then
+  # Qwen3.5 sometimes spends the whole max_tokens on reasoning (seen on
+  # #46 and #49: reasoning_tokens = max_tokens, empty content). Ask once
+  # more with thinking off (vLLM chat_template_kwargs).
+  echo "Ответ пуст: лимит ушёл на рассуждения; повтор без рассуждений" >&2
+  jq '. + {chat_template_kwargs: {enable_thinking: false}}' "$work/req.json" >"$work/req-nothink.json"
+  ask "$work/req-nothink.json"
+  no_think=1
+fi
+if empty; then
   fail "модель вернула пустой ответ (причина: $reason)."
 fi
 [ "$reason" != length ] || printf '\n\n_Ответ обрезан по лимиту токенов._\n' >>"$work/text.md"
@@ -175,6 +193,7 @@ fi
 {
   printf '**[Qwen · `%s`]** ревью `%s`' "$MODEL" "${head:0:7}"
   [ -z "$truncated" ] || printf ' (%s)' "$truncated"
+  [ -z "$no_think" ] || printf ' (без рассуждений: первый ответ ушёл в лимит)'
   printf '\n\n'
   jq -Rrs --argjson n "$MAX_COMMENT_CHARS" '.[0:$n]' "$work/text.md"
   printf '\n\n---\n_Запущено командой `/qwen review`, workflow `qwen-review`, модель из Cloud.ru Foundation Models._\n'
