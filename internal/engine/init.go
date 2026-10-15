@@ -102,8 +102,8 @@ disk_size: 10
 # Docker Compose file to deploy
 compose_file: docker-compose.yml
 
-# Operation timeout in seconds
-timeout: 300
+# Seconds deploy waits for a new VM to become active
+timeout: 600
 
 # Cloud.ru project UUID (required; console.cloud.ru or CLOUDRU_PROJECT_ID)
 %s

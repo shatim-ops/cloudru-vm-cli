@@ -86,7 +86,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	if active.VMID == "" {
 		// No ID to delete by: DELETE /vms/ with an empty ID is not a VM.
 		e.Printer.Warning("No VM ID in state; nothing to delete in the cloud")
-	} else if err = e.Cloud.DeleteVM(ctx, active.VMID); err != nil {
+	} else if err = e.deleteVMWhenDeletable(ctx, active.VMID); err != nil {
 		// If VM is already gone (VM_NOT_FOUND), that's fine.
 		var cliErr *clerrors.CLIError
 		if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound {
@@ -99,8 +99,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			if st := provision.HTTPStatus(err); st == http.StatusConflict || st == http.StatusUnprocessableEntity {
 				return clerrors.Wrap(clerrors.CodeAPIError,
 					fmt.Sprintf("VM %s cannot be deleted in its current state", active.VMID),
-					"It is probably still being created or changing state. Wait until it is running "+
-						"(Cloud.ru console, or 'evo vm get "+active.VMID+"') and re-run 'evo destroy'.",
+					fmt.Sprintf("It is probably still being created or changing state (waited %s). Wait until it is running "+
+						"(Cloud.ru console, or 'evo vm get %s') and re-run 'evo destroy': the record is kept, nothing is lost.",
+						e.timings().DeletableWaitTimeout, active.VMID),
 					err)
 			}
 			return err
@@ -295,4 +296,50 @@ func fipLabel(ip, id string) string {
 		return id
 	}
 	return fmt.Sprintf("%s (%s)", ip, id)
+}
+
+// isNotDeletableYet reports whether DeleteVM refused because the VM is in a
+// transitional state (Cloud.ru answers 409 or 422 while it is being created
+// or changes state).
+func isNotDeletableYet(err error) bool {
+	st := provision.HTTPStatus(err)
+	return st == http.StatusConflict || st == http.StatusUnprocessableEntity
+}
+
+// deleteVMWhenDeletable deletes the VM, waiting while Cloud.ru refuses
+// because it is still being created: a VM stuck in "creating" (seen in
+// cloud-e2e on 15.10.2026) is billed with its floating IP, and giving up at
+// once left both behind. It retries until Timings.DeletableWaitTimeout, then
+// returns the last refusal.
+func (e *Engine) deleteVMWhenDeletable(ctx context.Context, vmID string) error {
+	err := e.Cloud.DeleteVM(ctx, vmID)
+	if err == nil || !isNotDeletableYet(err) {
+		return err
+	}
+	t := e.timings()
+	start := time.Now()
+	deadline := start.Add(t.DeletableWaitTimeout)
+	e.Printer.StepDone(fmt.Sprintf("VM %s cannot be deleted yet (still being created or changing state); waiting up to %s...",
+		vmID, t.DeletableWaitTimeout))
+	lastReport := start
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(t.DeletablePollInterval):
+		}
+		err = e.Cloud.DeleteVM(ctx, vmID)
+		if err == nil || !isNotDeletableYet(err) {
+			return err
+		}
+		if time.Since(lastReport) >= time.Minute {
+			lastReport = time.Now()
+			status := "unknown"
+			if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
+				status = vm.Status
+			}
+			e.Printer.StepDone(fmt.Sprintf("still waiting: VM is %s (%s elapsed)", status, time.Since(start).Round(time.Second)))
+		}
+	}
+	return err
 }

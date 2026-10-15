@@ -185,7 +185,7 @@ profiles:
 | `CLOUDRU_DISK_SIZE` | размер загрузочного диска, ГБ (по умолчанию 10) | `deploy --disk-size` / `disk_size` |
 | `CLOUDRU_COMPOSE_FILE` | путь к compose-файлу (по умолчанию `docker-compose.yml`) | `deploy -f` / `compose_file` |
 | `CLOUDRU_PROJECT_NAME` | имя развёртывания (по умолчанию — имя текущего каталога) | `project_name` |
-| `CLOUDRU_TIMEOUT` | сколько секунд `deploy` ждёт, пока ВМ станет активной (по умолчанию 300) | `timeout` |
+| `CLOUDRU_TIMEOUT` | сколько секунд `deploy` ждёт, пока ВМ станет активной (по умолчанию 600) | `timeout` |
 | `CLOUDRU_AGREEMENT_ID` | номер договора для инструментов биллинга (`billing_*`), если договоров несколько | — |
 
 ### Object Storage (S3)

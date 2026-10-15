@@ -555,6 +555,7 @@ func (s *Registry) handleListFloatingIPs(ctx context.Context, args map[string]an
 	for _, f := range fips {
 		out = append(out, map[string]any{
 			"id":         f.ID,
+			"name":       f.Name,
 			"ip_address": f.IPAddress,
 			"state":      f.State,
 			"available":  f.Available(),

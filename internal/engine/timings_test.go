@@ -23,7 +23,7 @@ func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 	got := Timings{}.withDefaults()
 	want := Timings{
 		VMPollInterval:    5 * time.Second,
-		VMPollTimeout:     5 * time.Minute,
+		VMPollTimeout:     10 * time.Minute,
 		IfacePollInterval: 5 * time.Second,
 		FIPRetryInterval:  10 * time.Second,
 		FIPPollInterval:   5 * time.Second,
@@ -35,6 +35,9 @@ func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 		DockerWaitTimeout:   10 * time.Minute,
 		DestroyPollInterval: 3 * time.Second,
 		DestroyPollTimeout:  30 * time.Second,
+
+		DeletableWaitTimeout:  10 * time.Minute,
+		DeletablePollInterval: 10 * time.Second,
 	}
 	if got != want {
 		t.Errorf("defaults changed:\n got  %+v\n want %+v", got, want)

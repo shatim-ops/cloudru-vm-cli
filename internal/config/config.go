@@ -95,7 +95,7 @@ func Defaults() Config {
 	return Config{
 		Flavor:      "auto",
 		DiskSize:    10,
-		Timeout:     300,
+		Timeout:     600,
 		ComposeFile: "docker-compose.yml",
 	}
 }

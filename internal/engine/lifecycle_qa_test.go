@@ -184,6 +184,31 @@ func TestDestroy_VMBusy422_ClearMessageRecordUnchanged(t *testing.T) {
 	}
 }
 
+// A VM still being created is deleted once Cloud.ru accepts the delete:
+// destroy waits instead of giving up and leaving the VM and its FIP billed
+// (cloud-e2e, 15.10.2026).
+func TestDestroy_WaitsWhileVMNotDeletable(t *testing.T) {
+	eng, cloud, _ := destroyFixture(t, runningRecord())
+	calls := 0
+	cloud.deleteVMFn = func(context.Context, string) error {
+		calls++
+		if calls < 3 {
+			return clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
+				&provision.StatusError{Status: 409, Body: `{"code":"vm_is_creating"}`})
+		}
+		return nil
+	}
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("Destroy = %v, want success after the VM became deletable", err)
+	}
+	if calls != 3 {
+		t.Errorf("DeleteVM calls = %d, want 3", calls)
+	}
+	if len(cloud.deletedFIPs) == 0 {
+		t.Error("FIP not released after the VM was deleted")
+	}
+}
+
 func hintOf(err error) string {
 	var ce *clerrors.CLIError
 	if stderrors.As(err, &ce) {

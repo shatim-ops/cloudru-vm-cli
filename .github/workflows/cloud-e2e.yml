@@ -146,8 +146,36 @@ jobs:
         if: always()
         run: |
           cd e2e-app 2>/dev/null && [ -f .evo/state.json ] || { echo "нечего удалять"; exit 0; }
-          for i in 1 2 3; do evo destroy --yes && break; sleep 30; done
+          # destroy сам ждёт до 10 мин, пока ВМ в creating станет удаляемой.
+          for i in 1 2; do evo destroy --yes && break; sleep 30; done
           jq -e '.deployments | length == 0' .evo/state.json
+
+      # Страховка: ВМ evo-e2e-app и её floating IP («fip-evo-e2e-app-…») не
+      # должны пережить прогон, даже если state потерян (15.10.2026 ВМ
+      # зависла в creating, destroy сдался, раннер унёс state — ВМ и FIP
+      # остались платными). Ищет по имени в проекте, удаляет, при остатке —
+      # ошибка с ID, чтобы удалить вручную.
+      - name: Сирот evo-e2e-app нет (всегда)
+        if: always()
+        run: |
+          cd e2e-app 2>/dev/null || { echo "проект не создан"; exit 0; }
+          vms() { evo tools call vm_list --json | jq -r '[.vms[]? | select(.name=="evo-e2e-app") | .id] | join(" ")'; }
+          for i in 1 2 3 4 5 6; do
+            ids=$(vms)
+            [ -z "$ids" ] && break
+            echo "осталась ВМ evo-e2e-app: $ids — удаляю (попытка $i)"
+            for id in $ids; do
+              evo tools call destroy --arg vm_id="$id" --arg confirmed=true --json >/dev/null 2>&1 || true
+            done
+            sleep 60
+          done
+          for id in $(evo tools call list_floating_ips --json |
+            jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-app-")) and .available) | .id'); do
+            echo "освобождаю floating IP $id"
+            evo tools call release_floating_ip --arg id="$id" --arg confirmed=true --json >/dev/null 2>&1 || true
+          done
+          left=$(vms)
+          [ -z "$left" ] || { echo "::error::после прогона осталась ВМ evo-e2e-app ($left) — удалите её в консоли Cloud.ru"; exit 1; }
 
       # Если правила «evo:» для 80 в группе до deploy не было, его создал
       # deploy, и после destroy его быть не должно. Удаление может идти
