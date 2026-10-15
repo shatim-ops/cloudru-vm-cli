@@ -55,7 +55,6 @@ type CreateVMRequest struct {
 	AvailabilityZoneID string            `json:"availability_zone_id,omitempty"`
 	Disks              []DiskReq         `json:"disks"`
 	ImageMetadata      map[string]string `json:"image_metadata,omitempty"`
-	CloudInit          string            `json:"cloud_init,omitempty"`
 	Interfaces         []InterfaceReq    `json:"interfaces,omitempty"`
 }
 

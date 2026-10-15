@@ -1,3 +1,6 @@
+// Package bootstrap prepares a new VM over SSH: Docker with the compose
+// plugin for the deploy user. Cloud.ru renders cloud-init only from the
+// image's own user_data_template, so nothing here goes through cloud-init.
 package bootstrap
 
 import (

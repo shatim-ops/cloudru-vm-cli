@@ -19,13 +19,16 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // --- Manifest (desired state) ---
@@ -324,6 +327,23 @@ func (j *Job) redactSpent() {
 var jobIDRe = regexp.MustCompile(`^stk-[0-9a-f]{10}$`)
 
 // LoadJob reads a job from disk.
+// LockJob takes the job's file lock, across processes: two MCP servers
+// (stdio and HTTP) on one stack-jobs directory would otherwise both see a
+// step pending and create it twice. It waits up to maxWait.
+func LockJob(id string, maxWait time.Duration) (unlock func(), err error) {
+	if !jobIDRe.MatchString(id) {
+		return nil, fmt.Errorf("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)", id)
+	}
+	unlock, err = state.FileLock(filepath.Join(jobsDir(), id+".lock"), maxWait)
+	if errors.Is(err, state.ErrFileLocked) {
+		return nil, fmt.Errorf("job %s is being changed by another evo process (another MCP server?); try again when it finishes", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lock job %s: %w", id, err)
+	}
+	return unlock, nil
+}
+
 func LoadJob(id string) (*Job, error) {
 	if !jobIDRe.MatchString(id) {
 		return nil, fmt.Errorf("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)", id)
