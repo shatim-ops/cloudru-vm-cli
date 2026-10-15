@@ -115,6 +115,9 @@ jobs:
         run: cloudru-vm deploy --yes
 
       - name: Группа и правила deploy в state
+        # и после упавшего deploy: ВМ и правила могли создаться, проверка
+        # их удаления ниже опирается на SG_ID
+        if: always() && hashFiles('e2e-app/.cloudru-vm/state.json') != ''
         working-directory: e2e-app
         run: |
           sg=$(jq -r '.deployments[0].security_group_id // empty' .cloudru-vm/state.json)

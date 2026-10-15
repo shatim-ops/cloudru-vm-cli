@@ -899,7 +899,7 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		}
 	}
 
-	hint := "Check that the VM reaches get.docker.com, then re-run 'cloudru-vm deploy'."
+	hint := "Check that the VM reaches its apt mirror and get.docker.com, then re-run 'cloudru-vm deploy'."
 	if tail := lastLines(lastOut, 15); tail != "" {
 		hint = "Last output of the Docker install:\n" + tail + "\n" + hint
 	}
