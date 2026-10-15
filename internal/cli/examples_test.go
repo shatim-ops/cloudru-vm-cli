@@ -56,3 +56,23 @@ func checkExampleLine(t *testing.T, root *cobra.Command, line string) {
 		}
 	}
 }
+
+// The jq example of vm list reads the fields the vm list rows carry: the
+// tree's columns name them (they are the keys of vm_list answers).
+func TestCommandExamples_JQFieldsExist(t *testing.T) {
+	cols := map[string]bool{}
+	for _, g := range treeGroups {
+		for _, c := range g.Cmds {
+			if g.Name == "vm" && c.Verb == "list" {
+				for _, col := range c.Columns {
+					cols[col] = true
+				}
+			}
+		}
+	}
+	for _, f := range []string{"name", "state"} {
+		if !strings.Contains(commandExamples["evo vm list"], "."+f) || !cols[f] {
+			t.Errorf("vm list example reads .%s, columns %v", f, cols)
+		}
+	}
+}
