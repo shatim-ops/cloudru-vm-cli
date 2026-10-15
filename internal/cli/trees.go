@@ -427,10 +427,15 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, columns []string)
 	if len(rows) > 0 {
 		p.Table([]string{"FIELD", "VALUE"}, rows)
 	}
+	printed := len(rows) > 0
 	for _, k := range keys {
 		if a, sec := sections[k]; sec {
-			fmt.Fprintf(w, "\n%s:\n", strings.ToUpper(k))
+			if printed {
+				fmt.Fprintln(w)
+			}
+			fmt.Fprintf(w, "%s:\n", strings.ToUpper(k))
 			renderList(p, w, a, nil)
+			printed = true
 		}
 	}
 	return nil

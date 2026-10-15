@@ -267,6 +267,12 @@ func TestRenderAnswer_NotesAndSections(t *testing.T) {
 		t.Errorf("composite answer:\n%s", got)
 	}
 
+	// Only lists: no empty FIELD/VALUE table and no leading blank line.
+	got = render(`{"flavors":[{"name":"a"}],"zones":[{"name":"z"}]}`)
+	if !strings.HasPrefix(got, "FLAVORS:\n") || !strings.Contains(got, "\n\nZONES:\n") {
+		t.Errorf("lists only:\n%q", got)
+	}
+
 	// Other string fields keep the FIELD/VALUE form.
 	got = render(`{"status":"creating","items":[{"id":"x"}]}`)
 	if !strings.HasPrefix(got, "FIELD") {
