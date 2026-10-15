@@ -102,14 +102,11 @@ main() {
 	https://*) ;;
 	*) say "внимание: $base — не https; без cosign подлинность архива не проверяется ничем" ;;
 	esac
-	archive="${BINARY}_${version}_${os}_${arch}.tar.gz"
 
 	tmp=$(mktemp -d)
 	trap 'rm -rf "$tmp"' EXIT INT TERM
 
-	say "Скачиваю $archive ($tag)"
-	download "$base/$tag/$archive" "$tmp/$archive" || die "не удалось скачать $base/$tag/$archive"
-	download "$base/$tag/checksums.txt" "$tmp/checksums.txt" || die "не удалось скачать checksums.txt"
+	download "$base/$tag/checksums.txt" "$tmp/checksums.txt" || die "не удалось скачать $base/$tag/checksums.txt"
 
 	if command -v cosign >/dev/null 2>&1; then
 		download "$base/$tag/checksums.txt.sigstore.json" "$tmp/checksums.txt.sigstore.json" ||
@@ -124,13 +121,29 @@ main() {
 		say "cosign не найден: подпись не проверена, только sha256"
 	fi
 
+	# Релизы до переименования (v1.0.0-rc.1) выпущены под старым именем:
+	# архив cloudru-vm_<версия>_… с одним бинарём cloudru-vm. Какое имя у
+	# этого релиза, говорит подписанный checksums.txt.
+	bins="$BINARY $LEGACY_ALIAS"
+	archive="${BINARY}_${version}_${os}_${arch}.tar.gz"
 	want=$(awk -v f="$archive" '$2 == f { print $1 }' "$tmp/checksums.txt")
-	[ -n "$want" ] || die "$archive нет в checksums.txt"
+	if [ -z "$want" ]; then
+		legacy_archive="${LEGACY_ALIAS}_${version}_${os}_${arch}.tar.gz"
+		want=$(awk -v f="$legacy_archive" '$2 == f { print $1 }' "$tmp/checksums.txt")
+		[ -n "$want" ] || die "$archive нет в checksums.txt"
+		archive=$legacy_archive
+		bins=$LEGACY_ALIAS
+		say "$tag выпущен до переименования в $BINARY: ставлю бинарь $LEGACY_ALIAS"
+	fi
+
+	say "Скачиваю $archive ($tag)"
+	download "$base/$tag/$archive" "$tmp/$archive" || die "не удалось скачать $base/$tag/$archive"
 	got=$(sha256_of "$tmp/$archive")
 	[ "$want" = "$got" ] || die "sha256 не совпал: ожидался $want, получен $got"
 	say "sha256: OK"
 
-	tar -xzf "$tmp/$archive" -C "$tmp" "$BINARY" "$LEGACY_ALIAS"
+	# shellcheck disable=SC2086 # bins — список имён без пробелов
+	tar -xzf "$tmp/$archive" -C "$tmp" $bins
 
 	dir=${INSTALL_DIR:-}
 	if [ -z "$dir" ]; then
@@ -138,18 +151,23 @@ main() {
 	fi
 	mkdir -p "$dir"
 	# Через временное имя: запущенный старый бинарь не ломается на середине.
-	for b in "$BINARY" "$LEGACY_ALIAS"; do
+	for b in $bins; do
 		cp "$tmp/$b" "$dir/.$b.new"
 		chmod 0755 "$dir/.$b.new"
 		mv -f "$dir/.$b.new" "$dir/$b"
 	done
 
-	say "Установлено: $dir/$BINARY (и alias $dir/$LEGACY_ALIAS до v1.1)"
+	main_bin=${bins%% *}
+	if [ "$main_bin" = "$BINARY" ]; then
+		say "Установлено: $dir/$BINARY (и alias $dir/$LEGACY_ALIAS до v1.1)"
+	else
+		say "Установлено: $dir/$LEGACY_ALIAS"
+	fi
 	case ":$PATH:" in
 	*":$dir:"*) ;;
 	*) say "Каталога $dir нет в PATH. Добавьте в профиль оболочки: export PATH=\"$dir:\$PATH\"" ;;
 	esac
-	"$dir/$BINARY" version >&2 || true
+	"$dir/$main_bin" version >&2 || true
 }
 
 main "$@"
