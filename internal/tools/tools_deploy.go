@@ -132,39 +132,40 @@ func overlayInt(args map[string]any, key string, dst *int) {
 // status, list and destroy work on it. Best effort, as before: the answer
 // names the VM either way.
 func recordDeployment(stateDir string, plan *deployplan.Plan, res *deployplan.ApplyResult, status string) error {
-	statePath := state.DefaultPath(stateDir)
-	sf, err := state.Read(statePath)
-	if err != nil {
-		return err
-	}
-	now := time.Now()
-	rec := state.DeploymentRecord{
-		ID:                 res.VMID,
-		VMID:               res.VMID,
-		VMIP:               res.PublicIP,
-		VMFlavor:           plan.VM.Flavor.Name,
-		Region:             plan.VM.Zone.ID,
-		SSHUser:            plan.SSH.Login,
-		Status:             status,
-		SecurityGroupID:    res.Ports.SecurityGroupID,
-		SecurityGroupPorts: res.Ports.SecurityGroupPorts,
-		OpenedRules:        res.Ports.OpenedRules,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-	}
-	// An adopted VM opens nothing now: the rules an earlier apply
-	// created stay with it, so destroy still deletes them.
-	if old := sf.FindDeployment(res.VMID); old != nil {
-		rec.CreatedAt = old.CreatedAt
-		if rec.SecurityGroupID == "" {
-			rec.SecurityGroupID = old.SecurityGroupID
+	return state.Update(state.DefaultPath(stateDir), stateLockWait, func(sf *state.File) error {
+		now := time.Now()
+		rec := state.DeploymentRecord{
+			ID:                 res.VMID,
+			VMID:               res.VMID,
+			VMIP:               res.PublicIP,
+			VMFlavor:           plan.VM.Flavor.Name,
+			Region:             plan.VM.Zone.ID,
+			SSHUser:            plan.SSH.Login,
+			Status:             status,
+			SecurityGroupID:    res.Ports.SecurityGroupID,
+			SecurityGroupPorts: res.Ports.SecurityGroupPorts,
+			OpenedRules:        res.Ports.OpenedRules,
+			CreatedAt:          now,
+			UpdatedAt:          now,
 		}
-		rec.SecurityGroupPorts = mergeStrings(old.SecurityGroupPorts, rec.SecurityGroupPorts)
-		rec.OpenedRules = mergeRules(old.OpenedRules, rec.OpenedRules)
-	}
-	sf.UpsertDeployment(rec)
-	return state.Write(statePath, sf)
+		// An adopted VM opens nothing now: the rules an earlier apply
+		// created stay with it, so destroy still deletes them.
+		if old := sf.FindDeployment(res.VMID); old != nil {
+			rec.CreatedAt = old.CreatedAt
+			if rec.SecurityGroupID == "" {
+				rec.SecurityGroupID = old.SecurityGroupID
+			}
+			rec.SecurityGroupPorts = mergeStrings(old.SecurityGroupPorts, rec.SecurityGroupPorts)
+			rec.OpenedRules = mergeRules(old.OpenedRules, rec.OpenedRules)
+		}
+		sf.UpsertDeployment(rec)
+		return nil
+	})
 }
+
+// stateLockWait is how long an MCP tool waits for a CLI deploy or destroy in
+// the same directory to release the state before recording a VM it created.
+const stateLockWait = 2 * time.Minute
 
 // handleDeployApply executes a previously-resolved plan, gated on confirmation.
 func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (string, bool) {
