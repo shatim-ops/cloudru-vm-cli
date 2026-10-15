@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -149,5 +151,31 @@ func TestListSecurityGroups_Rules(t *testing.T) {
 	}
 	if text := callSGTool(t, r, "list_security_groups", nil); strings.Contains(text, "rules") {
 		t.Errorf("rules without rules=true: %s", text)
+	}
+}
+
+// The VM is up but the state cannot be written: the answer names the VM
+// and the plan stays, so a retry adopts the VM instead of losing it.
+func TestDeployApply_StateNotWritable_NamesVMAndKeepsPlan(t *testing.T) {
+	cloud := &sgCloud{vm: &provision.VM{ID: "vm-1", Name: "wiki-1", Status: "running"}}
+	r, dir := sgRegistry(t, cloud)
+	if err := os.MkdirAll(filepath.Dir(state.DefaultPath(dir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(state.DefaultPath(dir), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ExpiresAt: time.Now().Add(time.Hour), Product: "wiki",
+		VM: deployplan.VMSpec{Name: "wiki-1"}, Network: deployplan.NetworkSpec{SecurityGroupID: "sg-1"}}
+	if err := deployplan.Save(dir, plan); err != nil {
+		t.Fatal(err)
+	}
+
+	text, isErr := r.handlers["deploy_apply"](context.Background(), map[string]any{"plan_id": plan.PlanID, "confirmed": true})
+	if !isErr || !strings.Contains(text, "vm-1") || !strings.Contains(text, "state") {
+		t.Fatalf("answer = %s (isErr %v), want an error naming vm-1 and the state", text, isErr)
+	}
+	if _, err := deployplan.Load(dir, plan.PlanID); err != nil {
+		t.Errorf("plan deleted although the VM is not in the state: %v", err)
 	}
 }

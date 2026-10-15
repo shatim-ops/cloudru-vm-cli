@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -97,5 +98,32 @@ func TestDeploy_BootFIPFails_AttachesAfterBoot(t *testing.T) {
 	}
 	if a := readActive(t, dir); a == nil || a.FloatingIPID != "fip-late" {
 		t.Errorf("state: %+v, want FIP fip-late", a)
+	}
+}
+
+// The create call fails but the VM was made (the answer was lost): the VM
+// and its FIP go into the state for deploy or destroy to pick up, and the
+// FIP, attached to that VM, is not released.
+func TestDeploy_CreateVMFailsButVMExists_Recorded(t *testing.T) {
+	cloud := &mockCloudAPI{
+		createVMFn: func(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
+			return nil, stderrors.New("context deadline exceeded")
+		},
+	}
+	cloud.listVMsInProjectFn = func(context.Context, string) ([]*provision.VM, error) {
+		return []*provision.VM{{ID: "vm-lost", Name: cloud.createReq.Name, CreatedAt: time.Now()}}, nil
+	}
+	eng, dir := newTestEngine(t, cloud, newMockDeployer())
+
+	err := eng.Deploy(context.Background(), newDeployOpts(t, dir))
+	if err == nil || !strings.Contains(err.Error(), "vm-lost") {
+		t.Fatalf("deploy error %v, want one naming vm-lost", err)
+	}
+	if len(cloud.deletedFIPs) != 0 {
+		t.Errorf("released FIPs %v, want none: the FIP belongs to the VM", cloud.deletedFIPs)
+	}
+	a := readActive(t, dir)
+	if a == nil || a.VMID != "vm-lost" || a.FloatingIPID != "fip-1" || a.Status != "creating" {
+		t.Fatalf("state: %+v, want vm-lost creating with fip-1", a)
 	}
 }

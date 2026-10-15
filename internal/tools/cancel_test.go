@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -25,8 +26,22 @@ import (
 // ушедший сразу после POST создания.
 type cancelCloud struct {
 	provision.CloudAPI
-	cancel  context.CancelFunc
-	creates int
+	cancel      context.CancelFunc
+	creates     int
+	createReq   provision.CreateVMRequest
+	createErr   error
+	deletedFIPs []string
+}
+
+func (*cancelCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	return &provision.FloatingIP{ID: "fip-boot", IPAddress: "203.0.113.9", State: "available"}, nil
+}
+func (*cancelCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	return nil, nil
+}
+func (c *cancelCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
+	c.deletedFIPs = append(c.deletedFIPs, id)
+	return nil
 }
 
 func (*cancelCloud) SetToken(string)                                  {}
@@ -46,8 +61,12 @@ func (*cancelCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, e
 func (*cancelCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
 	return nil, nil
 }
-func (c *cancelCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
+func (c *cancelCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
 	c.creates++
+	c.createReq = req
+	if c.createErr != nil {
+		return nil, c.createErr
+	}
 	c.cancel()
 	return &provision.VM{ID: "vm-made"}, nil
 }
@@ -94,8 +113,30 @@ func TestCancel_ProvisionAfterCreateNamesAndRecordsVM(t *testing.T) {
 	if !isErr || !strings.Contains(text, "vm-made") || !strings.Contains(text, `"vm_id": "vm-made"`) {
 		t.Fatalf("ответ не называет ВМ: %s", text)
 	}
-	if rec := stateHasVM(t, dir, "vm-made"); rec.Status != "creating" {
+	rec := stateHasVM(t, dir, "vm-made")
+	if rec.Status != "creating" {
 		t.Errorf("status в state = %q", rec.Status)
+	}
+	// Публичный IP — в запросе создания (ВМ грузится с интернетом), а в
+	// state — его ID, чтобы destroy его освободил.
+	if got := cloud.createReq.Interfaces[0].AttachExternalIPID; got != "fip-boot" {
+		t.Errorf("запрос создания привязывает %q, ожидался fip-boot", got)
+	}
+	if rec.FloatingIPID != "fip-boot" {
+		t.Errorf("FloatingIPID в state = %q", rec.FloatingIPID)
+	}
+}
+
+// ВМ не создана: зарезервированный под неё IP не остаётся оплачиваться.
+func TestProvision_CreateFails_ReleasesBootFIP(t *testing.T) {
+	cloud := &cancelCloud{cancel: func() {}, createErr: errors.New("422 quota")}
+	r, _ := cancelRegistry(t, cloud)
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
+	if !isErr || !strings.Contains(text, "422") {
+		t.Fatalf("ответ: %s", text)
+	}
+	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-boot" {
+		t.Errorf("освобождены %v, ожидался [fip-boot]", cloud.deletedFIPs)
 	}
 }
 

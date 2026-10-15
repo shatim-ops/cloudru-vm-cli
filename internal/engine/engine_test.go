@@ -44,6 +44,7 @@ type mockCloudAPI struct {
 	getVMFn                 func(ctx context.Context, id string) (*provision.VM, error)
 	deleteVMFn              func(ctx context.Context, id string) error
 	listVMsFn               func(ctx context.Context) ([]*provision.VM, error)
+	listVMsInProjectFn      func(ctx context.Context, projectID string) ([]*provision.VM, error)
 	listFlavorsFn           func(ctx context.Context) ([]*provision.Flavor, error)
 	listAvailabilityZonesFn func(ctx context.Context) ([]*provision.AvailabilityZone, error)
 	listImagesFn            func(ctx context.Context) ([]*provision.Image, error)
@@ -215,6 +216,13 @@ func (m *mockCloudAPI) GetFloatingIP(ctx context.Context, id string) (*provision
 func (m *mockCloudAPI) ListFloatingIPs(ctx context.Context, projectID string) ([]*provision.FloatingIP, error) {
 	if m.listFloatingIPsFn != nil {
 		return m.listFloatingIPsFn(ctx, projectID)
+	}
+	return nil, nil
+}
+
+func (m *mockCloudAPI) ListVMsInProject(ctx context.Context, projectID string) ([]*provision.VM, error) {
+	if m.listVMsInProjectFn != nil {
+		return m.listVMsInProjectFn(ctx, projectID)
 	}
 	return nil, nil
 }

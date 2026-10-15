@@ -498,10 +498,17 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		req.Interfaces[0].AttachExternalIPID = bootFIP.ID
 	}
 
-	vm, err := e.Cloud.CreateVM(ctx, req)
-	if err != nil {
-		e.releaseBootFIP(bootFIP, projectID)
-		return state.DeploymentRecord{}, err
+	createStart := time.Now()
+	vm, createErr := e.Cloud.CreateVM(ctx, req)
+	if createErr != nil {
+		// The VM can exist although the call failed (timeout, Ctrl-C, a
+		// lost answer). Then it is billed and its FIP is attached: record
+		// both below instead of releasing the FIP and forgetting the VM.
+		vm = provision.FindCreatedVM(e.Cloud, projectID, vmName, createStart)
+		if vm == nil {
+			e.releaseBootFIP(bootFIP, projectID)
+			return state.DeploymentRecord{}, createErr
+		}
 	}
 
 	// Register signal handler after VM creation.
@@ -538,6 +545,12 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			fmt.Sprintf("VM %s was created, but the state file could not be saved", vm.ID),
 			fmt.Sprintf("VM %s is running and billed. Delete it in the Cloud.ru console, or fix the state file problem and record it there.", vm.ID),
 			err)
+	}
+	if createErr != nil {
+		return rec, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
+			fmt.Sprintf("VM %s was created, but the create call failed", vm.ID),
+			fmt.Sprintf("VM %s is billed and recorded in the state: run 'evo deploy' again to finish it, or 'evo destroy' to delete it.", vm.ID),
+			createErr)
 	}
 
 	// Poll until active.
@@ -1125,4 +1138,20 @@ func (e *Engine) printVerifyResults(results []verify.ProbeResult, ip string) {
 	if !allHealthy {
 		e.Printer.Hint("Some health checks failed. Services may still be starting. Re-check with: curl http://" + ip + ":<port>/")
 	}
+}
+
+// CreateBootFIP, WaitBootFIP and ReleaseBootFIP give the MCP provision tool
+// the same public-IP-at-create path as deploy.
+func (e *Engine) CreateBootFIP(ctx context.Context, projectID, azID, vmName string) *provision.FloatingIP {
+	return e.createBootFIP(ctx, projectID, azID, vmName)
+}
+
+// WaitBootFIP: see CreateBootFIP.
+func (e *Engine) WaitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmID, projectID string) (ip, fipID string, err error) {
+	return e.waitBootFIP(ctx, fip, vmID, projectID)
+}
+
+// ReleaseBootFIP: see CreateBootFIP.
+func (e *Engine) ReleaseBootFIP(fip *provision.FloatingIP, projectID string) {
+	e.releaseBootFIP(fip, projectID)
 }

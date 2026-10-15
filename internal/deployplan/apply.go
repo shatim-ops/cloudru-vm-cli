@@ -114,8 +114,20 @@ func Apply(ctx context.Context, cloud provision.CloudAPI, plan *Plan) (*ApplyRes
 		req.ImageMetadata = meta
 	}
 
+	createStart := time.Now()
 	vm, err := cloud.CreateVM(ctx, req)
 	if err != nil {
+		// The VM can exist although the call failed (timeout, cancel, a
+		// lost answer): name it, so the caller records it, and a retry of
+		// the plan adopts it.
+		if found := provision.FindCreatedVM(cloud, plan.ProjectID, plan.VM.Name, createStart); found != nil {
+			return &ApplyResult{
+					VMID: found.ID, Status: "interrupted",
+					ElapsedSec: int(time.Since(start).Seconds()),
+				}, fmt.Errorf("VM %s was created, but the create call failed; it is billed — "+
+					"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
+					"or delete it with destroy: %w", found.ID, err)
+		}
 		return nil, fmt.Errorf("create VM: %w", err)
 	}
 

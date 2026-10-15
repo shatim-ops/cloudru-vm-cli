@@ -1708,37 +1708,67 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		return string(b), false
 	}
 
-	vm, err := eng.Cloud.CreateVM(ctx, req)
-	if err != nil {
-		return errResult(fmt.Errorf("create VM: %w", err)), true
+	// The public IP goes on at creation, as in deploy: Cloud.ru images set
+	// up their apt mirror at first boot and need the internet for it; a VM
+	// that boots offline can spend 10+ minutes on mirror timeouts before
+	// sshd starts. A FIP that cannot be reserved now is attached after boot.
+	var bootFIP *provision.FloatingIP
+	if !noPublicIP {
+		bootFIP = eng.CreateBootFIP(ctx, projectID, region, vmName)
+		if bootFIP != nil {
+			req.Interfaces[0].AttachExternalIPID = bootFIP.ID
+		}
+	}
+	fipID := ""
+	if bootFIP != nil {
+		fipID = bootFIP.ID
 	}
 
 	// saveState records the VM in the local state, so status and destroy
-	// see it.
+	// see it (and release its FIP).
 	statePath := state.DefaultPath(eng.StateDir)
-	saveState := func(status, publicIP string) {
+	saveState := func(vmID, status, publicIP string) {
 		sf, _ := state.Read(statePath)
 		if sf == nil {
 			return
 		}
 		sf.UpsertDeployment(state.DeploymentRecord{
-			ID:        vm.ID,
-			VMID:      vm.ID,
-			VMIP:      publicIP,
-			VMFlavor:  flavorID,
-			Region:    region,
-			SSHUser:   sshUser,
-			Status:    status,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			ID:           vmID,
+			VMID:         vmID,
+			VMIP:         publicIP,
+			VMFlavor:     flavorID,
+			Region:       region,
+			SSHUser:      sshUser,
+			Status:       status,
+			FloatingIPID: fipID,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		})
 		_ = state.Write(statePath, sf)
+	}
+
+	createStart := time.Now()
+	vm, err := eng.Cloud.CreateVM(ctx, req)
+	if err != nil {
+		// The VM can exist although the call failed (timeout, cancel, a
+		// lost answer): then it is billed and holds the FIP — record it.
+		if found := provision.FindCreatedVM(eng.Cloud, projectID, vmName, createStart); found != nil {
+			saveState(found.ID, "creating", "")
+			return toJSON(map[string]any{
+				"status": "error",
+				"vm_id":  found.ID,
+				"error": fmt.Sprintf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
+					"check it with vm_get, delete it with destroy (vm_id %s)", found.ID, err, found.ID),
+			}), true
+		}
+		eng.ReleaseBootFIP(bootFIP, projectID)
+		return errResult(fmt.Errorf("create VM: %w", err)), true
 	}
 	// interrupted answers a cancelled call (client gone, notifications/
 	// cancelled, server stopping): the VM exists and is billed, so the
 	// answer names it, and the state has it.
 	interrupted := func(publicIP string) (string, bool) {
-		saveState("creating", publicIP)
+		saveState(vm.ID, "creating", publicIP)
 		return toJSON(map[string]any{
 			"status": "error",
 			"vm_id":  vm.ID,
@@ -1756,10 +1786,12 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	for {
 		select {
 		case <-deadline:
+			// Billed whatever its state: keep it where destroy finds it.
+			saveState(vm.ID, "creating", "")
 			return toJSON(map[string]any{
 				"status":  "timeout",
 				"vm_id":   vm.ID,
-				"message": fmt.Sprintf("VM %s created but did not become active within %s", vm.ID, pollTimeout),
+				"message": fmt.Sprintf("VM %s created but did not become active within %s; it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s)", vm.ID, pollTimeout, vm.ID),
 			}), true
 		case <-ticker.C:
 			updated, err := eng.Cloud.GetVM(ctx, vm.ID)
@@ -1769,7 +1801,11 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 			if updated.Status == "active" || updated.Status == "running" {
 				// Assign a floating (public) IP unless a private VM was requested.
 				publicIP := ""
-				if !noPublicIP {
+				switch {
+				case bootFIP != nil:
+					ip, id, _ := eng.WaitBootFIP(ctx, bootFIP, vm.ID, projectID)
+					publicIP, fipID = ip, id
+				case !noPublicIP:
 					ip, fipErr := engine.AssignFloatingIP(ctx, eng.Cloud, vm.ID, projectID, region)
 					_ = fipErr
 					publicIP = ip
@@ -1777,7 +1813,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				if ctx.Err() != nil {
 					return interrupted(publicIP)
 				}
-				saveState("running", publicIP)
+				saveState(vm.ID, "running", publicIP)
 
 				msg := fmt.Sprintf("VM %s is active at %s. SSH: ssh %s@%s", vm.ID, publicIP, sshUser, publicIP)
 				if noPublicIP {
@@ -1796,6 +1832,13 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				}
 				if diskNote != "" {
 					res["warning"] = diskNote
+				}
+				if !noPublicIP && bootFIP == nil {
+					note := "the public IP could not be reserved before the VM was created; it was attached after boot, so the first boot can be slow"
+					if w, ok := res["warning"].(string); ok {
+						note = w + "; " + note
+					}
+					res["warning"] = note
 				}
 				return toJSON(res), false
 			}
