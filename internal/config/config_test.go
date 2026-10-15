@@ -21,7 +21,7 @@ func isolate(t *testing.T) string {
 			t.Setenv(k, "")
 		}
 	}
-	dir := filepath.Join(t.TempDir(), "cloudru-vm")
+	dir := filepath.Join(t.TempDir(), "evo")
 	t.Setenv(EnvConfigDir, dir)
 	return dir
 }
@@ -70,7 +70,7 @@ func TestResolve_Precedence(t *testing.T) {
 		ProjectID: "proj-profile", Region: "az-profile", Flavor: "flavor-profile",
 		ImageID: "img-profile", DiskSize: 20,
 	})
-	project := filepath.Join(t.TempDir(), ".cloudru-vm.yaml")
+	project := filepath.Join(t.TempDir(), ".evo.yaml")
 	writeFile(t, project, "region: az-project\nflavor: flavor-project\nimage_id: img-project\n")
 	t.Setenv("CLOUDRU_FLAVOR", "flavor-env")
 	t.Setenv("CLOUDRU_IMAGE_ID", "img-env")
@@ -212,7 +212,7 @@ func TestResolve_UnknownExplicitProfile(t *testing.T) {
 
 func TestResolve_ProjectFileSecretsIgnored(t *testing.T) {
 	isolate(t)
-	project := filepath.Join(t.TempDir(), ".cloudru-vm.yaml")
+	project := filepath.Join(t.TempDir(), ".evo.yaml")
 	writeFile(t, project, "project_id: p1\nkey_id: leaked-id\nsecret: leaked-secret\n")
 	cfg, err := Resolve(Options{ProjectFile: project})
 	if err != nil {
@@ -254,7 +254,7 @@ func TestResolve_S3SectionAndEnvOverride(t *testing.T) {
 
 func TestResolve_InvalidInputs(t *testing.T) {
 	isolate(t)
-	project := filepath.Join(t.TempDir(), ".cloudru-vm.yaml")
+	project := filepath.Join(t.TempDir(), ".evo.yaml")
 	writeFile(t, project, "region: [invalid yaml\n")
 	if _, err := Resolve(Options{ProjectFile: project}); exitCode(err) != clerrors.ExitAuth {
 		t.Errorf("invalid YAML: %v", err)

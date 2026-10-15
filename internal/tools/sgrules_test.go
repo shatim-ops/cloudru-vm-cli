@@ -132,7 +132,7 @@ func TestDeployApply_AdoptKeepsRecordedRules(t *testing.T) {
 // list_security_groups rules=true shows each group's rules (the group list
 // carries none); without it the answer is as before.
 func TestListSecurityGroups_Rules(t *testing.T) {
-	cloud := &sgCloud{rules: []*provision.SGRule{{ID: "rule-80", Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", Description: "cloudru-vm: port 80", State: "created"}}}
+	cloud := &sgCloud{rules: []*provision.SGRule{{ID: "rule-80", Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", Description: "evo: port 80", State: "created"}}}
 	r, _ := sgRegistry(t, cloud)
 
 	var got struct {
@@ -144,7 +144,7 @@ func TestListSecurityGroups_Rules(t *testing.T) {
 	if err := json.Unmarshal([]byte(callSGTool(t, r, "list_security_groups", map[string]any{"rules": true})), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Groups) != 1 || len(got.Groups[0].Rules) != 1 || got.Groups[0].Rules[0].Description != "cloudru-vm: port 80" {
+	if len(got.Groups) != 1 || len(got.Groups[0].Rules) != 1 || got.Groups[0].Rules[0].Description != "evo: port 80" {
 		t.Errorf("got %+v", got)
 	}
 	if text := callSGTool(t, r, "list_security_groups", nil); strings.Contains(text, "rules") {

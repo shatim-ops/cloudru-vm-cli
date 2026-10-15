@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// Ключ проекта лежит в ./.cloudru-vm/ — каталоге, который приходит вместе с
+// Ключ проекта лежит в ./.evo/ — каталоге, который приходит вместе с
 // чужим репозиторием. Ни символическая ссылка там, ни заранее созданный файл
 // с широкими правами не должны ни переписать чужой файл, ни оставить
 // приватный ключ читаемым для всех.
@@ -25,7 +25,7 @@ func TestSSHKey_ExistingLooseFileGetsPrivateMode(t *testing.T) {
 		t.Skip("права 0600 на Windows не выставляются")
 	}
 	dir := t.TempDir()
-	keyDir := filepath.Join(dir, ".cloudru-vm")
+	keyDir := filepath.Join(dir, ".evo")
 	if err := os.MkdirAll(keyDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestSSHKey_SymlinkedKeyFileIsNotFollowed(t *testing.T) {
 			if err := os.WriteFile(outside, orig, 0o644); err != nil {
 				t.Fatal(err)
 			}
-			keyDir := filepath.Join(dir, ".cloudru-vm")
+			keyDir := filepath.Join(dir, ".evo")
 			if err := os.MkdirAll(keyDir, 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -89,16 +89,16 @@ func TestSSHKey_SymlinkedKeyFileIsNotFollowed(t *testing.T) {
 
 func TestSSHKey_SymlinkedKeyDirIsRefused(t *testing.T) {
 	dir := t.TempDir()
-	// Чужой репозиторий: .cloudru-vm -> ~/.ssh с настоящим ключом без .pub.
+	// Чужой репозиторий: .evo -> ~/.ssh с настоящим ключом без .pub.
 	sshDir := t.TempDir()
 	realKey := []byte("-----BEGIN OPENSSH PRIVATE KEY-----\nреальный ключ пользователя\n")
 	if err := os.WriteFile(filepath.Join(sshDir, "id_ed25519"), realKey, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	symlinkOrSkip(t, sshDir, filepath.Join(dir, ".cloudru-vm"))
+	symlinkOrSkip(t, sshDir, filepath.Join(dir, ".evo"))
 
 	if _, _, err := loadOrGenerateSSHKey(dir); err == nil {
-		t.Fatal(".cloudru-vm — ссылка на другой каталог, а ключ создан/прочитан через неё")
+		t.Fatal(".evo — ссылка на другой каталог, а ключ создан/прочитан через неё")
 	}
 	got, err := os.ReadFile(filepath.Join(sshDir, "id_ed25519"))
 	if err != nil {
@@ -126,12 +126,12 @@ func TestSSHKey_GeneratedThenReused(t *testing.T) {
 		t.Fatal("второй запуск создал новый ключ вместо существующего")
 	}
 	// «git add .» в каталоге проекта не должен забирать приватный ключ.
-	gi, err := os.ReadFile(filepath.Join(dir, ".cloudru-vm", ".gitignore"))
+	gi, err := os.ReadFile(filepath.Join(dir, ".evo", ".gitignore"))
 	if err != nil || string(gi) != "*\n" {
-		t.Fatalf(".cloudru-vm/.gitignore: %q, %v; ждали «*»", gi, err)
+		t.Fatalf(".evo/.gitignore: %q, %v; ждали «*»", gi, err)
 	}
 	if runtime.GOOS != "windows" {
-		st, err := os.Stat(filepath.Join(dir, ".cloudru-vm", "id_ed25519.pub"))
+		st, err := os.Stat(filepath.Join(dir, ".evo", "id_ed25519.pub"))
 		if err != nil {
 			t.Fatal(err)
 		}

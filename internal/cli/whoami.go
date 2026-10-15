@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -62,7 +62,7 @@ missing or rejected.`,
 				tok.ExpiresAt.Local().Format("2006-01-02 15:04:05 MST"),
 				tok.TTL().Truncate(time.Minute), tokenSourceText(tokenSource))
 			if cfg.ProjectID == "" {
-				printer.Hint("Set a project with 'cloudru-vm configure' or CLOUDRU_PROJECT_ID.")
+				printer.Hint("Set a project with 'evo configure' or CLOUDRU_PROJECT_ID.")
 			}
 			return nil
 		},

@@ -119,7 +119,7 @@ func TestWindowsForeignAccessWarnsAndRestrictFixes(t *testing.T) {
 // Каталог, созданный MkdirPrivate, передаёт свои записи новым файлам:
 // state.json и замок пишутся обычным os.CreateTemp/OpenFile.
 func TestWindowsMkdirPrivateChildrenInherit(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), ".cloudru-vm")
+	dir := filepath.Join(t.TempDir(), ".evo")
 	if err := MkdirPrivate(dir); err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,7 @@
 ломающие изменения CLI (команды, флаги, коды возврата, формат `--json`) — только в **major**.
 
 1. `main` зелёный в CI (в том числе `TestCommandsDoc`: `docs/commands.md` совпадает с бинарём); локально `goreleaser check` и, по желанию,
-   `goreleaser release --snapshot --clean --skip=sign` — в `dist/` 6 бинарей и `checksums.txt`.
+   `goreleaser release --snapshot --clean --skip=sign` — в `dist/` 6 архивов (в каждом `evo` и alias `cloudru-vm` до v1.1) и `checksums.txt`.
 2. `git tag -a v1.2.3 -m v1.2.3 && git push origin v1.2.3` — тег ставится на коммит в `main`.
    Если тег не запушить (облачная сессия пушит только свои ветки): Actions →
    **tag** → Run workflow с `tag` и полным `sha` коммита в `main`
@@ -39,7 +39,7 @@
 
 Job `image` в `release.yml` после `ci` собирает образ, гоняет smoke-тест
 (`initialize` по HTTP, версия сервера = тег) и публикует его в Artifact
-Registry Cloud.ru: `<реестр>/cloudru-vm:<версия>`, для стабильных тегов ещё и
+Registry Cloud.ru: `<реестр>/evo:<версия>`, для стабильных тегов ещё и
 `:latest` (`-rc.N` его не двигает). Нужны секреты репозитория
 (Settings → Secrets and variables → Actions):
 
@@ -57,7 +57,7 @@ Registry Cloud.ru: `<реестр>/cloudru-vm:<версия>`, для стаби
 после изменения команд, флагов или описаний инструментов:
 
 ```
-go test ./cmd/cloudru-vm -run TestCommandsDoc -update-docs
+go test ./internal/cli -run TestCommandsDoc -update-docs
 ```
 
 `TestAuthDoc_ListsEveryEnvVar` падает, если код читает переменную окружения,

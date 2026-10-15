@@ -242,7 +242,7 @@ func TestResolve_PrecedenceEveryField(t *testing.T) {
 				if active["profile"] && f.inProfile {
 					writeFile(t, SettingsPath(), fmt.Sprintf("profiles:\n  default:\n    %s: %v\n", f.yamlKey, f.val("profile")))
 				}
-				project := filepath.Join(t.TempDir(), ".cloudru-vm.yaml")
+				project := filepath.Join(t.TempDir(), ".evo.yaml")
 				if active["project"] {
 					writeFile(t, project, fmt.Sprintf("%s: %v\n", f.yamlKey, f.val("project")))
 				}

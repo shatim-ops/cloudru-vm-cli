@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// .cloudru-vm/ создаётся первым из state.Write/Lock (deploy --dry-run,
+// .evo/ создаётся первым из state.Write/Lock (deploy --dry-run,
 // destroy), а приватный SSH-ключ проекта ложится туда же. Каталог 0755
 // показывал другим пользователям имена файлов и state.json с IP и ID ВМ.
 func TestStateDirIsPrivate(t *testing.T) {
@@ -34,7 +34,7 @@ func TestStateDirIsPrivate(t *testing.T) {
 				t.Fatal(err)
 			}
 			if m := st.Mode().Perm(); m != 0o700 {
-				t.Fatalf(".cloudru-vm/ с правами %04o, нужно 0700", m)
+				t.Fatalf(".evo/ с правами %04o, нужно 0700", m)
 			}
 		})
 	}

@@ -171,7 +171,7 @@ func TestDestroy_RuleDeleteFailureWarnsAndRetries(t *testing.T) {
 		t.Fatalf("Destroy: %v", err)
 	}
 	if !strings.Contains(errBuf.String(), "Could not delete the security group rules for ports 53/udp") ||
-		!strings.Contains(errBuf.String(), "re-run 'cloudru-vm destroy'") {
+		!strings.Contains(errBuf.String(), "re-run 'evo destroy'") {
 		t.Errorf("warning:\n%s", errBuf.String())
 	}
 	sf := readState(t, eng.StateDir)

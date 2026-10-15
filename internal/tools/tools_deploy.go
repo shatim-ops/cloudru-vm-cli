@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/deployplan"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/pricing"
@@ -209,17 +210,18 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	// If we injected the agent's own deploy key, hand back an ssh command that
 	// uses it (and tolerates the reused-IP host-key change on ephemeral VMs).
 	if res.PublicIP != "" && plan.PublicKey == eng.SSHPubKey {
-		keyPath := filepath.Join(eng.StateDir, ".cloudru-vm", "id_ed25519")
+		dataDir := config.DataDir(eng.StateDir)
+		keyPath := filepath.Join(dataDir, "id_ed25519")
 		res.SSH = fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s", keyPath, plan.SSH.Login, res.PublicIP)
 		note := "Connect with the ssh command above (agent deploy key)."
 		if keys := loadCaptainKeys(eng.StateDir); len(keys) > 0 {
 			if kErr := appendCaptainKeys(ctx, res.PublicIP, plan.SSH.Login, eng.SSHKeyPEM, keys); kErr != nil {
 				note += fmt.Sprintf(" WARNING: captain key auto-append failed (%v) — append their public key to ~/.ssh/authorized_keys on the VM manually.", kErr)
 			} else {
-				note += fmt.Sprintf(" Captain SSH access configured automatically (%d key(s) from .cloudru-vm/%s).", len(keys), captainKeysFile)
+				note += fmt.Sprintf(" Captain SSH access configured automatically (%d key(s) from %s/%s).", len(keys), filepath.Base(dataDir), captainKeysFile)
 			}
 		} else {
-			note += " No .cloudru-vm/" + captainKeysFile + " configured — to give the captain SSH access, append their public key to ~/.ssh/authorized_keys on the VM after install."
+			note += " No " + filepath.Base(dataDir) + "/" + captainKeysFile + " configured — to give the captain SSH access, append their public key to ~/.ssh/authorized_keys on the VM after install."
 		}
 		if res.Note == "" {
 			res.Note = note

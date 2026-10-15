@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bufio"
@@ -55,7 +55,7 @@ func assertJSONLines(t *testing.T, what, s string) {
 
 // Лишние позиционные аргументы и опечатка в подкоманде — ошибка
 // использования (код 1), а не молча проигнорированный аргумент или справка
-// с кодом 0: скрипт с «cloudru-vm vm lst» иначе решит, что всё хорошо.
+// с кодом 0: скрипт с «evo vm lst» иначе решит, что всё хорошо.
 func TestRun_EveryCommandRejectsStrayArguments(t *testing.T) {
 	setupCLI(t)
 	paths := commandPaths()

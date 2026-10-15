@@ -2,7 +2,7 @@
 //
 // Cloud.ru does not expose a stable per-flavor price endpoint, so this is a
 // transparent rate-card ESTIMATE, not a billed price. It can be overridden by a
-// JSON file at ~/.cloudru-vm/pricing.json:
+// JSON file at ~/.evo/pricing.json:
 //
 //	{
 //	  "currency": "RUB",
@@ -21,6 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
 )
 
 // hoursPerMonth is the conventional cloud billing month (730h).
@@ -66,7 +68,7 @@ func load() card {
 	if err != nil {
 		return c
 	}
-	data, err := os.ReadFile(filepath.Join(home, ".cloudru-vm", "pricing.json"))
+	data, err := os.ReadFile(filepath.Join(config.DataDir(home), "pricing.json"))
 	if err != nil {
 		return c
 	}

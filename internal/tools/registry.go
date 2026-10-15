@@ -1,9 +1,9 @@
-// Package tools is the registry of cloudru-vm operations: name, group,
+// Package tools is the registry of evo operations: name, group,
 // description, JSON schema of the arguments, handler, and whether the
 // operation changes anything in the cloud.
 //
 // The registry does not know about transports. The MCP server
-// (internal/mcp) and the CLI ('cloudru-vm tools …' and the command trees)
+// (internal/mcp) and the CLI ('evo tools …' and the command trees)
 // are two clients of the same handlers: arguments come in as
 // map[string]any, the result goes out as a JSON string plus an isError flag.
 //

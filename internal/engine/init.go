@@ -52,7 +52,7 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	if len(candidates) == 0 {
 		return clerrors.New(clerrors.CodeConfigInvalid,
 			"no Ubuntu or Debian image found in the image catalog",
-			"Pick an image with 'cloudru-vm list-images' and set image_id in "+opts.Path+" by hand.")
+			"Pick an image with 'evo list-images' and set image_id in "+opts.Path+" by hand.")
 	}
 
 	interactive := !opts.NonInteractive && confirm.StdinIsTTY()
@@ -84,13 +84,13 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	if e.Config.ProjectID != "" {
 		projectLine = "project_id: " + e.Config.ProjectID
 	}
-	content := fmt.Sprintf(`# cloudru-vm configuration
+	content := fmt.Sprintf(`# evo configuration
 # See: https://github.com/shatim-ops/cloudru-vm-cli
 
-# Availability zone (cloudru-vm list-zones)
+# Availability zone (evo list-zones)
 region: %s  # %s
 
-# Boot image (cloudru-vm list-images). Docker is installed on first deploy.
+# Boot image (evo list-images). Docker is installed on first deploy.
 image_id: %s  # %s
 
 # VM flavor: auto picks the smallest that fits your compose services
@@ -115,9 +115,9 @@ timeout: 300
 
 	e.Printer.Success("Created " + opts.Path)
 	if e.Config.ProjectID == "" {
-		e.Printer.Hint("Set project_id in " + opts.Path + ", then run 'cloudru-vm deploy'.")
+		e.Printer.Hint("Set project_id in " + opts.Path + ", then run 'evo deploy'.")
 	} else {
-		e.Printer.Hint("Run 'cloudru-vm deploy'.")
+		e.Printer.Hint("Run 'evo deploy'.")
 	}
 	return nil
 }

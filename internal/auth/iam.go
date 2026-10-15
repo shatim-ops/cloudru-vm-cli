@@ -92,7 +92,7 @@ func (p *IAMProvider) Token(ctx context.Context) (Token, error) {
 		return Token{}, clerrors.New(
 			clerrors.CodeAuthRequired,
 			"Cloud.ru credentials not set",
-			"Run 'cloudru-vm configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET (create an access key for a service account at https://console.cloud.ru)",
+			"Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET (create an access key for a service account at https://console.cloud.ru)",
 		)
 	}
 
@@ -184,7 +184,7 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 		return Token{}, false, clerrors.New(
 			clerrors.CodeAuthFailed,
 			fmt.Sprintf("IAM rejected the credentials (status %d)", resp.StatusCode),
-			"Verify the key ID and secret: 'cloudru-vm configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET",
+			"Verify the key ID and secret: 'evo configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET",
 		)
 	}
 	if resp.StatusCode != http.StatusOK {

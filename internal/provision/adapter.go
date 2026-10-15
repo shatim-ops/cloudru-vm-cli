@@ -459,7 +459,7 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			cause := &StatusError{Status: resp.StatusCode, Body: string(respBody)}
 			if resp.StatusCode == http.StatusUnauthorized {
 				return nil, clierrors.Wrap(clierrors.CodeAuthExpired, "Cloud.ru API rejected the token (401)",
-					"Check the access key with 'cloudru-vm doctor', or run 'cloudru-vm configure' again.", cause)
+					"Check the access key with 'evo doctor', or run 'evo configure' again.", cause)
 			}
 			return nil, clierrors.Wrap(clierrors.CodeAuthFailed, fmt.Sprintf("access denied (403) for %s %s: %s", method, path, respBody),
 				"The service account lacks a role for this operation in the project.", cause)

@@ -6,7 +6,7 @@ import (
 )
 
 // --dry-run and a refused confirmation create nothing — not even the SSH
-// key in ./.cloudru-vm/ (BACKLOG [05]). With consent the key is made and
+// key in ./.evo/ (BACKLOG [05]). With consent the key is made and
 // lands in the image metadata.
 func TestDeploy_SSHKeyOnlyAfterConsent(t *testing.T) {
 	newEngine := func() (*Engine, *mockCloudAPI, DeployOptions, *int) {

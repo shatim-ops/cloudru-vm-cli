@@ -52,7 +52,7 @@ func initEngine(t *testing.T) (*Engine, string, *bytes.Buffer) {
 	eng, dir := newTestEngine(t, catalogCloud(), newMockDeployer())
 	var out bytes.Buffer
 	eng.Printer = output.NewWithWriter(&out, output.ModePlain, false)
-	return eng, filepath.Join(dir, ".cloudru-vm.yaml"), &out
+	return eng, filepath.Join(dir, ".evo.yaml"), &out
 }
 
 // --non-interactive: first zone, newest plain Ubuntu, choice printed; no

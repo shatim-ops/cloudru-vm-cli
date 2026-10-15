@@ -73,7 +73,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	if !isNewDeploy && existing.Status == "destroying" {
 		return clerrors.New(clerrors.CodeVMProvisionFailed,
 			fmt.Sprintf("deployment %s is being destroyed", existing.ID),
-			"Run 'cloudru-vm destroy' to finish it, then deploy again.")
+			"Run 'evo destroy' to finish it, then deploy again.")
 	}
 
 	// Skip only a deployment that finished: after an SSH or Docker failure the
@@ -429,7 +429,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	if sshUser == "" {
 		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
 			fmt.Sprintf("image %s declares no login user", imageID),
-			"Choose a Linux image whose metadata has a 'name' field (cloudru-vm list-images), e.g. Ubuntu-24.04.")
+			"Choose a Linux image whose metadata has a 'name' field (evo list-images), e.g. Ubuntu-24.04.")
 	}
 
 	diskType, err := e.resolveDiskType(ctx, projectID, defaultDiskTypeName)
@@ -830,9 +830,9 @@ func (e *Engine) waitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmI
 
 // vmNameFor turns the project (directory) name into the VM name, which is
 // also its hostname: RFC 1123 allows lowercase letters, digits and inner
-// hyphens, up to 63 characters. "My App (копия)" → "cloudru-vm-my-app".
+// hyphens, up to 63 characters. "My App (копия)" → "evo-my-app".
 func vmNameFor(project string) string {
-	const prefix = "cloudru-vm-"
+	const prefix = "evo-"
 	var b strings.Builder
 	dash := false
 	for _, r := range strings.ToLower(project) {
@@ -985,7 +985,7 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		}
 	}
 
-	hint := "Check that the VM reaches its apt mirror and get.docker.com, then re-run 'cloudru-vm deploy'."
+	hint := "Check that the VM reaches its apt mirror and get.docker.com, then re-run 'evo deploy'."
 	if tail := lastLines(lastOut, 15); tail != "" {
 		hint = "Last output of the Docker install:\n" + tail + "\n" + hint
 	}
@@ -1040,7 +1040,7 @@ func sshUserOf(rec *state.DeploymentRecord) (string, error) {
 	if rec.SSHUser == "" {
 		return "", clerrors.New(clerrors.CodeStateCorrupted,
 			fmt.Sprintf("deployment %s has no ssh_user in state", rec.ID),
-			"Set \"ssh_user\" in .cloudru-vm/state.json to the image's login user (Cloud.ru images: user1).")
+			"Set \"ssh_user\" in state.json (.evo/, or the legacy .cloudru-vm/) to the image's login user (Cloud.ru images: user1).")
 	}
 	return rec.SSHUser, nil
 }
@@ -1067,7 +1067,7 @@ func (e *Engine) vmLeftRunning(ctx context.Context, err error, vmID string) erro
 	}
 	return clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 		"deployment interrupted",
-		fmt.Sprintf("VM %s was created and is still running. Use 'cloudru-vm destroy --force' to delete it.", vmID),
+		fmt.Sprintf("VM %s was created and is still running. Use 'evo destroy --force' to delete it.", vmID),
 		cause)
 }
 
@@ -1079,7 +1079,7 @@ func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) (
 		e.Printer.Warning(fmt.Sprintf("Received %s. VM %s left running (non-interactive mode).", sig, vmID))
 		return false, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 			"deployment interrupted",
-			fmt.Sprintf("VM %s was created and is still running. Use 'cloudru-vm destroy --force' to delete it.", vmID),
+			fmt.Sprintf("VM %s was created and is still running. Use 'evo destroy --force' to delete it.", vmID),
 			context.Canceled)
 	}
 
@@ -1103,7 +1103,7 @@ func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) (
 
 	return deleted, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 		"deployment interrupted by signal",
-		fmt.Sprintf("VM %s was created. Use 'cloudru-vm destroy' to clean up if needed.", vmID),
+		fmt.Sprintf("VM %s was created. Use 'evo destroy' to clean up if needed.", vmID),
 		context.Canceled)
 }
 

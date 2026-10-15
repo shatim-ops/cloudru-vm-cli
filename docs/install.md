@@ -10,7 +10,7 @@ Linux, macOS и Windows, каждая для amd64 и arm64. К каждому �
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | sh
-cloudru-vm version
+evo version
 ```
 
 Скрипт:
@@ -38,9 +38,14 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/inst
   | CLOUDRU_VM_VERSION=v1.0.0-rc.1 INSTALL_DIR="$HOME/bin" sh
 ```
 
-Если стабильного релиза ещё нет, скрипт скажет об этом и попросит задать
-`CLOUDRU_VM_VERSION`. Обновление — тот же запуск: бинарь заменяется атомарно.
-Удаление — `rm ~/.local/bin/cloudru-vm` (и данные, см.
+Если стабильного релиза ещё нет (до `v1.0.0`), скрипт без версии
+останавливается с «стабильного релиза пока нет»: кандидат в релиз ставится с
+явной версией, `… | CLOUDRU_VM_VERSION=v1.0.0-rc.1 sh`. Релизы до
+переименования (`v1.0.0-rc.1`) выпущены под старым именем — архив
+`cloudru-vm_<версия>_…` с одним бинарём `cloudru-vm`; скрипт узнаёт это по
+`checksums.txt` релиза и ставит `cloudru-vm`. С `v1.0.0-rc.2` — `evo` и alias
+`cloudru-vm`. Обновление — тот же запуск: бинарь заменяется атомарно.
+Удаление — `rm ~/.local/bin/evo ~/.local/bin/cloudru-vm` (и данные, см.
 [auth.md → «Что хранится на машине»](auth.md#что-хранится-на-машине)).
 
 ## Linux и macOS вручную
@@ -48,39 +53,46 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/inst
 ```sh
 V=1.0.0-rc.1; OS=linux; ARCH=amd64          # OS: linux | darwin; ARCH: amd64 | arm64
 base=https://github.com/shatim-ops/cloudru-vm-cli/releases/download/v$V
-curl -fLO "$base/cloudru-vm_${V}_${OS}_${ARCH}.tar.gz"
+curl -fLO "$base/evo_${V}_${OS}_${ARCH}.tar.gz"
 curl -fLO "$base/checksums.txt"
 curl -fLO "$base/checksums.txt.sigstore.json"
 # проверка подписи и хэша — раздел ниже
-tar -xzf "cloudru-vm_${V}_${OS}_${ARCH}.tar.gz" cloudru-vm
-install -m 0755 cloudru-vm ~/.local/bin/
+tar -xzf "evo_${V}_${OS}_${ARCH}.tar.gz" evo
+install -m 0755 evo ~/.local/bin/
 ```
+
+В архиве есть и `cloudru-vm` — тот же бинарь под старым именем (alias до
+v1.1, см. [README → «Переименование»](../README.md#переименование)). Нужен он,
+только если скрипты или конфиг MCP ещё вызывают `cloudru-vm`; `install.sh`
+ставит его рядом с `evo`.
 
 ## Windows
 
 Скрипта-установщика для Windows пока нет.
 
-1. Скачайте из релиза `cloudru-vm_<версия>_windows_amd64.zip` (или `_arm64`) и
+1. Скачайте из релиза `evo_<версия>_windows_amd64.zip` (или `_arm64`) и
    `checksums.txt`.
 2. Сверьте хэш в PowerShell — значение должно совпасть со строкой архива в
    `checksums.txt`:
 
    ```powershell
-   (Get-FileHash .\cloudru-vm_1.0.0-rc.1_windows_amd64.zip -Algorithm SHA256).Hash.ToLower()
+   (Get-FileHash .\evo_1.0.0-rc.1_windows_amd64.zip -Algorithm SHA256).Hash.ToLower()
    Select-String -Path .\checksums.txt -Pattern windows_amd64
    ```
 
-3. Распакуйте `cloudru-vm.exe`, например, в `%LOCALAPPDATA%\Programs\cloudru-vm`.
+3. Распакуйте `evo.exe`, например, в `%LOCALAPPDATA%\Programs\evo`
+   (`cloudru-vm.exe` в архиве — alias со старым именем до v1.1, нужен только
+   старым скриптам).
 4. Добавьте этот каталог в `Path` пользователя: «Параметры → Система → О
    программе → Дополнительные параметры системы → Переменные среды», или в
    PowerShell:
 
    ```powershell
-   $dir = "$env:LOCALAPPDATA\Programs\cloudru-vm"
+   $dir = "$env:LOCALAPPDATA\Programs\evo"
    [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$dir", "User")
    ```
 
-5. Откройте новый терминал: `cloudru-vm version`.
+5. Откройте новый терминал: `evo version`.
 
 На Windows вместо прав `0600` файлы с ключами получают собственный ACL без
 наследования: доступ только у вас, SYSTEM и Администраторов (подробнее —
@@ -114,10 +126,10 @@ Authenticode**.
 - **macOS.** После `install.sh` или `curl` бинарь запускается без вопросов:
   curl не ставит атрибут карантина. Если архив скачан браузером, macOS скажет
   «не удаётся проверить разработчика». После проверки sha256 снимите карантин:
-  `xattr -d com.apple.quarantine ~/.local/bin/cloudru-vm`.
+  `xattr -d com.apple.quarantine ~/.local/bin/evo`.
 - **Windows.** SmartScreen может показать «Windows защитила ваш компьютер» —
   «Подробнее» → «Выполнить в любом случае». Или до первого запуска, после
-  проверки хэша: `Unblock-File .\cloudru-vm.exe`.
+  проверки хэша: `Unblock-File .\evo.exe`.
 
 ## kubectl и helm
 
@@ -134,7 +146,7 @@ Authenticode**.
 Программы ищутся в `PATH`, затем в `~/.local/bin`, `/usr/local/bin`,
 `/usr/bin`. Установка: [kubectl](https://kubernetes.io/docs/tasks/tools/),
 [helm](https://helm.sh/docs/intro/install/). Проверить, видит ли их
-cloudru-vm, — `cloudru-vm doctor` (отсутствие — предупреждение, не ошибка).
+evo, — `evo doctor` (отсутствие — предупреждение, не ошибка).
 
 Ограничения:
 
@@ -148,8 +160,8 @@ cloudru-vm, — `cloudru-vm doctor` (отсутствие — предупреж
 
 ```sh
 git clone https://github.com/shatim-ops/cloudru-vm-cli && cd cloudru-vm-cli
-go build -o bin/cloudru-vm ./cmd/cloudru-vm
+go build -o bin/evo ./cmd/evo
 ```
 
-Нужен Go версии из `go.mod` (CI собирает на Go 1.26.9). `cloudru-vm version`
+Нужен Go версии из `go.mod` (CI собирает на Go 1.26.9). `evo version`
 у такой сборки показывает версию модуля и коммит из данных VCS.

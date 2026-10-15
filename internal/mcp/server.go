@@ -1,5 +1,5 @@
 // Package mcp implements a Model Context Protocol (MCP) server that exposes
-// cloudru-vm operations as tools for AI agents. It speaks JSON-RPC 2.0 over
+// evo operations as tools for AI agents. It speaks JSON-RPC 2.0 over
 // stdio (newline-delimited JSON, Run) or over Streamable HTTP (http.go).
 //
 // IMPORTANT: in stdio mode stdout is reserved for the JSON-RPC channel. Nothing else may be
@@ -42,7 +42,7 @@ func supportedProtocol(v string) bool {
 }
 
 // serverName is the MCP server identity reported during initialize.
-const serverName = "cloudru-vm"
+const serverName = "evo"
 
 // EngineFactory builds an *engine.Engine from a set of config overrides; it
 // is the registry's factory type, so one function serves both transports and
@@ -61,7 +61,7 @@ type Tool struct {
 	InputSchema map[string]any `json:"inputSchema"`
 }
 
-// Server is an MCP server exposing cloudru-vm operations over stdio.
+// Server is an MCP server exposing evo operations over stdio.
 type Server struct {
 	version  string
 	tools    []Tool
@@ -261,7 +261,7 @@ func (s *Server) readStdio(serve context.Context, stop context.CancelCauseFunc, 
 			}
 		}
 		if readErr != nil {
-			// EOF does not cancel: "printf … | cloudru-vm mcp" and one-shot
+			// EOF does not cancel: "printf … | evo mcp" and one-shot
 			// clients close stdin right after the request and still wait
 			// for the answer. A deploy cut short half-way costs more than a
 			// finished one nobody reads; the calls already read run to the
@@ -485,7 +485,7 @@ var panicLog io.Writer = os.Stderr
 func callHandler(ctx context.Context, h toolHandler, name string, args map[string]any) (text string, isErr bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(panicLog, "cloudru-vm mcp: tool %s panicked: %v\n%s", name, r, debug.Stack())
+			fmt.Fprintf(panicLog, "evo mcp: tool %s panicked: %v\n%s", name, r, debug.Stack())
 			text, isErr = tools.ErrResult(fmt.Errorf("internal error: tool %s panicked: %v", name, r)), true
 		}
 	}()

@@ -69,7 +69,7 @@ func (f *fakeCloud) DeleteSecurityGroupRule(_ context.Context, sg, id string) er
 	return clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
 }
 
-func desc(label string) string { return "cloudru-vm: port " + label }
+func desc(label string) string { return "evo: port " + label }
 
 // Only rules Open creates become the deployment's own; a port that a rule
 // already opened (by anyone) is needed, but not owned.
@@ -120,7 +120,7 @@ func TestOpen_RerunCreatesNothing(t *testing.T) {
 func TestOpen_NoIDInAnswerLooksTheRuleUp(t *testing.T) {
 	f := newFake()
 	f.noID = true
-	f.rules["sg-1"] = []provision.SGRule{{ID: "foreign", Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", Description: "cloudru-vm: port 80", State: "deleting"}}
+	f.rules["sg-1"] = []provision.SGRule{{ID: "foreign", Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", Description: "evo: port 80", State: "deleting"}}
 	var rec state.DeploymentRecord
 	res := Open(context.Background(), f, "", "sg-1", []int{80}, nil, desc, &rec)
 	if len(rec.OpenedRules) != 1 || rec.OpenedRules[0].ID != "r1" || len(res.Untracked) != 0 {

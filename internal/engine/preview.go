@@ -175,7 +175,7 @@ func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
 		// Other projects cannot be seen from this state: a VM deployed from
 		// another directory may rely on a rule this deploy created.
 		lines = append(lines, "the security group is shared: other VMs in it that rely on these ports lose them too "+
-			"(re-run 'cloudru-vm deploy --force' in their directory to reopen)")
+			"(re-run 'evo deploy --force' in their directory to reopen)")
 	}
 	return res, lines
 }

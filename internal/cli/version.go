@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -46,7 +46,7 @@ func resolveVersion(v, c, d string, info *debug.BuildInfo) (string, string, stri
 	return v, c, d
 }
 
-// versionInfo is the payload of "cloudru-vm version --json".
+// versionInfo is the payload of "evo version --json".
 type versionInfo struct {
 	Version string `json:"version"`
 	Commit  string `json:"commit"`
@@ -72,7 +72,7 @@ func printVersion(w io.Writer, jsonMode bool, v versionInfo) error {
 	if jsonMode {
 		return output.NewWithWriter(w, output.ModeJSON, false).JSON(v)
 	}
-	_, err := fmt.Fprintf(w, "cloudru-vm %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
+	_, err := fmt.Fprintf(w, "evo %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
 		v.Version, v.Commit, v.Date, v.Go, v.OS, v.Arch)
 	return err
 }

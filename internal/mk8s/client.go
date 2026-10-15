@@ -3,7 +3,7 @@
 // goes in the query string, create/delete return an async Operation to poll.
 //
 // The request/response shapes were confirmed against the live API + the v3
-// OpenAPI spec (see the openclaw-cloudru-vm-mcp memory note).
+// OpenAPI spec.
 package mk8s
 
 import (

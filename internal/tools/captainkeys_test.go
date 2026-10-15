@@ -8,7 +8,7 @@ import (
 
 func TestLoadCaptainKeys(t *testing.T) {
 	dir := t.TempDir()
-	keyDir := filepath.Join(dir, ".cloudru-vm")
+	keyDir := filepath.Join(dir, ".evo")
 	if err := os.MkdirAll(keyDir, 0700); err != nil {
 		t.Fatal(err)
 	}

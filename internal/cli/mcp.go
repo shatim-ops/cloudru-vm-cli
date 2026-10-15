@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -37,9 +37,9 @@ func newMCPCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Run as an MCP server (stdio, or Streamable HTTP with --http) for AI agents",
-		Long: `Run cloudru-vm as a Model Context Protocol server.
+		Long: `Run evo as a Model Context Protocol server.
 
-The server exposes the cloudru-vm tools (VMs, disks, networks, Kubernetes,
+The server exposes the evo tools (VMs, disks, networks, Kubernetes,
 databases, ...) so an AI agent (e.g. Claude Code) can manage Cloud.ru
 resources directly.
 
@@ -47,12 +47,12 @@ By default it speaks newline-delimited JSON-RPC 2.0 on stdin/stdout; all
 human-readable output is suppressed (stdout is reserved for the protocol).
 SIGINT/SIGTERM and notifications/cancelled cancel running tool calls;
 closing stdin does not (calls already sent finish and are answered). Add it to Claude Code with:
-  claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
+  claude mcp add --transport stdio --scope project evo -- evo mcp
 
 With --http ADDR it serves the MCP Streamable HTTP transport on
 http://ADDR/mcp (and an unauthenticated liveness probe on /healthz):
-  MCP_BEARER_TOKEN=... cloudru-vm mcp --http :8080
-  claude mcp add --transport http cloudru-vm http://localhost:8080/mcp \
+  MCP_BEARER_TOKEN=... evo mcp --http :8080
+  claude mcp add --transport http evo http://localhost:8080/mcp \
     --header "Authorization: Bearer $MCP_BEARER_TOKEN"
 
 HTTP authentication (--auth):
@@ -76,7 +76,7 @@ status, duration; never the arguments) goes to stderr.
 
 Cloud.ru credentials and project parameters are the server's own, resolved
 exactly as for the regular CLI commands (environment, profile from
-'cloudru-vm configure', .cloudru-vm.yaml); clients never send them.`,
+'evo configure', .evo.yaml); clients never send them.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			srv := mcp.New(func(overrides map[string]any) (*engine.Engine, error) {

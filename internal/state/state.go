@@ -13,9 +13,11 @@ import (
 // CurrentVersion is the state file format this build reads and writes.
 const CurrentVersion = 1
 
-// DefaultPath returns ".cloudru-vm/state.json" relative to the given project root.
+// DefaultPath returns ".evo/state.json" relative to the given project root,
+// or the legacy ".cloudru-vm/state.json" of a project deployed before the
+// rename (see config.DataDir).
 func DefaultPath(root string) string {
-	return filepath.Join(root, ".cloudru-vm", "state.json")
+	return filepath.Join(config.DataDir(root), "state.json")
 }
 
 // Read reads the state file. Returns empty File (version=1) if file doesn't exist.
@@ -57,8 +59,8 @@ func Read(path string) (*File, error) {
 		// Rewriting it would drop what this version does not know.
 		return nil, clierr.New(
 			clierr.CodeStateCorrupted,
-			fmt.Sprintf("state file %s has version %d; this cloudru-vm understands up to %d", path, f.Version, CurrentVersion),
-			"Upgrade cloudru-vm; the newer version wrote this state.",
+			fmt.Sprintf("state file %s has version %d; this evo understands up to %d", path, f.Version, CurrentVersion),
+			"Upgrade evo; the newer version wrote this state.",
 		)
 	}
 
@@ -73,7 +75,7 @@ func Read(path string) (*File, error) {
 // Creates parent directory if needed.
 func Write(path string, f *File) error {
 	dir := filepath.Dir(path)
-	if err := config.MkdirPrivate(dir); err != nil { // .cloudru-vm/ also holds the SSH key
+	if err := config.MkdirPrivate(dir); err != nil { // .evo/ also holds the SSH key
 		return clierr.Wrap(
 			clierr.CodeStateCorrupted,
 			"failed to create state directory",

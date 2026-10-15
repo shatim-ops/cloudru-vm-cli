@@ -22,7 +22,7 @@ func (e *Engine) Status(ctx context.Context) error {
 			return e.Printer.JSON(map[string]any{"status": "none", "message": "No active deployment."})
 		}
 		e.Printer.Success("No active deployment.")
-		e.Printer.Hint("Run 'cloudru-vm deploy' to create one.")
+		e.Printer.Hint("Run 'evo deploy' to create one.")
 		return nil
 	}
 

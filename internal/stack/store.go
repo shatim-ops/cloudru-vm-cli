@@ -197,7 +197,7 @@ type Job struct {
 
 func jobsDir() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".cloudru-vm", "stack-jobs")
+	return filepath.Join(config.DataDir(home), "stack-jobs")
 }
 
 func newID() string {

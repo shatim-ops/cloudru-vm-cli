@@ -1,115 +1,115 @@
 # Справка по командам
 
 <!-- Файл сгенерирован из дерева команд (cobra/doc). Руками не править:
-     go test ./cmd/cloudru-vm -run TestCommandsDoc -update-docs
+     go test ./internal/cli -run TestCommandsDoc -update-docs
      CI сверяет файл с бинарём (TestCommandsDoc). -->
 
 Справка — на английском, как `--help` (решение D6); то же самое печатает
-`cloudru-vm <команда> --help`. Описание по-русски — в [README](../README.md)
+`evo <команда> --help`. Описание по-русски — в [README](../README.md)
 и соседних файлах `docs/`.
 
 ## Содержание
 
-- [cloudru-vm](#cloudru-vm)
-  - [cloudru-vm completion](#cloudru-vm-completion)
-    - [cloudru-vm completion bash](#cloudru-vm-completion-bash)
-    - [cloudru-vm completion fish](#cloudru-vm-completion-fish)
-    - [cloudru-vm completion powershell](#cloudru-vm-completion-powershell)
-    - [cloudru-vm completion zsh](#cloudru-vm-completion-zsh)
-  - [cloudru-vm configure](#cloudru-vm-configure)
-    - [cloudru-vm configure delete](#cloudru-vm-configure-delete)
-    - [cloudru-vm configure list](#cloudru-vm-configure-list)
-  - [cloudru-vm deploy](#cloudru-vm-deploy)
-  - [cloudru-vm destroy](#cloudru-vm-destroy)
-  - [cloudru-vm disk](#cloudru-vm-disk)
-    - [cloudru-vm disk attach](#cloudru-vm-disk-attach)
-    - [cloudru-vm disk create](#cloudru-vm-disk-create)
-    - [cloudru-vm disk delete](#cloudru-vm-disk-delete)
-    - [cloudru-vm disk detach](#cloudru-vm-disk-detach)
-    - [cloudru-vm disk list](#cloudru-vm-disk-list)
-    - [cloudru-vm disk resize](#cloudru-vm-disk-resize)
-    - [cloudru-vm disk types](#cloudru-vm-disk-types)
-  - [cloudru-vm doctor](#cloudru-vm-doctor)
-  - [cloudru-vm init](#cloudru-vm-init)
-  - [cloudru-vm k8s](#cloudru-vm-k8s)
-    - [cloudru-vm k8s add-nodepool](#cloudru-vm-k8s-add-nodepool)
-    - [cloudru-vm k8s apply](#cloudru-vm-k8s-apply)
-    - [cloudru-vm k8s create](#cloudru-vm-k8s-create)
-    - [cloudru-vm k8s delete](#cloudru-vm-k8s-delete)
-    - [cloudru-vm k8s get](#cloudru-vm-k8s-get)
-    - [cloudru-vm k8s helm](#cloudru-vm-k8s-helm)
-    - [cloudru-vm k8s kubeconfig](#cloudru-vm-k8s-kubeconfig)
-    - [cloudru-vm k8s kubectl](#cloudru-vm-k8s-kubectl)
-    - [cloudru-vm k8s list](#cloudru-vm-k8s-list)
-    - [cloudru-vm k8s nodepools](#cloudru-vm-k8s-nodepools)
-    - [cloudru-vm k8s options](#cloudru-vm-k8s-options)
-    - [cloudru-vm k8s plan](#cloudru-vm-k8s-plan)
-  - [cloudru-vm list-images](#cloudru-vm-list-images)
-  - [cloudru-vm list-zones](#cloudru-vm-list-zones)
-  - [cloudru-vm logs](#cloudru-vm-logs)
-  - [cloudru-vm mcp](#cloudru-vm-mcp)
-  - [cloudru-vm pg](#cloudru-vm-pg)
-    - [cloudru-vm pg backup-create](#cloudru-vm-pg-backup-create)
-    - [cloudru-vm pg backups](#cloudru-vm-pg-backups)
-    - [cloudru-vm pg create](#cloudru-vm-pg-create)
-    - [cloudru-vm pg databases](#cloudru-vm-pg-databases)
-    - [cloudru-vm pg db-create](#cloudru-vm-pg-db-create)
-    - [cloudru-vm pg db-delete](#cloudru-vm-pg-db-delete)
-    - [cloudru-vm pg delete](#cloudru-vm-pg-delete)
-    - [cloudru-vm pg get](#cloudru-vm-pg-get)
-    - [cloudru-vm pg list](#cloudru-vm-pg-list)
-    - [cloudru-vm pg operation](#cloudru-vm-pg-operation)
-    - [cloudru-vm pg specs](#cloudru-vm-pg-specs)
-    - [cloudru-vm pg user-create](#cloudru-vm-pg-user-create)
-    - [cloudru-vm pg user-delete](#cloudru-vm-pg-user-delete)
-    - [cloudru-vm pg users](#cloudru-vm-pg-users)
-    - [cloudru-vm pg versions](#cloudru-vm-pg-versions)
-  - [cloudru-vm s3](#cloudru-vm-s3)
-    - [cloudru-vm s3 bucket-create](#cloudru-vm-s3-bucket-create)
-    - [cloudru-vm s3 bucket-delete](#cloudru-vm-s3-bucket-delete)
-    - [cloudru-vm s3 buckets](#cloudru-vm-s3-buckets)
-    - [cloudru-vm s3 get](#cloudru-vm-s3-get)
-    - [cloudru-vm s3 ls](#cloudru-vm-s3-ls)
-    - [cloudru-vm s3 put](#cloudru-vm-s3-put)
-    - [cloudru-vm s3 rm](#cloudru-vm-s3-rm)
-  - [cloudru-vm secret](#cloudru-vm-secret)
-    - [cloudru-vm secret add-version](#cloudru-vm-secret-add-version)
-    - [cloudru-vm secret create](#cloudru-vm-secret-create)
-    - [cloudru-vm secret delete](#cloudru-vm-secret-delete)
-    - [cloudru-vm secret get](#cloudru-vm-secret-get)
-    - [cloudru-vm secret list](#cloudru-vm-secret-list)
-    - [cloudru-vm secret value](#cloudru-vm-secret-value)
-  - [cloudru-vm status](#cloudru-vm-status)
-  - [cloudru-vm tools](#cloudru-vm-tools)
-    - [cloudru-vm tools call](#cloudru-vm-tools-call)
-    - [cloudru-vm tools describe](#cloudru-vm-tools-describe)
-    - [cloudru-vm tools list](#cloudru-vm-tools-list)
-  - [cloudru-vm verify](#cloudru-vm-verify)
-  - [cloudru-vm version](#cloudru-vm-version)
-  - [cloudru-vm vm](#cloudru-vm-vm)
-    - [cloudru-vm vm create](#cloudru-vm-vm-create)
-    - [cloudru-vm vm delete](#cloudru-vm-vm-delete)
-    - [cloudru-vm vm flavors](#cloudru-vm-vm-flavors)
-    - [cloudru-vm vm get](#cloudru-vm-vm-get)
-    - [cloudru-vm vm list](#cloudru-vm-vm-list)
-    - [cloudru-vm vm zones](#cloudru-vm-vm-zones)
-  - [cloudru-vm vpc](#cloudru-vm-vpc)
-    - [cloudru-vm vpc create](#cloudru-vm-vpc-create)
-    - [cloudru-vm vpc delete](#cloudru-vm-vpc-delete)
-    - [cloudru-vm vpc fip-attach](#cloudru-vm-vpc-fip-attach)
-    - [cloudru-vm vpc fip-release](#cloudru-vm-vpc-fip-release)
-    - [cloudru-vm vpc fips](#cloudru-vm-vpc-fips)
-    - [cloudru-vm vpc get](#cloudru-vm-vpc-get)
-    - [cloudru-vm vpc list](#cloudru-vm-vpc-list)
-    - [cloudru-vm vpc operation](#cloudru-vm-vpc-operation)
-    - [cloudru-vm vpc route-create](#cloudru-vm-vpc-route-create)
-    - [cloudru-vm vpc route-delete](#cloudru-vm-vpc-route-delete)
-    - [cloudru-vm vpc routes](#cloudru-vm-vpc-routes)
-    - [cloudru-vm vpc security-groups](#cloudru-vm-vpc-security-groups)
-    - [cloudru-vm vpc subnets](#cloudru-vm-vpc-subnets)
-  - [cloudru-vm whoami](#cloudru-vm-whoami)
+- [evo](#evo)
+  - [evo completion](#evo-completion)
+    - [evo completion bash](#evo-completion-bash)
+    - [evo completion fish](#evo-completion-fish)
+    - [evo completion powershell](#evo-completion-powershell)
+    - [evo completion zsh](#evo-completion-zsh)
+  - [evo configure](#evo-configure)
+    - [evo configure delete](#evo-configure-delete)
+    - [evo configure list](#evo-configure-list)
+  - [evo deploy](#evo-deploy)
+  - [evo destroy](#evo-destroy)
+  - [evo disk](#evo-disk)
+    - [evo disk attach](#evo-disk-attach)
+    - [evo disk create](#evo-disk-create)
+    - [evo disk delete](#evo-disk-delete)
+    - [evo disk detach](#evo-disk-detach)
+    - [evo disk list](#evo-disk-list)
+    - [evo disk resize](#evo-disk-resize)
+    - [evo disk types](#evo-disk-types)
+  - [evo doctor](#evo-doctor)
+  - [evo init](#evo-init)
+  - [evo k8s](#evo-k8s)
+    - [evo k8s add-nodepool](#evo-k8s-add-nodepool)
+    - [evo k8s apply](#evo-k8s-apply)
+    - [evo k8s create](#evo-k8s-create)
+    - [evo k8s delete](#evo-k8s-delete)
+    - [evo k8s get](#evo-k8s-get)
+    - [evo k8s helm](#evo-k8s-helm)
+    - [evo k8s kubeconfig](#evo-k8s-kubeconfig)
+    - [evo k8s kubectl](#evo-k8s-kubectl)
+    - [evo k8s list](#evo-k8s-list)
+    - [evo k8s nodepools](#evo-k8s-nodepools)
+    - [evo k8s options](#evo-k8s-options)
+    - [evo k8s plan](#evo-k8s-plan)
+  - [evo list-images](#evo-list-images)
+  - [evo list-zones](#evo-list-zones)
+  - [evo logs](#evo-logs)
+  - [evo mcp](#evo-mcp)
+  - [evo pg](#evo-pg)
+    - [evo pg backup-create](#evo-pg-backup-create)
+    - [evo pg backups](#evo-pg-backups)
+    - [evo pg create](#evo-pg-create)
+    - [evo pg databases](#evo-pg-databases)
+    - [evo pg db-create](#evo-pg-db-create)
+    - [evo pg db-delete](#evo-pg-db-delete)
+    - [evo pg delete](#evo-pg-delete)
+    - [evo pg get](#evo-pg-get)
+    - [evo pg list](#evo-pg-list)
+    - [evo pg operation](#evo-pg-operation)
+    - [evo pg specs](#evo-pg-specs)
+    - [evo pg user-create](#evo-pg-user-create)
+    - [evo pg user-delete](#evo-pg-user-delete)
+    - [evo pg users](#evo-pg-users)
+    - [evo pg versions](#evo-pg-versions)
+  - [evo s3](#evo-s3)
+    - [evo s3 bucket-create](#evo-s3-bucket-create)
+    - [evo s3 bucket-delete](#evo-s3-bucket-delete)
+    - [evo s3 buckets](#evo-s3-buckets)
+    - [evo s3 get](#evo-s3-get)
+    - [evo s3 ls](#evo-s3-ls)
+    - [evo s3 put](#evo-s3-put)
+    - [evo s3 rm](#evo-s3-rm)
+  - [evo secret](#evo-secret)
+    - [evo secret add-version](#evo-secret-add-version)
+    - [evo secret create](#evo-secret-create)
+    - [evo secret delete](#evo-secret-delete)
+    - [evo secret get](#evo-secret-get)
+    - [evo secret list](#evo-secret-list)
+    - [evo secret value](#evo-secret-value)
+  - [evo status](#evo-status)
+  - [evo tools](#evo-tools)
+    - [evo tools call](#evo-tools-call)
+    - [evo tools describe](#evo-tools-describe)
+    - [evo tools list](#evo-tools-list)
+  - [evo verify](#evo-verify)
+  - [evo version](#evo-version)
+  - [evo vm](#evo-vm)
+    - [evo vm create](#evo-vm-create)
+    - [evo vm delete](#evo-vm-delete)
+    - [evo vm flavors](#evo-vm-flavors)
+    - [evo vm get](#evo-vm-get)
+    - [evo vm list](#evo-vm-list)
+    - [evo vm zones](#evo-vm-zones)
+  - [evo vpc](#evo-vpc)
+    - [evo vpc create](#evo-vpc-create)
+    - [evo vpc delete](#evo-vpc-delete)
+    - [evo vpc fip-attach](#evo-vpc-fip-attach)
+    - [evo vpc fip-release](#evo-vpc-fip-release)
+    - [evo vpc fips](#evo-vpc-fips)
+    - [evo vpc get](#evo-vpc-get)
+    - [evo vpc list](#evo-vpc-list)
+    - [evo vpc operation](#evo-vpc-operation)
+    - [evo vpc route-create](#evo-vpc-route-create)
+    - [evo vpc route-delete](#evo-vpc-route-delete)
+    - [evo vpc routes](#evo-vpc-routes)
+    - [evo vpc security-groups](#evo-vpc-security-groups)
+    - [evo vpc subnets](#evo-vpc-subnets)
+  - [evo whoami](#evo-whoami)
 
-## cloudru-vm
+## evo
 
 Deploy docker-compose projects to Cloud.ru VMs
 
@@ -132,7 +132,7 @@ Exit codes:
 
 ```
       --dry-run             Show what would be created or deleted (with a cost estimate) and exit
-  -h, --help                help for cloudru-vm
+  -h, --help                help for evo
       --json                Output in JSON format
       --no-color            Disable colored output
       --profile string      Credentials profile (default: $CLOUDRU_PROFILE or "default")
@@ -144,37 +144,37 @@ Exit codes:
 
 ### SEE ALSO
 
-* [cloudru-vm completion](#cloudru-vm-completion)	 - Generate the autocompletion script for the specified shell
-* [cloudru-vm configure](#cloudru-vm-configure)	 - Set up credentials and the default project for a profile
-* [cloudru-vm deploy](#cloudru-vm-deploy)	 - Deploy a docker-compose project to a Cloud.ru VM
-* [cloudru-vm destroy](#cloudru-vm-destroy)	 - Delete the deployed VM and clean up resources
-* [cloudru-vm disk](#cloudru-vm-disk)	 - Disks
-* [cloudru-vm doctor](#cloudru-vm-doctor)	 - Check configuration, credentials and connectivity
-* [cloudru-vm init](#cloudru-vm-init)	 - Create .cloudru-vm.yaml with a zone and image chosen from the Cloud.ru API
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
-* [cloudru-vm list-images](#cloudru-vm-list-images)	 - List available VM boot images
-* [cloudru-vm list-zones](#cloudru-vm-list-zones)	 - List available availability zones
-* [cloudru-vm logs](#cloudru-vm-logs)	 - View container logs from the deployed VM
-* [cloudru-vm mcp](#cloudru-vm-mcp)	 - Run as an MCP server (stdio, or Streamable HTTP with --http) for AI agents
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
-* [cloudru-vm s3](#cloudru-vm-s3)	 - Object Storage: buckets and objects
-* [cloudru-vm secret](#cloudru-vm-secret)	 - Secret Manager
-* [cloudru-vm status](#cloudru-vm-status)	 - Show current deployment status
-* [cloudru-vm tools](#cloudru-vm-tools)	 - List, describe and call any of the cloudru-vm tools (the same ones the MCP server exposes)
-* [cloudru-vm verify](#cloudru-vm-verify)	 - Run health checks against the deployed application (exit 1 if unhealthy)
-* [cloudru-vm version](#cloudru-vm-version)	 - Print the version, commit, build date, Go version and platform
-* [cloudru-vm vm](#cloudru-vm-vm)	 - Virtual machines
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
-* [cloudru-vm whoami](#cloudru-vm-whoami)	 - Show the active profile and check its credentials
+* [evo completion](#evo-completion)	 - Generate the autocompletion script for the specified shell
+* [evo configure](#evo-configure)	 - Set up credentials and the default project for a profile
+* [evo deploy](#evo-deploy)	 - Deploy a docker-compose project to a Cloud.ru VM
+* [evo destroy](#evo-destroy)	 - Delete the deployed VM and clean up resources
+* [evo disk](#evo-disk)	 - Disks
+* [evo doctor](#evo-doctor)	 - Check configuration, credentials and connectivity
+* [evo init](#evo-init)	 - Create .evo.yaml with a zone and image chosen from the Cloud.ru API
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
+* [evo list-images](#evo-list-images)	 - List available VM boot images
+* [evo list-zones](#evo-list-zones)	 - List available availability zones
+* [evo logs](#evo-logs)	 - View container logs from the deployed VM
+* [evo mcp](#evo-mcp)	 - Run as an MCP server (stdio, or Streamable HTTP with --http) for AI agents
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
+* [evo secret](#evo-secret)	 - Secret Manager
+* [evo status](#evo-status)	 - Show current deployment status
+* [evo tools](#evo-tools)	 - List, describe and call any of the evo tools (the same ones the MCP server exposes)
+* [evo verify](#evo-verify)	 - Run health checks against the deployed application (exit 1 if unhealthy)
+* [evo version](#evo-version)	 - Print the version, commit, build date, Go version and platform
+* [evo vm](#evo-vm)	 - Virtual machines
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo whoami](#evo-whoami)	 - Show the active profile and check its credentials
 
-## cloudru-vm completion
+## evo completion
 
 Generate the autocompletion script for the specified shell
 
 ### Synopsis
 
 ```text
-Generate the autocompletion script for cloudru-vm for the specified shell.
+Generate the autocompletion script for evo for the specified shell.
 See each sub-command's help for details on how to use the generated script.
 ```
 
@@ -199,13 +199,13 @@ See each sub-command's help for details on how to use the generated script.
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [cloudru-vm completion bash](#cloudru-vm-completion-bash)	 - Generate the autocompletion script for bash
-* [cloudru-vm completion fish](#cloudru-vm-completion-fish)	 - Generate the autocompletion script for fish
-* [cloudru-vm completion powershell](#cloudru-vm-completion-powershell)	 - Generate the autocompletion script for powershell
-* [cloudru-vm completion zsh](#cloudru-vm-completion-zsh)	 - Generate the autocompletion script for zsh
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo completion bash](#evo-completion-bash)	 - Generate the autocompletion script for bash
+* [evo completion fish](#evo-completion-fish)	 - Generate the autocompletion script for fish
+* [evo completion powershell](#evo-completion-powershell)	 - Generate the autocompletion script for powershell
+* [evo completion zsh](#evo-completion-zsh)	 - Generate the autocompletion script for zsh
 
-## cloudru-vm completion bash
+## evo completion bash
 
 Generate the autocompletion script for bash
 
@@ -219,23 +219,23 @@ If it is not installed already, you can install it via your OS's package manager
 
 To load completions in your current shell session:
 
-	source <(cloudru-vm completion bash)
+	source <(evo completion bash)
 
 To load completions for every new session, execute once:
 
 #### Linux:
 
-	cloudru-vm completion bash > /etc/bash_completion.d/cloudru-vm
+	evo completion bash > /etc/bash_completion.d/evo
 
 #### macOS:
 
-	cloudru-vm completion bash > $(brew --prefix)/etc/bash_completion.d/cloudru-vm
+	evo completion bash > $(brew --prefix)/etc/bash_completion.d/evo
 
 You will need to start a new shell for this setup to take effect.
 ```
 
 ```
-cloudru-vm completion bash
+evo completion bash
 ```
 
 ### Options
@@ -260,9 +260,9 @@ cloudru-vm completion bash
 
 ### SEE ALSO
 
-* [cloudru-vm completion](#cloudru-vm-completion)	 - Generate the autocompletion script for the specified shell
+* [evo completion](#evo-completion)	 - Generate the autocompletion script for the specified shell
 
-## cloudru-vm completion fish
+## evo completion fish
 
 Generate the autocompletion script for fish
 
@@ -273,17 +273,17 @@ Generate the autocompletion script for the fish shell.
 
 To load completions in your current shell session:
 
-	cloudru-vm completion fish | source
+	evo completion fish | source
 
 To load completions for every new session, execute once:
 
-	cloudru-vm completion fish > ~/.config/fish/completions/cloudru-vm.fish
+	evo completion fish > ~/.config/fish/completions/evo.fish
 
 You will need to start a new shell for this setup to take effect.
 ```
 
 ```
-cloudru-vm completion fish [flags]
+evo completion fish [flags]
 ```
 
 ### Options
@@ -308,9 +308,9 @@ cloudru-vm completion fish [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm completion](#cloudru-vm-completion)	 - Generate the autocompletion script for the specified shell
+* [evo completion](#evo-completion)	 - Generate the autocompletion script for the specified shell
 
-## cloudru-vm completion powershell
+## evo completion powershell
 
 Generate the autocompletion script for powershell
 
@@ -321,14 +321,14 @@ Generate the autocompletion script for powershell.
 
 To load completions in your current shell session:
 
-	cloudru-vm completion powershell | Out-String | Invoke-Expression
+	evo completion powershell | Out-String | Invoke-Expression
 
 To load completions for every new session, add the output of the above command
 to your powershell profile.
 ```
 
 ```
-cloudru-vm completion powershell [flags]
+evo completion powershell [flags]
 ```
 
 ### Options
@@ -353,9 +353,9 @@ cloudru-vm completion powershell [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm completion](#cloudru-vm-completion)	 - Generate the autocompletion script for the specified shell
+* [evo completion](#evo-completion)	 - Generate the autocompletion script for the specified shell
 
-## cloudru-vm completion zsh
+## evo completion zsh
 
 Generate the autocompletion script for zsh
 
@@ -371,23 +371,23 @@ to enable it.  You can execute the following once:
 
 To load completions in your current shell session:
 
-	source <(cloudru-vm completion zsh)
+	source <(evo completion zsh)
 
 To load completions for every new session, execute once:
 
 #### Linux:
 
-	cloudru-vm completion zsh > "${fpath[1]}/_cloudru-vm"
+	evo completion zsh > "${fpath[1]}/_evo"
 
 #### macOS:
 
-	cloudru-vm completion zsh > $(brew --prefix)/share/zsh/site-functions/_cloudru-vm
+	evo completion zsh > $(brew --prefix)/share/zsh/site-functions/_evo
 
 You will need to start a new shell for this setup to take effect.
 ```
 
 ```
-cloudru-vm completion zsh [flags]
+evo completion zsh [flags]
 ```
 
 ### Options
@@ -412,9 +412,9 @@ cloudru-vm completion zsh [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm completion](#cloudru-vm-completion)	 - Generate the autocompletion script for the specified shell
+* [evo completion](#evo-completion)	 - Generate the autocompletion script for the specified shell
 
-## cloudru-vm configure
+## evo configure
 
 Set up credentials and the default project for a profile
 
@@ -428,11 +428,11 @@ against Cloud.ru IAM, then lists the projects the key can see and lets you
 pick one (a single project is picked automatically).
 
 Non-interactive (CI, scripts) — the secret is read from stdin, never from a flag:
-  printf '%s' "$SECRET" | cloudru-vm configure --key-id KEY_ID --secret-stdin --project-id PROJECT_ID
+  printf '%s' "$SECRET" | evo configure --key-id KEY_ID --secret-stdin --project-id PROJECT_ID
 
 Files (mode 0600, directory 0700; CLOUDRU_CONFIG_DIR overrides the directory):
-  <user config dir>/cloudru-vm/config.yaml        project_id, region, defaults
-  <user config dir>/cloudru-vm/credentials.yaml   key_id, secret, optional s3 section
+  <user config dir>/evo/config.yaml        project_id, region, defaults
+  <user config dir>/evo/credentials.yaml   key_id, secret, optional s3 section
 
 Required access: the service account needs a project role that allows managing
 Compute and VPC resources; listing projects also needs read access to the
@@ -441,7 +441,7 @@ https://github.com/shatim-ops/cloudru-vm-cli/blob/main/docs/auth.md
 ```
 
 ```
-cloudru-vm configure [flags]
+evo configure [flags]
 ```
 
 ### Options
@@ -467,16 +467,16 @@ cloudru-vm configure [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [cloudru-vm configure delete](#cloudru-vm-configure-delete)	 - Delete a stored profile and its cached token
-* [cloudru-vm configure list](#cloudru-vm-configure-list)	 - List stored profiles
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo configure delete](#evo-configure-delete)	 - Delete a stored profile and its cached token
+* [evo configure list](#evo-configure-list)	 - List stored profiles
 
-## cloudru-vm configure delete
+## evo configure delete
 
 Delete a stored profile and its cached token
 
 ```
-cloudru-vm configure delete <profile> [flags]
+evo configure delete <profile> [flags]
 ```
 
 ### Options
@@ -500,14 +500,14 @@ cloudru-vm configure delete <profile> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm configure](#cloudru-vm-configure)	 - Set up credentials and the default project for a profile
+* [evo configure](#evo-configure)	 - Set up credentials and the default project for a profile
 
-## cloudru-vm configure list
+## evo configure list
 
 List stored profiles
 
 ```
-cloudru-vm configure list [flags]
+evo configure list [flags]
 ```
 
 ### Options
@@ -531,14 +531,14 @@ cloudru-vm configure list [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm configure](#cloudru-vm-configure)	 - Set up credentials and the default project for a profile
+* [evo configure](#evo-configure)	 - Set up credentials and the default project for a profile
 
-## cloudru-vm deploy
+## evo deploy
 
 Deploy a docker-compose project to a Cloud.ru VM
 
 ```
-cloudru-vm deploy [flags]
+evo deploy [flags]
 ```
 
 ### Options
@@ -568,14 +568,14 @@ cloudru-vm deploy [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm destroy
+## evo destroy
 
 Delete the deployed VM and clean up resources
 
 ```
-cloudru-vm destroy [flags]
+evo destroy [flags]
 ```
 
 ### Options
@@ -600,14 +600,14 @@ cloudru-vm destroy [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm disk
+## evo disk
 
 Disks
 
 ```
-cloudru-vm disk [flags]
+evo disk [flags]
 ```
 
 ### Options
@@ -631,16 +631,16 @@ cloudru-vm disk [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [cloudru-vm disk attach](#cloudru-vm-disk-attach)	 - Attach an existing disk to a VM (POST /disks/{id}/attach).
-* [cloudru-vm disk create](#cloudru-vm-disk-create)	 - Create a block-storage disk.
-* [cloudru-vm disk delete](#cloudru-vm-disk-delete)	 - Permanently delete a disk and all its data (irreversible).
-* [cloudru-vm disk detach](#cloudru-vm-disk-detach)	 - Detach a disk from a VM (POST /disks/{id}/detach).
-* [cloudru-vm disk list](#cloudru-vm-disk-list)	 - List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs).
-* [cloudru-vm disk resize](#cloudru-vm-disk-resize)	 - Grow a disk in place via PUT /disks/{id} (up to 65536 GB).
-* [cloudru-vm disk types](#cloudru-vm-disk-types)	 - List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD).
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo disk attach](#evo-disk-attach)	 - Attach an existing disk to a VM (POST /disks/{id}/attach).
+* [evo disk create](#evo-disk-create)	 - Create a block-storage disk.
+* [evo disk delete](#evo-disk-delete)	 - Permanently delete a disk and all its data (irreversible).
+* [evo disk detach](#evo-disk-detach)	 - Detach a disk from a VM (POST /disks/{id}/detach).
+* [evo disk list](#evo-disk-list)	 - List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs).
+* [evo disk resize](#evo-disk-resize)	 - Grow a disk in place via PUT /disks/{id} (up to 65536 GB).
+* [evo disk types](#evo-disk-types)	 - List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD).
 
-## cloudru-vm disk attach
+## evo disk attach
 
 Attach an existing disk to a VM (POST /disks/{id}/attach).
 
@@ -649,12 +649,12 @@ Attach an existing disk to a VM (POST /disks/{id}/attach).
 ```text
 Attach an existing disk to a VM (POST /disks/{id}/attach). Disk and VM must be in the same zone. Mutation: requires confirmed=true.
 
-Runs the disk_attach tool (see 'cloudru-vm tools describe disk_attach').
+Runs the disk_attach tool (see 'evo tools describe disk_attach').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm disk attach <disk-id> [flags]
+evo disk attach <disk-id> [flags]
 ```
 
 ### Options
@@ -679,9 +679,9 @@ cloudru-vm disk attach <disk-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm disk](#cloudru-vm-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Disks
 
-## cloudru-vm disk create
+## evo disk create
 
 Create a block-storage disk.
 
@@ -690,12 +690,12 @@ Create a block-storage disk.
 ```text
 Create a block-storage disk. Pass attach_to=<VM name/uuid> to create it in that VM's zone and (with confirmed) attach it in one step — disks must be in the SAME zone as the VM. NB: attaching adds a NEW block device; it does NOT grow the VM's existing filesystem (you then partition/format/mount it on the VM). Resizing the boot disk in place is NOT available via this API (console-only). Mutation (billable): requires confirmed=true.
 
-Runs the disk_create tool (see 'cloudru-vm tools describe disk_create').
+Runs the disk_create tool (see 'evo tools describe disk_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm disk create <name> [flags]
+evo disk create <name> [flags]
 ```
 
 ### Options
@@ -723,9 +723,9 @@ cloudru-vm disk create <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm disk](#cloudru-vm-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Disks
 
-## cloudru-vm disk delete
+## evo disk delete
 
 Permanently delete a disk and all its data (irreversible).
 
@@ -734,12 +734,12 @@ Permanently delete a disk and all its data (irreversible).
 ```text
 Permanently delete a disk and all its data (irreversible). Detach it first if attached. Mutation: requires confirmed=true.
 
-Runs the disk_delete tool (see 'cloudru-vm tools describe disk_delete').
+Runs the disk_delete tool (see 'evo tools describe disk_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm disk delete <disk-id> [flags]
+evo disk delete <disk-id> [flags]
 ```
 
 ### Options
@@ -763,9 +763,9 @@ cloudru-vm disk delete <disk-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm disk](#cloudru-vm-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Disks
 
-## cloudru-vm disk detach
+## evo disk detach
 
 Detach a disk from a VM (POST /disks/{id}/detach).
 
@@ -774,12 +774,12 @@ Detach a disk from a VM (POST /disks/{id}/detach).
 ```text
 Detach a disk from a VM (POST /disks/{id}/detach). Do NOT detach a bootable/in-use disk carelessly. Mutation: requires confirmed=true.
 
-Runs the disk_detach tool (see 'cloudru-vm tools describe disk_detach').
+Runs the disk_detach tool (see 'evo tools describe disk_detach').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm disk detach <disk-id> [flags]
+evo disk detach <disk-id> [flags]
 ```
 
 ### Options
@@ -804,9 +804,9 @@ cloudru-vm disk detach <disk-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm disk](#cloudru-vm-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Disks
 
-## cloudru-vm disk list
+## evo disk list
 
 List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs).
 
@@ -815,11 +815,11 @@ List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VM
 ```text
 List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs). Read-only.
 
-Runs the disk_list tool (see 'cloudru-vm tools describe disk_list').
+Runs the disk_list tool (see 'evo tools describe disk_list').
 ```
 
 ```
-cloudru-vm disk list [flags]
+evo disk list [flags]
 ```
 
 ### Options
@@ -843,9 +843,9 @@ cloudru-vm disk list [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm disk](#cloudru-vm-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Disks
 
-## cloudru-vm disk resize
+## evo disk resize
 
 Grow a disk in place via PUT /disks/{id} (up to 65536 GB).
 
@@ -854,12 +854,12 @@ Grow a disk in place via PUT /disks/{id} (up to 65536 GB).
 ```text
 Grow a disk in place via PUT /disks/{id} (up to 65536 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead). Mutation: requires confirmed=true.
 
-Runs the disk_resize tool (see 'cloudru-vm tools describe disk_resize').
+Runs the disk_resize tool (see 'evo tools describe disk_resize').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm disk resize <disk-id> [flags]
+evo disk resize <disk-id> [flags]
 ```
 
 ### Options
@@ -884,9 +884,9 @@ cloudru-vm disk resize <disk-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm disk](#cloudru-vm-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Disks
 
-## cloudru-vm disk types
+## evo disk types
 
 List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD).
 
@@ -895,11 +895,11 @@ List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD).
 ```text
 List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD). Use a name as the 'disk_type' argument for deploy_plan in manual mode.
 
-Runs the list_disk_types tool (see 'cloudru-vm tools describe list_disk_types').
+Runs the list_disk_types tool (see 'evo tools describe list_disk_types').
 ```
 
 ```
-cloudru-vm disk types [flags]
+evo disk types [flags]
 ```
 
 ### Options
@@ -923,9 +923,9 @@ cloudru-vm disk types [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm disk](#cloudru-vm-disk)	 - Disks
+* [evo disk](#evo-disk)	 - Disks
 
-## cloudru-vm doctor
+## evo doctor
 
 Check configuration, credentials and connectivity
 
@@ -941,7 +941,7 @@ connectivity checks failed.
 ```
 
 ```
-cloudru-vm doctor [flags]
+evo doctor [flags]
 ```
 
 ### Options
@@ -965,16 +965,16 @@ cloudru-vm doctor [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm init
+## evo init
 
-Create .cloudru-vm.yaml with a zone and image chosen from the Cloud.ru API
+Create .evo.yaml with a zone and image chosen from the Cloud.ru API
 
 ### Synopsis
 
 ```text
-Create .cloudru-vm.yaml for this project.
+Create .evo.yaml for this project.
 
 The availability zone and the boot image are listed from the Cloud.ru API
 (credentials required). On a terminal you choose from a numbered list;
@@ -983,7 +983,7 @@ plain Ubuntu (else Debian) image are taken, and the choice is printed.
 ```
 
 ```
-cloudru-vm init [flags]
+evo init [flags]
 ```
 
 ### Options
@@ -1008,14 +1008,14 @@ cloudru-vm init [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm k8s
+## evo k8s
 
 Managed Kubernetes clusters
 
 ```
-cloudru-vm k8s [flags]
+evo k8s [flags]
 ```
 
 ### Options
@@ -1039,21 +1039,21 @@ cloudru-vm k8s [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [cloudru-vm k8s add-nodepool](#cloudru-vm-k8s-add-nodepool)	 - Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has n…
-* [cloudru-vm k8s apply](#cloudru-vm-k8s-apply)	 - Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -…
-* [cloudru-vm k8s create](#cloudru-vm-k8s-create)	 - STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan.
-* [cloudru-vm k8s delete](#cloudru-vm-k8s-delete)	 - Permanently delete a Managed Kubernetes cluster.
-* [cloudru-vm k8s get](#cloudru-vm-k8s-get)	 - Get a Managed Kubernetes cluster by id (full details incl.
-* [cloudru-vm k8s helm](#cloudru-vm-k8s-helm)	 - Drive Helm on a cluster: action=install|upgrade|uninstall|list|status.
-* [cloudru-vm k8s kubeconfig](#cloudru-vm-k8s-kubeconfig)	 - Get the kubeconfig for a Managed Kubernetes cluster.
-* [cloudru-vm k8s kubectl](#cloudru-vm-k8s-kubectl)	 - Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed).
-* [cloudru-vm k8s list](#cloudru-vm-k8s-list)	 - List Managed Kubernetes (mk8s) clusters in the project (id, name, status).
-* [cloudru-vm k8s nodepools](#cloudru-vm-k8s-nodepools)	 - List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes).
-* [cloudru-vm k8s options](#cloudru-vm-k8s-options)	 - List available Kubernetes versions (by release channel), node flavors and zones for mk8s.
-* [cloudru-vm k8s plan](#cloudru-vm-k8s-plan)	 - STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master …
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo k8s add-nodepool](#evo-k8s-add-nodepool)	 - Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has n…
+* [evo k8s apply](#evo-k8s-apply)	 - Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -…
+* [evo k8s create](#evo-k8s-create)	 - STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan.
+* [evo k8s delete](#evo-k8s-delete)	 - Permanently delete a Managed Kubernetes cluster.
+* [evo k8s get](#evo-k8s-get)	 - Get a Managed Kubernetes cluster by id (full details incl.
+* [evo k8s helm](#evo-k8s-helm)	 - Drive Helm on a cluster: action=install|upgrade|uninstall|list|status.
+* [evo k8s kubeconfig](#evo-k8s-kubeconfig)	 - Get the kubeconfig for a Managed Kubernetes cluster.
+* [evo k8s kubectl](#evo-k8s-kubectl)	 - Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed).
+* [evo k8s list](#evo-k8s-list)	 - List Managed Kubernetes (mk8s) clusters in the project (id, name, status).
+* [evo k8s nodepools](#evo-k8s-nodepools)	 - List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes).
+* [evo k8s options](#evo-k8s-options)	 - List available Kubernetes versions (by release channel), node flavors and zones for mk8s.
+* [evo k8s plan](#evo-k8s-plan)	 - STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master …
 
-## cloudru-vm k8s add-nodepool
+## evo k8s add-nodepool
 
 Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has n…
 
@@ -1062,12 +1062,12 @@ Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — 
 ```text
 Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has none). REQUIRES confirmed=true after the captain approves (billable). Async. Auto-resolves flavor (cpu/ram or name), nodes subnet and security group. NB: Cloud.ru's node-pool backend occasionally returns 503 'no healthy upstream' (transient outage) — just retry.
 
-Runs the k8s_add_nodepool tool (see 'cloudru-vm tools describe k8s_add_nodepool').
+Runs the k8s_add_nodepool tool (see 'evo tools describe k8s_add_nodepool').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm k8s add-nodepool <cluster-id> [flags]
+evo k8s add-nodepool <cluster-id> [flags]
 ```
 
 ### Options
@@ -1100,9 +1100,9 @@ cloudru-vm k8s add-nodepool <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s apply
+## evo k8s apply
 
 Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -…
 
@@ -1111,12 +1111,12 @@ Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — 
 ```text
 Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Mutation: requires confirmed=true after the captain approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.
 
-Runs the k8s_apply tool (see 'cloudru-vm tools describe k8s_apply').
+Runs the k8s_apply tool (see 'evo tools describe k8s_apply').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm k8s apply <cluster-id> [flags]
+evo k8s apply <cluster-id> [flags]
 ```
 
 ### Options
@@ -1142,9 +1142,9 @@ cloudru-vm k8s apply <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s create
+## evo k8s create
 
 STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan.
 
@@ -1153,12 +1153,12 @@ STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan.
 ```text
 STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the captain approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in ~10-20 min (poll k8s_get). Accepts the same args as k8s_plan.
 
-Runs the k8s_create tool (see 'cloudru-vm tools describe k8s_create').
+Runs the k8s_create tool (see 'evo tools describe k8s_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm k8s create [flags]
+evo k8s create [flags]
 ```
 
 ### Options
@@ -1193,9 +1193,9 @@ cloudru-vm k8s create [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s delete
+## evo k8s delete
 
 Permanently delete a Managed Kubernetes cluster.
 
@@ -1204,12 +1204,12 @@ Permanently delete a Managed Kubernetes cluster.
 ```text
 Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the captain approves. Async.
 
-Runs the k8s_delete tool (see 'cloudru-vm tools describe k8s_delete').
+Runs the k8s_delete tool (see 'evo tools describe k8s_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm k8s delete <cluster-id> [flags]
+evo k8s delete <cluster-id> [flags]
 ```
 
 ### Options
@@ -1233,9 +1233,9 @@ cloudru-vm k8s delete <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s get
+## evo k8s get
 
 Get a Managed Kubernetes cluster by id (full details incl.
 
@@ -1244,11 +1244,11 @@ Get a Managed Kubernetes cluster by id (full details incl.
 ```text
 Get a Managed Kubernetes cluster by id (full details incl. status). Read-only.
 
-Runs the k8s_get tool (see 'cloudru-vm tools describe k8s_get').
+Runs the k8s_get tool (see 'evo tools describe k8s_get').
 ```
 
 ```
-cloudru-vm k8s get <cluster-id> [flags]
+evo k8s get <cluster-id> [flags]
 ```
 
 ### Options
@@ -1272,9 +1272,9 @@ cloudru-vm k8s get <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s helm
+## evo k8s helm
 
 Drive Helm on a cluster: action=install|upgrade|uninstall|list|status.
 
@@ -1283,12 +1283,12 @@ Drive Helm on a cluster: action=install|upgrade|uninstall|list|status.
 ```text
 Drive Helm on a cluster: action=install|upgrade|uninstall|list|status. install/upgrade are idempotent (helm upgrade --install --wait). Optionally add a chart repo via repo_url. Pass values (inline YAML) and/or set (array of key=value). Mutating actions require confirmed=true. Ideal for standard products (e.g. kube-prometheus-stack, databases). NB: nodes need egress (snat_create) to pull chart images; size the node pool for the chart (monitoring stacks want ≥8GB nodes).
 
-Runs the k8s_helm tool (see 'cloudru-vm tools describe k8s_helm').
+Runs the k8s_helm tool (see 'evo tools describe k8s_helm').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm k8s helm <cluster-id> <action> [flags]
+evo k8s helm <cluster-id> <action> [flags]
 ```
 
 ### Options
@@ -1319,9 +1319,9 @@ cloudru-vm k8s helm <cluster-id> <action> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s kubeconfig
+## evo k8s kubeconfig
 
 Get the kubeconfig for a Managed Kubernetes cluster.
 
@@ -1330,11 +1330,11 @@ Get the kubeconfig for a Managed Kubernetes cluster.
 ```text
 Get the kubeconfig for a Managed Kubernetes cluster. By DEFAULT it embeds a static bearer token so kubectl/helm work as-is (the raw Cloud.ru kubeconfig needs a 'cloudlogin' exec-plugin that isn't installed → kubectl would fail 'executable cloudlogin not found'). Token TTL ~1h. Pass embed_token=false for the raw exec-plugin kubeconfig.
 
-Runs the k8s_kubeconfig tool (see 'cloudru-vm tools describe k8s_kubeconfig').
+Runs the k8s_kubeconfig tool (see 'evo tools describe k8s_kubeconfig').
 ```
 
 ```
-cloudru-vm k8s kubeconfig <cluster-id> [flags]
+evo k8s kubeconfig <cluster-id> [flags]
 ```
 
 ### Options
@@ -1360,9 +1360,9 @@ cloudru-vm k8s kubeconfig <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s kubectl
+## evo k8s kubectl
 
 Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed).
 
@@ -1371,12 +1371,12 @@ Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin
 ```text
 Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true. General escape hatch for whatever a product needs beyond helm/apply. Example args: "get pods -A", "-n db logs deploy/postgres", "create secret generic s --from-literal=k=v".
 
-Runs the k8s_kubectl tool (see 'cloudru-vm tools describe k8s_kubectl').
+Runs the k8s_kubectl tool (see 'evo tools describe k8s_kubectl').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm k8s kubectl <cluster-id> <args>... [flags]
+evo k8s kubectl <cluster-id> <args>... [flags]
 ```
 
 ### Options
@@ -1400,9 +1400,9 @@ cloudru-vm k8s kubectl <cluster-id> <args>... [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s list
+## evo k8s list
 
 List Managed Kubernetes (mk8s) clusters in the project (id, name, status).
 
@@ -1411,11 +1411,11 @@ List Managed Kubernetes (mk8s) clusters in the project (id, name, status).
 ```text
 List Managed Kubernetes (mk8s) clusters in the project (id, name, status). Read-only.
 
-Runs the k8s_list tool (see 'cloudru-vm tools describe k8s_list').
+Runs the k8s_list tool (see 'evo tools describe k8s_list').
 ```
 
 ```
-cloudru-vm k8s list [flags]
+evo k8s list [flags]
 ```
 
 ### Options
@@ -1439,9 +1439,9 @@ cloudru-vm k8s list [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s nodepools
+## evo k8s nodepools
 
 List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes).
 
@@ -1450,11 +1450,11 @@ List node pools of a Managed Kubernetes cluster (name, state, desired/ready node
 ```text
 List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only.
 
-Runs the k8s_nodepools tool (see 'cloudru-vm tools describe k8s_nodepools').
+Runs the k8s_nodepools tool (see 'evo tools describe k8s_nodepools').
 ```
 
 ```
-cloudru-vm k8s nodepools <cluster-id> [flags]
+evo k8s nodepools <cluster-id> [flags]
 ```
 
 ### Options
@@ -1478,9 +1478,9 @@ cloudru-vm k8s nodepools <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s options
+## evo k8s options
 
 List available Kubernetes versions (by release channel), node flavors and zones for mk8s.
 
@@ -1489,11 +1489,11 @@ List available Kubernetes versions (by release channel), node flavors and zones 
 ```text
 List available Kubernetes versions (by release channel), node flavors and zones for mk8s. Read-only. Use before k8s_plan in manual mode.
 
-Runs the k8s_options tool (see 'cloudru-vm tools describe k8s_options').
+Runs the k8s_options tool (see 'evo tools describe k8s_options').
 ```
 
 ```
-cloudru-vm k8s options [flags]
+evo k8s options [flags]
 ```
 
 ### Options
@@ -1517,9 +1517,9 @@ cloudru-vm k8s options [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm k8s plan
+## evo k8s plan
 
 STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master …
 
@@ -1528,11 +1528,11 @@ STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-pl
 ```text
 STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master count, subnet, service account) WITHOUT creating anything. Show it to the captain, then call k8s_create with the same args + confirmed=true.
 
-Runs the k8s_plan tool (see 'cloudru-vm tools describe k8s_plan').
+Runs the k8s_plan tool (see 'evo tools describe k8s_plan').
 ```
 
 ```
-cloudru-vm k8s plan [flags]
+evo k8s plan [flags]
 ```
 
 ### Options
@@ -1567,9 +1567,9 @@ cloudru-vm k8s plan [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm k8s](#cloudru-vm-k8s)	 - Managed Kubernetes clusters
+* [evo k8s](#evo-k8s)	 - Managed Kubernetes clusters
 
-## cloudru-vm list-images
+## evo list-images
 
 List available VM boot images
 
@@ -1584,7 +1584,7 @@ Use --json for machine-readable output.
 ```
 
 ```
-cloudru-vm list-images [flags]
+evo list-images [flags]
 ```
 
 ### Options
@@ -1608,9 +1608,9 @@ cloudru-vm list-images [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm list-zones
+## evo list-zones
 
 List available availability zones
 
@@ -1624,7 +1624,7 @@ Use --json for machine-readable output.
 ```
 
 ```
-cloudru-vm list-zones [flags]
+evo list-zones [flags]
 ```
 
 ### Options
@@ -1648,14 +1648,14 @@ cloudru-vm list-zones [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm logs
+## evo logs
 
 View container logs from the deployed VM
 
 ```
-cloudru-vm logs [flags]
+evo logs [flags]
 ```
 
 ### Options
@@ -1682,18 +1682,18 @@ cloudru-vm logs [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm mcp
+## evo mcp
 
 Run as an MCP server (stdio, or Streamable HTTP with --http) for AI agents
 
 ### Synopsis
 
 ```text
-Run cloudru-vm as a Model Context Protocol server.
+Run evo as a Model Context Protocol server.
 
-The server exposes the cloudru-vm tools (VMs, disks, networks, Kubernetes,
+The server exposes the evo tools (VMs, disks, networks, Kubernetes,
 databases, ...) so an AI agent (e.g. Claude Code) can manage Cloud.ru
 resources directly.
 
@@ -1701,12 +1701,12 @@ By default it speaks newline-delimited JSON-RPC 2.0 on stdin/stdout; all
 human-readable output is suppressed (stdout is reserved for the protocol).
 SIGINT/SIGTERM and notifications/cancelled cancel running tool calls;
 closing stdin does not (calls already sent finish and are answered). Add it to Claude Code with:
-  claude mcp add --transport stdio --scope project cloudru-vm -- cloudru-vm mcp
+  claude mcp add --transport stdio --scope project evo -- evo mcp
 
 With --http ADDR it serves the MCP Streamable HTTP transport on
 http://ADDR/mcp (and an unauthenticated liveness probe on /healthz):
-  MCP_BEARER_TOKEN=... cloudru-vm mcp --http :8080
-  claude mcp add --transport http cloudru-vm http://localhost:8080/mcp \
+  MCP_BEARER_TOKEN=... evo mcp --http :8080
+  claude mcp add --transport http evo http://localhost:8080/mcp \
     --header "Authorization: Bearer $MCP_BEARER_TOKEN"
 
 HTTP authentication (--auth):
@@ -1730,11 +1730,11 @@ status, duration; never the arguments) goes to stderr.
 
 Cloud.ru credentials and project parameters are the server's own, resolved
 exactly as for the regular CLI commands (environment, profile from
-'cloudru-vm configure', .cloudru-vm.yaml); clients never send them.
+'evo configure', .evo.yaml); clients never send them.
 ```
 
 ```
-cloudru-vm mcp [flags]
+evo mcp [flags]
 ```
 
 ### Options
@@ -1761,14 +1761,14 @@ cloudru-vm mcp [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm pg
+## evo pg
 
 Managed PostgreSQL clusters, databases, users, backups
 
 ```
-cloudru-vm pg [flags]
+evo pg [flags]
 ```
 
 ### Options
@@ -1792,24 +1792,24 @@ cloudru-vm pg [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [cloudru-vm pg backup-create](#cloudru-vm-pg-backup-create)	 - Start a manual backup of a PostgreSQL cluster (async).
-* [cloudru-vm pg backups](#cloudru-vm-pg-backups)	 - List backups of a PostgreSQL cluster (name, status, size, timestamps).
-* [cloudru-vm pg create](#cloudru-vm-pg-create)	 - Create a Managed PostgreSQL cluster.
-* [cloudru-vm pg databases](#cloudru-vm-pg-databases)	 - List databases in a PostgreSQL cluster (name, owner, size).
-* [cloudru-vm pg db-create](#cloudru-vm-pg-db-create)	 - Create a database in a PostgreSQL cluster.
-* [cloudru-vm pg db-delete](#cloudru-vm-pg-db-delete)	 - Drop a database in a PostgreSQL cluster.
-* [cloudru-vm pg delete](#cloudru-vm-pg-delete)	 - Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data.
-* [cloudru-vm pg get](#cloudru-vm-pg-get)	 - Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storag…
-* [cloudru-vm pg list](#cloudru-vm-pg-list)	 - List Managed PostgreSQL clusters in the project (id, name, status, version, health).
-* [cloudru-vm pg operation](#cloudru-vm-pg-operation)	 - Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create).
-* [cloudru-vm pg specs](#cloudru-vm-pg-specs)	 - List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard|business, min_…
-* [cloudru-vm pg user-create](#cloudru-vm-pg-user-create)	 - Create a user in a PostgreSQL cluster.
-* [cloudru-vm pg user-delete](#cloudru-vm-pg-user-delete)	 - Delete a user in a PostgreSQL cluster.
-* [cloudru-vm pg users](#cloudru-vm-pg-users)	 - List users of a PostgreSQL cluster (name, granted roles).
-* [cloudru-vm pg versions](#cloudru-vm-pg-versions)	 - List available Managed PostgreSQL versions (e.g. 15/16/17).
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo pg backup-create](#evo-pg-backup-create)	 - Start a manual backup of a PostgreSQL cluster (async).
+* [evo pg backups](#evo-pg-backups)	 - List backups of a PostgreSQL cluster (name, status, size, timestamps).
+* [evo pg create](#evo-pg-create)	 - Create a Managed PostgreSQL cluster.
+* [evo pg databases](#evo-pg-databases)	 - List databases in a PostgreSQL cluster (name, owner, size).
+* [evo pg db-create](#evo-pg-db-create)	 - Create a database in a PostgreSQL cluster.
+* [evo pg db-delete](#evo-pg-db-delete)	 - Drop a database in a PostgreSQL cluster.
+* [evo pg delete](#evo-pg-delete)	 - Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data.
+* [evo pg get](#evo-pg-get)	 - Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storag…
+* [evo pg list](#evo-pg-list)	 - List Managed PostgreSQL clusters in the project (id, name, status, version, health).
+* [evo pg operation](#evo-pg-operation)	 - Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create).
+* [evo pg specs](#evo-pg-specs)	 - List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard|business, min_…
+* [evo pg user-create](#evo-pg-user-create)	 - Create a user in a PostgreSQL cluster.
+* [evo pg user-delete](#evo-pg-user-delete)	 - Delete a user in a PostgreSQL cluster.
+* [evo pg users](#evo-pg-users)	 - List users of a PostgreSQL cluster (name, granted roles).
+* [evo pg versions](#evo-pg-versions)	 - List available Managed PostgreSQL versions (e.g. 15/16/17).
 
-## cloudru-vm pg backup-create
+## evo pg backup-create
 
 Start a manual backup of a PostgreSQL cluster (async).
 
@@ -1818,12 +1818,12 @@ Start a manual backup of a PostgreSQL cluster (async).
 ```text
 Start a manual backup of a PostgreSQL cluster (async). Mutation: requires confirmed=true after the captain approves.
 
-Runs the pg_backup_create tool (see 'cloudru-vm tools describe pg_backup_create').
+Runs the pg_backup_create tool (see 'evo tools describe pg_backup_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm pg backup-create <cluster-id> <name> [flags]
+evo pg backup-create <cluster-id> <name> [flags]
 ```
 
 ### Options
@@ -1847,9 +1847,9 @@ cloudru-vm pg backup-create <cluster-id> <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg backups
+## evo pg backups
 
 List backups of a PostgreSQL cluster (name, status, size, timestamps).
 
@@ -1858,11 +1858,11 @@ List backups of a PostgreSQL cluster (name, status, size, timestamps).
 ```text
 List backups of a PostgreSQL cluster (name, status, size, timestamps). Read-only.
 
-Runs the pg_backups tool (see 'cloudru-vm tools describe pg_backups').
+Runs the pg_backups tool (see 'evo tools describe pg_backups').
 ```
 
 ```
-cloudru-vm pg backups <cluster-id> [flags]
+evo pg backups <cluster-id> [flags]
 ```
 
 ### Options
@@ -1886,9 +1886,9 @@ cloudru-vm pg backups <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg create
+## evo pg create
 
 Create a Managed PostgreSQL cluster.
 
@@ -1897,12 +1897,12 @@ Create a Managed PostgreSQL cluster.
 ```text
 Create a Managed PostgreSQL cluster. Resolves version (default: latest), specification (by specification_id OR cpu+ram), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the captain approves. Poll the returned operation_id with pg_operation.
 
-Runs the pg_create tool (see 'cloudru-vm tools describe pg_create').
+Runs the pg_create tool (see 'evo tools describe pg_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm pg create <name> [flags]
+evo pg create <name> [flags]
 ```
 
 ### Options
@@ -1938,9 +1938,9 @@ cloudru-vm pg create <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg databases
+## evo pg databases
 
 List databases in a PostgreSQL cluster (name, owner, size).
 
@@ -1949,11 +1949,11 @@ List databases in a PostgreSQL cluster (name, owner, size).
 ```text
 List databases in a PostgreSQL cluster (name, owner, size). Read-only.
 
-Runs the pg_databases tool (see 'cloudru-vm tools describe pg_databases').
+Runs the pg_databases tool (see 'evo tools describe pg_databases').
 ```
 
 ```
-cloudru-vm pg databases <cluster-id> [flags]
+evo pg databases <cluster-id> [flags]
 ```
 
 ### Options
@@ -1977,9 +1977,9 @@ cloudru-vm pg databases <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg db-create
+## evo pg db-create
 
 Create a database in a PostgreSQL cluster.
 
@@ -1988,12 +1988,12 @@ Create a database in a PostgreSQL cluster.
 ```text
 Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves.
 
-Runs the pg_db_create tool (see 'cloudru-vm tools describe pg_db_create').
+Runs the pg_db_create tool (see 'evo tools describe pg_db_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm pg db-create <cluster-id> <name> [flags]
+evo pg db-create <cluster-id> <name> [flags]
 ```
 
 ### Options
@@ -2020,9 +2020,9 @@ cloudru-vm pg db-create <cluster-id> <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg db-delete
+## evo pg db-delete
 
 Drop a database in a PostgreSQL cluster.
 
@@ -2031,12 +2031,12 @@ Drop a database in a PostgreSQL cluster.
 ```text
 Drop a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves.
 
-Runs the pg_db_delete tool (see 'cloudru-vm tools describe pg_db_delete').
+Runs the pg_db_delete tool (see 'evo tools describe pg_db_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm pg db-delete <cluster-id> <name> [flags]
+evo pg db-delete <cluster-id> <name> [flags]
 ```
 
 ### Options
@@ -2060,9 +2060,9 @@ cloudru-vm pg db-delete <cluster-id> <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg delete
+## evo pg delete
 
 Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data.
 
@@ -2071,12 +2071,12 @@ Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data.
 ```text
 Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data. Mutation (async): requires confirmed=true after the captain approves.
 
-Runs the pg_delete tool (see 'cloudru-vm tools describe pg_delete').
+Runs the pg_delete tool (see 'evo tools describe pg_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm pg delete <cluster-id> [flags]
+evo pg delete <cluster-id> [flags]
 ```
 
 ### Options
@@ -2101,9 +2101,9 @@ cloudru-vm pg delete <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg get
+## evo pg get
 
 Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storag…
 
@@ -2112,11 +2112,11 @@ Get full details of one Managed PostgreSQL cluster by id (from pg_list): version
 ```text
 Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status. Read-only.
 
-Runs the pg_get tool (see 'cloudru-vm tools describe pg_get').
+Runs the pg_get tool (see 'evo tools describe pg_get').
 ```
 
 ```
-cloudru-vm pg get <cluster-id> [flags]
+evo pg get <cluster-id> [flags]
 ```
 
 ### Options
@@ -2141,9 +2141,9 @@ cloudru-vm pg get <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg list
+## evo pg list
 
 List Managed PostgreSQL clusters in the project (id, name, status, version, health).
 
@@ -2152,11 +2152,11 @@ List Managed PostgreSQL clusters in the project (id, name, status, version, heal
 ```text
 List Managed PostgreSQL clusters in the project (id, name, status, version, health). Read-only. Managed PostgreSQL is Cloud.ru's managed database service (postgresql.api.cloud.ru).
 
-Runs the pg_list tool (see 'cloudru-vm tools describe pg_list').
+Runs the pg_list tool (see 'evo tools describe pg_list').
 ```
 
 ```
-cloudru-vm pg list [flags]
+evo pg list [flags]
 ```
 
 ### Options
@@ -2180,9 +2180,9 @@ cloudru-vm pg list [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg operation
+## evo pg operation
 
 Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create).
 
@@ -2191,11 +2191,11 @@ Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete
 ```text
 Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). Returns {done, error}. Read-only.
 
-Runs the pg_operation tool (see 'cloudru-vm tools describe pg_operation').
+Runs the pg_operation tool (see 'evo tools describe pg_operation').
 ```
 
 ```
-cloudru-vm pg operation <operation-id> [flags]
+evo pg operation <operation-id> [flags]
 ```
 
 ### Options
@@ -2220,9 +2220,9 @@ cloudru-vm pg operation <operation-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg specs
+## evo pg specs
 
 List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard|business, min_…
 
@@ -2231,11 +2231,11 @@ List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode stan
 ```text
 List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard|business, min_storage_gb) for a version. Read-only. Use to choose specification_id for pg_create.
 
-Runs the pg_specs tool (see 'cloudru-vm tools describe pg_specs').
+Runs the pg_specs tool (see 'evo tools describe pg_specs').
 ```
 
 ```
-cloudru-vm pg specs [flags]
+evo pg specs [flags]
 ```
 
 ### Options
@@ -2260,9 +2260,9 @@ cloudru-vm pg specs [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg user-create
+## evo pg user-create
 
 Create a user in a PostgreSQL cluster.
 
@@ -2271,12 +2271,12 @@ Create a user in a PostgreSQL cluster.
 ```text
 Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves. The password is never echoed back.
 
-Runs the pg_user_create tool (see 'cloudru-vm tools describe pg_user_create').
+Runs the pg_user_create tool (see 'evo tools describe pg_user_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm pg user-create <cluster-id> <name> [flags]
+evo pg user-create <cluster-id> <name> [flags]
 ```
 
 ### Options
@@ -2301,9 +2301,9 @@ cloudru-vm pg user-create <cluster-id> <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg user-delete
+## evo pg user-delete
 
 Delete a user in a PostgreSQL cluster.
 
@@ -2312,12 +2312,12 @@ Delete a user in a PostgreSQL cluster.
 ```text
 Delete a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves.
 
-Runs the pg_user_delete tool (see 'cloudru-vm tools describe pg_user_delete').
+Runs the pg_user_delete tool (see 'evo tools describe pg_user_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm pg user-delete <cluster-id> <name> [flags]
+evo pg user-delete <cluster-id> <name> [flags]
 ```
 
 ### Options
@@ -2341,9 +2341,9 @@ cloudru-vm pg user-delete <cluster-id> <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg users
+## evo pg users
 
 List users of a PostgreSQL cluster (name, granted roles).
 
@@ -2352,11 +2352,11 @@ List users of a PostgreSQL cluster (name, granted roles).
 ```text
 List users of a PostgreSQL cluster (name, granted roles). Read-only.
 
-Runs the pg_users tool (see 'cloudru-vm tools describe pg_users').
+Runs the pg_users tool (see 'evo tools describe pg_users').
 ```
 
 ```
-cloudru-vm pg users <cluster-id> [flags]
+evo pg users <cluster-id> [flags]
 ```
 
 ### Options
@@ -2380,9 +2380,9 @@ cloudru-vm pg users <cluster-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm pg versions
+## evo pg versions
 
 List available Managed PostgreSQL versions (e.g. 15/16/17).
 
@@ -2391,11 +2391,11 @@ List available Managed PostgreSQL versions (e.g. 15/16/17).
 ```text
 List available Managed PostgreSQL versions (e.g. 15/16/17). Read-only. Use before pg_create.
 
-Runs the pg_versions tool (see 'cloudru-vm tools describe pg_versions').
+Runs the pg_versions tool (see 'evo tools describe pg_versions').
 ```
 
 ```
-cloudru-vm pg versions [flags]
+evo pg versions [flags]
 ```
 
 ### Options
@@ -2419,14 +2419,14 @@ cloudru-vm pg versions [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm pg](#cloudru-vm-pg)	 - Managed PostgreSQL clusters, databases, users, backups
+* [evo pg](#evo-pg)	 - Managed PostgreSQL clusters, databases, users, backups
 
-## cloudru-vm s3
+## evo s3
 
 Object Storage: buckets and objects
 
 ```
-cloudru-vm s3 [flags]
+evo s3 [flags]
 ```
 
 ### Options
@@ -2450,16 +2450,16 @@ cloudru-vm s3 [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [cloudru-vm s3 bucket-create](#cloudru-vm-s3-bucket-create)	 - Create an Object Storage (S3) bucket.
-* [cloudru-vm s3 bucket-delete](#cloudru-vm-s3-bucket-delete)	 - Delete an EMPTY S3 bucket.
-* [cloudru-vm s3 buckets](#cloudru-vm-s3-buckets)	 - List Object Storage (S3) buckets.
-* [cloudru-vm s3 get](#cloudru-vm-s3-get)	 - Download an S3 object.
-* [cloudru-vm s3 ls](#cloudru-vm-s3-ls)	 - List objects in an S3 bucket (key, size, last_modified).
-* [cloudru-vm s3 put](#cloudru-vm-s3-put)	 - Upload an S3 object from inline content (content) or base64 (content_base64).
-* [cloudru-vm s3 rm](#cloudru-vm-s3-rm)	 - Delete an S3 object.
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo s3 bucket-create](#evo-s3-bucket-create)	 - Create an Object Storage (S3) bucket.
+* [evo s3 bucket-delete](#evo-s3-bucket-delete)	 - Delete an EMPTY S3 bucket.
+* [evo s3 buckets](#evo-s3-buckets)	 - List Object Storage (S3) buckets.
+* [evo s3 get](#evo-s3-get)	 - Download an S3 object.
+* [evo s3 ls](#evo-s3-ls)	 - List objects in an S3 bucket (key, size, last_modified).
+* [evo s3 put](#evo-s3-put)	 - Upload an S3 object from inline content (content) or base64 (content_base64).
+* [evo s3 rm](#evo-s3-rm)	 - Delete an S3 object.
 
-## cloudru-vm s3 bucket-create
+## evo s3 bucket-create
 
 Create an Object Storage (S3) bucket.
 
@@ -2468,12 +2468,12 @@ Create an Object Storage (S3) bucket.
 ```text
 Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the captain approves.
 
-Runs the s3_bucket_create tool (see 'cloudru-vm tools describe s3_bucket_create').
+Runs the s3_bucket_create tool (see 'evo tools describe s3_bucket_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm s3 bucket-create <bucket> [flags]
+evo s3 bucket-create <bucket> [flags]
 ```
 
 ### Options
@@ -2498,9 +2498,9 @@ cloudru-vm s3 bucket-create <bucket> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm s3](#cloudru-vm-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
 
-## cloudru-vm s3 bucket-delete
+## evo s3 bucket-delete
 
 Delete an EMPTY S3 bucket.
 
@@ -2509,12 +2509,12 @@ Delete an EMPTY S3 bucket.
 ```text
 Delete an EMPTY S3 bucket. Destructive mutation: requires confirmed=true after the captain approves.
 
-Runs the s3_bucket_delete tool (see 'cloudru-vm tools describe s3_bucket_delete').
+Runs the s3_bucket_delete tool (see 'evo tools describe s3_bucket_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm s3 bucket-delete <bucket> [flags]
+evo s3 bucket-delete <bucket> [flags]
 ```
 
 ### Options
@@ -2538,9 +2538,9 @@ cloudru-vm s3 bucket-delete <bucket> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm s3](#cloudru-vm-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
 
-## cloudru-vm s3 buckets
+## evo s3 buckets
 
 List Object Storage (S3) buckets.
 
@@ -2549,11 +2549,11 @@ List Object Storage (S3) buckets.
 ```text
 List Object Storage (S3) buckets. Read-only. s3.cloud.ru (S3-compatible).
 
-Runs the s3_buckets tool (see 'cloudru-vm tools describe s3_buckets').
+Runs the s3_buckets tool (see 'evo tools describe s3_buckets').
 ```
 
 ```
-cloudru-vm s3 buckets [flags]
+evo s3 buckets [flags]
 ```
 
 ### Options
@@ -2577,9 +2577,9 @@ cloudru-vm s3 buckets [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm s3](#cloudru-vm-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
 
-## cloudru-vm s3 get
+## evo s3 get
 
 Download an S3 object.
 
@@ -2588,11 +2588,11 @@ Download an S3 object.
 ```text
 Download an S3 object. Returns text inline (utf-8) when small & valid, else base64. Read-only.
 
-Runs the s3_get tool (see 'cloudru-vm tools describe s3_get').
+Runs the s3_get tool (see 'evo tools describe s3_get').
 ```
 
 ```
-cloudru-vm s3 get <bucket> <key> [flags]
+evo s3 get <bucket> <key> [flags]
 ```
 
 ### Options
@@ -2616,9 +2616,9 @@ cloudru-vm s3 get <bucket> <key> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm s3](#cloudru-vm-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
 
-## cloudru-vm s3 ls
+## evo s3 ls
 
 List objects in an S3 bucket (key, size, last_modified).
 
@@ -2627,11 +2627,11 @@ List objects in an S3 bucket (key, size, last_modified).
 ```text
 List objects in an S3 bucket (key, size, last_modified). Read-only.
 
-Runs the s3_ls tool (see 'cloudru-vm tools describe s3_ls').
+Runs the s3_ls tool (see 'evo tools describe s3_ls').
 ```
 
 ```
-cloudru-vm s3 ls <bucket> [flags]
+evo s3 ls <bucket> [flags]
 ```
 
 ### Options
@@ -2657,9 +2657,9 @@ cloudru-vm s3 ls <bucket> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm s3](#cloudru-vm-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
 
-## cloudru-vm s3 put
+## evo s3 put
 
 Upload an S3 object from inline content (content) or base64 (content_base64).
 
@@ -2668,12 +2668,12 @@ Upload an S3 object from inline content (content) or base64 (content_base64).
 ```text
 Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the captain approves.
 
-Runs the s3_put tool (see 'cloudru-vm tools describe s3_put').
+Runs the s3_put tool (see 'evo tools describe s3_put').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm s3 put <bucket> <key> [flags]
+evo s3 put <bucket> <key> [flags]
 ```
 
 ### Options
@@ -2700,9 +2700,9 @@ cloudru-vm s3 put <bucket> <key> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm s3](#cloudru-vm-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
 
-## cloudru-vm s3 rm
+## evo s3 rm
 
 Delete an S3 object.
 
@@ -2711,12 +2711,12 @@ Delete an S3 object.
 ```text
 Delete an S3 object. Destructive mutation: requires confirmed=true after the captain approves.
 
-Runs the s3_rm tool (see 'cloudru-vm tools describe s3_rm').
+Runs the s3_rm tool (see 'evo tools describe s3_rm').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm s3 rm <bucket> <key> [flags]
+evo s3 rm <bucket> <key> [flags]
 ```
 
 ### Options
@@ -2740,14 +2740,14 @@ cloudru-vm s3 rm <bucket> <key> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm s3](#cloudru-vm-s3)	 - Object Storage: buckets and objects
+* [evo s3](#evo-s3)	 - Object Storage: buckets and objects
 
-## cloudru-vm secret
+## evo secret
 
 Secret Manager
 
 ```
-cloudru-vm secret [flags]
+evo secret [flags]
 ```
 
 ### Options
@@ -2771,15 +2771,15 @@ cloudru-vm secret [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [cloudru-vm secret add-version](#cloudru-vm-secret-add-version)	 - Add a new value version to an existing secret (rotation).
-* [cloudru-vm secret create](#cloudru-vm-secret-create)	 - Store a new secret at a path (value is Base64-encoded internally; never echoed back).
-* [cloudru-vm secret delete](#cloudru-vm-secret-delete)	 - Delete a secret by path AND all its versions.
-* [cloudru-vm secret get](#cloudru-vm-secret-get)	 - Get one secret's metadata by path (from secret_list): folder, labels, versions, KMS key.
-* [cloudru-vm secret list](#cloudru-vm-secret-list)	 - List secrets in the project (id, name, path, description) from Cloud.ru Secret Management.
-* [cloudru-vm secret value](#cloudru-vm-secret-value)	 - Retrieve the DECRYPTED value of a secret by path.
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo secret add-version](#evo-secret-add-version)	 - Add a new value version to an existing secret (rotation).
+* [evo secret create](#evo-secret-create)	 - Store a new secret at a path (value is Base64-encoded internally; never echoed back).
+* [evo secret delete](#evo-secret-delete)	 - Delete a secret by path AND all its versions.
+* [evo secret get](#evo-secret-get)	 - Get one secret's metadata by path (from secret_list): folder, labels, versions, KMS key.
+* [evo secret list](#evo-secret-list)	 - List secrets in the project (id, name, path, description) from Cloud.ru Secret Management.
+* [evo secret value](#evo-secret-value)	 - Retrieve the DECRYPTED value of a secret by path.
 
-## cloudru-vm secret add-version
+## evo secret add-version
 
 Add a new value version to an existing secret (rotation).
 
@@ -2788,12 +2788,12 @@ Add a new value version to an existing secret (rotation).
 ```text
 Add a new value version to an existing secret (rotation). Mutation: requires confirmed=true after the captain approves.
 
-Runs the secret_add_version tool (see 'cloudru-vm tools describe secret_add_version').
+Runs the secret_add_version tool (see 'evo tools describe secret_add_version').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm secret add-version <path> [flags]
+evo secret add-version <path> [flags]
 ```
 
 ### Options
@@ -2818,9 +2818,9 @@ cloudru-vm secret add-version <path> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm secret](#cloudru-vm-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager
 
-## cloudru-vm secret create
+## evo secret create
 
 Store a new secret at a path (value is Base64-encoded internally; never echoed back).
 
@@ -2829,12 +2829,12 @@ Store a new secret at a path (value is Base64-encoded internally; never echoed b
 ```text
 Store a new secret at a path (value is Base64-encoded internally; never echoed back). Path 'folder/name' places it in a folder. Mutation: requires confirmed=true after the captain approves.
 
-Runs the secret_create tool (see 'cloudru-vm tools describe secret_create').
+Runs the secret_create tool (see 'evo tools describe secret_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm secret create <path> [flags]
+evo secret create <path> [flags]
 ```
 
 ### Options
@@ -2861,9 +2861,9 @@ cloudru-vm secret create <path> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm secret](#cloudru-vm-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager
 
-## cloudru-vm secret delete
+## evo secret delete
 
 Delete a secret by path AND all its versions.
 
@@ -2872,12 +2872,12 @@ Delete a secret by path AND all its versions.
 ```text
 Delete a secret by path AND all its versions. Set force=true to delete one that is in use. Mutation: requires confirmed=true after the captain approves.
 
-Runs the secret_delete tool (see 'cloudru-vm tools describe secret_delete').
+Runs the secret_delete tool (see 'evo tools describe secret_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm secret delete <path> [flags]
+evo secret delete <path> [flags]
 ```
 
 ### Options
@@ -2902,9 +2902,9 @@ cloudru-vm secret delete <path> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm secret](#cloudru-vm-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager
 
-## cloudru-vm secret get
+## evo secret get
 
 Get one secret's metadata by path (from secret_list): folder, labels, versions, KMS key.
 
@@ -2913,11 +2913,11 @@ Get one secret's metadata by path (from secret_list): folder, labels, versions, 
 ```text
 Get one secret's metadata by path (from secret_list): folder, labels, versions, KMS key. Read-only — does NOT return the value.
 
-Runs the secret_get tool (see 'cloudru-vm tools describe secret_get').
+Runs the secret_get tool (see 'evo tools describe secret_get').
 ```
 
 ```
-cloudru-vm secret get <path> [flags]
+evo secret get <path> [flags]
 ```
 
 ### Options
@@ -2941,9 +2941,9 @@ cloudru-vm secret get <path> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm secret](#cloudru-vm-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager
 
-## cloudru-vm secret list
+## evo secret list
 
 List secrets in the project (id, name, path, description) from Cloud.ru Secret Management.
 
@@ -2952,11 +2952,11 @@ List secrets in the project (id, name, path, description) from Cloud.ru Secret M
 ```text
 List secrets in the project (id, name, path, description) from Cloud.ru Secret Management. Read-only — does NOT return values. secretmanager.api.cloud.ru (v2).
 
-Runs the secret_list tool (see 'cloudru-vm tools describe secret_list').
+Runs the secret_list tool (see 'evo tools describe secret_list').
 ```
 
 ```
-cloudru-vm secret list [flags]
+evo secret list [flags]
 ```
 
 ### Options
@@ -2980,9 +2980,9 @@ cloudru-vm secret list [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm secret](#cloudru-vm-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager
 
-## cloudru-vm secret value
+## evo secret value
 
 Retrieve the DECRYPTED value of a secret by path.
 
@@ -2991,11 +2991,11 @@ Retrieve the DECRYPTED value of a secret by path.
 ```text
 Retrieve the DECRYPTED value of a secret by path. Sensitive — returns the plaintext value; never store it in logs or files. Read-only.
 
-Runs the secret_value tool (see 'cloudru-vm tools describe secret_value').
+Runs the secret_value tool (see 'evo tools describe secret_value').
 ```
 
 ```
-cloudru-vm secret value <path> [flags]
+evo secret value <path> [flags]
 ```
 
 ### Options
@@ -3020,14 +3020,14 @@ cloudru-vm secret value <path> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm secret](#cloudru-vm-secret)	 - Secret Manager
+* [evo secret](#evo-secret)	 - Secret Manager
 
-## cloudru-vm status
+## evo status
 
 Show current deployment status
 
 ```
-cloudru-vm status [flags]
+evo status [flags]
 ```
 
 ### Options
@@ -3051,20 +3051,20 @@ cloudru-vm status [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm tools
+## evo tools
 
-List, describe and call any of the cloudru-vm tools (the same ones the MCP server exposes)
+List, describe and call any of the evo tools (the same ones the MCP server exposes)
 
 ### Synopsis
 
 ```text
 Every operation the MCP server exposes is available here as a tool.
 
-  cloudru-vm tools list [--group vm]
-  cloudru-vm tools describe vm_get
-  cloudru-vm tools call vm_get --arg name=web
+  evo tools list [--group vm]
+  evo tools describe vm_get
+  evo tools call vm_get --arg name=web
 
 Tools that create paid resources or delete data ask for confirmation the same
 way as the other commands: a prompt on a terminal, --yes to confirm in
@@ -3073,7 +3073,7 @@ advance, --dry-run to see the preview only; without a terminal and without
 ```
 
 ```
-cloudru-vm tools [flags]
+evo tools [flags]
 ```
 
 ### Options
@@ -3097,12 +3097,12 @@ cloudru-vm tools [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [cloudru-vm tools call](#cloudru-vm-tools-call)	 - Call a tool and print its JSON result
-* [cloudru-vm tools describe](#cloudru-vm-tools-describe)	 - Show a tool's description and arguments
-* [cloudru-vm tools list](#cloudru-vm-tools-list)	 - List the tools: name, group, whether it changes anything, description
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo tools call](#evo-tools-call)	 - Call a tool and print its JSON result
+* [evo tools describe](#evo-tools-describe)	 - Show a tool's description and arguments
+* [evo tools list](#evo-tools-list)	 - List the tools: name, group, whether it changes anything, description
 
-## cloudru-vm tools call
+## evo tools call
 
 Call a tool and print its JSON result
 
@@ -3117,17 +3117,17 @@ boolean are parsed; an array is a comma-separated list (or a JSON array);
 an object is JSON. Names and types from the JSON sources are checked
 against the schema too; null means "not given".
 
-  cloudru-vm tools call list_zones
-  cloudru-vm tools call vm_get --arg name=web
-  cloudru-vm tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
-  cloudru-vm tools call pg_operation --arg operation_id=OP --wait
+  evo tools call list_zones
+  evo tools call vm_get --arg name=web
+  evo tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
+  evo tools call pg_operation --arg operation_id=OP --wait
 
 Exit codes: 0 success; 3 confirmation not given; 4 the tool reported that
 something was not found; 5 any other error reported by the tool.
 ```
 
 ```
-cloudru-vm tools call <name> [flags]
+evo tools call <name> [flags]
 ```
 
 ### Options
@@ -3155,14 +3155,14 @@ cloudru-vm tools call <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm tools](#cloudru-vm-tools)	 - List, describe and call any of the cloudru-vm tools (the same ones the MCP server exposes)
+* [evo tools](#evo-tools)	 - List, describe and call any of the evo tools (the same ones the MCP server exposes)
 
-## cloudru-vm tools describe
+## evo tools describe
 
 Show a tool's description and arguments
 
 ```
-cloudru-vm tools describe <name> [flags]
+evo tools describe <name> [flags]
 ```
 
 ### Options
@@ -3186,14 +3186,14 @@ cloudru-vm tools describe <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm tools](#cloudru-vm-tools)	 - List, describe and call any of the cloudru-vm tools (the same ones the MCP server exposes)
+* [evo tools](#evo-tools)	 - List, describe and call any of the evo tools (the same ones the MCP server exposes)
 
-## cloudru-vm tools list
+## evo tools list
 
 List the tools: name, group, whether it changes anything, description
 
 ```
-cloudru-vm tools list [flags]
+evo tools list [flags]
 ```
 
 ### Options
@@ -3218,14 +3218,14 @@ cloudru-vm tools list [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm tools](#cloudru-vm-tools)	 - List, describe and call any of the cloudru-vm tools (the same ones the MCP server exposes)
+* [evo tools](#evo-tools)	 - List, describe and call any of the evo tools (the same ones the MCP server exposes)
 
-## cloudru-vm verify
+## evo verify
 
 Run health checks against the deployed application (exit 1 if unhealthy)
 
 ```
-cloudru-vm verify [flags]
+evo verify [flags]
 ```
 
 ### Options
@@ -3249,14 +3249,14 @@ cloudru-vm verify [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm version
+## evo version
 
 Print the version, commit, build date, Go version and platform
 
 ```
-cloudru-vm version [flags]
+evo version [flags]
 ```
 
 ### Options
@@ -3280,14 +3280,14 @@ cloudru-vm version [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
 
-## cloudru-vm vm
+## evo vm
 
 Virtual machines
 
 ```
-cloudru-vm vm [flags]
+evo vm [flags]
 ```
 
 ### Options
@@ -3311,15 +3311,15 @@ cloudru-vm vm [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [cloudru-vm vm create](#cloudru-vm-vm-create)	 - Provision a bare Cloud.ru VM.
-* [cloudru-vm vm delete](#cloudru-vm-vm-delete)	 - Permanently delete a VM and all data on it (irreversible).
-* [cloudru-vm vm flavors](#cloudru-vm-vm-flavors)	 - List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate e…
-* [cloudru-vm vm get](#cloudru-vm-vm-get)	 - Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (…
-* [cloudru-vm vm list](#cloudru-vm-vm-list)	 - List the project's VMs from the LIVE API: id, name, state, availability zone and creation time.
-* [cloudru-vm vm zones](#cloudru-vm-vm-zones)	 - List available Cloud.ru availability zones (UUID + name).
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo vm create](#evo-vm-create)	 - Provision a bare Cloud.ru VM.
+* [evo vm delete](#evo-vm-delete)	 - Permanently delete a VM and all data on it (irreversible).
+* [evo vm flavors](#evo-vm-flavors)	 - List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate e…
+* [evo vm get](#evo-vm-get)	 - Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (…
+* [evo vm list](#evo-vm-list)	 - List the project's VMs from the LIVE API: id, name, state, availability zone and creation time.
+* [evo vm zones](#evo-vm-zones)	 - List available Cloud.ru availability zones (UUID + name).
 
-## cloudru-vm vm create
+## evo vm create
 
 Provision a bare Cloud.ru VM.
 
@@ -3328,12 +3328,12 @@ Provision a bare Cloud.ru VM.
 ```text
 Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the captain approves; without it returns a preview only.
 
-Runs the provision tool (see 'cloudru-vm tools describe provision').
+Runs the provision tool (see 'evo tools describe provision').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm vm create <name> [flags]
+evo vm create <name> [flags]
 ```
 
 ### Options
@@ -3362,9 +3362,9 @@ cloudru-vm vm create <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vm](#cloudru-vm-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Virtual machines
 
-## cloudru-vm vm delete
+## evo vm delete
 
 Permanently delete a VM and all data on it (irreversible).
 
@@ -3373,12 +3373,12 @@ Permanently delete a VM and all data on it (irreversible).
 ```text
 Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (captain approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy.
 
-Runs the destroy tool (see 'cloudru-vm tools describe destroy').
+Runs the destroy tool (see 'evo tools describe destroy').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm vm delete <vm-id|name> [flags]
+evo vm delete <vm-id|name> [flags]
 ```
 
 ### Options
@@ -3403,9 +3403,9 @@ cloudru-vm vm delete <vm-id|name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vm](#cloudru-vm-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Virtual machines
 
-## cloudru-vm vm flavors
+## evo vm flavors
 
 List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate e…
 
@@ -3414,11 +3414,11 @@ List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a mont
 ```text
 List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each. Use a flavor name as the 'flavor' argument for deploy_plan in manual mode.
 
-Runs the list_flavors tool (see 'cloudru-vm tools describe list_flavors').
+Runs the list_flavors tool (see 'evo tools describe list_flavors').
 ```
 
 ```
-cloudru-vm vm flavors [flags]
+evo vm flavors [flags]
 ```
 
 ### Options
@@ -3442,9 +3442,9 @@ cloudru-vm vm flavors [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vm](#cloudru-vm-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Virtual machines
 
-## cloudru-vm vm get
+## evo vm get
 
 Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (…
 
@@ -3453,11 +3453,11 @@ Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any p
 ```text
 Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. Use this whenever you need a VM's IP — e.g. to wire a private service endpoint into a config or secret after creating the VM. Unlike 'list'/'status' (which read local state and omit the private IP), this calls the live API. Never shell out to curl/ssh to discover a VM's IP — use this tool.
 
-Runs the vm_get tool (see 'cloudru-vm tools describe vm_get').
+Runs the vm_get tool (see 'evo tools describe vm_get').
 ```
 
 ```
-cloudru-vm vm get <vm-id|name> [flags]
+evo vm get <vm-id|name> [flags]
 ```
 
 ### Options
@@ -3481,9 +3481,9 @@ cloudru-vm vm get <vm-id|name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vm](#cloudru-vm-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Virtual machines
 
-## cloudru-vm vm list
+## evo vm list
 
 List the project's VMs from the LIVE API: id, name, state, availability zone and creation time.
 
@@ -3492,11 +3492,11 @@ List the project's VMs from the LIVE API: id, name, state, availability zone and
 ```text
 List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. Read-only. For IPs and interfaces of one VM use vm_get. Unlike 'list' (local deployment records of this directory), this shows every VM in the project.
 
-Runs the vm_list tool (see 'cloudru-vm tools describe vm_list').
+Runs the vm_list tool (see 'evo tools describe vm_list').
 ```
 
 ```
-cloudru-vm vm list [flags]
+evo vm list [flags]
 ```
 
 ### Options
@@ -3520,9 +3520,9 @@ cloudru-vm vm list [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vm](#cloudru-vm-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Virtual machines
 
-## cloudru-vm vm zones
+## evo vm zones
 
 List available Cloud.ru availability zones (UUID + name).
 
@@ -3531,11 +3531,11 @@ List available Cloud.ru availability zones (UUID + name).
 ```text
 List available Cloud.ru availability zones (UUID + name). Use a zone UUID as the 'region' argument for deploy or provision.
 
-Runs the list_zones tool (see 'cloudru-vm tools describe list_zones').
+Runs the list_zones tool (see 'evo tools describe list_zones').
 ```
 
 ```
-cloudru-vm vm zones [flags]
+evo vm zones [flags]
 ```
 
 ### Options
@@ -3559,14 +3559,14 @@ cloudru-vm vm zones [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vm](#cloudru-vm-vm)	 - Virtual machines
+* [evo vm](#evo-vm)	 - Virtual machines
 
-## cloudru-vm vpc
+## evo vpc
 
 Networks: VPCs, routes, subnets, security groups, floating IPs
 
 ```
-cloudru-vm vpc [flags]
+evo vpc [flags]
 ```
 
 ### Options
@@ -3590,22 +3590,22 @@ cloudru-vm vpc [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
-* [cloudru-vm vpc create](#cloudru-vm-vpc-create)	 - Create a new VPC (virtual private cloud) (async).
-* [cloudru-vm vpc delete](#cloudru-vm-vpc-delete)	 - Delete a VPC by id (from vpc_list) (async).
-* [cloudru-vm vpc fip-attach](#cloudru-vm-vpc-fip-attach)	 - Bind an existing FREE floating IP to a VM's primary interface, giving it a public address.
-* [cloudru-vm vpc fip-release](#cloudru-vm-vpc-fip-release)	 - Release (delete) a floating IP, freeing it from the project.
-* [cloudru-vm vpc fips](#cloudru-vm-vpc-fips)	 - List Cloud.ru floating IPs (address, state, whether available to attach).
-* [cloudru-vm vpc get](#cloudru-vm-vpc-get)	 - Get full details of one VPC by id (from vpc_list).
-* [cloudru-vm vpc list](#cloudru-vm-vpc-list)	 - List Evolution VPCs (virtual private clouds) in the project (id, name, default, type).
-* [cloudru-vm vpc operation](#cloudru-vm-vpc-operation)	 - Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete).
-* [cloudru-vm vpc route-create](#cloudru-vm-vpc-route-create)	 - Add a static route to a VPC (async).
-* [cloudru-vm vpc route-delete](#cloudru-vm-vpc-route-delete)	 - Delete a static route from a VPC by id (from vpc_routes) (async).
-* [cloudru-vm vpc routes](#cloudru-vm-vpc-routes)	 - List static routes of a VPC (id, subnet, next_hop_type, status).
-* [cloudru-vm vpc security-groups](#cloudru-vm-vpc-security-groups)	 - List Cloud.ru security groups (UUID, name, availability zone).
-* [cloudru-vm vpc subnets](#cloudru-vm-vpc-subnets)	 - List Cloud.ru subnets (UUID, name, availability zone).
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo vpc create](#evo-vpc-create)	 - Create a new VPC (virtual private cloud) (async).
+* [evo vpc delete](#evo-vpc-delete)	 - Delete a VPC by id (from vpc_list) (async).
+* [evo vpc fip-attach](#evo-vpc-fip-attach)	 - Bind an existing FREE floating IP to a VM's primary interface, giving it a public address.
+* [evo vpc fip-release](#evo-vpc-fip-release)	 - Release (delete) a floating IP, freeing it from the project.
+* [evo vpc fips](#evo-vpc-fips)	 - List Cloud.ru floating IPs (address, state, whether available to attach).
+* [evo vpc get](#evo-vpc-get)	 - Get full details of one VPC by id (from vpc_list).
+* [evo vpc list](#evo-vpc-list)	 - List Evolution VPCs (virtual private clouds) in the project (id, name, default, type).
+* [evo vpc operation](#evo-vpc-operation)	 - Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete).
+* [evo vpc route-create](#evo-vpc-route-create)	 - Add a static route to a VPC (async).
+* [evo vpc route-delete](#evo-vpc-route-delete)	 - Delete a static route from a VPC by id (from vpc_routes) (async).
+* [evo vpc routes](#evo-vpc-routes)	 - List static routes of a VPC (id, subnet, next_hop_type, status).
+* [evo vpc security-groups](#evo-vpc-security-groups)	 - List Cloud.ru security groups (UUID, name, availability zone).
+* [evo vpc subnets](#evo-vpc-subnets)	 - List Cloud.ru subnets (UUID, name, availability zone).
 
-## cloudru-vm vpc create
+## evo vpc create
 
 Create a new VPC (virtual private cloud) (async).
 
@@ -3614,12 +3614,12 @@ Create a new VPC (virtual private cloud) (async).
 ```text
 Create a new VPC (virtual private cloud) (async). Mutation: requires confirmed=true after the captain approves.
 
-Runs the vpc_create tool (see 'cloudru-vm tools describe vpc_create').
+Runs the vpc_create tool (see 'evo tools describe vpc_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm vpc create <name> [flags]
+evo vpc create <name> [flags]
 ```
 
 ### Options
@@ -3644,9 +3644,9 @@ cloudru-vm vpc create <name> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc delete
+## evo vpc delete
 
 Delete a VPC by id (from vpc_list) (async).
 
@@ -3655,12 +3655,12 @@ Delete a VPC by id (from vpc_list) (async).
 ```text
 Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the captain approves.
 
-Runs the vpc_delete tool (see 'cloudru-vm tools describe vpc_delete').
+Runs the vpc_delete tool (see 'evo tools describe vpc_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm vpc delete <id> [flags]
+evo vpc delete <id> [flags]
 ```
 
 ### Options
@@ -3684,9 +3684,9 @@ cloudru-vm vpc delete <id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc fip-attach
+## evo vpc fip-attach
 
 Bind an existing FREE floating IP to a VM's primary interface, giving it a public address.
 
@@ -3695,12 +3695,12 @@ Bind an existing FREE floating IP to a VM's primary interface, giving it a publi
 ```text
 Bind an existing FREE floating IP to a VM's primary interface, giving it a public address. Use when a VM has no public_ip — e.g. provisioning from a large custom image outran the wizard's wait and it returned before assigning one. Pick a free address from list_floating_ips. Mutation: requires confirmed=true.
 
-Runs the fip_attach tool (see 'cloudru-vm tools describe fip_attach').
+Runs the fip_attach tool (see 'evo tools describe fip_attach').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm vpc fip-attach <fip> [flags]
+evo vpc fip-attach <fip> [flags]
 ```
 
 ### Options
@@ -3725,9 +3725,9 @@ cloudru-vm vpc fip-attach <fip> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc fip-release
+## evo vpc fip-release
 
 Release (delete) a floating IP, freeing it from the project.
 
@@ -3736,12 +3736,12 @@ Release (delete) a floating IP, freeing it from the project.
 ```text
 Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first). Mutation: requires confirmed=true after the captain approves.
 
-Runs the release_floating_ip tool (see 'cloudru-vm tools describe release_floating_ip').
+Runs the release_floating_ip tool (see 'evo tools describe release_floating_ip').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm vpc fip-release [id] [flags]
+evo vpc fip-release [id] [flags]
 ```
 
 ### Options
@@ -3766,9 +3766,9 @@ cloudru-vm vpc fip-release [id] [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc fips
+## evo vpc fips
 
 List Cloud.ru floating IPs (address, state, whether available to attach).
 
@@ -3777,11 +3777,11 @@ List Cloud.ru floating IPs (address, state, whether available to attach).
 ```text
 List Cloud.ru floating IPs (address, state, whether available to attach). Read-only.
 
-Runs the list_floating_ips tool (see 'cloudru-vm tools describe list_floating_ips').
+Runs the list_floating_ips tool (see 'evo tools describe list_floating_ips').
 ```
 
 ```
-cloudru-vm vpc fips [flags]
+evo vpc fips [flags]
 ```
 
 ### Options
@@ -3805,9 +3805,9 @@ cloudru-vm vpc fips [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc get
+## evo vpc get
 
 Get full details of one VPC by id (from vpc_list).
 
@@ -3816,11 +3816,11 @@ Get full details of one VPC by id (from vpc_list).
 ```text
 Get full details of one VPC by id (from vpc_list). Read-only.
 
-Runs the vpc_get tool (see 'cloudru-vm tools describe vpc_get').
+Runs the vpc_get tool (see 'evo tools describe vpc_get').
 ```
 
 ```
-cloudru-vm vpc get <id> [flags]
+evo vpc get <id> [flags]
 ```
 
 ### Options
@@ -3844,9 +3844,9 @@ cloudru-vm vpc get <id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc list
+## evo vpc list
 
 List Evolution VPCs (virtual private clouds) in the project (id, name, default, type).
 
@@ -3855,11 +3855,11 @@ List Evolution VPCs (virtual private clouds) in the project (id, name, default, 
 ```text
 List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). Read-only. vpc.api.cloud.ru.
 
-Runs the vpc_list tool (see 'cloudru-vm tools describe vpc_list').
+Runs the vpc_list tool (see 'evo tools describe vpc_list').
 ```
 
 ```
-cloudru-vm vpc list [flags]
+evo vpc list [flags]
 ```
 
 ### Options
@@ -3883,9 +3883,9 @@ cloudru-vm vpc list [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc operation
+## evo vpc operation
 
 Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete).
 
@@ -3894,11 +3894,11 @@ Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delet
 ```text
 Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). Returns {done, error}. Read-only.
 
-Runs the vpc_operation tool (see 'cloudru-vm tools describe vpc_operation').
+Runs the vpc_operation tool (see 'evo tools describe vpc_operation').
 ```
 
 ```
-cloudru-vm vpc operation <operation-id> [flags]
+evo vpc operation <operation-id> [flags]
 ```
 
 ### Options
@@ -3923,9 +3923,9 @@ cloudru-vm vpc operation <operation-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc route-create
+## evo vpc route-create
 
 Add a static route to a VPC (async).
 
@@ -3934,12 +3934,12 @@ Add a static route to a VPC (async).
 ```text
 Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az). Mutation: requires confirmed=true after the captain approves.
 
-Runs the vpc_route_create tool (see 'cloudru-vm tools describe vpc_route_create').
+Runs the vpc_route_create tool (see 'evo tools describe vpc_route_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm vpc route-create <vpc-id> [flags]
+evo vpc route-create <vpc-id> [flags]
 ```
 
 ### Options
@@ -3970,9 +3970,9 @@ cloudru-vm vpc route-create <vpc-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc route-delete
+## evo vpc route-delete
 
 Delete a static route from a VPC by id (from vpc_routes) (async).
 
@@ -3981,12 +3981,12 @@ Delete a static route from a VPC by id (from vpc_routes) (async).
 ```text
 Delete a static route from a VPC by id (from vpc_routes) (async). Mutation: requires confirmed=true after the captain approves.
 
-Runs the vpc_route_delete tool (see 'cloudru-vm tools describe vpc_route_delete').
+Runs the vpc_route_delete tool (see 'evo tools describe vpc_route_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
 ```
 
 ```
-cloudru-vm vpc route-delete <vpc-id> <route-id> [flags]
+evo vpc route-delete <vpc-id> <route-id> [flags]
 ```
 
 ### Options
@@ -4010,9 +4010,9 @@ cloudru-vm vpc route-delete <vpc-id> <route-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc routes
+## evo vpc routes
 
 List static routes of a VPC (id, subnet, next_hop_type, status).
 
@@ -4021,11 +4021,11 @@ List static routes of a VPC (id, subnet, next_hop_type, status).
 ```text
 List static routes of a VPC (id, subnet, next_hop_type, status). Read-only.
 
-Runs the vpc_routes tool (see 'cloudru-vm tools describe vpc_routes').
+Runs the vpc_routes tool (see 'evo tools describe vpc_routes').
 ```
 
 ```
-cloudru-vm vpc routes <vpc-id> [flags]
+evo vpc routes <vpc-id> [flags]
 ```
 
 ### Options
@@ -4049,9 +4049,9 @@ cloudru-vm vpc routes <vpc-id> [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc security-groups
+## evo vpc security-groups
 
 List Cloud.ru security groups (UUID, name, availability zone).
 
@@ -4060,11 +4060,11 @@ List Cloud.ru security groups (UUID, name, availability zone).
 ```text
 List Cloud.ru security groups (UUID, name, availability zone). Read-only. With rules=true each group carries its rules (id, direction, protocol, port range, source, description, state).
 
-Runs the list_security_groups tool (see 'cloudru-vm tools describe list_security_groups').
+Runs the list_security_groups tool (see 'evo tools describe list_security_groups').
 ```
 
 ```
-cloudru-vm vpc security-groups [flags]
+evo vpc security-groups [flags]
 ```
 
 ### Options
@@ -4089,9 +4089,9 @@ cloudru-vm vpc security-groups [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm vpc subnets
+## evo vpc subnets
 
 List Cloud.ru subnets (UUID, name, availability zone).
 
@@ -4100,11 +4100,11 @@ List Cloud.ru subnets (UUID, name, availability zone).
 ```text
 List Cloud.ru subnets (UUID, name, availability zone). Read-only.
 
-Runs the list_subnets tool (see 'cloudru-vm tools describe list_subnets').
+Runs the list_subnets tool (see 'evo tools describe list_subnets').
 ```
 
 ```
-cloudru-vm vpc subnets [flags]
+evo vpc subnets [flags]
 ```
 
 ### Options
@@ -4128,9 +4128,9 @@ cloudru-vm vpc subnets [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm vpc](#cloudru-vm-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
+* [evo vpc](#evo-vpc)	 - Networks: VPCs, routes, subnets, security groups, floating IPs
 
-## cloudru-vm whoami
+## evo whoami
 
 Show the active profile and check its credentials
 
@@ -4146,7 +4146,7 @@ missing or rejected.
 ```
 
 ```
-cloudru-vm whoami [flags]
+evo whoami [flags]
 ```
 
 ### Options
@@ -4170,4 +4170,4 @@ cloudru-vm whoami [flags]
 
 ### SEE ALSO
 
-* [cloudru-vm](#cloudru-vm)	 - Deploy docker-compose projects to Cloud.ru VMs
+* [evo](#evo)	 - Deploy docker-compose projects to Cloud.ru VMs

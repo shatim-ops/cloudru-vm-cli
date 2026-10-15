@@ -1,6 +1,6 @@
-// Package config resolves the configuration of cloudru-vm from, highest
+// Package config resolves the configuration of evo from, highest
 // precedence first: CLI flags > environment > project file
-// (./.cloudru-vm.yaml) > profile ($CONFIG/cloudru-vm) > defaults.
+// (./.evo.yaml) > profile ($CONFIG/evo) > defaults.
 package config
 
 import (
@@ -14,7 +14,7 @@ import (
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 )
 
-// Config holds all configuration values for cloudru-vm.
+// Config holds all configuration values for evo.
 type Config struct {
 	// Profile is the name of the profile the values were read from.
 	Profile string `yaml:"-" json:"profile"`
@@ -83,7 +83,7 @@ type Options struct {
 	// Profile is the --profile flag value; "" falls back to CLOUDRU_PROFILE,
 	// then to DefaultProfile. A profile named explicitly must exist.
 	Profile string
-	// ProjectFile is the path of ./.cloudru-vm.yaml; "" or a missing file
+	// ProjectFile is the path of ./.evo.yaml; "" or a missing file
 	// means no project overrides.
 	ProjectFile string
 	// Flags maps Config field names to values set via CLI flags.
@@ -157,7 +157,7 @@ func resolve(opts Options) (Config, map[string]string, error) {
 	}
 	cfg.Profile = name
 
-	// Layer 1: profile from $CONFIG/cloudru-vm.
+	// Layer 1: profile from $CONFIG/evo.
 	if err := applyProfile(&cfg, name, explicit, origins); err != nil {
 		return Config{}, nil, err
 	}
@@ -217,12 +217,12 @@ func applyEnvCredentials(cfg *Config, origins map[string]string) error {
 	if !ok {
 		return clerrors.New(clerrors.CodeAuthRequired,
 			"CLOUDRU_API_KEY must be in format 'keyId:secret'",
-			"Set CLOUDRU_KEY_ID and CLOUDRU_SECRET instead, or run 'cloudru-vm configure'")
+			"Set CLOUDRU_KEY_ID and CLOUDRU_SECRET instead, or run 'evo configure'")
 	}
 	cfg.KeyID, cfg.Secret = id, sec
 	origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
 	cfg.Warnings = append(cfg.Warnings,
-		"CLOUDRU_API_KEY=keyId:secret is deprecated: set CLOUDRU_KEY_ID and CLOUDRU_SECRET, or run 'cloudru-vm configure'")
+		"CLOUDRU_API_KEY=keyId:secret is deprecated: set CLOUDRU_KEY_ID and CLOUDRU_SECRET, or run 'evo configure'")
 	return nil
 }
 
@@ -250,7 +250,7 @@ func applyProfile(cfg *Config, name string, explicit bool, origins map[string]st
 		if explicit {
 			return clerrors.New(clerrors.CodeConfigInvalid,
 				fmt.Sprintf("profile %q not found in %s", name, Dir()),
-				fmt.Sprintf("Run 'cloudru-vm configure --profile %s' to create it, or 'cloudru-vm configure list' to see existing profiles", name))
+				fmt.Sprintf("Run 'evo configure --profile %s' to create it, or 'evo configure list' to see existing profiles", name))
 		}
 		return nil
 	}
@@ -318,7 +318,7 @@ func mergeS3(dst *S3Config, src S3Config, origins map[string]string, origin stri
 // be committed with the project.
 var secretKeys = []string{"api_key", "key_id", "secret", "s3"}
 
-// applyProjectFile merges ./.cloudru-vm.yaml.
+// applyProjectFile merges ./.evo.yaml.
 func applyProjectFile(cfg *Config, path string, origins map[string]string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -338,7 +338,7 @@ func applyProjectFile(cfg *Config, path string, origins map[string]string) error
 	for _, k := range secretKeys {
 		if _, ok := raw[k]; ok {
 			cfg.Warnings = append(cfg.Warnings, fmt.Sprintf(
-				"%s: %q is ignored, secrets are not read from the project file; run 'cloudru-vm configure' and remove it", path, k))
+				"%s: %q is ignored, secrets are not read from the project file; run 'evo configure' and remove it", path, k))
 		}
 	}
 

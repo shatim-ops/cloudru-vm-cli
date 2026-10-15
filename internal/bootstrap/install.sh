@@ -21,11 +21,11 @@ fi
 # again. The marker is the one that template writes on success.
 mirror_marker=/var/lib/cloud/instance/sem/configure-apt-mirrors
 apt_ready() {
-	apt-get update -q >/tmp/cloudru-vm-apt.log 2>&1
+	apt-get update -q >/tmp/evo-apt.log 2>&1
 }
 if ! docker compose version >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1 && ! apt_ready; then
 	echo "apt-get update failed:"
-	grep -E '^(W|E):' /tmp/cloudru-vm-apt.log | head -5 || true
+	grep -E '^(W|E):' /tmp/evo-apt.log | head -5 || true
 	if [ ! -f "$mirror_marker" ] && command -v cloud-init >/dev/null 2>&1; then
 		echo "re-running the image's apt mirror setup (cloud-init bootcmd)"
 		cloud-init single --name bootcmd --frequency always || true
@@ -33,7 +33,7 @@ if ! docker compose version >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&
 	if ! apt_ready; then
 		echo "apt-get update still fails; apt sources:"
 		grep -rhE '^(deb |URIs:)' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null | head -5 || true
-		grep -E '^(W|E):' /tmp/cloudru-vm-apt.log | head -5 || true
+		grep -E '^(W|E):' /tmp/evo-apt.log | head -5 || true
 		exit 1
 	fi
 fi

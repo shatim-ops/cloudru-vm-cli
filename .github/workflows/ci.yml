@@ -101,19 +101,19 @@ jobs:
         run: docker run --rm -i hadolint/hadolint:v2.12.0@sha256:30a8fd2e785ab6176eed53f74769e04f125afb2f74a6c52aef7d463583b6d45e < Dockerfile
 
       - name: docker build
-        run: docker build -t cloudru-vm:ci --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" .
+        run: docker build -t evo:ci --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" .
 
       - name: без MCP_BEARER_TOKEN не стартует
         run: |
           set +e
-          docker run --rm cloudru-vm:ci
+          docker run --rm evo:ci
           code=$?
           set -e
           if [ "$code" -ne 2 ]; then echo "ожидали код 2, получили $code"; exit 1; fi
 
       - name: smoke-тест по HTTP
         run: |
-          docker run -d --name mcp -e MCP_BEARER_TOKEN=ci-token-0123456789 -p 8080:8080 cloudru-vm:ci
+          docker run -d --name mcp -e MCP_BEARER_TOKEN=ci-token-0123456789 -p 8080:8080 evo:ci
           for _ in $(seq 1 30); do curl -sf localhost:8080/healthz >/dev/null && break; sleep 1; done
           curl -sf localhost:8080/healthz
 
@@ -123,8 +123,8 @@ jobs:
           auth='Authorization: Bearer ci-token-0123456789'
           v=$(curl -sf -H "$auth" -H 'Content-Type: application/json' \
             -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
-            localhost:8080/mcp | jq -r .result.protocolVersion)
-          echo "protocolVersion: $v"; [ "$v" = 2025-06-18 ]
+            localhost:8080/mcp | jq -r '[.result.protocolVersion, .result.serverInfo.name] | join(" ")')
+          echo "protocolVersion, serverInfo.name: $v"; [ "$v" = "2025-06-18 evo" ]
 
           n=$(curl -sf -H "$auth" -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' localhost:8080/mcp | jq '.result.tools | length')
           echo "tools/list: $n"; [ "$n" -gt 0 ]
@@ -135,7 +135,7 @@ jobs:
             localhost:8080/mcp | jq -e '.result.isError and (.result.content[0].text | contains("not available in this mode"))'
 
           # HEALTHCHECK образа — тем же бинарём, без shell и curl.
-          docker exec mcp /usr/local/bin/cloudru-vm mcp healthcheck
+          docker exec mcp /usr/local/bin/evo mcp healthcheck
 
       - name: логи контейнера
         if: always()

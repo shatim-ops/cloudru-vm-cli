@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"os"
@@ -30,7 +30,7 @@ func TestSSHKey_WindowsKeyHasPrivateDACL(t *testing.T) {
 	if _, _, err := loadOrGenerateSSHKey(dir); err != nil {
 		t.Fatal(err)
 	}
-	keyDir := filepath.Join(dir, ".cloudru-vm")
+	keyDir := filepath.Join(dir, ".evo")
 	priv := filepath.Join(keyDir, "id_ed25519")
 	for _, p := range []string{keyDir, priv} {
 		if !daclProtected(t, p) {
@@ -49,7 +49,7 @@ func TestSSHKey_WindowsKeyHasPrivateDACL(t *testing.T) {
 // (как chmod 0700 на Unix) — вместе с ключом, который наследовал его ACL.
 func TestSSHKey_WindowsOpenKeyDirIsRestricted(t *testing.T) {
 	dir := t.TempDir()
-	keyDir := filepath.Join(dir, ".cloudru-vm")
+	keyDir := filepath.Join(dir, ".evo")
 	if err := os.Mkdir(keyDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

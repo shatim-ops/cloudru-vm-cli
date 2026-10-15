@@ -47,7 +47,7 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 	} else {
 		return n, clerrors.New(clerrors.CodeConfigInvalid,
 			fmt.Sprintf("no subnet for zone %s in the project", zoneText(n.ZoneName, zoneID)),
-			"Create a network and a subnet in this zone in the Cloud.ru console, or pick another zone with 'cloudru-vm init'.")
+			"Create a network and a subnet in this zone in the Cloud.ru console, or pick another zone with 'evo init'.")
 	}
 
 	sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID)
@@ -101,7 +101,7 @@ func zoneText(name, id string) string {
 // the ports can be opened in the console.
 func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp []int, rec *state.DeploymentRecord) {
 	res := sgrules.Open(ctx, e.Cloud, projectID, sgID, tcp, udp,
-		func(label string) string { return "cloudru-vm: port " + label }, rec)
+		func(label string) string { return "evo: port " + label }, rec)
 	if len(res.Opened) > 0 {
 		e.Printer.StepDone("Opened ports " + strings.Join(res.Opened, ",") + " in the security group")
 	}

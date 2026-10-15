@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -30,7 +30,7 @@ const (
 	repoRoot        = "../.."
 	commandsDocPath = repoRoot + "/docs/commands.md"
 	authDocPath     = repoRoot + "/docs/auth.md"
-	regenerateHint  = "go test ./cmd/cloudru-vm -run TestCommandsDoc -update-docs"
+	regenerateHint  = "go test ./internal/cli -run TestCommandsDoc -update-docs"
 )
 
 const commandsDocHeader = `# Справка по командам
@@ -40,7 +40,7 @@ const commandsDocHeader = `# Справка по командам
      CI сверяет файл с бинарём (TestCommandsDoc). -->
 
 Справка — на английском, как ` + "`--help`" + ` (решение D6); то же самое печатает
-` + "`cloudru-vm <команда> --help`" + `. Описание по-русски — в [README](../README.md)
+` + "`evo <команда> --help`" + `. Описание по-русски — в [README](../README.md)
 и соседних файлах ` + "`docs/`" + `.
 
 `
@@ -135,12 +135,12 @@ func TestCommandsDoc_CoversEveryCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"cloudru-vm configure", "cloudru-vm vm create", "cloudru-vm tools call", "cloudru-vm mcp", "cloudru-vm completion bash"} {
+	for _, path := range []string{"evo configure", "evo vm create", "evo tools call", "evo mcp", "evo completion bash"} {
 		if !bytes.Contains(data, []byte("\n## "+path+"\n")) {
 			t.Errorf("no section for %q", path)
 		}
 	}
-	if bytes.Contains(data, []byte("## cloudru-vm mcp healthcheck")) {
+	if bytes.Contains(data, []byte("## evo mcp healthcheck")) {
 		t.Error("hidden command mcp healthcheck is documented")
 	}
 }

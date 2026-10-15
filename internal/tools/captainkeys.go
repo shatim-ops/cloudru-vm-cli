@@ -8,13 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
 )
 
 // Captain SSH access used to be a manual post-install step ("append their
 // public key to authorized_keys") that was routinely forgotten — VMs came up
 // reachable only by the agent. deploy_apply now closes that loop itself:
-// every public key listed in <state>/.cloudru-vm/captain_authorized_keys is
+// every public key listed in <state>/.evo/captain_authorized_keys is
 // appended (deduplicated) to ~/.ssh/authorized_keys on the new VM over the
 // agent's own deploy key. The file is one authorized_keys-format line per key;
 // '#' comments and blank lines are skipped. Missing/empty file = no-op, and
@@ -25,7 +26,7 @@ const captainKeysFile = "captain_authorized_keys"
 
 // loadCaptainKeys returns the captain public keys configured for auto-append.
 func loadCaptainKeys(stateDir string) []string {
-	raw, err := os.ReadFile(filepath.Join(stateDir, ".cloudru-vm", captainKeysFile))
+	raw, err := os.ReadFile(filepath.Join(config.DataDir(stateDir), captainKeysFile))
 	if err != nil {
 		return nil
 	}

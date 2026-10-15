@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -47,12 +47,12 @@ func cmdPrinter(cmd *cobra.Command) *output.Printer {
 func newToolsCmd() *cobra.Command {
 	cmd := asGroup(&cobra.Command{
 		Use:   "tools",
-		Short: "List, describe and call any of the cloudru-vm tools (the same ones the MCP server exposes)",
+		Short: "List, describe and call any of the evo tools (the same ones the MCP server exposes)",
 		Long: `Every operation the MCP server exposes is available here as a tool.
 
-  cloudru-vm tools list [--group vm]
-  cloudru-vm tools describe vm_get
-  cloudru-vm tools call vm_get --arg name=web
+  evo tools list [--group vm]
+  evo tools describe vm_get
+  evo tools call vm_get --arg name=web
 
 Tools that create paid resources or delete data ask for confirmation the same
 way as the other commands: a prompt on a terminal, --yes to confirm in
@@ -236,7 +236,7 @@ func lookupTool(reg *tools.Registry, name string) (tools.Tool, error) {
 	t, ok := reg.Lookup(name)
 	if !ok {
 		return tools.Tool{}, clerrors.New(clerrors.CodeUsage, fmt.Sprintf("unknown tool %q", name),
-			"Run 'cloudru-vm tools list' to see the tools.")
+			"Run 'evo tools list' to see the tools.")
 	}
 	return t, nil
 }
@@ -272,10 +272,10 @@ boolean are parsed; an array is a comma-separated list (or a JSON array);
 an object is JSON. Names and types from the JSON sources are checked
 against the schema too; null means "not given".
 
-  cloudru-vm tools call list_zones
-  cloudru-vm tools call vm_get --arg name=web
-  cloudru-vm tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
-  cloudru-vm tools call pg_operation --arg operation_id=OP --wait
+  evo tools call list_zones
+  evo tools call vm_get --arg name=web
+  evo tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
+  evo tools call pg_operation --arg operation_id=OP --wait
 
 Exit codes: 0 success; 3 confirmation not given; 4 the tool reported that
 something was not found; 5 any other error reported by the tool.`,
@@ -348,7 +348,7 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 		}
 		if err := checkArgType(p, v); err != nil {
 			return nil, clerrors.New(clerrors.CodeUsage, fmt.Sprintf("argument %s: %v", name, err),
-				fmt.Sprintf("Run 'cloudru-vm tools describe %s'.", t.Name))
+				fmt.Sprintf("Run 'evo tools describe %s'.", t.Name))
 		}
 	}
 	for _, pair := range pairs {
@@ -381,7 +381,7 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 	if len(missing) > 0 {
 		return nil, clerrors.New(clerrors.CodeUsage,
 			fmt.Sprintf("%s: missing required argument(s): %s", t.Name, strings.Join(missing, ", ")),
-			fmt.Sprintf("Run 'cloudru-vm tools describe %s'.", t.Name))
+			fmt.Sprintf("Run 'evo tools describe %s'.", t.Name))
 	}
 	return args, nil
 }
@@ -407,7 +407,7 @@ func unknownArgError(t tools.Tool, name string) error {
 		takes = strings.Join(names, ", ")
 	}
 	return clerrors.New(clerrors.CodeUsage, fmt.Sprintf("%s has no argument %q", t.Name, name),
-		fmt.Sprintf("%s takes: %s. See 'cloudru-vm tools describe %s'.", t.Name, takes, t.Name))
+		fmt.Sprintf("%s takes: %s. See 'evo tools describe %s'.", t.Name, takes, t.Name))
 }
 
 // coerceArg converts a --arg value to the type the schema declares, in the
@@ -639,7 +639,7 @@ func toolError(name, text string) error {
 		switch clerrors.ExitCode(clerrors.New(prefix, "", "")) {
 		case clerrors.ExitAuth:
 			return clerrors.New(prefix, name+": "+rest,
-				"Run 'cloudru-vm configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.")
+				"Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.")
 		case clerrors.ExitNotFound, clerrors.ExitAPI:
 			return clerrors.New(prefix, name+": "+rest, "")
 		}
