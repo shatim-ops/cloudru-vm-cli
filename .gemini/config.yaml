@@ -1,4 +1,5 @@
-# Gemini Code Assist on GitHub: https://developers.google.com/gemini-code-assist/docs/customize-gemini-behavior-github
+# Gemini Code Assist — настройки ревью PR.
+# Схема: https://docs.cloud.google.com/gemini/docs/code-review/customize-repo-review
 have_fun: false
 code_review:
   disable: false
@@ -8,6 +9,7 @@ code_review:
     help: false
     summary: true
     code_review: true
+    include_drafts: true
 ignore_patterns:
   - "go.sum"
   - "specs/**"
