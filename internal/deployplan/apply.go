@@ -6,17 +6,18 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/sgrules"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
-const (
-	pollInterval = 10 * time.Second
-	pollTimeout  = 7 * time.Minute // Cloud.ru VMs take 2-5 min; protocol v5 minimum
-)
+const pollTimeout = 7 * time.Minute // Cloud.ru VMs take 2-5 min; protocol v5 minimum
+
+// pollInterval is how often Apply asks for the VM state (a variable for tests).
+var pollInterval = 10 * time.Second
 
 // ApplyResult is the compact result returned to the agent after a deploy.
 type ApplyResult struct {
@@ -27,6 +28,11 @@ type ApplyResult struct {
 	Password   string `json:"password,omitempty"` // shown ONCE; not persisted
 	ElapsedSec int    `json:"elapsed_sec"`
 	Note       string `json:"note,omitempty"`
+
+	// Ports is what Apply recorded about the security group: the group, the
+	// ports the VM needs and the rules Apply created (the caller keeps them
+	// in state so destroy deletes them). Not part of the agent's answer.
+	Ports state.DeploymentRecord `json:"-"`
 }
 
 // Apply executes a resolved plan. It is idempotent: if a VM with the plan's name
@@ -165,11 +171,11 @@ poll:
 		}
 	}
 
-	// --- Open the product's ports in the security group (auto). ---
-	portNote := ""
-	if len(plan.Ports) > 0 && plan.Network.SecurityGroupID != "" {
-		portNote = openPorts(ctx, cloud, plan)
-	}
+	// --- Open the product's ports in the security group (auto). Same code
+	// as the CLI deploy: the rules created are recorded for destroy. ---
+	var ports state.DeploymentRecord
+	opened := sgrules.Open(ctx, cloud, plan.ProjectID, plan.Network.SecurityGroupID, plan.Ports, nil,
+		func(label string) string { return fmt.Sprintf("auto: %s port %s", plan.Product, label) }, &ports)
 
 	return &ApplyResult{
 		VMID:       vm.ID,
@@ -178,61 +184,9 @@ poll:
 		SSH:        sshString(plan.SSH.Login, ip),
 		Password:   password,
 		ElapsedSec: int(time.Since(start).Seconds()),
-		Note:       joinNotes(fipNote, sshNote, portNote),
+		Note:       joinNotes(fipNote, sshNote, opened.Note()),
+		Ports:      ports,
 	}, nil
-}
-
-// openPorts adds ingress tcp rules for the plan's ports to the VM's security
-// group, skipping ports that are already open. Returns a human summary.
-func openPorts(ctx context.Context, cloud provision.CloudAPI, plan *Plan) string {
-	sgID := plan.Network.SecurityGroupID
-	existing := map[string]bool{}
-	if sgs, err := cloud.ListSecurityGroups(ctx, plan.ProjectID); err == nil {
-		for _, sg := range sgs {
-			if sg.ID == sgID {
-				for _, r := range sg.Rules {
-					if r.Direction == "ingress" && r.PortRange != "" {
-						existing[r.PortRange] = true
-					}
-				}
-				break
-			}
-		}
-	}
-
-	var opened, skipped, failed []string
-	for _, p := range plan.Ports {
-		pr := fmt.Sprintf("%d:%d", p, p)
-		if existing[pr] {
-			skipped = append(skipped, strconv.Itoa(p))
-			continue
-		}
-		rule := provision.SGRule{
-			Direction:      "ingress",
-			EtherType:      "IPv4",
-			IPProtocol:     "tcp",
-			PortRange:      pr,
-			RemoteIPPrefix: "0.0.0.0/0",
-			Description:    fmt.Sprintf("auto: %s port %d", plan.Product, p),
-		}
-		if err := cloud.AddSecurityGroupRule(ctx, sgID, plan.ProjectID, rule); err != nil {
-			failed = append(failed, strconv.Itoa(p))
-		} else {
-			opened = append(opened, strconv.Itoa(p))
-		}
-	}
-
-	var parts []string
-	if len(opened) > 0 {
-		parts = append(parts, "opened ports "+strings.Join(opened, ","))
-	}
-	if len(skipped) > 0 {
-		parts = append(parts, "already open "+strings.Join(skipped, ","))
-	}
-	if len(failed) > 0 {
-		parts = append(parts, "FAILED to open "+strings.Join(failed, ",")+" — open them manually in the console")
-	}
-	return strings.Join(parts, "; ")
 }
 
 // waitForSSHPort polls TCP port 22 on ip until it accepts a connection or the

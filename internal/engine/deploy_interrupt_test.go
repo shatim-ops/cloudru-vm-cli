@@ -36,6 +36,10 @@ func (c *interruptCloud) ListSecurityGroups(context.Context, string) ([]*provisi
 	return []*provision.SecurityGroup{{ID: "sg-1", Name: "default"}}, nil
 }
 
+func (c *interruptCloud) ListSecurityGroupRules(context.Context, string) ([]*provision.SGRule, error) {
+	return nil, nil
+}
+
 func (c *interruptCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
 	return []*provision.DiskType{{ID: "dt-ssd", Name: "SSD"}}, nil
 }
