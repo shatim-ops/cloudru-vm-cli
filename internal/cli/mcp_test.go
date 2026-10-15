@@ -58,3 +58,22 @@ func TestRun_MCPHTTPRefusesToStart(t *testing.T) {
 		}
 	}
 }
+
+// --allow-project refuses every other project, the unset one included
+// (QA P4); without the flag nothing is refused (D12: compatible default).
+func TestCheckAllowedProject(t *testing.T) {
+	if err := checkAllowedProject(nil, "p-any"); err != nil {
+		t.Errorf("no allowlist: %v", err)
+	}
+	allowed := []string{"p-a", "p-b"}
+	if err := checkAllowedProject(allowed, "p-b"); err != nil {
+		t.Errorf("allowed project: %v", err)
+	}
+	for _, p := range []string{"p-c", ""} {
+		err := checkAllowedProject(allowed, p)
+		var ce *clerrors.CLIError
+		if !stderrors.As(err, &ce) || ce.Code != clerrors.CodeConfigInvalid {
+			t.Errorf("project %q: %v, want CONFIG_INVALID", p, err)
+		}
+	}
+}

@@ -384,6 +384,9 @@ var fastTimings = Timings{
 	DockerWaitTimeout:   5 * time.Second,
 	DestroyPollInterval: time.Millisecond,
 	DestroyPollTimeout:  5 * time.Second,
+
+	DeletableWaitTimeout:  50 * time.Millisecond,
+	DeletablePollInterval: time.Millisecond,
 }
 
 // stubProbe records health-check calls instead of opening connections, so

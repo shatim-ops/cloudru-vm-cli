@@ -1194,7 +1194,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_status",
-			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], outputs{postgres,vm,tg,lb,lb_external_ip,…}}. Each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. Keep polling until status=done (then read outputs.lb_external_ip etc.) or status=error. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
+			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], outputs{postgres,vm,tg,lb,lb_external_ip,…}}. For a job started by stack_apply, each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs.lb_external_ip etc.) or status=error. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":       strProp("Job id. Required."),
 				"wait_seconds": intProp("How long this call may block while advancing (default 90, max 240). Fewer calls for a long deploy."),
@@ -1366,9 +1366,10 @@ func (s *Registry) registerTools() {
 func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (string, bool) {
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":      "confirmation_required",
-			"message":     "deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the user's approval, then call again with confirmed=true.",
-			"will_deploy": previewArgs(args, "compose_file", "flavor", "region", "project_id", "image_id", "disk_size", "force"),
+			"status":  "confirmation_required",
+			"message": "deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the user's approval, then call again with confirmed=true.",
+			"will_deploy": withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
+				firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx))),
 		}), true
 	}
 	overrides := map[string]any{}
@@ -1422,7 +1423,8 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (string, bool) {
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		noPublicIP, _ := args["no_public_ip"].(bool)
-		will := previewArgs(args, "name", "flavor", "region", "project_id", "image_id", "disk_size", "subnet_id")
+		will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
+			firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
 		will["public_ip"] = !noPublicIP
 		return toJSON(map[string]any{
 			"status":      "confirmation_required",
@@ -1738,6 +1740,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				ID:           vmID,
 				VMID:         vmID,
 				VMIP:         publicIP,
+				ProjectID:    projectID,
 				VMFlavor:     flavorID,
 				Region:       region,
 				SSHUser:      sshUser,
@@ -1787,10 +1790,18 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}), true
 	}
 
-	// Poll until active
-	pollTimeout := 5 * time.Minute
+	// Poll until active: 10 minutes, as the CLI deploy (a new VM took ~5 in
+	// ru.AZ-1 on 15.10.2026).
+	pollTimeout := 10 * time.Minute
+	if eng.Timings.VMPollTimeout > 0 {
+		pollTimeout = eng.Timings.VMPollTimeout // CLOUDRU_TIMEOUT, as in the CLI deploy
+	}
 	deadline := time.After(pollTimeout)
-	ticker := time.NewTicker(5 * time.Second)
+	pollEvery := 5 * time.Second
+	if eng.Timings.VMPollInterval > 0 {
+		pollEvery = eng.Timings.VMPollInterval // tests
+	}
+	ticker := time.NewTicker(pollEvery)
 	defer ticker.Stop()
 
 	for {
@@ -1860,7 +1871,24 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				return toJSON(res), false
 			}
 			if updated.Status == "error" {
-				return errResult(fmt.Errorf("VM %s entered error state", vm.ID)), true
+				// Billed with its boot FIP: record both so destroy finds
+				// them, and say so (QA H3).
+				ip := ""
+				if bootFIP != nil {
+					ip = bootFIP.IPAddress
+				}
+				serr := saveState(vm.ID, "error", ip)
+				fipNote := ""
+				if fipID != "" {
+					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; destroy releases it.", ip)
+				}
+				return toJSON(map[string]any{
+					"status":         "error",
+					"vm_id":          vm.ID,
+					"floating_ip_id": fipID,
+					"error": fmt.Sprintf("VM %s entered error state. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
+						vm.ID, vm.ID, fipNote, notInState(vm.ID, serr)),
+				}), true
 			}
 		case <-ctx.Done():
 			return interrupted("")
@@ -1928,8 +1956,9 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 	// ungated — now requires the same explicit confirmation as targeted deletes.
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "destroy permanently deletes the current deployment VM and all its data (irreversible). Get the user's approval, then call again with confirmed=true.",
+			"status":     "confirmation_required",
+			"message":    "destroy permanently deletes the current deployment VM and all its data (irreversible). Get the user's approval, then call again with confirmed=true.",
+			"project_id": s.deploymentProject(),
 		}), true
 	}
 	eng, err := s.newEngine(nil)
@@ -1950,8 +1979,9 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmID, name string) (string, bool) {
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "deleting a specific VM requires confirmed=true. Get the user's approval, then call again with confirmed=true.",
+			"status":     "confirmation_required",
+			"message":    "deleting a specific VM requires confirmed=true. Get the user's approval, then call again with confirmed=true.",
+			"project_id": s.projectID(ctx),
 		}), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
@@ -1975,15 +2005,64 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		return errResult(fmt.Errorf("no VM matching vm_id=%q name=%q in this project", vmID, name)), true
 	}
 
-	fip := target.FloatingIP
+	// The VM's floating IP, found before the VM goes: the record deploy or
+	// provision wrote (floating_ip_id), else an address on the VM, else the
+	// one boot FIP named for it. The list's flat floating_ip field is often
+	// empty (BACKLOG [04]), which used to leave the FIP billed (QA H4).
+	fipRec := state.DeploymentRecord{VMID: target.ID}
+	statePath := state.DefaultPath(eng.StateDir)
+	if sf, err := state.Read(statePath); err == nil {
+		for _, d := range sf.Deployments {
+			if d.VMID == target.ID {
+				if d.FloatingIPID != "" {
+					fipRec.FloatingIPID = d.FloatingIPID
+				}
+				fipRec.ProjectID = d.ProjectID
+				if d.VMIP != "" {
+					fipRec.VMIP = d.VMIP
+				}
+			}
+		}
+	}
+	if fipRec.VMIP == "" {
+		fipRec.VMIP = firstNonEmptyStr(target.FloatingIP, target.PublicIP)
+	}
+	releaseIP := true
+	if v, ok := args["release_ip"].(bool); ok {
+		releaseIP = v
+	}
+	if releaseIP && fipRec.FloatingIPID == "" && fipRec.VMIP == "" && target.Name != "" {
+		if fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID); e == nil {
+			var named []*provision.FloatingIP
+			for _, f := range fips {
+				if strings.HasPrefix(f.Name, "fip-"+target.Name+"-") {
+					named = append(named, f)
+				}
+			}
+			if len(named) == 1 {
+				fipRec.FloatingIPID, fipRec.VMIP = named[0].ID, named[0].IPAddress
+			}
+		}
+	}
+	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
+
 	if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
+		if engine.IsNotDeletableYet(err) {
+			// A VM still being created cannot be deleted yet; say when to
+			// come back instead of a bare API error (QA H1/H4).
+			return toJSON(map[string]any{
+				"status": "not_deletable_yet",
+				"vm_id":  target.ID,
+				"message": fmt.Sprintf("VM %s is still being created or changing state, so Cloud.ru refuses to delete it now. "+
+					"Call destroy with vm_id %s again in a minute or two; nothing was deleted.", target.ID, target.ID),
+			}), true
+		}
 		return errResult(fmt.Errorf("delete VM: %w", err)), true
 	}
 
 	// Best-effort: remove from local state, deleting the port rules the
 	// deployment created (the same code as the CLI destroy).
 	var rules sgrules.CloseResult
-	statePath := state.DefaultPath(eng.StateDir)
 	stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
 		var ids []string
 		for _, d := range sf.Deployments {
@@ -1998,22 +2077,17 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		return nil
 	})
 
-	// Release the floating IP unless asked not to.
-	releaseIP := true
-	if v, ok := args["release_ip"].(bool); ok {
-		releaseIP = v
-	}
 	msg := "VM deleted"
-	if releaseIP && fip != "" {
-		if fips, e := eng.Cloud.ListFloatingIPs(ctx, eng.Config.ProjectID); e == nil {
-			for _, f := range fips {
-				if f.IPAddress == fip {
-					if de := eng.Cloud.DeleteFloatingIP(ctx, f.ID, eng.Config.ProjectID); de == nil {
-						msg += "; released floating IP " + fip
-					}
-					break
-				}
-			}
+	if releaseIP && hasFIP {
+		// The FIP stays attached until the VM is gone: wait, then retry.
+		if !eng.WaitVMGone(ctx, target.ID) {
+			msg += "; WARNING: the deletion is not confirmed yet (the VM is still listed) — check it with vm_get"
+		}
+		if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
+			msg += fmt.Sprintf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
+				"release it with release_floating_ip", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr)
+		} else {
+			msg += "; released floating IP " + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 		}
 	}
 	out := map[string]any{
@@ -2199,6 +2273,32 @@ func intArg(args map[string]any, key string, def int) int {
 // previewArgs echoes the given arguments for a confirmation preview; an
 // argument that was not passed is shown as coming from the defaults
 // (env/config or auto).
+// withProject names the project in a preview, resolved as the call will
+// resolve it: with a key that sees several projects the user must see where
+// the VM is created (QA P6).
+func withProject(will map[string]any, project string) map[string]any {
+	if project == "" {
+		project = "(not set: the call will fail)"
+	}
+	will["project_id"] = project
+	return will
+}
+
+// deploymentProject is the project of the local deployment destroy would
+// delete: the one in its state record, else the configured one.
+func (s *Registry) deploymentProject() string {
+	eng, err := s.newEngine(nil)
+	if err != nil || eng == nil {
+		return ""
+	}
+	if sf, e := state.Read(state.DefaultPath(eng.StateDir)); e == nil {
+		if a := sf.ActiveDeployment(); a != nil && a.ProjectID != "" {
+			return a.ProjectID
+		}
+	}
+	return eng.Config.ProjectID
+}
+
 func previewArgs(args map[string]any, keys ...string) map[string]any {
 	out := make(map[string]any, len(keys))
 	for _, k := range keys {

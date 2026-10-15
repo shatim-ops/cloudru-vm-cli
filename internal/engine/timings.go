@@ -4,20 +4,22 @@ import "time"
 
 // Production waits used by Deploy and Destroy. Engine.Timings overrides them per field.
 const (
-	vmPollInterval       = 5 * time.Second
-	vmPollTimeout        = 5 * time.Minute
-	ifacePollInterval    = 5 * time.Second
-	fipRetryInterval     = 10 * time.Second
-	fipPollInterval      = 5 * time.Second
-	sshRetryInterval     = 5 * time.Second
-	verifySettleDelay    = 2 * time.Second
-	verifyTimeout        = 10 * time.Second
-	dockerPollInterval   = 10 * time.Second
-	dockerWaitTimeout    = 10 * time.Minute // cloud-init: apt upgrade + get.docker.com
-	destroyPollInterval  = 3 * time.Second
-	destroyPollTimeout   = 30 * time.Second
-	ifaceMaxAttempts     = 24 // × ifacePollInterval ≈ 2 minutes
-	ifaceFallbackAttempt = 12 // after this, accept a primary interface in any state
+	vmPollInterval        = 5 * time.Second
+	vmPollTimeout         = 10 * time.Minute // 15.10.2026: ru.AZ-1 took 4m57s, another VM over 5m
+	ifacePollInterval     = 5 * time.Second
+	fipRetryInterval      = 10 * time.Second
+	fipPollInterval       = 5 * time.Second
+	sshRetryInterval      = 5 * time.Second
+	verifySettleDelay     = 2 * time.Second
+	verifyTimeout         = 10 * time.Second
+	dockerPollInterval    = 10 * time.Second
+	dockerWaitTimeout     = 10 * time.Minute // cloud-init: apt upgrade + get.docker.com
+	destroyPollInterval   = 3 * time.Second
+	destroyPollTimeout    = 30 * time.Second
+	deletableWaitTimeout  = 10 * time.Minute // a VM still "creating" cannot be deleted yet
+	deletablePollInterval = 10 * time.Second
+	ifaceMaxAttempts      = 24 // × ifacePollInterval ≈ 2 minutes
+	ifaceFallbackAttempt  = 12 // after this, accept a primary interface in any state
 )
 
 // Timings holds the waits Deploy and Destroy use between polls and retries. A zero field
@@ -37,6 +39,9 @@ type Timings struct {
 	DockerWaitTimeout   time.Duration // give up waiting for Docker on a new VM
 	DestroyPollInterval time.Duration // GetVM polling until a deleted VM is gone
 	DestroyPollTimeout  time.Duration // stop waiting for the deletion to be confirmed
+
+	DeletableWaitTimeout  time.Duration // destroy: how long to retry while the VM cannot be deleted yet
+	DeletablePollInterval time.Duration // destroy: between those retries
 }
 
 // withDefaults fills zero fields with the production defaults.
@@ -58,6 +63,8 @@ func (t Timings) withDefaults() Timings {
 	def(&t.DockerWaitTimeout, dockerWaitTimeout)
 	def(&t.DestroyPollInterval, destroyPollInterval)
 	def(&t.DestroyPollTimeout, destroyPollTimeout)
+	def(&t.DeletableWaitTimeout, deletableWaitTimeout)
+	def(&t.DeletablePollInterval, deletablePollInterval)
 	return t
 }
 

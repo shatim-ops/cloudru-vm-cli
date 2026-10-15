@@ -102,6 +102,7 @@ func runDoctor(ctx context.Context) []doctorCheck {
 			}
 			checks = append(checks, doctorCheck{Name: "credentials", Status: checkOK,
 				Detail: fmt.Sprintf("key %s: %s, valid for %s", config.MaskKeyID(cfg.KeyID), src, tok.TTL().Truncate(time.Minute))})
+			checks = append(checks, keyScopeCheck(ctx, tok.Value))
 		}
 	}
 
@@ -257,5 +258,19 @@ func reportDoctor(printer *output.Printer, checks []doctorCheck) error {
 			"Fix the configuration or credentials above, e.g. with 'evo configure'")
 	default:
 		return fmt.Errorf("doctor: %d check(s) failed", failed)
+	}
+}
+
+// keyScopeCheck warns about a key that sees several projects: the project
+// a command works in is then a setting, not a limit of the key.
+func keyScopeCheck(ctx context.Context, token string) doctorCheck {
+	visible, err := listProjects(ctx, token)
+	switch {
+	case err != nil:
+		return doctorCheck{Name: "key scope", Status: checkSkip, Detail: scopeText(nil, err)}
+	case len(visible) > 1:
+		return doctorCheck{Name: "key scope", Status: checkWarn, Detail: manyProjectsWarning(len(visible))}
+	default:
+		return doctorCheck{Name: "key scope", Status: checkOK, Detail: scopeText(visible, nil)}
 	}
 }

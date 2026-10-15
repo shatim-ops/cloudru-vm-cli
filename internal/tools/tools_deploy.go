@@ -138,6 +138,7 @@ func recordDeployment(stateDir string, plan *deployplan.Plan, res *deployplan.Ap
 			ID:                 res.VMID,
 			VMID:               res.VMID,
 			VMIP:               res.PublicIP,
+			ProjectID:          plan.ProjectID,
 			VMFlavor:           plan.VM.Flavor.Name,
 			Region:             plan.VM.Zone.ID,
 			SSHUser:            plan.SSH.Login,
@@ -189,7 +190,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return errResult(err), true
 	}
-	res, err := deployplan.Apply(ctx, eng.Cloud, plan)
+	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.Timings.VMPollTimeout)
 	if err != nil {
 		// Interrupted after the VM was created: record it, so status and
 		// destroy see it; the plan stays for a retry, which adopts the VM.
@@ -555,6 +556,7 @@ func (s *Registry) handleListFloatingIPs(ctx context.Context, args map[string]an
 	for _, f := range fips {
 		out = append(out, map[string]any{
 			"id":         f.ID,
+			"name":       f.Name,
 			"ip_address": f.IPAddress,
 			"state":      f.State,
 			"available":  f.Available(),

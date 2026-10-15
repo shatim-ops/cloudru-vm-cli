@@ -355,6 +355,9 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	job := stack.Plan(m)
+	if eng, e := s.newEngine(nil); e == nil && eng != nil {
+		job.ProjectID = eng.Config.ProjectID
+	}
 	if err := job.CheckDeps(); err != nil {
 		return errResult(fmt.Errorf("invalid manifest: %w", err)), true
 	}
@@ -366,11 +369,12 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		steps = append(steps, st.Key)
 	}
 	out := map[string]any{
-		"status":  "planned",
-		"job_id":  job.ID,
-		"steps":   steps,
-		"cost":    stack.EstimateCost(m),
-		"message": "Stack planned. BILLABLE — show the user the cost and get explicit approval, then call stack_apply with this job_id and confirmed=true.",
+		"status":     "planned",
+		"job_id":     job.ID,
+		"project_id": job.ProjectID,
+		"steps":      steps,
+		"cost":       stack.EstimateCost(m),
+		"message":    "Stack planned. BILLABLE — show the user the cost and get explicit approval, then call stack_apply with this job_id and confirmed=true.",
 	}
 	if len(s3Notes) > 0 {
 		out["s3"] = s3Notes
@@ -487,6 +491,9 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 	if err != nil {
 		return errResult(err), true
 	}
+	if err := s.checkJobProject(job); err != nil {
+		return errResult(err), true
+	}
 	if job.Status == "destroyed" || job.Status == "destroy_failed" {
 		// Its steps are all "done" from the first apply: advancing would
 		// report status=done for resources that no longer exist.
@@ -530,12 +537,33 @@ func (s *Registry) lockJob(id string) (unlock func(), err error) {
 	}, nil
 }
 
+// checkJobProject refuses a job planned in another project than the one
+// this server works in: every step tool (pg_create, k8s_delete, destroy…)
+// runs in the server's project, where the job's resources are not.
+func (s *Registry) checkJobProject(job *stack.Job) error {
+	if job.ProjectID == "" {
+		return nil // planned by an older version
+	}
+	eng, err := s.newEngine(nil)
+	if err != nil {
+		return err
+	}
+	if eng == nil || eng.Config.ProjectID == job.ProjectID {
+		return nil
+	}
+	return fmt.Errorf("job %s was planned in project %s, but this server works in project %s: its tools would act on the wrong project. Restart the MCP server with --project-id %s (or CLOUDRU_PROJECT_ID)",
+		job.ID, job.ProjectID, eng.Config.ProjectID, job.ProjectID)
+}
+
 // jobLockWait bounds the wait for another process's crank of the same job:
 // one crank is a few API calls, not minutes.
 const jobLockWait = time.Minute
 
 // crankJob loads the job and, while it is in progress, advances and saves
-// it, all under the job's lock.
+// it, all under the job's lock. Only a "running" job moves: stack_apply with
+// confirmed=true sets it. A "planned" job is shown, never advanced —
+// stack_status is a read-only poll, and advancing a planned job would create
+// every billable step without the user's approval (QA 15.10.2026, C1).
 func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) {
 	unlock, err := s.lockJob(id)
 	if err != nil {
@@ -546,7 +574,10 @@ func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) 
 	if err != nil {
 		return nil, err
 	}
-	if job.Status == "running" || job.Status == "planned" {
+	if job.Status == "running" {
+		if err := s.checkJobProject(job); err != nil {
+			return nil, err
+		}
 		s.advance(ctx, job)
 		if e := job.Save(); e != nil {
 			return nil, fmt.Errorf("persist job: %w", e)
@@ -584,7 +615,12 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 		if err != nil {
 			return errResult(err), true
 		}
-		if job.Status != "running" && job.Status != "planned" {
+		if job.Status == "planned" {
+			out := job.Compact()
+			out["note"] = "Not started: call stack_apply with this job_id and confirmed=true after the user approved the plan. stack_status only reports progress."
+			return toJSON(out), false
+		}
+		if job.Status != "running" {
 			return toJSON(job.Compact()), false // terminal (done/error)
 		}
 		rem := time.Until(deadline)
@@ -614,6 +650,11 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	defer unlock()
 	job, err := stack.LoadJob(id)
 	if err != nil {
+		return errResult(err), true
+	}
+	// A 404 from another project would read as "already gone" and the job
+	// would be marked destroyed with its resources still billed (QA P2).
+	if err := s.checkJobProject(job); err != nil {
 		return errResult(err), true
 	}
 	// Reconcile ids from the STEPS before teardown: a resource created but not yet

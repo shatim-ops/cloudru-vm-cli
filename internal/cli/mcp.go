@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -33,6 +34,7 @@ func newMCPCmd() *cobra.Command {
 		httpAddr          string
 		authMode          string
 		allowSecretExport bool
+		allowProjects     []string
 	)
 	cmd := &cobra.Command{
 		Use:   "mcp",
@@ -76,7 +78,15 @@ status, duration; never the arguments) goes to stderr.
 
 Cloud.ru credentials and project parameters are the server's own, resolved
 exactly as for the regular CLI commands (environment, profile from
-'evo configure', .evo.yaml); clients never send them.`,
+'evo configure', .evo.yaml); clients never send them.
+
+Projects: deploy and provision accept a project_id argument, so with a key
+that sees several projects (an organization-level key) any client of the
+server can work in any of them. --allow-project limits the tools to the
+listed projects (repeat the flag or separate with commas): a call in any other
+project, the server's own included, fails. The read-only org_quotas and
+iam_service_accounts still read other projects. Without the flag the server
+warns at start in HTTP mode. Prefer a project-level key for a shared server.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			srv := mcp.New(func(overrides map[string]any) (*engine.Engine, error) {
@@ -85,7 +95,14 @@ exactly as for the regular CLI commands (environment, profile from
 				}
 				// The SSH key stays lazy here too: only the tools that
 				// reach a VM call EnsureSSHKey.
-				return buildEngine(overrides)
+				eng, err := buildEngine(overrides)
+				if err != nil {
+					return nil, err
+				}
+				if err := checkAllowedProject(allowProjects, eng.Config.ProjectID); err != nil {
+					return nil, err
+				}
+				return eng, nil
 			}, version)
 
 			if httpAddr == "" {
@@ -105,6 +122,10 @@ exactly as for the regular CLI commands (environment, profile from
 			if token != "" && len(token) < 16 {
 				logger.Warn(envBearerToken + " is shorter than 16 characters; use a long random token")
 			}
+			if len(allowProjects) == 0 {
+				logger.Warn("no --allow-project: a client can pass project_id to deploy/provision and work in any project the key sees; " +
+					"limit it with --allow-project <UUID> or use a project-level key")
+			}
 			return srv.ListenAndServe(cmd.Context(), httpAddr, mcp.HTTPOptions{
 				BearerToken:       token,
 				AllowSecretExport: allowSecretExport,
@@ -114,9 +135,31 @@ exactly as for the regular CLI commands (environment, profile from
 	}
 	cmd.Flags().StringVar(&httpAddr, "http", "", "Serve MCP over Streamable HTTP on this address (e.g. :8080) instead of stdio")
 	cmd.Flags().StringVar(&authMode, "auth", authBearer, "HTTP authentication: bearer (token from $MCP_BEARER_TOKEN) or none (loopback address only)")
+	cmd.Flags().StringSliceVar(&allowProjects, "allow-project", nil, "Allow tool calls only in these Cloud.ru projects (UUIDs; repeat or comma-separate). Default: any project the key sees")
 	cmd.Flags().BoolVar(&allowSecretExport, "allow-secret-export", false, "HTTP mode: allow k8s_kubeconfig with an embedded token, cert_private_key, secret_value and unmasked credentials in results")
 	cmd.AddCommand(newMCPHealthcheckCmd())
 	return cmd
+}
+
+// checkAllowedProject refuses an engine for a project outside --allow-project
+// (QA P4). Every tool that reaches the cloud builds its engine through the
+// factory, so this covers project_id arguments and the server's own project.
+func checkAllowedProject(allowed []string, project string) error {
+	if len(allowed) == 0 {
+		return nil
+	}
+	for _, p := range allowed {
+		if p == project {
+			return nil
+		}
+	}
+	shown := project
+	if shown == "" {
+		shown = "(not set)"
+	}
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		fmt.Sprintf("project %s is not allowed on this server", shown),
+		fmt.Sprintf("The server runs with --allow-project %s; ask its operator to add the project.", strings.Join(allowed, ",")))
 }
 
 // runMCPStdio serves the stdio transport.

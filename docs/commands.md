@@ -1732,6 +1732,14 @@ status, duration; never the arguments) goes to stderr.
 Cloud.ru credentials and project parameters are the server's own, resolved
 exactly as for the regular CLI commands (environment, profile from
 'evo configure', .evo.yaml); clients never send them.
+
+Projects: deploy and provision accept a project_id argument, so with a key
+that sees several projects (an organization-level key) any client of the
+server can work in any of them. --allow-project limits the tools to the
+listed projects (repeat the flag or separate with commas): a call in any other
+project, the server's own included, fails. The read-only org_quotas and
+iam_service_accounts still read other projects. Without the flag the server
+warns at start in HTTP mode. Prefer a project-level key for a shared server.
 ```
 
 ```
@@ -1741,10 +1749,11 @@ evo mcp [flags]
 ### Options
 
 ```
-      --allow-secret-export   HTTP mode: allow k8s_kubeconfig with an embedded token, cert_private_key, secret_value and unmasked credentials in results
-      --auth string           HTTP authentication: bearer (token from $MCP_BEARER_TOKEN) or none (loopback address only) (default "bearer")
-  -h, --help                  help for mcp
-      --http string           Serve MCP over Streamable HTTP on this address (e.g. :8080) instead of stdio
+      --allow-project strings   Allow tool calls only in these Cloud.ru projects (UUIDs; repeat or comma-separate). Default: any project the key sees
+      --allow-secret-export     HTTP mode: allow k8s_kubeconfig with an embedded token, cert_private_key, secret_value and unmasked credentials in results
+      --auth string             HTTP authentication: bearer (token from $MCP_BEARER_TOKEN) or none (loopback address only) (default "bearer")
+  -h, --help                    help for mcp
+      --http string             Serve MCP over Streamable HTTP on this address (e.g. :8080) instead of stdio
 ```
 
 ### Options inherited from parent commands

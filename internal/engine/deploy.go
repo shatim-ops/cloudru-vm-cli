@@ -75,6 +75,13 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			fmt.Sprintf("deployment %s is being destroyed", existing.ID),
 			"Run 'evo destroy' to finish it, then deploy again.")
 	}
+	// One directory holds one deployment: never send this compose file to
+	// a VM of another project, nor open its ports there.
+	if !isNewDeploy && existing.ProjectID != "" && e.Config.ProjectID != "" && existing.ProjectID != e.Config.ProjectID {
+		return clerrors.New(clerrors.CodeConfigInvalid,
+			fmt.Sprintf("this directory already has deployment %s in project %s, not in %s", existing.ID, existing.ProjectID, e.Config.ProjectID),
+			fmt.Sprintf("Update it with --project-id %s, or run 'evo destroy' first and deploy to the new project.", existing.ProjectID))
+	}
 
 	// Skip only a deployment that finished: after an SSH or Docker failure the
 	// hash is already recorded, and a plain re-run must retry.
@@ -86,7 +93,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	if !isNewDeploy && opts.DryRun {
 		// Updating an existing VM creates nothing billable, so it is not
 		// gated; --dry-run still must not touch it.
-		_, err := confirm.Ask(ctx, redeployPreview(existing), e.confirmOptions(false, true, false))
+		_, err := confirm.Ask(ctx, redeployPreview(existing, e.projectOf(existing)), e.confirmOptions(false, true, false))
 		return err
 	}
 
@@ -162,7 +169,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		// the compose file publishes new ones: open what is missing. Records
 		// from before security_group_id existed have no group to open in.
 		if rec.SecurityGroupID != "" {
-			e.openPorts(ctx, e.Config.ProjectID, rec.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
+			e.openPorts(ctx, e.projectOf(&rec), rec.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
 			stateFile.UpsertDeployment(rec)
 			_ = state.Write(statePath, stateFile)
 		}
@@ -524,6 +531,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		ID:           vm.ID,
 		VMID:         vm.ID,
 		VMIP:         vm.PublicIP,
+		ProjectID:    projectID,
 		VMFlavor:     flavorName,
 		Region:       region,
 		SSHUser:      sshUser,
@@ -565,7 +573,27 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	interrupted := func(sig string) (state.DeploymentRecord, error) {
 		deleted, err := e.handleInterrupt(sig, vm.ID, opts.NonInteractive)
 		if deleted {
-			e.releaseBootFIP(bootFIP, projectID)
+			// The VM goes asynchronously and its FIP stays attached until
+			// it is gone: wait, then release with retries, like destroy.
+			// Only then the record goes; if the FIP stays, the record keeps
+			// its floating_ip_id so 'evo destroy' finishes the job (QA H2).
+			rctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			gone := e.waitVMGone(rctx, vm.ID)
+			ferr := e.releaseFloatingIP(rctx, &rec)
+			if !gone && ferr == nil {
+				// Deletion accepted but not confirmed: keep the record, or
+				// a VM stuck in deleting would be billed without a trace.
+				ferr = fmt.Errorf("deletion of VM %s is not confirmed yet; run 'evo destroy' to finish", vm.ID)
+			}
+			if ferr != nil {
+				e.Printer.Warning(ferr.Error())
+				rec.Status = "destroying"
+				rec.UpdatedAt = time.Now()
+				stateFile.UpsertDeployment(rec)
+				_ = state.Write(statePath, stateFile)
+				return rec, err
+			}
 			// Gone in the cloud, gone from state: a kept record would be
 			// "reused" by the next deploy.
 			stateFile.RemoveDeployment(rec.ID)
@@ -912,7 +940,7 @@ func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		rec.VMIP = f.IPAddress
 		return
 	}
-	ip, fipID, err := e.assignFloatingIP(ctx, rec.VMID, e.Config.ProjectID, rec.Region)
+	ip, fipID, err := e.assignFloatingIP(ctx, rec.VMID, e.projectOf(rec), rec.Region)
 	if fipID != "" {
 		rec.FloatingIPID = fipID
 	}
@@ -1117,9 +1145,11 @@ func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) (
 
 	if answer == "y" || answer == "Y" {
 		e.Printer.StepDone("Deleting VM...")
-		deleteCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// A VM still being created cannot be deleted yet: wait as destroy
+		// does instead of leaving it behind (QA H2).
+		deleteCtx, cancel := context.WithTimeout(context.Background(), e.timings().DeletableWaitTimeout+time.Minute)
 		defer cancel()
-		if err := e.Cloud.DeleteVM(deleteCtx, vmID); err != nil {
+		if err := e.deleteVMWhenDeletable(deleteCtx, vmID); err != nil {
 			e.Printer.Warning(fmt.Sprintf("Failed to delete VM: %v", err))
 		} else {
 			e.Printer.StepDone("VM deleted")
@@ -1170,3 +1200,40 @@ func (e *Engine) WaitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmI
 func (e *Engine) ReleaseBootFIP(fip *provision.FloatingIP, projectID string) {
 	e.releaseBootFIP(fip, projectID)
 }
+
+// waitVMGone polls until the VM is not found, ctx ends or
+// Timings.DestroyPollTimeout passes. Best effort: the FIP release after it
+// retries on its own.
+func (e *Engine) waitVMGone(ctx context.Context, vmID string) bool {
+	t := e.timings()
+	deadline := time.Now().Add(t.DestroyPollTimeout)
+	for time.Now().Before(deadline) {
+		if _, err := e.Cloud.GetVM(ctx, vmID); err != nil {
+			var ce *clerrors.CLIError
+			if stderrors.As(err, &ce) && ce.Code == clerrors.CodeVMNotFound {
+				return true
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(t.DestroyPollInterval):
+		}
+	}
+	return false
+}
+
+// WaitVMGone is waitVMGone for MCP destroy by vm_id: true once the VM is
+// not found.
+func (e *Engine) WaitVMGone(ctx context.Context, vmID string) bool { return e.waitVMGone(ctx, vmID) }
+
+// ReleaseFloatingIP releases the FIP a record names (floating_ip_id, else
+// its address or the after-boot name), retrying while the platform still
+// reports it attached to a just-deleted VM. Nothing to release is nil.
+func (e *Engine) ReleaseFloatingIP(ctx context.Context, rec *state.DeploymentRecord) error {
+	return e.releaseFloatingIP(ctx, rec)
+}
+
+// IsNotDeletableYet reports a 409/422 from deleting a VM that is still
+// being created or changing state.
+func IsNotDeletableYet(err error) bool { return isNotDeletableYet(err) }
