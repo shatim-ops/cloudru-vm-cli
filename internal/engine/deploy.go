@@ -594,7 +594,8 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			if !gone && ferr == nil {
 				// Deletion accepted but not confirmed: keep the record, or
 				// a VM stuck in deleting would be billed without a trace.
-				ferr = fmt.Errorf("deletion of VM %s is not confirmed yet; run 'evo destroy' to finish", vm.ID)
+				ferr = stderrors.New(i18n.Tf("deletion of VM %s is not confirmed yet; run 'evo destroy' to finish",
+					"удаление ВМ %s ещё не подтверждено; завершите его командой 'evo destroy'", vm.ID))
 			}
 			if ferr != nil {
 				e.Printer.Warning(ferr.Error())
