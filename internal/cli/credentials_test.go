@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -464,5 +465,19 @@ func TestBuildEngine_SharesTokenProvider(t *testing.T) {
 	}
 	if e1.Config.KeyID != fakeKeyID {
 		t.Errorf("engine credentials not from the profile: %q", e1.Config.KeyID)
+	}
+}
+
+// CLOUDRU_TIMEOUT sets how long deploy waits for the VM to become active.
+func TestBuildEngine_TimeoutSetsVMWait(t *testing.T) {
+	setupCLI(t)
+	saveProfile(t, "default", "p-1")
+	t.Setenv("CLOUDRU_TIMEOUT", "42")
+	e, err := buildEngine(map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Timings.VMPollTimeout != 42*time.Second {
+		t.Errorf("VMPollTimeout = %v, want 42s", e.Timings.VMPollTimeout)
 	}
 }

@@ -30,7 +30,7 @@ type Config struct {
 	Flavor    string `yaml:"flavor" json:"flavor"`
 	ImageID   string `yaml:"image_id" json:"image_id"` // boot image UUID
 	DiskSize  int    `yaml:"disk_size" json:"disk_size"`
-	Timeout   int    `yaml:"timeout" json:"timeout"` // SSH timeout in seconds
+	Timeout   int    `yaml:"timeout" json:"timeout"` // seconds deploy waits for the VM to become active
 
 	// Output
 	JSON    bool `yaml:"-" json:"-"` // --json flag only
