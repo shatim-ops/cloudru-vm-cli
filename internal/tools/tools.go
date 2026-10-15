@@ -1983,7 +1983,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	// deployment created (the same code as the CLI destroy).
 	var rules sgrules.CloseResult
 	statePath := state.DefaultPath(eng.StateDir)
-	_ = state.Update(statePath, stateLockWait, func(sf *state.File) error {
+	stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
 		var ids []string
 		for _, d := range sf.Deployments {
 			if d.VMID == target.ID {
@@ -2028,6 +2028,11 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	}
 	if !rules.Empty() {
 		out["security_group_rules"] = rules
+	}
+	if stateErr != nil {
+		// The VM is gone; only the local bookkeeping is stale. Say so rather
+		// than leave port rules open without a word.
+		msg += fmt.Sprintf("; WARNING: the local state was not updated (%v): its record of this VM stays, and the port rules that deployment opened were not closed — close them in the Cloud.ru console if nothing else uses them", stateErr)
 	}
 	out["message"] = msg
 	return toJSON(out), false
