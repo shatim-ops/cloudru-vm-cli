@@ -19,7 +19,18 @@ import (
 // hits the nil embedded interface and panics.
 type interruptCloud struct {
 	provision.CloudAPI
-	deleted []string
+	deleted     []string
+	deletedFIPs []string
+}
+
+// The public IP is reserved before the VM is created.
+func (c *interruptCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	return &provision.FloatingIP{ID: "fip-boot", IPAddress: "203.0.113.7", State: "available"}, nil
+}
+
+func (c *interruptCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
+	c.deletedFIPs = append(c.deletedFIPs, id)
+	return nil
 }
 
 func (c *interruptCloud) GetImage(context.Context, string) (*provision.ImageDetail, error) {
@@ -146,6 +157,10 @@ func TestProvisionVM_CancelledInteractive_AsksAndDeletesOnYes(t *testing.T) {
 	}
 	if len(cloud.deleted) != 1 || cloud.deleted[0] != "vm-new" {
 		t.Errorf("deleted = %v, want [vm-new]", cloud.deleted)
+	}
+	// The public IP reserved for the VM goes with it.
+	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-boot" {
+		t.Errorf("released FIPs = %v, want [fip-boot]", cloud.deletedFIPs)
 	}
 	if got := clerrors.ExitCode(err); got != clerrors.ExitInterrupted {
 		t.Errorf("exit code = %d (err %v), want %d", got, err, clerrors.ExitInterrupted)

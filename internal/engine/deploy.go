@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -487,8 +488,19 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		imgMeta[name] = e.SSHPubKey
 	}
 
+	// The public IP goes on at creation: Cloud.ru images set up their apt
+	// mirror at first boot and need the internet for it. Attached after
+	// boot, the VM boots offline and cloud-init can spend 10+ minutes on
+	// mirror timeouts before sshd starts. A FIP that cannot be made now is
+	// attached after boot, as before.
+	bootFIP := e.createBootFIP(ctx, projectID, region, vmName)
+	if bootFIP != nil {
+		req.Interfaces[0].AttachExternalIPID = bootFIP.ID
+	}
+
 	vm, err := e.Cloud.CreateVM(ctx, req)
 	if err != nil {
+		e.releaseBootFIP(bootFIP, projectID)
 		return state.DeploymentRecord{}, err
 	}
 
@@ -513,6 +525,11 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
+	if bootFIP != nil {
+		// Recorded at once: destroy releases it even if deploy stops here.
+		rec.FloatingIPID = bootFIP.ID
+		rec.VMIP = bootFIP.IPAddress
+	}
 	stateFile.UpsertDeployment(rec)
 	if err := state.Write(statePath, stateFile); err != nil {
 		// The VM exists and is billed; without its ID here nothing would
@@ -532,6 +549,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	interrupted := func(sig string) (state.DeploymentRecord, error) {
 		deleted, err := e.handleInterrupt(sig, vm.ID, opts.NonInteractive)
 		if deleted {
+			e.releaseBootFIP(bootFIP, projectID)
 			// Gone in the cloud, gone from state: a kept record would be
 			// "reused" by the next deploy.
 			stateFile.RemoveDeployment(rec.ID)
@@ -559,8 +577,13 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			case "active", "running":
 				e.Printer.StepDone(fmt.Sprintf("VM %s active", vm.ID))
 
-				// Assign a floating (public) IP to the VM.
-				publicIP, fipID, err := e.assignFloatingIP(ctx, vm.ID, projectID, region)
+				// The floating (public) IP: attached at creation, or now.
+				var publicIP, fipID string
+				if bootFIP != nil {
+					publicIP, fipID, err = e.waitBootFIP(ctx, bootFIP, vm.ID, projectID)
+				} else {
+					publicIP, fipID, err = e.assignFloatingIP(ctx, vm.ID, projectID, region)
+				}
 
 				// Record the FIP even if it is not confirmed: destroy releases it.
 				rec.VMIP = publicIP
@@ -740,6 +763,69 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 	// Return whatever IP we got even if state isn't confirmed.
 	report("Floating IP %s not confirmed after %s; continuing", fip.IPAddress, elapsed())
 	return fip.IPAddress, fipID, nil
+}
+
+// createBootFIP makes a free floating IP to attach to the VM at creation.
+// nil when it cannot (quota, API error): the IP is then attached after boot.
+func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName string) *provision.FloatingIP {
+	fip, err := e.Cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
+		Name:               "fip-" + vmName + "-" + strconv.FormatInt(time.Now().Unix(), 36),
+		ProjectID:          projectID,
+		AvailabilityZoneID: azID,
+	})
+	if err != nil || fip == nil || fip.ID == "" {
+		if ctx.Err() == nil {
+			e.Printer.Warning(fmt.Sprintf("could not reserve a public IP before creating the VM (%v); it will be attached after boot, which can make the first boot slow", err))
+		}
+		return nil
+	}
+	return fip
+}
+
+// releaseBootFIP deletes a boot FIP whose VM was not created or was deleted.
+func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) {
+	if fip == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := e.Cloud.DeleteFloatingIP(ctx, fip.ID, projectID); err != nil {
+		e.Printer.Warning(fmt.Sprintf("floating IP %s (%s) was not released: %v; delete it in the Cloud.ru console", fip.IPAddress, fip.ID, err))
+	}
+}
+
+// waitBootFIP waits for the FIP attached at creation to be in use. If the
+// platform did not attach it, it is attached to the primary interface now.
+func (e *Engine) waitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmID, projectID string) (string, string, error) {
+	t := e.timings()
+	for attempt := 0; attempt < 12; attempt++ {
+		if f, err := e.Cloud.GetFloatingIP(ctx, fip.ID); err == nil && f != nil {
+			fip = f
+			if f.State == "in_use" || f.State == "active" {
+				return f.IPAddress, f.ID, nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return fip.IPAddress, fip.ID, ctx.Err()
+		case <-time.After(t.FIPPollInterval):
+		}
+	}
+	// Not attached at creation: bind it to the primary interface.
+	e.Printer.StepDone(fmt.Sprintf("Attaching floating IP %s...", fip.IPAddress))
+	detail, err := e.Cloud.GetVMDetail(ctx, vmID)
+	if err != nil {
+		return fip.IPAddress, fip.ID, fmt.Errorf("attach floating IP %s: %w", fip.IPAddress, err)
+	}
+	for _, iface := range detail.Interfaces {
+		if iface.Primary {
+			if _, err := e.Cloud.AttachFloatingIP(ctx, fip.ID, projectID, iface.ID, ""); err != nil {
+				return fip.IPAddress, fip.ID, fmt.Errorf("attach floating IP %s: %w", fip.IPAddress, err)
+			}
+			return fip.IPAddress, fip.ID, nil
+		}
+	}
+	return fip.IPAddress, fip.ID, fmt.Errorf("attach floating IP %s: no primary interface on VM %s", fip.IPAddress, vmID)
 }
 
 // vmNameFor turns the project (directory) name into the VM name, which is

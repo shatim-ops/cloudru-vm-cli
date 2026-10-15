@@ -233,7 +233,7 @@ func isEmptyRaw(r json.RawMessage) bool {
 type CreateFloatingIPRequest struct {
 	Name               string `json:"name"`
 	ProjectID          string `json:"project_id"`
-	InterfaceID        string `json:"interface_id"`
+	InterfaceID        string `json:"interface_id,omitempty"` // empty: a free FIP, attached later
 	AvailabilityZoneID string `json:"availability_zone_id"`
 }
 
