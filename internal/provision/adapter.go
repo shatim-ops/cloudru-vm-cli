@@ -13,6 +13,7 @@ import (
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 const (
@@ -71,7 +72,7 @@ func (a *CloudRuAdapter) getToken() string {
 func (a *CloudRuAdapter) CreateVM(ctx context.Context, req CreateVMRequest) (*VM, error) {
 	body, err := json.Marshal([]CreateVMRequest{req})
 	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to marshal create request", "Check request parameters", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to marshal create request", "не удалось сформировать запрос на создание ВМ"), hintCheckRequest(), err)
 	}
 
 	resp, err := a.doWithRetry(ctx, http.MethodPost, "/api/v1.1/vms", body)
@@ -82,7 +83,7 @@ func (a *CloudRuAdapter) CreateVM(ctx context.Context, req CreateVMRequest) (*VM
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to read create response", "API returned unexpected format", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to read create response", "не удалось прочитать ответ на создание ВМ"), hintUnexpectedFormat(), err)
 	}
 
 	// Try array first, then single object.
@@ -96,7 +97,7 @@ func (a *CloudRuAdapter) CreateVM(ctx context.Context, req CreateVMRequest) (*VM
 		return &vm, nil
 	}
 
-	return nil, clierrors.New(clierrors.CodeAPIError, "create VM returned unexpected response: "+string(respBody), "Check API documentation")
+	return nil, clierrors.New(clierrors.CodeAPIError, i18n.Tf("create VM returned unexpected response: %s", "неожиданный ответ API на создание ВМ: %s", respBody), i18n.T("Check API documentation", "Сверьтесь с документацией API"))
 }
 
 // GetVM retrieves a virtual machine by ID via GET /api/v1/vms/{id}.
@@ -110,7 +111,7 @@ func (a *CloudRuAdapter) GetVM(ctx context.Context, id string) (*VM, error) {
 
 	var vm VM
 	if err := json.NewDecoder(resp.Body).Decode(&vm); err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode VM response", "API returned unexpected format", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode VM response", "не удалось разобрать ответ с данными ВМ"), hintUnexpectedFormat(), err)
 	}
 	return &vm, nil
 }
@@ -165,7 +166,7 @@ func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*Availabi
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to read availability zones response", "API returned unexpected format", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to read availability zones response", "не удалось прочитать список зон доступности"), hintUnexpectedFormat(), err)
 	}
 
 	// Try paginated response first, then plain array.
@@ -187,7 +188,7 @@ func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*Availabi
 		return result, nil
 	}
 
-	return nil, clierrors.New(clierrors.CodeAPIError, "failed to decode availability zones response", "API returned unexpected format — run with --verbose to debug")
+	return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("failed to decode availability zones response", "не удалось разобрать список зон доступности"), hintUnexpectedFormatVerbose())
 }
 
 // ListImages lists boot images via GET /api/v1/images, every page. A bare
@@ -220,12 +221,12 @@ func (a *CloudRuAdapter) GetImage(ctx context.Context, id string) (*ImageDetail,
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to read image response", "API returned unexpected format", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to read image response", "не удалось прочитать ответ с данными образа"), hintUnexpectedFormat(), err)
 	}
 
 	var img ImageDetail
 	if err := json.Unmarshal(sanitizeJSONControlChars(body), &img); err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode image response", "API returned unexpected format", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode image response", "не удалось разобрать ответ с данными образа"), hintUnexpectedFormat(), err)
 	}
 	return &img, nil
 }
@@ -258,7 +259,7 @@ func (a *CloudRuAdapter) GetVMDetail(ctx context.Context, id string) (*VMDetail,
 
 	var vm VMDetail
 	if err := json.NewDecoder(resp.Body).Decode(&vm); err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode VM detail response", "API returned unexpected format", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode VM detail response", "не удалось разобрать подробные данные ВМ"), hintUnexpectedFormat(), err)
 	}
 	return &vm, nil
 }
@@ -267,7 +268,7 @@ func (a *CloudRuAdapter) GetVMDetail(ctx context.Context, id string) (*VMDetail,
 func (a *CloudRuAdapter) CreateFloatingIP(ctx context.Context, req CreateFloatingIPRequest) (*FloatingIP, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to marshal floating IP request", "Check request parameters", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to marshal floating IP request", "не удалось сформировать запрос floating IP"), hintCheckRequest(), err)
 	}
 
 	resp, err := a.doWithRetry(ctx, http.MethodPost, "/api/v1/floating-ips", body)
@@ -278,7 +279,7 @@ func (a *CloudRuAdapter) CreateFloatingIP(ctx context.Context, req CreateFloatin
 
 	var fip FloatingIP
 	if err := json.NewDecoder(resp.Body).Decode(&fip); err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode floating IP response", "API returned unexpected format", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode floating IP response", "не удалось разобрать ответ с данными floating IP"), hintUnexpectedFormat(), err)
 	}
 	return &fip, nil
 }
@@ -294,13 +295,47 @@ func (a *CloudRuAdapter) GetFloatingIP(ctx context.Context, id string) (*Floatin
 
 	var fip FloatingIP
 	if err := json.NewDecoder(resp.Body).Decode(&fip); err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode floating IP response", "API returned unexpected format", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode floating IP response", "не удалось разобрать ответ с данными floating IP"), hintUnexpectedFormat(), err)
 	}
 	return &fip, nil
 }
 
 // maxErrorBody bounds how much of an error response is read into a message.
 const maxErrorBody = 64 << 10
+
+// Texts shared by several errors of the adapter, in the language of the CLI.
+func hintUnexpectedFormat() string {
+	return i18n.T("API returned unexpected format", "API вернул ответ в неожиданном формате")
+}
+
+func hintUnexpectedFormatVerbose() string {
+	return i18n.T("API returned unexpected format — run with --verbose to debug",
+		"API вернул ответ в неожиданном формате — подробности покажет --verbose")
+}
+
+func hintCheckRequest() string {
+	return i18n.T("Check request parameters", "Проверьте параметры запроса")
+}
+
+func hintCancelled() string {
+	return i18n.T("The operation was cancelled.", "Операция отменена.")
+}
+
+func msgCancelledBackoff() string {
+	return i18n.T("request cancelled during retry backoff", "запрос отменён во время паузы перед повтором")
+}
+
+func msgRateLimited() string {
+	return i18n.T("API rate limit exceeded after retries", "превышен лимит запросов к API, повторы не помогли")
+}
+
+func hintRateLimited() string {
+	return i18n.T("Wait a moment and try again", "Подождите немного и повторите")
+}
+
+func hintStatusPage() string {
+	return i18n.T("Check Cloud.ru status page or try again later", "Проверьте страницу статуса Cloud.ru или повторите позже")
+}
 
 // StatusError is the HTTP status of a failed API call; it is the cause
 // wrapped in the CLIError the adapter returns.
@@ -341,7 +376,7 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 
 		req, err := http.NewRequestWithContext(ctx, method, a.baseURL+path, bodyReader)
 		if err != nil {
-			return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to create HTTP request", "Check API configuration", err)
+			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to create HTTP request", "не удалось сформировать HTTP-запрос"), i18n.T("Check API configuration", "Проверьте настройки адреса API"), err)
 		}
 
 		req.Header.Set("Authorization", "Bearer "+a.getToken())
@@ -352,7 +387,7 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 		resp, err := a.client.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, "request cancelled", "The operation was cancelled.", err)
+				return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("request cancelled", "запрос отменён"), hintCancelled(), err)
 			}
 			// A dropped connection is common (about 1 call in 3 from some
 			// networks). GET and DELETE are safe to repeat — a repeated
@@ -362,17 +397,18 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			if idempotent && attempt < maxRetries {
 				select {
 				case <-ctx.Done():
-					return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, "request cancelled during retry backoff", "The operation was cancelled.", ctx.Err())
+					return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, msgCancelledBackoff(), hintCancelled(), ctx.Err())
 				case <-time.After(backoff):
 				}
 				backoff *= backoffMultiplier
 				continue
 			}
-			hint := "Check your network connection and try again"
+			hint := i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите")
 			if !idempotent {
-				hint = "The request may have reached Cloud.ru before the connection broke: check the Cloud.ru console for a resource it created before retrying."
+				hint = i18n.T("The request may have reached Cloud.ru before the connection broke: check the Cloud.ru console for a resource it created before retrying.",
+					"Запрос мог дойти до Cloud.ru до обрыва соединения: прежде чем повторять, проверьте в консоли Cloud.ru, не создан ли ресурс.")
 			}
-			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, "cannot reach Cloud.ru API", hint, err)
+			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("cannot reach Cloud.ru API", "API Cloud.ru недоступен"), hint, err)
 		}
 
 		switch {
@@ -382,11 +418,11 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 		case resp.StatusCode == http.StatusTooManyRequests:
 			resp.Body.Close()
 			if attempt == maxRetries {
-				return nil, clierrors.New(clierrors.CodeAPIRateLimited, "API rate limit exceeded after retries", "Wait a moment and try again")
+				return nil, clierrors.New(clierrors.CodeAPIRateLimited, msgRateLimited(), hintRateLimited())
 			}
 			select {
 			case <-ctx.Done():
-				return nil, clierrors.Wrap(clierrors.CodeAPIError, "request cancelled during retry backoff", "Try again later", ctx.Err())
+				return nil, clierrors.Wrap(clierrors.CodeAPIError, msgCancelledBackoff(), i18n.T("Try again later", "Повторите позже"), ctx.Err())
 			case <-time.After(backoff):
 			}
 			backoff *= backoffMultiplier
@@ -396,15 +432,18 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			resp.Body.Close()
 			cause := &StatusError{Status: resp.StatusCode, Body: string(respBody)}
 			if resp.StatusCode == http.StatusUnauthorized {
-				return nil, clierrors.Wrap(clierrors.CodeAuthExpired, "Cloud.ru API rejected the token (401)",
-					"Check the access key with 'evo doctor', or run 'evo configure' again.", cause)
+				return nil, clierrors.Wrap(clierrors.CodeAuthExpired, i18n.T("Cloud.ru API rejected the token (401)", "API Cloud.ru отклонил токен (401)"),
+					i18n.T("Check the access key with 'evo doctor', or run 'evo configure' again.",
+						"Проверьте ключ доступа командой 'evo doctor' или заново выполните 'evo configure'."), cause)
 			}
-			return nil, clierrors.Wrap(clierrors.CodeAuthFailed, fmt.Sprintf("access denied (403) for %s %s: %s", method, path, respBody),
-				"The service account lacks a role for this operation in the project.", cause)
+			return nil, clierrors.Wrap(clierrors.CodeAuthFailed, i18n.Tf("access denied (403) for %s %s: %s", "доступ запрещён (403): %s %s: %s", method, path, respBody),
+				i18n.T("The service account lacks a role for this operation in the project.",
+					"У сервисного аккаунта нет роли для этой операции в проекте."), cause)
 
 		case resp.StatusCode == http.StatusNotFound:
 			resp.Body.Close()
-			return nil, clierrors.New(clierrors.CodeVMNotFound, fmt.Sprintf("resource not found: %s %s", method, path), "Verify the resource ID and API endpoint")
+			return nil, clierrors.New(clierrors.CodeVMNotFound, i18n.Tf("resource not found: %s %s", "ресурс не найден: %s %s", method, path),
+				i18n.T("Verify the resource ID and API endpoint", "Проверьте ID ресурса и адрес API"))
 
 		case resp.StatusCode >= 500 && resp.StatusCode < 600 && method == http.MethodGet:
 			// Transient server error (500/502/503/504) on an idempotent READ →
@@ -415,12 +454,12 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			respBody, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if attempt == maxRetries {
-				msg := fmt.Sprintf("API returned status %d after %d retries: %s", resp.StatusCode, maxRetries, string(respBody))
-				return nil, clierrors.New(clierrors.CodeAPIError, msg, "Check Cloud.ru status page or try again later")
+				msg := i18n.Tf("API returned status %d after %d retries: %s", "API вернул статус %d после %d повторов: %s", resp.StatusCode, maxRetries, string(respBody))
+				return nil, clierrors.New(clierrors.CodeAPIError, msg, hintStatusPage())
 			}
 			select {
 			case <-ctx.Done():
-				return nil, clierrors.Wrap(clierrors.CodeAPIError, "request cancelled during retry backoff", "Try again later", ctx.Err())
+				return nil, clierrors.Wrap(clierrors.CodeAPIError, msgCancelledBackoff(), i18n.T("Try again later", "Повторите позже"), ctx.Err())
 			case <-time.After(backoff):
 			}
 			backoff *= backoffMultiplier
@@ -428,15 +467,15 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 		default:
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 			resp.Body.Close()
-			msg := fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(respBody))
-			hint := "Check Cloud.ru status page or try again later"
+			msg := i18n.Tf("API returned status %d: %s", "API вернул статус %d: %s", resp.StatusCode, string(respBody))
+			hint := hintStatusPage()
 			if resp.StatusCode < 500 {
 				// 400/409/422: this request is refused; waiting will not help.
-				hint = "Cloud.ru rejected the request; the message above says why."
+				hint = i18n.T("Cloud.ru rejected the request; the message above says why.", "Cloud.ru отклонил запрос; причина — в сообщении выше.")
 			}
 			return nil, clierrors.Wrap(clierrors.CodeAPIError, msg, hint, &StatusError{Status: resp.StatusCode, Body: string(respBody)})
 		}
 	}
 
-	return nil, clierrors.New(clierrors.CodeAPIRateLimited, "API rate limit exceeded after retries", "Wait a moment and try again")
+	return nil, clierrors.New(clierrors.CodeAPIRateLimited, msgRateLimited(), hintRateLimited())
 }

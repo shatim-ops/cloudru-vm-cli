@@ -559,6 +559,17 @@ func TestProjectListUse(t *testing.T) {
 	// UUID is saved with a warning, a name is refused.
 	fc.orgStatus = http.StatusBadRequest
 	newProcess()
+	// project list says so and shows the active project, exit 0 (QA r3 C3).
+	code, stdout, stderr = runCLI(t, "", "project", "list")
+	if code != 0 || !strings.Contains(stdout+stderr, "p-2") || !strings.Contains(stdout+stderr, "unknown") {
+		t.Fatalf("project list without a list: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	newProcess()
+	code, stdout, _ = runCLI(t, "", "--json", "project", "list")
+	if code != 0 || !strings.Contains(stdout, `"active": "p-2"`) || !strings.Contains(stdout, `"note"`) {
+		t.Fatalf("project list --json without a list: exit %d\n%s", code, stdout)
+	}
+	newProcess()
 	uuid := "3f2a8c1e-0000-4000-8000-000000000001"
 	code, _, stderr = runCLI(t, "", "project", "use", uuid)
 	if code != 0 || !strings.Contains(stderr, "unchecked") {
@@ -570,5 +581,21 @@ func TestProjectListUse(t *testing.T) {
 	newProcess()
 	if code, _, _ := runCLI(t, "", "project", "use", "one"); code != clerrors.ExitAuth {
 		t.Errorf("name without a list: exit %d, want %d", code, clerrors.ExitAuth)
+	}
+}
+
+// whoami and doctor show the project the next command would use, so
+// --project-id counts there too.
+func TestWhoamiDoctor_ProjectFlag(t *testing.T) {
+	setupCLI(t)
+	saveProfile(t, "default", "p-1")
+	code, stdout, stderr := runCLI(t, "", "--project-id", "p-flag", "whoami")
+	if code != 0 || !strings.Contains(stdout, "p-flag (from flag)") {
+		t.Fatalf("whoami --project-id: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	newProcess()
+	code, stdout, _ = runCLI(t, "", "--project-id", "p-flag", "--json", "doctor")
+	if code != 0 || !strings.Contains(stdout, "project_id from flag") {
+		t.Fatalf("doctor --project-id: exit %d\n%s", code, stdout)
 	}
 }

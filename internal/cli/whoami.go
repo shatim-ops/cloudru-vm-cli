@@ -29,7 +29,7 @@ Key ID (маскированный), проект и срок действия �
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)
-			cfg, sources, err := resolveConfigWithSources(printer, nil)
+			cfg, sources, err := resolveConfigWithSources(printer, scopeOverrides())
 			if err != nil {
 				return err
 			}

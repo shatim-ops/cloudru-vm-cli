@@ -635,6 +635,22 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 	}
 }
 
+// stepMayHaveCreated reports whether a step may have reached the cloud: it
+// ran (running, waiting, error after a try) or its create was cut off. Only
+// such a step is looked up by name at destroy: a step that never ran owns
+// nothing, and a resource with its name belongs to someone else — deleting
+// it destroyed a foreign cluster (QA r3 R3).
+func stepMayHaveCreated(st *stack.Step) bool {
+	if st.Interrupted || st.Attempts > 0 || st.OpID != "" {
+		return true
+	}
+	switch st.Status {
+	case "running", "waiting", "done":
+		return true
+	}
+	return false
+}
+
 func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
@@ -667,19 +683,21 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		}
 		if st.ResourceID != "" {
 			job.Outputs[st.Key] = st.ResourceID
-		} else if st.FindTool != "" && st.FindName != "" {
+		} else if st.FindTool != "" && st.FindName != "" && stepMayHaveCreated(st) {
 			if id := s.findIDByName(ctx, st.FindTool, st.FindField, st.FindName, st.FindArgs); id != "" {
 				job.Outputs[st.Key] = id
 			}
 		}
 	}
 	// Reverse teardown of what was created. 404/not-found is idempotent success.
+	// The code (VM_NOT_FOUND, NOT_FOUND) is checked too: in the CLI the
+	// message is in the language of the CLI.
 	var deleted, failed []string
 	del := func(label, tool string, dargs map[string]any) {
 		dargs["confirmed"] = true
 		if _, e := s.callTool(ctx, tool, dargs); e != nil {
 			msg := e.Error()
-			if strings.Contains(msg, "404") || strings.Contains(strings.ToLower(msg), "not found") {
+			if strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") || strings.Contains(strings.ToLower(msg), "not found") {
 				deleted = append(deleted, label+" (already gone)")
 			} else {
 				failed = append(failed, label+": "+msg)

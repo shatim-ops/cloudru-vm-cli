@@ -24,13 +24,16 @@ var pollInterval = 10 * time.Second
 
 // ApplyResult is the compact result returned to the agent after a deploy.
 type ApplyResult struct {
-	VMID       string `json:"vm_id"`
-	Status     string `json:"status"`
-	PublicIP   string `json:"public_ip,omitempty"`
-	SSH        string `json:"ssh,omitempty"`
-	Password   string `json:"password,omitempty"` // shown ONCE; not persisted
-	ElapsedSec int    `json:"elapsed_sec"`
-	Note       string `json:"note,omitempty"`
+	VMID     string `json:"vm_id"`
+	Status   string `json:"status"`
+	PublicIP string `json:"public_ip,omitempty"`
+	// FloatingIPID is the VM's floating IP, kept in the state so destroy
+	// releases exactly it (QA r3 R2).
+	FloatingIPID string `json:"floating_ip_id,omitempty"`
+	SSH          string `json:"ssh,omitempty"`
+	Password     string `json:"password,omitempty"` // shown ONCE; not persisted
+	ElapsedSec   int    `json:"elapsed_sec"`
+	Note         string `json:"note,omitempty"`
 
 	// Ports is what Apply recorded about the security group: the group, the
 	// ports the VM needs and the rules Apply created (the caller keeps them
@@ -60,21 +63,31 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		return nil, fmt.Errorf("cannot check whether VM %q already exists (%w); nothing was created — retry deploy_apply", plan.VM.Name, lookErr)
 	}
 	if existing != nil {
-		if existing.Status == "error" {
+		if provision.VMFailed(existing.Status) {
 			return &ApplyResult{
 				VMID:   existing.ID,
 				Status: "error",
 				Note:   "a VM with this name already exists in error state; destroy it first, then retry",
 			}, nil
 		}
-		ip, fipNote := ensureFloatingIP(ctx, cloud, plan, existing.ID)
+		// Adopt only the plan's own VM: one with the same name in another
+		// zone is someone else's (QA r3 R8).
+		if z := existing.ZoneID(); z != "" && plan.VM.Zone.ID != "" && z != plan.VM.Zone.ID {
+			return nil, fmt.Errorf("a VM named %q already exists in another availability zone (%s); nothing was created — choose another name in deploy_plan", plan.VM.Name, z)
+		}
+		status := "running"
+		if existing.Status != "" && existing.Status != "running" && existing.Status != "active" {
+			status = existing.Status
+		}
+		ip, fipID, fipNote := ensureFloatingIP(ctx, cloud, plan, existing.ID)
 		return &ApplyResult{
-			VMID:       existing.ID,
-			Status:     "running",
-			PublicIP:   ip,
-			SSH:        sshString(plan.SSH.Login, ip),
-			ElapsedSec: int(time.Since(start).Seconds()),
-			Note:       joinNotes("VM already existed — adopted (idempotent), nothing recreated", fipNote),
+			VMID:         existing.ID,
+			Status:       status,
+			PublicIP:     ip,
+			FloatingIPID: fipID,
+			SSH:          sshString(plan.SSH.Login, ip),
+			ElapsedSec:   int(time.Since(start).Seconds()),
+			Note:         joinNotes("VM already existed — adopted (idempotent), nothing recreated", fipNote),
 		}, nil
 	}
 
@@ -153,9 +166,9 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	// call): the VM exists and is billed. The result names it, so the
 	// caller can record it in the state, together with an error that says
 	// what to do with it.
-	interrupted := func(ip string) (*ApplyResult, error) {
+	interrupted := func(ip, fipID string) (*ApplyResult, error) {
 		return &ApplyResult{
-				VMID: vm.ID, Status: "interrupted", PublicIP: ip,
+				VMID: vm.ID, Status: "interrupted", PublicIP: ip, FloatingIPID: fipID,
 				ElapsedSec: int(time.Since(start).Seconds()),
 			}, fmt.Errorf("VM %s was created, but deploy_apply was interrupted; it is still running — "+
 				"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
@@ -172,7 +185,7 @@ poll:
 		select {
 		case <-ctx.Done():
 			// The VM exists: say which, or nobody will find it.
-			return interrupted("")
+			return interrupted("", "")
 		case <-deadline:
 			return &ApplyResult{
 				VMID: vm.ID, Status: "timeout", Password: password,
@@ -188,22 +201,23 @@ poll:
 			case "running", "active":
 				status = "running"
 				break poll
-			case "error":
+			}
+			if provision.VMFailed(cur.Status) {
 				return &ApplyResult{
 					VMID: vm.ID, Status: "error", Password: password,
 					ElapsedSec: int(time.Since(start).Seconds()),
-					Note:       "VM entered error state; destroy it and retry",
+					Note:       "VM entered state " + cur.Status + "; destroy it and retry",
 				}, nil
 			}
 		}
 	}
 
 	// --- Floating IP ---
-	ip, fipNote := ensureFloatingIP(ctx, cloud, plan, vm.ID)
+	ip, fipID, fipNote := ensureFloatingIP(ctx, cloud, plan, vm.ID)
 	if ctx.Err() != nil {
 		// The steps below would only fail on the cancelled context and
 		// report a half-done VM as "running".
-		return interrupted(ip)
+		return interrupted(ip, fipID)
 	}
 
 	// --- Wait until SSH (port 22) is actually reachable, so the agent's very
@@ -226,14 +240,15 @@ poll:
 		func(label string) string { return fmt.Sprintf("auto: %s port %s", plan.Product, label) }, &ports)
 
 	return &ApplyResult{
-		VMID:       vm.ID,
-		Status:     status,
-		PublicIP:   ip,
-		SSH:        sshString(plan.SSH.Login, ip),
-		Password:   password,
-		ElapsedSec: int(time.Since(start).Seconds()),
-		Note:       joinNotes(fipNote, sshNote, opened.Note()),
-		Ports:      ports,
+		VMID:         vm.ID,
+		Status:       status,
+		PublicIP:     ip,
+		FloatingIPID: fipID,
+		SSH:          sshString(plan.SSH.Login, ip),
+		Password:     password,
+		ElapsedSec:   int(time.Since(start).Seconds()),
+		Note:         joinNotes(fipNote, sshNote, opened.Note()),
+		Ports:        ports,
 	}, nil
 }
 
@@ -257,25 +272,33 @@ func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration) bool 
 	return false
 }
 
-// ensureFloatingIP returns the VM's public IP plus a human note describing what
-// happened. It attaches a floating IP if the plan asked for one: variant A id
-// (attached at creation), then variant B (reuse an existing free FIP), then
-// create a new FIP. If the FIP quota is exhausted, it does NOT fail — the VM
-// stays up without a public IP and the note explains how to fix it.
-func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vmID string) (string, string) {
+// ensureFloatingIP returns the VM's public IP, its floating IP id and a
+// note. The floating IP is evo's own, as in the CLI deploy: one already on
+// the VM (a retried deploy_apply adopts the VM with it — a second FIP used
+// to be created, QA r3 R2), the one a plan of an older version named, or a
+// new one. A free FIP of the user is never taken over: destroy releases the
+// deployment's FIP, and it used to release the user's reserved address with
+// it (QA r3 R9).
+func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vmID string) (ip, fipID, note string) {
 	if !plan.Network.FloatingIP {
-		return "", ""
+		return "", "", ""
 	}
-	// Variant A: FIP id was attached at creation — just read its address.
-	if plan.Network.AttachFIPID != "" {
-		if f, err := cloud.GetFloatingIP(ctx, plan.Network.AttachFIPID); err == nil && f.IPAddress != "" {
-			return f.IPAddress, "public IP attached (existing floating IP)"
+	detail, err := cloud.GetVMDetail(ctx, vmID)
+	if err == nil {
+		for _, in := range detail.Interfaces {
+			if in.FloatingIP != nil && in.FloatingIP.IPAddress != "" {
+				return in.FloatingIP.IPAddress, in.FloatingIP.ID, "public IP attached"
+			}
 		}
 	}
-
-	detail, err := cloud.GetVMDetail(ctx, vmID)
+	// Plans written by older versions may name a FIP attached at creation.
+	if plan.Network.AttachFIPID != "" {
+		if f, gerr := cloud.GetFloatingIP(ctx, plan.Network.AttachFIPID); gerr == nil && f.IPAddress != "" {
+			return f.IPAddress, f.ID, "public IP attached (existing floating IP)"
+		}
+	}
 	if err != nil || len(detail.Interfaces) == 0 {
-		return "", "could not read the VM interface yet — attach a floating IP later via the Cloud.ru console"
+		return "", "", "could not read the VM interface yet — attach a floating IP later via the Cloud.ru console"
 	}
 	ifaceID := detail.Interfaces[0].ID
 	for _, in := range detail.Interfaces {
@@ -285,31 +308,29 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		}
 	}
 
-	// Variant B: attach an existing available FIP.
-	if fips, e := cloud.ListFloatingIPs(ctx, plan.ProjectID); e == nil {
-		for _, f := range fips {
-			if f.Available() {
-				if _, ae := cloud.AttachFloatingIP(ctx, f.ID, plan.ProjectID, ifaceID, plan.VM.Name+"-fip"); ae == nil {
-					return f.IPAddress, "public IP attached (reused a free floating IP)"
-				}
-			}
-		}
-	}
-
-	// No free FIP: request a new one. Quota exhaustion is reported, not fatal.
+	name := plan.VM.Name + "-fip"
 	f, e := cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
-		Name:               plan.VM.Name + "-fip",
+		Name:               name,
 		ProjectID:          plan.ProjectID,
 		InterfaceID:        ifaceID,
 		AvailabilityZoneID: plan.VM.Zone.ID,
 	})
 	if e == nil {
-		return f.IPAddress, "public IP attached (created a new floating IP)"
+		return f.IPAddress, f.ID, "public IP attached (created a new floating IP)"
 	}
 	if provision.IsQuotaError(e) {
-		return "", "⚠️ Floating-IP quota exhausted — the VM was created WITHOUT a public IP. Increase the floating-IP quota in the Cloud.ru console, then attach an IP to this VM manually."
+		return "", "", "⚠️ Floating-IP quota exhausted — the VM was created WITHOUT a public IP. Increase the floating-IP quota in the Cloud.ru console, then attach an IP to this VM manually."
 	}
-	return "", "could not attach a floating IP (" + e.Error() + ") — the VM was created without a public IP; attach one via the console"
+	// The create may have reached the cloud with its answer lost: the FIP
+	// then exists under its name and must be recorded, not left billed.
+	if fips, le := cloud.ListFloatingIPs(ctx, plan.ProjectID); le == nil {
+		for _, x := range fips {
+			if x.Name == name {
+				return x.IPAddress, x.ID, "public IP attached (the create answer was lost; found the floating IP by name)"
+			}
+		}
+	}
+	return "", "", "could not attach a floating IP (" + e.Error() + ") — the VM was created without a public IP; attach one via the console"
 }
 
 // joinNotes concatenates non-empty notes with "; ".

@@ -5,6 +5,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -1777,6 +1778,11 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		eng.ReleaseBootFIP(bootFIP, projectID)
 		return errResult(fmt.Errorf("create VM: %w", err)), true
 	}
+	// Recorded at once, as the CLI deploy does: a hard stop during the wait
+	// below (kill, OOM) must not leave the VM and its boot FIP billed with no
+	// record (QA r3 R5). The later saves update it.
+	_ = saveState(vm.ID, "creating", "")
+
 	// interrupted answers a cancelled call (client gone, notifications/
 	// cancelled, server stopping): the VM exists and is billed, so the
 	// answer names it, and the state has it.
@@ -1870,7 +1876,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				}
 				return toJSON(res), false
 			}
-			if updated.Status == "error" {
+			if provision.VMFailed(updated.Status) {
 				// Billed with its boot FIP: record both so destroy finds
 				// them, and say so (QA H3).
 				ip := ""
@@ -1886,8 +1892,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					"status":         "error",
 					"vm_id":          vm.ID,
 					"floating_ip_id": fipID,
-					"error": fmt.Sprintf("VM %s entered error state. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
-						vm.ID, vm.ID, fipNote, notInState(vm.ID, serr)),
+					"error": fmt.Sprintf("VM %s entered state %s. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
+						vm.ID, updated.Status, vm.ID, fipNote, notInState(vm.ID, serr)),
 				}), true
 			}
 		case <-ctx.Done():
@@ -2060,8 +2066,27 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		return errResult(fmt.Errorf("delete VM: %w", err)), true
 	}
 
-	// Best-effort: remove from local state, deleting the port rules the
-	// deployment created (the same code as the CLI destroy).
+	// The floating IP first, as the CLI destroy does: it stays attached until
+	// the VM is gone. Only then the record goes — dropping it before a failed
+	// release left the FIP billed with no trace (QA r3 R1).
+	msg := "VM deleted"
+	fipLeft := false
+	if releaseIP && hasFIP {
+		if !eng.WaitVMGone(ctx, target.ID) {
+			msg += "; WARNING: the deletion is not confirmed yet (the VM is still listed) — check it with vm_get"
+		}
+		if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
+			fipLeft = true
+			msg += fmt.Sprintf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
+				"call destroy with vm_id %s again, or release it with release_floating_ip", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
+		} else {
+			msg += "; released floating IP " + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
+		}
+	}
+
+	// Local state: delete the port rules the deployment created (the same
+	// code as the CLI destroy) and drop the record — unless its FIP is still
+	// billed: then it stays "destroying" with the FIP, for the next destroy.
 	var rules sgrules.CloseResult
 	stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
 		var ids []string
@@ -2072,24 +2097,29 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		}
 		for _, id := range ids {
 			rules.Add(sgrules.Close(ctx, eng.Cloud, sf, id))
+		}
+		if fipLeft {
+			rec := state.DeploymentRecord{ID: target.ID, VMID: target.ID, CreatedAt: time.Now()}
+			for _, d := range sf.Deployments {
+				if d.VMID == target.ID {
+					rec = d
+					break
+				}
+			}
+			rec.Status = "destroying"
+			rec.FloatingIPID = firstNonEmptyStr(fipRec.FloatingIPID, rec.FloatingIPID)
+			rec.VMIP = firstNonEmptyStr(fipRec.VMIP, rec.VMIP)
+			rec.ProjectID = firstNonEmptyStr(rec.ProjectID, fipRec.ProjectID, projectID)
+			rec.UpdatedAt = time.Now()
+			sf.UpsertDeployment(rec)
+			return nil
+		}
+		for _, id := range ids {
 			sgrules.Retire(sf, id)
 		}
 		return nil
 	})
 
-	msg := "VM deleted"
-	if releaseIP && hasFIP {
-		// The FIP stays attached until the VM is gone: wait, then retry.
-		if !eng.WaitVMGone(ctx, target.ID) {
-			msg += "; WARNING: the deletion is not confirmed yet (the VM is still listed) — check it with vm_get"
-		}
-		if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
-			msg += fmt.Sprintf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
-				"release it with release_floating_ip", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr)
-		} else {
-			msg += "; released floating IP " + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
-		}
-	}
 	out := map[string]any{
 		"status":     "ok",
 		"deleted_vm": target.ID,
@@ -2327,9 +2357,22 @@ func usageResult(err error) string {
 	return errResult(fmt.Errorf("%s: %w", clierrors.CodeUsage, err))
 }
 
-// errResult formats an error as a JSON tool result.
+// errResult formats an error as a JSON tool result. A CLIError in the chain
+// adds its code as "reason" and its hint as "hint": the CLI keeps the exit
+// code and the hint of the error (evo vm list fails like evo whoami), an
+// agent learns what to do next.
 func errResult(err error) string {
-	return toJSON(map[string]any{"status": "error", "error": err.Error()})
+	res := map[string]any{"status": "error", "error": err.Error()}
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) {
+		if ce.Code != "" {
+			res["reason"] = ce.Code
+		}
+		if ce.Hint != "" {
+			res["hint"] = ce.Hint
+		}
+	}
+	return toJSON(res)
 }
 
 // isUUID checks if a string looks like a UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).

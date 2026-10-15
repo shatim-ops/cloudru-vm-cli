@@ -3,9 +3,11 @@ package provision
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/url"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // CreateImageReq creates a VM image from an existing boot disk
@@ -72,10 +74,10 @@ type ImageAZTarget struct {
 // minute.
 func (a *CloudRuAdapter) CreateImage(ctx context.Context, req CreateImageReq) (map[string]any, error) {
 	if req.DiskID == "" {
-		return nil, fmt.Errorf("disk_id is required")
+		return nil, errors.New(i18n.T("disk_id is required", "нужен disk_id"))
 	}
 	if req.Name == "" {
-		return nil, fmt.Errorf("name is required")
+		return nil, errors.New(i18n.T("name is required", "нужно имя (name)"))
 	}
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -97,7 +99,7 @@ func (a *CloudRuAdapter) CreateImage(ctx context.Context, req CreateImageReq) (m
 // DeleteImage removes an image via DELETE /api/v1/images/{id}.
 func (a *CloudRuAdapter) DeleteImage(ctx context.Context, imageID, projectID string) error {
 	if imageID == "" {
-		return fmt.Errorf("image_id is required")
+		return errors.New(i18n.T("image_id is required", "нужен image_id"))
 	}
 	path := "/api/v1/images/" + seg(imageID)
 	if projectID != "" {

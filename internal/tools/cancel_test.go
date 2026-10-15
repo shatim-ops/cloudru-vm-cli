@@ -250,23 +250,37 @@ func TestProvision_StateNotWritable_Warns(t *testing.T) {
 	}
 }
 
-// errorStateCloud creates a VM that goes to "error" on the first poll.
-type errorStateCloud struct{ cancelCloud }
+// errorStateCloud creates a VM that goes to a failed status ("error" by
+// default) on the first poll.
+type errorStateCloud struct {
+	cancelCloud
+	status string
+}
 
 func (c *errorStateCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
 	c.creates++
 	c.createReq = req
 	return &provision.VM{ID: "vm-err"}, nil
 }
-func (*errorStateCloud) GetVM(context.Context, string) (*provision.VM, error) {
+func (c *errorStateCloud) GetVM(context.Context, string) (*provision.VM, error) {
+	if c.status != "" {
+		return &provision.VM{ID: "vm-err", Status: c.status}, nil
+	}
 	return &provision.VM{ID: "vm-err", Status: "error"}, nil
 }
 
 // A VM that goes to "error" is billed with its boot FIP: provision records
 // both and names them, instead of a bare error that left them unknown to
-// destroy (QA H3).
+// destroy (QA H3). "error_creating" is what ru.AZ-1 answered after 19 min
+// in creating (cloud-e2e 15.10.2026).
 func TestProvision_ErrorStateRecordsVMAndFIP(t *testing.T) {
-	cloud := &errorStateCloud{}
+	for _, status := range []string{"error", "error_creating"} {
+		t.Run(status, func(t *testing.T) { testProvisionErrorState(t, status) })
+	}
+}
+
+func testProvisionErrorState(t *testing.T, status string) {
+	cloud := &errorStateCloud{status: status}
 	dir := t.TempDir()
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer

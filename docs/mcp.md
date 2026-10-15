@@ -55,6 +55,11 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 стоит различать исход по полю `status`, а не по `isError`. Без исключений:
 `s3_bucket_create` тоже ждёт `confirmed=true`.
 
+Ошибка инструмента — `{"status":"error","error":"…"}` с `isError: true`.
+Если у ошибки есть символьный код из [таблицы](exit-codes.md), он приходит
+в поле `reason` (`API_UNREACHABLE`, `AUTH_FAILED`), подсказка — в `hint`;
+у ошибок без кода этих полей нет.
+
 ## Отмена вызовов
 
 Общего таймаута на вызов нет: `deploy` или создание кластера идут столько,
@@ -249,8 +254,19 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
   лежит ключ Cloud.ru. Вместо `k8s_kubeconfig` используйте `embed_token=false`
   — kubeconfig с exec-плагином `cloudlogin`, без кредов внутри.
 - `k8s_kubectl` не выполняет `config …` (`config view --raw` печатает токен),
-  `get secret … -o yaml|json|jsonpath…` (данные Secret), `get --raw` и
-  `create token`. `get secrets`, `describe secret` (без значений) работают.
+  `get --raw`, `create token` и `set env … --resolve` (печатает значения из
+  Secret). Если команда называет Secret (`secret`, `secrets`, `secret/x`,
+  `secrets/x`, список вроде `secret,configmap`), то при любом verb — `get`,
+  `label`, `annotate`, `patch`, `set`, `apply`, `create`, `wait`, … —
+  разрешён только вывод таблицей (без `-o`, `-o wide`) и `-o name`. Отклоняются
+  `-o yaml|json|jsonpath…|go-template…|custom-columns…` в любом написании
+  (`-oyaml`, `-o=yaml`, `--output yaml`, `-Aoyaml`), `--template` (без `-o`
+  это `go-template`), `--list` (`annotate --list` показывает
+  `last-applied-configuration` с данными) и `apply view-last-applied`. Так
+  закрыто и `label secret x a=b -o yaml --dry-run=server`: объект не меняется,
+  но печатается целиком. `get secrets`, `get secret x -o name`,
+  `describe secret` (без значений), `create secret generic … --from-literal`
+  работают.
 - В ответах остальных инструментов значения полей с паролями, ключами и
   токенами (`password`, `secret_key`, `private_key`, `token`, …) заменяются на
   `[redacted over HTTP: …]`. Так, `deploy_apply` не возвращает
@@ -267,9 +283,13 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
   (`get`, `describe`, `logs`, `apply`, `exec`, `scale`, …). Не выполняются
   плагины `kubectl-*` из `PATH` сервера, `cp`, `port-forward`, `proxy`, `edit`,
   `kustomize`; флаги, читающие или пишущие файлы хоста (`-f`, `-k`,
-  `--kubeconfig`, `--from-file`, `-o …-file=…`, `--log-file`,
-  `--output-directory`, …), и флаги, отправляющие токен кластера на другой
-  сервер (`--server`, `--token`, `--insecure-skip-tls-verify`, …). Манифест
+  `--kubeconfig`, `--from-file`, `--from-env-file`, `-o …-file=…`, `--cert`,
+  `--key`, `--ca-cert` у `create secret tls`, `--custom` у `debug`,
+  `--log-file`, `--output-directory`, …), и флаги, отправляющие токен кластера
+  на другой сервер (`--server`, `--token`, `--insecure-skip-tls-verify`, …),
+  в том числе через `_` вместо `-` (`--client_key`). Флаги подробного журнала
+  `-v`, `--v`, `-v=N`, `-vN`, `--vmodule` тоже отклоняются: с `-v=8` kubectl
+  пишет в вывод тела ответов API, включая данные Secret. Манифест
   применяйте через `k8s_apply`. Внутри кластера `k8s_kubectl` по-прежнему
   может всё, что разрешает роль сервисного аккаунта, — например, `exec` в под
   и прочитать его переменные; изменяющие команды требуют `confirmed=true`.

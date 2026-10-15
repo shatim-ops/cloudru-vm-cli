@@ -34,11 +34,15 @@ func (v *VM) UnmarshalJSON(b []byte) error {
 		Flavor     *ZoneRef      `json:"flavor"`
 		Image      *ZoneRef      `json:"image"`
 		Interfaces []VMInterface `json:"interfaces"`
+		// Shadows plain.CreatedAt: a time without a zone ("…T20:48:44.123")
+		// must not make the whole VM — and its state — unreadable.
+		CreatedTime string `json:"created_time"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
 		return err
 	}
 	*v = VM(r.plain)
+	v.CreatedAt = parseAPITime(r.CreatedTime)
 	if v.FlavorID == "" && r.Flavor != nil {
 		v.FlavorID = r.Flavor.ID
 	}
@@ -54,6 +58,17 @@ func (v *VM) UnmarshalJSON(b []byte) error {
 		}
 	}
 	return nil
+}
+
+// parseAPITime reads the API's timestamps: RFC 3339 with or without
+// fractions, or without a zone (taken as UTC). Anything else is zero.
+func parseAPITime(s string) time.Time {
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999999", "2006-01-02 15:04:05.999999999"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // ZoneRef is a nested {id,name} availability-zone reference.
@@ -239,6 +254,14 @@ func (i *Image) Usable() bool {
 		return false
 	}
 	return true
+}
+
+// VMFailed reports whether a VM status is a failure: "error", or the
+// "error_<step>" the API gives when a step fails (ru.AZ-1 answered
+// "error_creating" after 19 min in creating, cloud-e2e 15.10.2026).
+func VMFailed(status string) bool {
+	s := strings.ToLower(status)
+	return s == "error" || strings.HasPrefix(s, "error_")
 }
 
 // ImageDetail contains full image info including required metadata fields.

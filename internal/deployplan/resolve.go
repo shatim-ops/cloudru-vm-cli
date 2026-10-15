@@ -127,22 +127,10 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		warnings = append(warnings, fmt.Sprintf("ports %v will be opened (ingress, 0.0.0.0/0) on the shared security group of this zone — other VMs later placed in it would share those open ports", p.Ports))
 	}
 
-	// --- Floating IP (variant A: attach at creation) ---
+	// --- Floating IP: evo's own, created at apply. A free FIP of the user
+	// is not taken over — destroy releases the deployment's FIP (QA r3 R9).
 	wantFIP := p.ExternalIP
 	attachFIPID := ""
-	if wantFIP {
-		if fips, e := cloud.ListFloatingIPs(ctx, projectID); e == nil {
-			for _, f := range fips {
-				if f.Available() {
-					attachFIPID = f.ID
-					break
-				}
-			}
-			if attachFIPID == "" {
-				warnings = append(warnings, "no free floating IP — a new one will be requested at apply; if the quota is exhausted the VM is still created WITHOUT a public IP (attach manually via the Cloud.ru console)")
-			}
-		}
-	}
 
 	// --- Access: image metadata fields + SSH model ---
 	metaFields, metaStatic, login, keyName, sErr := resolveAccess(ctx, cloud, image.ID, p)

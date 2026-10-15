@@ -74,9 +74,12 @@ func runDoctor(ctx context.Context) []doctorCheck {
 	}}
 	checks = append(checks, fileChecks()...)
 
+	// --project-id and --region count here as in any command: doctor
+	// checks the setup the next command will use.
 	cfg, sources, err := config.ResolveWithSources(config.Options{
 		Profile:     flagProfile,
 		ProjectFile: projectConfigPath(),
+		Flags:       scopeOverrides(),
 	})
 	if err != nil {
 		checks = append(checks, doctorCheck{Name: "config", Status: checkFail, Detail: errDetail(err), auth: true})

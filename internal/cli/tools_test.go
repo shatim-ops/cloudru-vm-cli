@@ -150,7 +150,7 @@ func TestToolsCall_ToolErrorExitCodes(t *testing.T) {
 	for text, want := range map[string]int{
 		`{"error":"disk abc not found"}`:                clerrors.ExitNotFound,
 		`{"error":"API_ERROR: HTTP 500"}`:               clerrors.ExitAPI,
-		`{"error":"API_UNREACHABLE: connection reset"}`: clerrors.ExitAPI,
+		`{"error":"API_UNREACHABLE: connection reset"}`: clerrors.ExitGeneral,
 		`{"error":"VM_NOT_FOUND: resource not found"}`:  clerrors.ExitNotFound,
 		`{"error":"AUTH_FAILED: bad key"}`:              clerrors.ExitAuth,
 		`{"error":"'disk_id' is required"}`:             clerrors.ExitAPI,

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"strings"
 
@@ -47,7 +48,23 @@ func newProjectListCmd() *cobra.Command {
 			}
 			projects, err := listProjects(cmd.Context(), tok.Value)
 			if err != nil {
-				return err
+				// The key works (a token was issued) but the Organization
+				// API does not list its projects — a project-level service
+				// account (400, 14.10.2026). Not a failure: say so and show
+				// the active project, as whoami does (QA r3 C3).
+				var ce *clerrors.CLIError
+				if errors.As(err, &ce) && ce.Code == clerrors.CodeAPIUnreachable {
+					return err
+				}
+				note := scopeText(nil, err)
+				if printer.IsJSON() {
+					return printer.JSON(map[string]any{"projects": nil, "active": cfg.ProjectID, "note": note})
+				}
+				printer.Warning(i18n.Tf("project list: %s", "список проектов: %s", note))
+				if cfg.ProjectID != "" {
+					printer.Success(i18n.Tf("Active project: %s", "Активный проект: %s", cfg.ProjectID))
+				}
+				return nil
 			}
 			if printer.IsJSON() {
 				return printer.JSON(map[string]any{"projects": projects, "active": cfg.ProjectID})
@@ -103,7 +120,7 @@ list projects for the key, the UUID is saved as given.`,
 					i18n.Tf("profile %q not found", "профиль %q не найден", name),
 					i18n.T("Create it with 'evo configure'.", "Создайте его командой 'evo configure'."))
 			}
-			cfg, err := resolveConfig(printer, nil)
+			cfg, err := resolveConfig(printer, scopeOverrides())
 			if err != nil {
 				return err
 			}
