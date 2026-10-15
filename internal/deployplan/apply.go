@@ -63,7 +63,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		return nil, fmt.Errorf("cannot check whether VM %q already exists (%w); nothing was created — retry deploy_apply", plan.VM.Name, lookErr)
 	}
 	if existing != nil {
-		if existing.Status == "error" {
+		if provision.VMFailed(existing.Status) {
 			return &ApplyResult{
 				VMID:   existing.ID,
 				Status: "error",
@@ -201,11 +201,12 @@ poll:
 			case "running", "active":
 				status = "running"
 				break poll
-			case "error":
+			}
+			if provision.VMFailed(cur.Status) {
 				return &ApplyResult{
 					VMID: vm.ID, Status: "error", Password: password,
 					ElapsedSec: int(time.Since(start).Seconds()),
-					Note:       "VM entered error state; destroy it and retry",
+					Note:       "VM entered state " + cur.Status + "; destroy it and retry",
 				}, nil
 			}
 		}

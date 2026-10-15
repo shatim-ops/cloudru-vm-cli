@@ -256,6 +256,14 @@ func (i *Image) Usable() bool {
 	return true
 }
 
+// VMFailed reports whether a VM status is a failure: "error", or the
+// "error_<step>" the API gives when a step fails (ru.AZ-1 answered
+// "error_creating" after 19 min in creating, cloud-e2e 15.10.2026).
+func VMFailed(status string) bool {
+	s := strings.ToLower(status)
+	return s == "error" || strings.HasPrefix(s, "error_")
+}
+
 // ImageDetail contains full image info including required metadata fields.
 type ImageDetail struct {
 	ID          string `json:"id"`

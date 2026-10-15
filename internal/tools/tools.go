@@ -1876,7 +1876,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				}
 				return toJSON(res), false
 			}
-			if updated.Status == "error" {
+			if provision.VMFailed(updated.Status) {
 				// Billed with its boot FIP: record both so destroy finds
 				// them, and say so (QA H3).
 				ip := ""
@@ -1892,8 +1892,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					"status":         "error",
 					"vm_id":          vm.ID,
 					"floating_ip_id": fipID,
-					"error": fmt.Sprintf("VM %s entered error state. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
-						vm.ID, vm.ID, fipNote, notInState(vm.ID, serr)),
+					"error": fmt.Sprintf("VM %s entered state %s. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
+						vm.ID, updated.Status, vm.ID, fipNote, notInState(vm.ID, serr)),
 				}), true
 			}
 		case <-ctx.Done():

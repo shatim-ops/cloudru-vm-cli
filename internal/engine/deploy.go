@@ -674,9 +674,10 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				stateFile.UpsertDeployment(rec)
 				_ = state.Write(statePath, stateFile)
 				return rec, nil
-			case "error":
+			}
+			if provision.VMFailed(updated.Status) {
 				return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
-					i18n.Tf("VM %s entered error state", "ВМ %s перешла в состояние error", vm.ID),
+					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", vm.ID, updated.Status),
 					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru."))
 			}
 		case <-ctx.Done():
