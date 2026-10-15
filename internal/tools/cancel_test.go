@@ -250,3 +250,44 @@ func TestProvision_StateNotWritable_Warns(t *testing.T) {
 		t.Fatalf("ответ не предупреждает о state: %s", text)
 	}
 }
+
+// errorStateCloud creates a VM that goes to "error" on the first poll.
+type errorStateCloud struct{ cancelCloud }
+
+func (c *errorStateCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
+	c.creates++
+	c.createReq = req
+	return &provision.VM{ID: "vm-err"}, nil
+}
+func (*errorStateCloud) GetVM(context.Context, string) (*provision.VM, error) {
+	return &provision.VM{ID: "vm-err", Status: "error"}, nil
+}
+
+// A VM that goes to "error" is billed with its boot FIP: provision records
+// both and names them, instead of a bare error that left them unknown to
+// destroy (QA H3).
+func TestProvision_ErrorStateRecordsVMAndFIP(t *testing.T) {
+	cloud := &errorStateCloud{}
+	dir := t.TempDir()
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		var buf bytes.Buffer
+		return &engine.Engine{
+			Config:    config.Config{ProjectID: "p", Region: "z", ImageID: "img-1", KeyID: "k", Secret: "s"},
+			Auth:      staticToken{},
+			Cloud:     cloud,
+			Printer:   output.NewWithWriter(&buf, output.ModeText, false),
+			StateDir:  dir,
+			SSHKeyPEM: []byte("key"),
+			SSHPubKey: "ssh-ed25519 AAAA test",
+			Timings:   engine.Timings{VMPollInterval: time.Millisecond},
+		}, nil
+	})
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
+	if !isErr || !strings.Contains(text, "vm-err") || !strings.Contains(text, "fip-boot") || !strings.Contains(text, "destroy") {
+		t.Fatalf("answer must name the VM, its FIP and destroy: %s", text)
+	}
+	rec := stateHasVM(t, dir, "vm-err")
+	if rec.Status != "error" || rec.FloatingIPID != "fip-boot" {
+		t.Errorf("record = %+v, want status error with floating_ip_id fip-boot", rec)
+	}
+}

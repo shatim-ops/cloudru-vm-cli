@@ -1787,10 +1787,15 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}), true
 	}
 
-	// Poll until active
-	pollTimeout := 5 * time.Minute
+	// Poll until active: 10 minutes, as the CLI deploy (a new VM took ~5 in
+	// ru.AZ-1 on 15.10.2026).
+	pollTimeout := 10 * time.Minute
 	deadline := time.After(pollTimeout)
-	ticker := time.NewTicker(5 * time.Second)
+	pollEvery := 5 * time.Second
+	if eng.Timings.VMPollInterval > 0 {
+		pollEvery = eng.Timings.VMPollInterval // tests
+	}
+	ticker := time.NewTicker(pollEvery)
 	defer ticker.Stop()
 
 	for {
@@ -1860,7 +1865,24 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				return toJSON(res), false
 			}
 			if updated.Status == "error" {
-				return errResult(fmt.Errorf("VM %s entered error state", vm.ID)), true
+				// Billed with its boot FIP: record both so destroy finds
+				// them, and say so (QA H3).
+				ip := ""
+				if bootFIP != nil {
+					ip = bootFIP.IPAddress
+				}
+				serr := saveState(vm.ID, "error", ip)
+				fipNote := ""
+				if fipID != "" {
+					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; destroy releases it.", ip)
+				}
+				return toJSON(map[string]any{
+					"status":         "error",
+					"vm_id":          vm.ID,
+					"floating_ip_id": fipID,
+					"error": fmt.Sprintf("VM %s entered error state. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
+						vm.ID, vm.ID, fipNote, notInState(vm.ID, serr)),
+				}), true
 			}
 		case <-ctx.Done():
 			return interrupted("")
