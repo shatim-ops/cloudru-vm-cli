@@ -23,7 +23,7 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires Cloud.ru credentials (CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the user approves; without it returns a preview only.",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires a Cloud.ru access key (a profile from 'evo configure', or CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the user approves; without it returns a preview only.",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
 				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),

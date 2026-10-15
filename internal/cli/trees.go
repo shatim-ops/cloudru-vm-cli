@@ -390,8 +390,11 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, columns []string)
 		fmt.Fprintln(w, text)
 		return nil
 	}
-	if rows, ok := findList(v); ok {
+	if rows, notes, ok := findList(v); ok {
 		renderList(p, w, rows, columns)
+		for _, k := range sortedKeys(notes) {
+			fmt.Fprintf(w, "%s: %v\n", k, notes[k])
+		}
 		return nil
 	}
 	m, ok := v.(map[string]any)
@@ -399,40 +402,80 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, columns []string)
 		fmt.Fprintln(w, text)
 		return nil
 	}
+	// A resource (it has an id or a name) is one FIELD/VALUE table. A
+	// composite answer without one (k8s_options: versions, flavors, zones)
+	// shows each list of objects as its own table under the fields.
+	_, hasID := m["id"]
+	_, hasName := m["name"]
+	sections := map[string][]any{}
+	if !hasID && !hasName {
+		for k, x := range m {
+			if a, ok := x.([]any); ok && len(a) > 0 {
+				if _, obj := a[0].(map[string]any); obj {
+					sections[k] = a
+				}
+			}
+		}
+	}
 	keys := sortedKeys(m)
 	rows := make([][]string, 0, len(keys))
 	for _, k := range keys {
-		rows = append(rows, []string{k, cell(m[k], 0)})
+		if _, sec := sections[k]; !sec {
+			rows = append(rows, []string{k, cell(m[k], 0)})
+		}
 	}
-	p.Table([]string{"FIELD", "VALUE"}, rows)
+	if len(rows) > 0 {
+		p.Table([]string{"FIELD", "VALUE"}, rows)
+	}
+	printed := len(rows) > 0
+	for _, k := range keys {
+		if a, sec := sections[k]; sec {
+			if printed {
+				fmt.Fprintln(w)
+			}
+			fmt.Fprintf(w, "%s:\n", strings.ToUpper(k))
+			renderList(p, w, a, nil)
+			printed = true
+		}
+	}
 	return nil
 }
 
+// listNoteFields are the text fields a list answer may carry next to its
+// list (list_flavors: a note on prices); they are printed under the table.
+var listNoteFields = map[string]bool{"note": true, "warning": true, "hint": true}
+
 // findList returns the rows of a list answer: a top-level array, or the
 // only array field of an object whose other fields are numbers (count,
-// total). An object with other fields (vm_get: name, private_ip and an
-// interfaces array) is a single resource, not a list.
-func findList(v any) ([]any, bool) {
+// total) or notes. An object with other fields (vm_get: name, private_ip
+// and an interfaces array) is a single resource, not a list.
+func findList(v any) ([]any, map[string]any, bool) {
 	if a, ok := v.([]any); ok {
-		return a, true
+		return a, nil, true
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
-		return nil, false
+		return nil, nil, false
 	}
 	var list []any
+	notes := map[string]any{}
 	found := 0
-	for _, x := range m {
+	for k, x := range m {
 		switch x := x.(type) {
 		case []any:
 			list = x
 			found++
 		case float64:
+		case string:
+			if !listNoteFields[k] {
+				return nil, nil, false
+			}
+			notes[k] = x
 		default:
-			return nil, false
+			return nil, nil, false
 		}
 	}
-	return list, found == 1
+	return list, notes, found == 1
 }
 
 // preferredColumns come first when the columns are picked from the rows.

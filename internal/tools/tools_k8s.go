@@ -328,7 +328,7 @@ func (s *Registry) handleK8sKubeconfig(ctx context.Context, args map[string]any)
 	if keyID == "" || secret == "" {
 		return toJSON(map[string]any{
 			"kubeconfig": plain,
-			"warning":    "embed_token requested but CLOUDRU_KEY_ID/CLOUDRU_SECRET not set — returned the raw kubeconfig, which needs the 'cloudlogin' exec plugin.",
+			"warning":    "embed_token requested but no Cloud.ru access key is configured (evo configure, or CLOUDRU_KEY_ID/CLOUDRU_SECRET) — returned the raw kubeconfig, which needs the 'cloudlogin' exec plugin.",
 		}), false
 	}
 	tok, e := mk8s.FetchOIDCToken(ctx, mk8s.OIDCURLFromKubeconfig(plain), keyID, secret)

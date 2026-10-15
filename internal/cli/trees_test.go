@@ -242,3 +242,40 @@ func TestKubectlEvoFlagsAfterCluster(t *testing.T) {
 		t.Error("help does not say where evo flags go")
 	}
 }
+
+// A list with a note (list_flavors) is a table with the note under it; a
+// composite answer without id/name (k8s_options) shows its lists of objects
+// as tables of their own (BACKLOG [audit-final]).
+func TestRenderAnswer_NotesAndSections(t *testing.T) {
+	render := func(text string) string {
+		var buf bytes.Buffer
+		p := output.NewWithWriter(&buf, output.ModePlain, false)
+		if err := renderAnswer(p, &buf, text, nil); err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+	got := render(`{"flavors":[{"name":"low-1-2","cpu":1,"ram":2}],"note":"rate-card estimate"}`)
+	if !strings.HasPrefix(got, "NAME") || !strings.Contains(got, "low-1-2") ||
+		!strings.HasSuffix(got, "note: rate-card estimate\n") || strings.Contains(got, `[{`) {
+		t.Errorf("list with note:\n%s", got)
+	}
+
+	got = render(`{"flavors":[{"name":"m-2-4","cpu":2,"ram":4}],"zones":["ru.AZ-1","ru.AZ-2"],"defaults":{"zone":"ru.AZ-1"}}`)
+	if !strings.HasPrefix(got, "FIELD") || !strings.Contains(got, "ru.AZ-1,ru.AZ-2") ||
+		!strings.Contains(got, "\nFLAVORS:\n") || !strings.Contains(got, "m-2-4") || strings.Contains(got, `[{`) {
+		t.Errorf("composite answer:\n%s", got)
+	}
+
+	// Only lists: no empty FIELD/VALUE table and no leading blank line.
+	got = render(`{"flavors":[{"name":"a"}],"zones":[{"name":"z"}]}`)
+	if !strings.HasPrefix(got, "FLAVORS:\n") || !strings.Contains(got, "\n\nZONES:\n") {
+		t.Errorf("lists only:\n%q", got)
+	}
+
+	// Other string fields keep the FIELD/VALUE form.
+	got = render(`{"status":"creating","items":[{"id":"x"}]}`)
+	if !strings.HasPrefix(got, "FIELD") {
+		t.Errorf("status + list is not a plain list:\n%s", got)
+	}
+}
