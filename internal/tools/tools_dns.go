@@ -54,7 +54,7 @@ func (s *Registry) handleDnsZones(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleDnsZoneGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from dns_zones)")), true
+		return usageResult(fmt.Errorf("'id' is required (from dns_zones)")), true
 	}
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
@@ -70,7 +70,7 @@ func (s *Registry) handleDnsZoneGet(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any) (string, bool) {
 	domain := stringArg(args, "domain")
 	if domain == "" {
-		return errResult(fmt.Errorf("'domain' is required (FQDN, e.g. 'example.com.')")), true
+		return usageResult(fmt.Errorf("'domain' is required (FQDN, e.g. 'example.com.')")), true
 	}
 	vis := dnsVisibility(args)
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
@@ -101,7 +101,7 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 func (s *Registry) handleDnsZoneDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from dns_zones)")), true
+		return usageResult(fmt.Errorf("'id' is required (from dns_zones)")), true
 	}
 	vis := dnsVisibility(args)
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
@@ -123,7 +123,7 @@ func (s *Registry) handleDnsZoneDelete(ctx context.Context, args map[string]any)
 func (s *Registry) handleDnsOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'operation_id' is required")), true
+		return usageResult(fmt.Errorf("'operation_id' is required")), true
 	}
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
@@ -170,7 +170,7 @@ func recordValues(args map[string]any) []string {
 func (s *Registry) handleDnsRecords(ctx context.Context, args map[string]any) (string, bool) {
 	zoneID := stringArg(args, "zone_id")
 	if zoneID == "" {
-		return errResult(fmt.Errorf("'zone_id' is required (from dns_zones)")), true
+		return usageResult(fmt.Errorf("'zone_id' is required (from dns_zones)")), true
 	}
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
@@ -190,7 +190,7 @@ func (s *Registry) handleDnsRecords(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleDnsRecordGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "record_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'record_id' is required (from dns_records)")), true
+		return usageResult(fmt.Errorf("'record_id' is required (from dns_records)")), true
 	}
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
@@ -209,7 +209,7 @@ func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]an
 	rtype := stringArg(args, "record_type")
 	vals := recordValues(args)
 	if zoneID == "" || name == "" || rtype == "" || len(vals) == 0 {
-		return errResult(fmt.Errorf("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required")), true
+		return usageResult(fmt.Errorf("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required")), true
 	}
 	ttl := pgInt(args, "ttl", 300)
 	vis := dnsVisibility(args)
@@ -240,7 +240,7 @@ func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]an
 func (s *Registry) handleDnsRecordDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "record_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'record_id' is required (from dns_records)")), true
+		return usageResult(fmt.Errorf("'record_id' is required (from dns_records)")), true
 	}
 	vis := dnsVisibility(args)
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {

@@ -68,7 +68,7 @@ func (s *Registry) handleK8sList(ctx context.Context, args map[string]any) (stri
 func (s *Registry) handleK8sGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
-		return errResult(fmt.Errorf("cluster_id is required")), true
+		return usageResult(fmt.Errorf("cluster_id is required")), true
 	}
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
@@ -296,7 +296,7 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleK8sKubeconfig(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
-		return errResult(fmt.Errorf("cluster_id is required")), true
+		return usageResult(fmt.Errorf("cluster_id is required")), true
 	}
 	network := stringArg(args, "network") // NETWORK_TYPE_PUBLIC | NETWORK_TYPE_PRIVATE
 	cli, _, _, err := s.k8sClient(ctx)
@@ -350,7 +350,7 @@ func (s *Registry) handleK8sKubeconfig(ctx context.Context, args map[string]any)
 func (s *Registry) handleK8sDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
-		return errResult(fmt.Errorf("cluster_id is required")), true
+		return usageResult(fmt.Errorf("cluster_id is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -411,7 +411,7 @@ func (s *Registry) handleK8sNodePools(ctx context.Context, args map[string]any) 
 func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any) (string, bool) {
 	clusterID := stringArg(args, "cluster_id")
 	if clusterID == "" {
-		return errResult(fmt.Errorf("cluster_id is required")), true
+		return usageResult(fmt.Errorf("cluster_id is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

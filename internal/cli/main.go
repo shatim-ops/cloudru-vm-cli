@@ -599,7 +599,7 @@ func newVerifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify",
 		Args:  cobra.NoArgs,
-		Short: "Run health checks against the deployed application (exit 1 if unhealthy)",
+		Short: "Run health checks against the deployed application (exit 1 if unhealthy, 4 if nothing is deployed)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {

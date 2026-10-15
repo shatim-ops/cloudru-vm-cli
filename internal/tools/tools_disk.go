@@ -75,7 +75,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	name := stringArg(args, "name")
 	sizeGB := intArg(args, "size_gb", 0)
 	if name == "" || sizeGB <= 0 {
-		return errResult(fmt.Errorf("'name' and 'size_gb' (>0) are required")), true
+		return usageResult(fmt.Errorf("'name' and 'size_gb' (>0) are required")), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -167,7 +167,7 @@ func (s *Registry) handleDiskAttach(ctx context.Context, args map[string]any) (s
 	diskID := stringArg(args, "disk_id")
 	vmRef := stringArg(args, "vm")
 	if diskID == "" || vmRef == "" {
-		return errResult(fmt.Errorf("'disk_id' and 'vm' are required")), true
+		return usageResult(fmt.Errorf("'disk_id' and 'vm' are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "disk_attach changes a VM. Approve, then confirmed=true."}), true
@@ -192,7 +192,7 @@ func (s *Registry) handleDiskDetach(ctx context.Context, args map[string]any) (s
 	diskID := stringArg(args, "disk_id")
 	vmRef := stringArg(args, "vm")
 	if diskID == "" || vmRef == "" {
-		return errResult(fmt.Errorf("'disk_id' and 'vm' are required")), true
+		return usageResult(fmt.Errorf("'disk_id' and 'vm' are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "disk_detach changes a VM. Approve, then confirmed=true."}), true
@@ -218,7 +218,7 @@ func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (s
 	diskID := stringArg(args, "disk_id")
 	sizeGB := intArg(args, "size_gb", 0)
 	if diskID == "" || sizeGB <= 0 {
-		return errResult(fmt.Errorf("'disk_id' and 'size_gb' (>0, larger than current) are required")), true
+		return usageResult(fmt.Errorf("'disk_id' and 'size_gb' (>0, larger than current) are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -244,7 +244,7 @@ func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleDiskDelete(ctx context.Context, args map[string]any) (string, bool) {
 	diskID := stringArg(args, "disk_id")
 	if diskID == "" {
-		return errResult(fmt.Errorf("'disk_id' is required")), true
+		return usageResult(fmt.Errorf("'disk_id' is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("disk_delete permanently destroys disk %s and its data. Approve, then confirmed=true.", diskID)}), true

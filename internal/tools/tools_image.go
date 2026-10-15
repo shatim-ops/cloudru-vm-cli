@@ -64,7 +64,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	name := stringArg(args, "name")
 	diskID := stringArg(args, "disk_id")
 	if name == "" || diskID == "" {
-		return errResult(fmt.Errorf("'name' and 'disk_id' are required")), true
+		return usageResult(fmt.Errorf("'name' and 'disk_id' are required")), true
 	}
 	req := provision.CreateImageReq{
 		Name:             name,
@@ -154,7 +154,7 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 	fipRef := stringArg(args, "fip")
 	vmRef := stringArg(args, "vm")
 	if fipRef == "" || vmRef == "" {
-		return errResult(fmt.Errorf("'fip' (address or UUID) and 'vm' (name or UUID) are required")), true
+		return usageResult(fmt.Errorf("'fip' (address or UUID) and 'vm' (name or UUID) are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -228,7 +228,7 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (string, bool) {
 	imageID := stringArg(args, "image_id")
 	if imageID == "" {
-		return errResult(fmt.Errorf("'image_id' is required")), true
+		return usageResult(fmt.Errorf("'image_id' is required")), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -267,7 +267,7 @@ func zoneStates(img *provision.ImageDetail) map[string]string {
 func (s *Registry) handleImageDelete(ctx context.Context, args map[string]any) (string, bool) {
 	imageID := stringArg(args, "image_id")
 	if imageID == "" {
-		return errResult(fmt.Errorf("'image_id' is required")), true
+		return usageResult(fmt.Errorf("'image_id' is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

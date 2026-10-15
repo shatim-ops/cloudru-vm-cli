@@ -19,14 +19,14 @@ func (e *Engine) Verify(ctx context.Context) error {
 		return err
 	}
 
+	// Nothing deployed is not "healthy": verify, like logs, inspects a
+	// running deployment and exits 4 without one (DECISIONS D11), so a
+	// script's "deploy && verify" cannot pass on an empty directory.
 	active := stateFile.ActiveDeployment()
 	if active == nil {
-		if e.Printer.IsJSON() {
-			return e.Printer.JSON([]verify.ProbeResult{}) // nothing checked
-		}
-		e.Printer.Success("No active deployment to verify.")
-		e.Printer.Hint("Run 'evo deploy' first.")
-		return nil
+		return clerrors.New(clerrors.CodeVMNotFound,
+			"no active deployment to verify",
+			"Run 'evo deploy' first.")
 	}
 	if len(active.ExposedPorts) == 0 {
 		if e.Printer.IsJSON() {

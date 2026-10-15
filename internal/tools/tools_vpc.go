@@ -41,7 +41,7 @@ func (s *Registry) handleVpcList(ctx context.Context, args map[string]any) (stri
 func (s *Registry) handleVpcGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from vpc_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (from vpc_list)")), true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
@@ -59,7 +59,7 @@ func (s *Registry) handleVpcGet(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("'name' is required")), true
+		return usageResult(fmt.Errorf("'name' is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -85,7 +85,7 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from vpc_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (from vpc_list)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first. Call again with confirmed=true.", id)}), true
@@ -104,7 +104,7 @@ func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleVpcOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'operation_id' is required")), true
+		return usageResult(fmt.Errorf("'operation_id' is required")), true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
@@ -135,7 +135,7 @@ func (s *Registry) handleVpcOperation(ctx context.Context, args map[string]any) 
 func (s *Registry) handleVpcRoutes(ctx context.Context, args map[string]any) (string, bool) {
 	vpcID := stringArg(args, "vpc_id")
 	if vpcID == "" {
-		return errResult(fmt.Errorf("'vpc_id' is required (from vpc_list)")), true
+		return usageResult(fmt.Errorf("'vpc_id' is required (from vpc_list)")), true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
@@ -180,7 +180,7 @@ func (s *Registry) handleVpcRouteCreate(ctx context.Context, args map[string]any
 	vpcID := stringArg(args, "vpc_id")
 	subnet := stringArg(args, "subnet")
 	if vpcID == "" || subnet == "" {
-		return errResult(fmt.Errorf("'vpc_id' and 'subnet' (destination CIDR, e.g. 192.168.0.0/24) are required")), true
+		return usageResult(fmt.Errorf("'vpc_id' and 'subnet' (destination CIDR, e.g. 192.168.0.0/24) are required")), true
 	}
 	nextHop, err := routeNextHop(args)
 	if err != nil {
@@ -211,7 +211,7 @@ func (s *Registry) handleVpcRouteDelete(ctx context.Context, args map[string]any
 	vpcID := stringArg(args, "vpc_id")
 	routeID := stringArg(args, "route_id")
 	if vpcID == "" || routeID == "" {
-		return errResult(fmt.Errorf("'vpc_id' and 'route_id' (from vpc_routes) are required")), true
+		return usageResult(fmt.Errorf("'vpc_id' and 'route_id' (from vpc_routes) are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("vpc_route_delete removes static route %s from VPC %s (async). Call again with confirmed=true.", routeID, vpcID)}), true

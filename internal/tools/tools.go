@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
@@ -1456,17 +1457,17 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 
 	projectID := eng.Config.ProjectID
 	if projectID == "" {
-		return errResult(fmt.Errorf("CLOUDRU_PROJECT_ID is required")), true
+		return usageResult(fmt.Errorf("CLOUDRU_PROJECT_ID is required")), true
 	}
 
 	imageID := eng.Config.ImageID
 	if imageID == "" {
-		return errResult(fmt.Errorf("CLOUDRU_IMAGE_ID is required")), true
+		return usageResult(fmt.Errorf("CLOUDRU_IMAGE_ID is required")), true
 	}
 
 	region := eng.Config.Region
 	if region == "" {
-		return errResult(fmt.Errorf("region (availability zone) is required")), true
+		return usageResult(fmt.Errorf("region (availability zone) is required")), true
 	}
 
 	vmName := stringArg(args, "name")
@@ -2216,6 +2217,14 @@ func toJSON(v any) string {
 		return `{"error":"failed to encode result"}`
 	}
 	return string(b)
+}
+
+// usageResult is errResult for a call the tool refuses before touching the
+// cloud: a missing or malformed argument. The USAGE prefix lets the CLI exit
+// with 1 (bad input) instead of 5 (API error), and tells an agent the call
+// itself is wrong, not the cloud.
+func usageResult(err error) string {
+	return errResult(fmt.Errorf("%s: %w", clierrors.CodeUsage, err))
 }
 
 // errResult formats an error as a JSON tool result.

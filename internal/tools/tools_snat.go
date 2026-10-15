@@ -67,7 +67,7 @@ func (s *Registry) handleSnatList(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("'name' is required")), true
+		return usageResult(fmt.Errorf("'name' is required")), true
 	}
 	zoneID, err := s.resolveSnatZone(ctx, args)
 	if err != nil {
@@ -110,7 +110,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleSnatDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (get it from snat_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (get it from snat_list)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

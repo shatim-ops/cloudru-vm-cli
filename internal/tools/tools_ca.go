@@ -39,7 +39,7 @@ func (s *Registry) handleCaList(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleCaGet(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("name is required")), true
+		return usageResult(fmt.Errorf("name is required")), true
 	}
 	cli, err := s.caClient(ctx)
 	if err != nil {
@@ -57,7 +57,7 @@ func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (str
 	name := stringArg(args, "name")
 	image := stringArg(args, "image")
 	if name == "" || image == "" {
-		return errResult(fmt.Errorf("name and image are required")), true
+		return usageResult(fmt.Errorf("name and image are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -131,7 +131,7 @@ func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleCaDelete(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("name is required")), true
+		return usageResult(fmt.Errorf("name is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -153,7 +153,7 @@ func (s *Registry) handleCaDelete(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleCaLogs(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("name is required")), true
+		return usageResult(fmt.Errorf("name is required")), true
 	}
 	system, _ := args["system"].(bool)
 	cli, err := s.caClient(ctx)
@@ -173,7 +173,7 @@ func (s *Registry) handleCaLogs(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleCaStartStop(ctx context.Context, args map[string]any, action string) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("name is required")), true
+		return usageResult(fmt.Errorf("name is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		effect := "it is billed while running"

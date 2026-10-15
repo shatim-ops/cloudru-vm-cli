@@ -34,7 +34,7 @@ func (s *Registry) handleS3Buckets(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleS3Ls(ctx context.Context, args map[string]any) (string, bool) {
 	bucket := stringArg(args, "bucket")
 	if bucket == "" {
-		return errResult(fmt.Errorf("'bucket' is required")), true
+		return usageResult(fmt.Errorf("'bucket' is required")), true
 	}
 	cli, err := s.s3Client()
 	if err != nil {
@@ -51,7 +51,7 @@ func (s *Registry) handleS3Get(ctx context.Context, args map[string]any) (string
 	bucket := stringArg(args, "bucket")
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
-		return errResult(fmt.Errorf("'bucket' and 'key' are required")), true
+		return usageResult(fmt.Errorf("'bucket' and 'key' are required")), true
 	}
 	cli, err := s.s3Client()
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *Registry) handleS3Put(ctx context.Context, args map[string]any) (string
 	bucket := stringArg(args, "bucket")
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
-		return errResult(fmt.Errorf("'bucket' and 'key' are required")), true
+		return usageResult(fmt.Errorf("'bucket' and 'key' are required")), true
 	}
 	// Body from inline text (content) or base64 (content_base64).
 	var data []byte
@@ -111,7 +111,7 @@ func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string,
 	bucket := stringArg(args, "bucket")
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
-		return errResult(fmt.Errorf("'bucket' and 'key' are required")), true
+		return usageResult(fmt.Errorf("'bucket' and 'key' are required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -132,7 +132,7 @@ func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string,
 func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any) (string, bool) {
 	bucket := stringArg(args, "bucket")
 	if bucket == "" {
-		return errResult(fmt.Errorf("'bucket' is required (the new bucket name)")), true
+		return usageResult(fmt.Errorf("'bucket' is required (the new bucket name)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -153,7 +153,7 @@ func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any
 func (s *Registry) handleS3BucketDelete(ctx context.Context, args map[string]any) (string, bool) {
 	bucket := stringArg(args, "bucket")
 	if bucket == "" {
-		return errResult(fmt.Errorf("'bucket' is required")), true
+		return usageResult(fmt.Errorf("'bucket' is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

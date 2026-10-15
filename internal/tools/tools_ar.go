@@ -43,7 +43,7 @@ func (s *Registry) handleArList(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleArGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from ar_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (from ar_list)")), true
 	}
 	cli, err := s.arClient(ctx)
 	if err != nil {
@@ -59,7 +59,7 @@ func (s *Registry) handleArGet(ctx context.Context, args map[string]any) (string
 func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return errResult(fmt.Errorf("'name' is required")), true
+		return usageResult(fmt.Errorf("'name' is required")), true
 	}
 	regType := strings.ToUpper(stringArg(args, "registry_type"))
 	if regType == "" {
@@ -98,7 +98,7 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleArDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return errResult(fmt.Errorf("'id' is required (from ar_list)")), true
+		return usageResult(fmt.Errorf("'id' is required (from ar_list)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("ar_delete PERMANENTLY deletes registry %s and its artifacts. Call again with confirmed=true.", id)}), true
@@ -117,7 +117,7 @@ func (s *Registry) handleArDelete(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleArOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return errResult(fmt.Errorf("'operation_id' is required")), true
+		return usageResult(fmt.Errorf("'operation_id' is required")), true
 	}
 	cli, err := s.arClient(ctx)
 	if err != nil {
