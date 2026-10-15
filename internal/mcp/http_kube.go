@@ -31,7 +31,8 @@ var kubectlHTTPVerbs = map[string]bool{
 }
 
 // kubectlHTTPDeniedFlags read or write host files, or send the cluster token
-// to another server.
+// to another server. Names are as kubectl sees them after turning "_" into
+// "-" (kubectl accepts --client_key for --client-key).
 var kubectlHTTPDeniedFlags = map[string]bool{
 	"kubeconfig": true, "server": true, "s": true, "token": true, "username": true,
 	"password": true, "client-certificate": true, "client-key": true,
@@ -39,18 +40,74 @@ var kubectlHTTPDeniedFlags = map[string]bool{
 	"tls-server-name": true, "cache-dir": true, "filename": true, "f": true,
 	"kustomize": true, "k": true, "profile": true, "profile-output": true,
 	"log-file": true, "log-dir": true, "output-directory": true,
+	// create secret tls --cert/--key read a PEM pair from the host;
+	// debug --custom reads a container spec from a host file.
+	"cert": true, "key": true, "ca-cert": true, "custom": true,
+}
+
+// kubectlHTTPVerbosityFlags raise client-go's log level: from -v=6 kubectl
+// logs API requests, from -v=8 whole response bodies (Secret data included)
+// to stderr, which reaches the caller with the output.
+var kubectlHTTPVerbosityFlags = map[string]bool{"v": true, "vmodule": true}
+
+// kubectlValueShorthands are the one-letter kubectl flags that always take a
+// value: in a cluster like -Aoyaml the letters after them are the value.
+// Any other letter may be a boolean (-A, -w, -i, -t, -R, -q, -p, -f), so the
+// letter after it is read as another flag.
+const kubectlValueShorthands = "nlLcosvk"
+
+// kubectlFlag is one flag of a kubectl argument: "--name=val", "-n val",
+// or one letter of a shorthand cluster ("-it", "-Aoyaml").
+type kubectlFlag struct {
+	name, val string
+	hasVal    bool
+}
+
+// kubectlFlags splits a flag argument the way kubectl's flag parser does.
+func kubectlFlags(arg string) []kubectlFlag {
+	if strings.HasPrefix(arg, "--") {
+		name, val, hasVal := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		return []kubectlFlag{{strings.ReplaceAll(name, "_", "-"), val, hasVal}}
+	}
+	var out []kubectlFlag
+	s := arg[1:]
+	for j := 0; j < len(s); j++ {
+		c := s[j]
+		if !('a' <= c && c <= 'z' || 'A' <= c && c <= 'Z') {
+			break // "=value" of a boolean, or not a flag: kubectl rejects it
+		}
+		if strings.IndexByte(kubectlValueShorthands, c) >= 0 {
+			rest := s[j+1:]
+			out = append(out, kubectlFlag{string(c), strings.TrimPrefix(rest, "="), rest != ""})
+			break
+		}
+		out = append(out, kubectlFlag{name: string(c)})
+	}
+	return out
 }
 
 // kubectlHTTPCheck validates k8s_kubectl arguments for the HTTP transport.
 // allowSecrets also permits commands that print credentials.
 func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 	verb := ""
-	var resources []string
-	output := ""
+	var resources, outputs []string
+	template, list := false, false
 	for i := 0; i < len(fields); i++ {
 		f := fields[i]
 		if f == "--" {
-			break // the rest is the command exec/debug runs in the pod
+			if verb == "exec" || verb == "debug" || verb == "run" {
+				break // the rest is the command run in the pod
+			}
+			// After "--" every word is positional: "get -o yaml -- secret x"
+			// names the resources there.
+			for _, p := range fields[i+1:] {
+				if verb == "" {
+					verb = p
+				} else {
+					resources = append(resources, p)
+				}
+			}
+			break
 		}
 		if !strings.HasPrefix(f, "-") || f == "-" {
 			if verb == "" {
@@ -60,26 +117,37 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 			}
 			continue
 		}
-		name, val, hasVal := strings.Cut(strings.TrimLeft(f, "-"), "=")
-		if !strings.HasPrefix(f, "--") && len(name) > 1 {
-			// -fFILE, -ojson: the shorthand is one letter.
-			name, val, hasVal = name[:1], name[1:], true
-		}
-		if kubectlHTTPDeniedFlags[name] || strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
-			return fmt.Errorf("k8s_kubectl over HTTP: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", "-"+strings.TrimLeft(f, "-"))
-		}
-		if name == "o" || name == "output" {
-			if !hasVal && i+1 < len(fields) {
-				i++
-				val = fields[i]
+		for _, fl := range kubectlFlags(f) {
+			name, val := fl.name, fl.val
+			if kubectlHTTPDeniedFlags[name] || strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
+				return fmt.Errorf("k8s_kubectl over HTTP: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", f)
 			}
-			if strings.Contains(val, "file") {
-				return fmt.Errorf("k8s_kubectl over HTTP: output %q reads a file on the MCP server", val)
+			if kubectlHTTPVerbosityFlags[name] {
+				return fmt.Errorf("k8s_kubectl over HTTP: flag %s is not allowed: at higher verbosity kubectl logs API responses, Secret data included, into the output", f)
 			}
-			output = val
-		}
-		if name == "raw" && !allowSecrets {
-			return fmt.Errorf("k8s_kubectl over HTTP: --raw is disabled (it can read Secret objects); start the server with --allow-secret-export to enable it")
+			switch name {
+			case "o", "output":
+				if !fl.hasVal && i+1 < len(fields) {
+					i++
+					val = fields[i]
+				}
+				if strings.Contains(val, "file") {
+					return fmt.Errorf("k8s_kubectl over HTTP: output %q reads a file on the MCP server", val)
+				}
+				outputs = append(outputs, val)
+			case "template", "go-template":
+				template = true // without -o it means -o go-template
+			case "list":
+				list = true
+			case "raw":
+				if !allowSecrets {
+					return fmt.Errorf("k8s_kubectl over HTTP: --raw is disabled (it can read Secret objects); start the server with --allow-secret-export to enable it")
+				}
+			case "resolve":
+				if !allowSecrets {
+					return fmt.Errorf("k8s_kubectl over HTTP: --resolve is disabled (set env --list --resolve prints values from Secrets); start the server with --allow-secret-export to enable it")
+				}
+			}
 		}
 	}
 	if verb == "" {
@@ -94,8 +162,28 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 	if verb == "create" && len(resources) > 0 && resources[0] == "token" {
 		return fmt.Errorf("k8s_kubectl create token is disabled over HTTP: it mints a credential; start the server with --allow-secret-export to enable it")
 	}
-	if verb == "get" && output != "" && output != "name" && output != "wide" && namesSecrets(resources) {
-		return fmt.Errorf("k8s_kubectl get secret with -o %s is disabled over HTTP: it prints the secret data; start the server with --allow-secret-export to enable it", output)
+	if !namesSecrets(resources) {
+		return nil
+	}
+	// Any verb that names a Secret may print it: get, but also
+	// "label/patch/apply … secret x -o yaml --dry-run=server". Only the
+	// table (no -o, -o wide) and -o name leave the data out.
+	const hint = "it prints the secret data; start the server with --allow-secret-export to enable it"
+	for _, o := range outputs {
+		if o != "" && o != "name" && o != "wide" {
+			return fmt.Errorf("k8s_kubectl %s secret with -o %s is disabled over HTTP: %s", verb, o, hint)
+		}
+	}
+	switch {
+	case template:
+		return fmt.Errorf("k8s_kubectl %s secret with --template is disabled over HTTP: %s", verb, hint)
+	case list:
+		// annotate --list shows the last-applied-configuration annotation,
+		// which holds the data of a Secret created with apply.
+		return fmt.Errorf("k8s_kubectl %s secret with --list is disabled over HTTP: %s", verb, hint)
+	case verb == "apply" && len(resources) > 0 && resources[0] == "view-last-applied":
+		// Prints the same annotation, as YAML by default.
+		return fmt.Errorf("k8s_kubectl apply view-last-applied secret is disabled over HTTP: %s", hint)
 	}
 	return nil
 }
