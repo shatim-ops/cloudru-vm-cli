@@ -46,11 +46,11 @@ against Cloud.ru IAM, then lists the projects the key can see and lets you
 pick one (a single project is picked automatically).
 
 Non-interactive (CI, scripts) — the secret is read from stdin, never from a flag:
-  printf '%s' "$SECRET" | cloudru-vm configure --key-id KEY_ID --secret-stdin --project-id PROJECT_ID
+  printf '%s' "$SECRET" | evo configure --key-id KEY_ID --secret-stdin --project-id PROJECT_ID
 
 Files (mode 0600, directory 0700; CLOUDRU_CONFIG_DIR overrides the directory):
-  <user config dir>/cloudru-vm/config.yaml        project_id, region, defaults
-  <user config dir>/cloudru-vm/credentials.yaml   key_id, secret, optional s3 section
+  <user config dir>/evo/config.yaml        project_id, region, defaults
+  <user config dir>/evo/credentials.yaml   key_id, secret, optional s3 section
 
 Required access: the service account needs a project role that allows managing
 Compute and VPC resources; listing projects also needs read access to the
@@ -193,7 +193,7 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 				return err
 			}
 			return clerrors.Wrap(clerrors.CodeConfigInvalid, "no secret on stdin",
-				"Pipe the secret into 'cloudru-vm configure --secret-stdin'", err)
+				"Pipe the secret into 'evo configure --secret-stdin'", err)
 		}
 	case con.interactive:
 		prompt := "Secret: "
@@ -209,7 +209,7 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 	}
 	if keyID == "" || secret == "" {
 		return clerrors.New(clerrors.CodeConfigInvalid, "key ID and secret are required",
-			"Run 'cloudru-vm configure' in a terminal, or pass --key-id and --secret-stdin")
+			"Run 'evo configure' in a terminal, or pass --key-id and --secret-stdin")
 	}
 
 	// Check the key with IAM itself: a cached token of the same key ID
@@ -414,7 +414,7 @@ func newConfigureListCmd() *cobra.Command {
 			}
 			if len(profiles) == 0 {
 				printer.Success("No profiles in " + config.Dir())
-				printer.Hint("Run 'cloudru-vm configure' to create one.")
+				printer.Hint("Run 'evo configure' to create one.")
 				return nil
 			}
 			rows := make([][]string, len(profiles))

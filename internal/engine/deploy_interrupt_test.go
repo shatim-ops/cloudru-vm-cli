@@ -127,7 +127,7 @@ func TestProvisionVM_CancelledNoTTY_LeavesVMAndSaysSo(t *testing.T) {
 		t.Errorf("no warning that the VM is still running: %q", stderr.String())
 	}
 	var cliErr *clerrors.CLIError
-	if !stderrors.As(err, &cliErr) || !strings.Contains(cliErr.Hint, "vm-new") || !strings.Contains(cliErr.Hint, "cloudru-vm destroy") {
+	if !stderrors.As(err, &cliErr) || !strings.Contains(cliErr.Hint, "vm-new") || !strings.Contains(cliErr.Hint, "evo destroy") {
 		t.Errorf("hint must name the VM and how to delete it: %v", err)
 	}
 	assertVMRecorded(t, e)

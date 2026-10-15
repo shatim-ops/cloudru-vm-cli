@@ -225,7 +225,7 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	}
 
 	short := summary(t.Description, 100)
-	long := t.Description + "\n\nRuns the " + t.Name + " tool (see 'cloudru-vm tools describe " + t.Name + "')."
+	long := t.Description + "\n\nRuns the " + t.Name + " tool (see 'evo tools describe " + t.Name + "')."
 	if t.Mutating {
 		long += "\nAsks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only."
 	}

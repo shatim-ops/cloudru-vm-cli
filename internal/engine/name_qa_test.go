@@ -10,7 +10,7 @@ import (
 )
 
 // The VM and hostname are named after the project directory. "My App
-// (копия)" gave the hostname "cloudru-vm-My App (копия)", which is not a
+// (копия)" gave the hostname "evo-My App (копия)", which is not a
 // hostname (RFC 1123: letters, digits, hyphens, up to 63).
 func TestDeploy_VMNameFromDirectoryIsAHostname(t *testing.T) {
 	hostname := regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)

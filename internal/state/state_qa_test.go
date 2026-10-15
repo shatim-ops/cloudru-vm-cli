@@ -21,7 +21,7 @@ func codeOf(err error) string {
 	return ""
 }
 
-// Two writers (two cloudru-vm processes, or MCP calls over HTTP) used the
+// Two writers (two evo processes, or MCP calls over HTTP) used the
 // same "state.json.tmp": one rename found the file gone, or moved the
 // other's half-written content into place.
 func TestWrite_ConcurrentWritersNeverFailOrCorrupt(t *testing.T) {
@@ -85,7 +85,7 @@ func TestLock_SecondHolderIsRefused(t *testing.T) {
 	unlock2()
 }
 
-// A state file from a newer cloudru-vm may hold fields this one would drop
+// A state file from a newer evo may hold fields this one would drop
 // on rewrite: refuse it instead of silently losing records.
 func TestRead_NewerVersionRefused(t *testing.T) {
 	path := DefaultPath(t.TempDir())

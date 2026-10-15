@@ -61,7 +61,7 @@ func TestDeploy_HalfDestroyedRecordIsNotReused(t *testing.T) {
 	}
 	err := eng.Deploy(context.Background(), newDeployOpts(t, dir))
 	var ce *clerrors.CLIError
-	if !stderrors.As(err, &ce) || !strings.Contains(ce.Hint, "cloudru-vm destroy") {
+	if !stderrors.As(err, &ce) || !strings.Contains(ce.Hint, "evo destroy") {
 		t.Fatalf("Deploy = %v, want an error pointing to destroy", err)
 	}
 	if dep.connectCalls != 0 || cloud.createCalled {

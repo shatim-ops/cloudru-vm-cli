@@ -68,7 +68,7 @@ func TestHandleError_JSON(t *testing.T) {
 func TestHandleError_InterruptedKeepsHint(t *testing.T) {
 	// As run() sees a deploy interrupted after the VM was created.
 	inner := clerrors.Wrap(clerrors.CodeVMProvisionFailed, "deployment interrupted",
-		"VM vm-1 was created and is still running. Use 'cloudru-vm destroy --force' to delete it.", context.Canceled)
+		"VM vm-1 was created and is still running. Use 'evo destroy --force' to delete it.", context.Canceled)
 	err := fmt.Errorf("%w: %w", context.Canceled, inner)
 
 	var buf bytes.Buffer
@@ -154,7 +154,7 @@ func TestRun_CommandsWithoutVMCreateNoSSHKey(t *testing.T) {
 
 	for _, args := range [][]string{{"list-zones"}, {"list-images"}, {"status"}, {"verify"}, {"init", "--non-interactive"}} {
 		_ = run(args)
-		if _, err := os.Stat(filepath.Join(dir, ".cloudru-vm", "id_ed25519")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, ".evo", "id_ed25519")); err == nil {
 			t.Fatalf("run(%v) created an SSH key", args)
 		}
 	}

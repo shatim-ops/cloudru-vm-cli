@@ -109,7 +109,7 @@ jobs:
       - name: docker build
         if: steps.ar.outputs.enabled == 'true'
         env:
-          IMAGE: ${{ steps.ar.outputs.host }}/cloudru-vm
+          IMAGE: ${{ steps.ar.outputs.host }}/evo
           VERSION: ${{ steps.ar.outputs.version }}
         run: |
           docker build -t "$IMAGE:$VERSION" \
@@ -120,7 +120,7 @@ jobs:
       - name: smoke-тест
         if: steps.ar.outputs.enabled == 'true'
         env:
-          IMAGE: ${{ steps.ar.outputs.host }}/cloudru-vm
+          IMAGE: ${{ steps.ar.outputs.host }}/evo
           VERSION: ${{ steps.ar.outputs.version }}
         run: |
           docker run -d --name mcp -e MCP_BEARER_TOKEN=release-smoke-0123456789 -p 8080:8080 "$IMAGE:$VERSION"
@@ -139,10 +139,10 @@ jobs:
           LATEST: ${{ steps.ar.outputs.latest }}
         run: |
           echo "$AR_SECRET" | docker login "$HOST" -u "$AR_KEY_ID" --password-stdin
-          docker push "$HOST/cloudru-vm:$VERSION"
+          docker push "$HOST/evo:$VERSION"
           if [ "$LATEST" = true ]; then
-            docker tag "$HOST/cloudru-vm:$VERSION" "$HOST/cloudru-vm:latest"
-            docker push "$HOST/cloudru-vm:latest"
+            docker tag "$HOST/evo:$VERSION" "$HOST/evo:latest"
+            docker push "$HOST/evo:latest"
           fi
           docker logout "$HOST"
-          echo "::notice title=Образ опубликован::$HOST/cloudru-vm:$VERSION"
+          echo "::notice title=Образ опубликован::$HOST/evo:$VERSION"

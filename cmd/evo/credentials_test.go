@@ -42,7 +42,7 @@ func setupCLI(t *testing.T) *fakeCloud {
 		}
 	}
 	root := t.TempDir()
-	t.Setenv(config.EnvConfigDir, filepath.Join(root, "config", "cloudru-vm"))
+	t.Setenv(config.EnvConfigDir, filepath.Join(root, "config", "evo"))
 	t.Setenv("HOME", root)
 	work := filepath.Join(root, "work")
 	if err := os.Mkdir(work, 0o700); err != nil {

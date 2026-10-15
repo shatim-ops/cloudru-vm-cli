@@ -63,7 +63,7 @@ connectivity checks failed.`,
 func runDoctor(ctx context.Context) []doctorCheck {
 	checks := []doctorCheck{{
 		Name: "version", Status: checkOK,
-		Detail: fmt.Sprintf("cloudru-vm %s %s/%s", version, runtime.GOOS, runtime.GOARCH),
+		Detail: fmt.Sprintf("evo %s %s/%s", version, runtime.GOOS, runtime.GOARCH),
 	}}
 	checks = append(checks, fileChecks()...)
 
@@ -87,7 +87,7 @@ func runDoctor(ctx context.Context) []doctorCheck {
 		checks = append(checks, doctorCheck{Name: "credentials", Status: checkSkip, Detail: "configuration is broken"})
 	case cfg.KeyID == "" || cfg.Secret == "":
 		checks = append(checks, doctorCheck{Name: "credentials", Status: checkFail, auth: true,
-			Detail: "no access key: run 'cloudru-vm configure' or set CLOUDRU_KEY_ID and CLOUDRU_SECRET"})
+			Detail: "no access key: run 'evo configure' or set CLOUDRU_KEY_ID and CLOUDRU_SECRET"})
 	default:
 		provider := tokenProvider(cfg)
 		before := provider.Exchanges()
@@ -124,7 +124,7 @@ func fileChecks() []doctorCheck {
 	switch {
 	case os.IsNotExist(err):
 		return append(checks, doctorCheck{Name: "config dir", Status: checkWarn,
-			Detail: dir + " does not exist; run 'cloudru-vm configure' (or use environment variables)"})
+			Detail: dir + " does not exist; run 'evo configure' (or use environment variables)"})
 	case err != nil:
 		return append(checks, doctorCheck{Name: "config dir", Status: checkFail, Detail: err.Error(), auth: true})
 	case config.PermissionsEnforced() && config.LooseMode(st.Mode()):
@@ -173,10 +173,10 @@ func fileChecks() []doctorCheck {
 	}
 
 	if home, err := os.UserHomeDir(); err == nil {
-		legacy := filepath.Join(home, ".cloudru-vm.yaml")
+		legacy := filepath.Join(home, config.LegacyProjectFileName)
 		if _, err := os.Stat(legacy); err == nil {
 			checks = append(checks, doctorCheck{Name: "legacy config", Status: checkWarn,
-				Detail: legacy + " is no longer read: move its settings to 'cloudru-vm configure' or ./.cloudru-vm.yaml"})
+				Detail: legacy + " is no longer read: move its settings to 'evo configure' or ./" + config.ProjectFileName})
 		}
 	}
 	return checks
@@ -191,7 +191,7 @@ func configChecks(cfg config.Config, sources []config.Source) []doctorCheck {
 	}}
 	if cfg.ProjectID == "" {
 		checks = append(checks, doctorCheck{Name: "project_id", Status: checkWarn,
-			Detail: "not set: run 'cloudru-vm configure' or set CLOUDRU_PROJECT_ID"})
+			Detail: "not set: run 'evo configure' or set CLOUDRU_PROJECT_ID"})
 	}
 	for _, w := range cfg.Warnings {
 		checks = append(checks, doctorCheck{Name: "config", Status: checkWarn, Detail: w})
@@ -254,7 +254,7 @@ func reportDoctor(printer *output.Printer, checks []doctorCheck) error {
 		return nil
 	case authFailed:
 		return clerrors.New(clerrors.CodeConfigInvalid, fmt.Sprintf("doctor: %d check(s) failed", failed),
-			"Fix the configuration or credentials above, e.g. with 'cloudru-vm configure'")
+			"Fix the configuration or credentials above, e.g. with 'evo configure'")
 	default:
 		return fmt.Errorf("doctor: %d check(s) failed", failed)
 	}

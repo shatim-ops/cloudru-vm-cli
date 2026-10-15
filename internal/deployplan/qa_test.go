@@ -13,11 +13,11 @@ import (
 )
 
 // plan_id comes from the MCP client (over HTTP: from the network) and was
-// joined into a path as is: "../state" read .cloudru-vm/state.json as a
+// joined into a path as is: "../state" read .evo/state.json as a
 // plan, and Delete after apply removed it.
 func TestPlanIDCannotLeaveThePlansDir(t *testing.T) {
 	dir := t.TempDir()
-	statePath := filepath.Join(dir, ".cloudru-vm", "state.json")
+	statePath := filepath.Join(dir, ".evo", "state.json")
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
 		t.Fatal(err)
 	}

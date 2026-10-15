@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -55,7 +57,35 @@ var httpClient = &http.Client{Timeout: 60 * time.Second}
 var commandStarted bool
 
 func main() {
+	if isLegacyAlias(os.Args[0]) {
+		printAliasNotice(os.Stderr, os.Args[1:])
+	}
 	os.Exit(run(os.Args[1:]))
+}
+
+// aliasNotice is printed when the binary runs under its legacy name: the
+// release archives ship a copy named after the legacy alias for one minor
+// release, so scripts and MCP configs written for the old name keep working.
+const aliasNotice = config.LegacyAppName + " переименован в " + config.AppName + ", alias будет удалён в v1.1"
+
+// isLegacyAlias reports whether argv0 is the legacy alias binary:
+// cloudru-vm (legacy name), or cloudru-vm.exe on Windows.
+func isLegacyAlias(argv0 string) bool {
+	name := filepath.Base(argv0)
+	if ext := filepath.Ext(name); strings.EqualFold(ext, ".exe") {
+		name = strings.TrimSuffix(name, ext)
+	}
+	return name == config.LegacyAppName
+}
+
+// printAliasNotice writes the one-line rename notice of the legacy alias to
+// stderr; with --json as {"warning": ...}, so stderr stays parseable.
+func printAliasNotice(w io.Writer, args []string) {
+	if jsonRequested(args) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"warning": aliasNotice})
+		return
+	}
+	fmt.Fprintln(w, aliasNotice)
 }
 
 // run executes the CLI and returns the process exit code.
@@ -70,6 +100,15 @@ func run(args []string) int {
 	}()
 
 	commandStarted = false
+	// Until flags are parsed: plain text to stderr.
+	config.SetWarnFunc(func(msg string) { output.New(false, true).Warning(msg) })
+	if msg, err := config.MigrateLegacyDir(); err != nil {
+		output.New(jsonRequested(args), true).Warning(fmt.Sprintf(
+			"could not copy the profiles of %s to %s: %v; run '%s configure' again or copy them by hand",
+			config.LegacyAppName, config.Dir(), err, config.AppName))
+	} else if msg != "" {
+		output.New(jsonRequested(args), true).Warning(msg)
+	}
 	rootCmd := newRootCmd()
 	rootCmd.SetArgs(args)
 	cmd, err := rootCmd.ExecuteContextC(ctx)
@@ -140,7 +179,7 @@ func asGroup(cmd *cobra.Command) *cobra.Command {
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "cloudru-vm",
+		Use:   "evo",
 		Short: "Deploy docker-compose projects to Cloud.ru VMs",
 		Long: "Deploy docker-compose projects to Cloud.ru VMs.\n\n" +
 			clerrors.ExitCodesHelp,
@@ -150,6 +189,11 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			commandStarted = true
+			// Warnings about legacy paths (.cloudru-vm/, .cloudru-vm.yaml)
+			// follow --json and --no-color from here on.
+			config.SetWarnFunc(func(msg string) {
+				printWarnings(output.New(flagJSON, flagNoColor), []string{msg})
+			})
 		},
 	}
 
@@ -218,16 +262,16 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 	}, nil
 }
 
-// loadOrGenerateSSHKey loads an existing SSH key pair from .cloudru-vm/ or
+// loadOrGenerateSSHKey loads an existing SSH key pair from .evo/ or
 // generates a new one and persists it for future use.
 //
-// .cloudru-vm/ may come with someone else's repository. A symlink there
+// .evo/ may come with someone else's repository. A symlink there
 // (the directory itself, or a key file pointing at ~/.ssh/authorized_keys or
 // a file another user owns) is refused instead of followed: writing through
 // it would overwrite that file with our key, or hand the private key to the
 // owner of the target.
 func loadOrGenerateSSHKey(projectDir string) (privPEM []byte, pubKey string, err error) {
-	keyDir := filepath.Join(projectDir, ".cloudru-vm")
+	keyDir := config.DataDir(projectDir)
 	privPath := filepath.Join(keyDir, "id_ed25519")
 	pubPath := filepath.Join(keyDir, "id_ed25519.pub")
 
@@ -301,7 +345,7 @@ func ensureKeyDir(dir string) error {
 // reach. Only Windows ACLs are checked: on Unix ensureKeyDir makes the
 // directory 0700 and the key is written 0600.
 func sshKeyWarnings(projectDir string) []string {
-	keyDir := filepath.Join(projectDir, ".cloudru-vm")
+	keyDir := config.DataDir(projectDir)
 	var out []string
 	for _, w := range []string{
 		config.PrivateDirWarning(keyDir),
@@ -341,9 +385,9 @@ func readKeyFile(path string) ([]byte, error) {
 }
 
 // projectConfigPath is the project file with per-project overrides. User
-// settings and secrets live in the profile (see 'cloudru-vm configure').
+// settings and secrets live in the profile (see 'evo configure').
 func projectConfigPath() string {
-	return ".cloudru-vm.yaml"
+	return config.ProjectFile(".")
 }
 
 // handleError prints err to the printer's error writer: as text with the
@@ -568,8 +612,8 @@ func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Args:  cobra.NoArgs,
-		Short: "Create .cloudru-vm.yaml with a zone and image chosen from the Cloud.ru API",
-		Long: `Create .cloudru-vm.yaml for this project.
+		Short: "Create .evo.yaml with a zone and image chosen from the Cloud.ru API",
+		Long: `Create .evo.yaml for this project.
 
 The availability zone and the boot image are listed from the Cloud.ru API
 (credentials required). On a terminal you choose from a numbered list;
@@ -581,7 +625,7 @@ plain Ubuntu (else Debian) image are taken, and the choice is printed.`,
 				return err
 			}
 			return eng.Init(cmd.Context(), engine.InitOptions{
-				Path:           ".cloudru-vm.yaml",
+				Path:           ".evo.yaml",
 				NonInteractive: nonInteractive,
 			})
 		},

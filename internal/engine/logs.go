@@ -28,7 +28,7 @@ func (e *Engine) Logs(ctx context.Context, opts LogsOptions) error {
 	if active == nil {
 		return clerrors.New(clerrors.CodeVMNotFound,
 			"no active deployment",
-			"Run 'cloudru-vm deploy' first.")
+			"Run 'evo deploy' first.")
 	}
 
 	// Auth.

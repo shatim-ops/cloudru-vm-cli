@@ -158,7 +158,7 @@ func TestCancel_StdioNotificationCancelsQueuedCall(t *testing.T) {
 	}
 }
 
-// Закрытый stdin вызов не отменяет: клиенты вида «printf … | cloudru-vm mcp»
+// Закрытый stdin вызов не отменяет: клиенты вида «printf … | evo mcp»
 // закрывают stdin сразу после запроса и ждут ответа. Вызов доходит до
 // конца, ответ пишется, затем Run завершается.
 func TestCancel_StdioEOFLetsCallFinish(t *testing.T) {

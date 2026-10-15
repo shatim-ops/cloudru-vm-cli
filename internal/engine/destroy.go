@@ -100,7 +100,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 				return clerrors.Wrap(clerrors.CodeAPIError,
 					fmt.Sprintf("VM %s cannot be deleted in its current state", active.VMID),
 					"It is probably still being created or changing state. Wait until it is running "+
-						"(Cloud.ru console, or 'cloudru-vm vm get "+active.VMID+"') and re-run 'cloudru-vm destroy'.",
+						"(Cloud.ru console, or 'evo vm get "+active.VMID+"') and re-run 'evo destroy'.",
 					err)
 			}
 			return err
@@ -187,7 +187,7 @@ func (e *Engine) closeRules(ctx context.Context, sf *state.File, ids []string) s
 	}
 	if len(res.Failed) > 0 {
 		e.Printer.Warning("Could not delete the security group rules for ports " + strings.Join(res.Failed, "; ") +
-			". They stay in state: re-run 'cloudru-vm destroy' to retry, or delete them in the Cloud.ru console.")
+			". They stay in state: re-run 'evo destroy' to retry, or delete them in the Cloud.ru console.")
 	}
 	return res
 }
@@ -247,7 +247,7 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		if err != nil {
 			return clerrors.Wrap(clerrors.CodeAPIError,
 				fmt.Sprintf("cannot look up floating IP %s", fipLabel(rec.VMIP, fipName(rec.VMID))),
-				"The VM is deleted. Re-run 'cloudru-vm destroy --force' to release the floating IP, or release it in the Cloud.ru console.",
+				"The VM is deleted. Re-run 'evo destroy --force' to release the floating IP, or release it in the Cloud.ru console.",
 				err)
 		}
 		for _, f := range fips {
@@ -286,7 +286,7 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 	}
 	return clerrors.Wrap(clerrors.CodeAPIError,
 		fmt.Sprintf("VM deleted, but floating IP %s was not released", fipLabel(rec.VMIP, fipID)),
-		"The floating IP is still billed. Re-run 'cloudru-vm destroy --force' or release it in the Cloud.ru console.",
+		"The floating IP is still billed. Re-run 'evo destroy --force' or release it in the Cloud.ru console.",
 		lastErr)
 }
 

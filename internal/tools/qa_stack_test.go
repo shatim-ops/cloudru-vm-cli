@@ -15,7 +15,7 @@ import (
 	"github.com/shatim-ops/cloudru-vm-cli/internal/stack"
 )
 
-// stackHome points the job store (~/.cloudru-vm/stack-jobs) at a temp dir.
+// stackHome points the job store (~/.evo/stack-jobs) at a temp dir.
 func stackHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -111,7 +111,7 @@ func TestQA_StackPlanRejectsBrokenDependencies(t *testing.T) {
 			t.Errorf("%s: planned a stack that can never finish: %v", m, got)
 		}
 	}
-	if entries, _ := os.ReadDir(filepath.Join(home, ".cloudru-vm", "stack-jobs")); len(entries) != 0 {
+	if entries, _ := os.ReadDir(filepath.Join(home, ".evo", "stack-jobs")); len(entries) != 0 {
 		t.Errorf("rejected plans were saved: %d jobs", len(entries))
 	}
 
@@ -200,7 +200,7 @@ func TestQA_StackJobIDCannotLeaveJobsDir(t *testing.T) {
 	home := stackHome(t)
 	r := newTestServer()
 	j := planJob(t, `{"name":"t","secrets":[{"path":"a","value":"b"}]}`)
-	data, _ := os.ReadFile(filepath.Join(home, ".cloudru-vm", "stack-jobs", j.ID+".json"))
+	data, _ := os.ReadFile(filepath.Join(home, ".evo", "stack-jobs", j.ID+".json"))
 	if err := os.WriteFile(filepath.Join(home, "evil.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}

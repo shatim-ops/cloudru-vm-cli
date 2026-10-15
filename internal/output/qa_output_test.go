@@ -71,7 +71,7 @@ func TestColorAllowed_EmptyNoColorKeepsColor(t *testing.T) {
 }
 
 // Цвет сообщений об ошибках решается по stderr, а не по stdout:
-// «cloudru-vm … 2>err.log» в терминале писал ANSI-коды в файл.
+// «evo … 2>err.log» в терминале писал ANSI-коды в файл.
 func TestNew_ErrorColorFollowsStderr(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
 	t.Setenv("TERM", "xterm")

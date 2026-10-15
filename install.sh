@@ -1,12 +1,14 @@
 #!/bin/sh
-# Установка cloudru-vm из GitHub Releases (Linux, macOS).
+# Установка evo из GitHub Releases (Linux, macOS). До v1.1 рядом ставится
+# alias cloudru-vm (тот же бинарь под старым именем): скрипты и настройки
+# MCP со старым именем продолжают работать и получают ту же версию.
 #
 #   curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | sh
 #
 # Переменные окружения:
 #   CLOUDRU_VM_VERSION  тег релиза, например v1.0.0-rc.1 (по умолчанию —
 #                       последний стабильный; pre-release надо назвать явно)
-#   INSTALL_DIR         куда положить бинарь (по умолчанию /usr/local/bin
+#   INSTALL_DIR         куда положить бинари (по умолчанию /usr/local/bin
 #                       для root, иначе ~/.local/bin)
 #   CLOUDRU_VM_BASE_URL откуда качать вместо GitHub (зеркало, проверка
 #                       скрипта); ожидается <base>/<тег>/<файл>
@@ -17,7 +19,9 @@
 set -eu
 
 REPO="shatim-ops/cloudru-vm-cli"
-BINARY="cloudru-vm"
+BINARY="evo"
+# Убрать в v1.1 вместе с alias в .goreleaser.yaml.
+LEGACY_ALIAS="cloudru-vm"
 
 say() { printf '%s\n' "$*" >&2; }
 die() { say "install.sh: $*"; exit 1; }
@@ -126,7 +130,7 @@ main() {
 	[ "$want" = "$got" ] || die "sha256 не совпал: ожидался $want, получен $got"
 	say "sha256: OK"
 
-	tar -xzf "$tmp/$archive" -C "$tmp" "$BINARY"
+	tar -xzf "$tmp/$archive" -C "$tmp" "$BINARY" "$LEGACY_ALIAS"
 
 	dir=${INSTALL_DIR:-}
 	if [ -z "$dir" ]; then
@@ -134,11 +138,13 @@ main() {
 	fi
 	mkdir -p "$dir"
 	# Через временное имя: запущенный старый бинарь не ломается на середине.
-	cp "$tmp/$BINARY" "$dir/.$BINARY.new"
-	chmod 0755 "$dir/.$BINARY.new"
-	mv -f "$dir/.$BINARY.new" "$dir/$BINARY"
+	for b in "$BINARY" "$LEGACY_ALIAS"; do
+		cp "$tmp/$b" "$dir/.$b.new"
+		chmod 0755 "$dir/.$b.new"
+		mv -f "$dir/.$b.new" "$dir/$b"
+	done
 
-	say "Установлено: $dir/$BINARY"
+	say "Установлено: $dir/$BINARY (и alias $dir/$LEGACY_ALIAS до v1.1)"
 	case ":$PATH:" in
 	*":$dir:"*) ;;
 	*) say "Каталога $dir нет в PATH. Добавьте в профиль оболочки: export PATH=\"$dir:\$PATH\"" ;;

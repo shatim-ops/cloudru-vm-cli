@@ -104,7 +104,7 @@ func newPlanID() string {
 
 // plansDir returns the directory plans are stored in, creating it.
 func plansDir(stateDir string) (string, error) {
-	dir := filepath.Join(stateDir, ".cloudru-vm", "plans")
+	dir := filepath.Join(config.DataDir(stateDir), "plans")
 	if err := config.MkdirPrivate(dir); err != nil {
 		return "", err
 	}

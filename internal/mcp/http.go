@@ -139,7 +139,7 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *HTTPHandler) serveMCP(w http.ResponseWriter, r *http.Request) {
 	if !h.authorized(r) {
 		h.logf(slog.LevelWarn, "unauthorized request", "method", r.Method, "remote", r.RemoteAddr)
-		w.Header().Set("WWW-Authenticate", `Bearer realm="cloudru-vm"`)
+		w.Header().Set("WWW-Authenticate", `Bearer realm="evo"`)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

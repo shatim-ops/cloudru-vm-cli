@@ -25,7 +25,7 @@ func (e *Engine) Verify(ctx context.Context) error {
 			return e.Printer.JSON([]verify.ProbeResult{}) // nothing checked
 		}
 		e.Printer.Success("No active deployment to verify.")
-		e.Printer.Hint("Run 'cloudru-vm deploy' first.")
+		e.Printer.Hint("Run 'evo deploy' first.")
 		return nil
 	}
 	if len(active.ExposedPorts) == 0 {
@@ -78,7 +78,7 @@ func (e *Engine) Verify(ctx context.Context) error {
 	if unhealthy > 0 {
 		return clerrors.New(clerrors.CodeUnhealthy,
 			fmt.Sprintf("%d of %d health check(s) failed on %s", unhealthy, len(results), active.VMIP),
-			"Check the service logs with 'cloudru-vm logs'.")
+			"Check the service logs with 'evo logs'.")
 	}
 	return nil
 }

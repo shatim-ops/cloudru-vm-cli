@@ -43,7 +43,7 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 				if !binaryAvailable(bin) {
 					return tools.ErrResult(fmt.Errorf(
 						"%s is not available in this mode: %s is not installed on the MCP server (the Docker image ships without kubectl/helm). "+
-							"Use k8s_kubeconfig with embed_token=false and run %s on your machine, or run 'cloudru-vm mcp' over stdio on a host with %s",
+							"Use k8s_kubeconfig with embed_token=false and run %s on your machine, or run 'evo mcp' over stdio on a host with %s",
 						tool, bin, bin, bin)), true
 				}
 				return next(ctx, args)

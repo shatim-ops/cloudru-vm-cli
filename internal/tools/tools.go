@@ -1471,7 +1471,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 
 	vmName := stringArg(args, "name")
 	if vmName == "" {
-		vmName = "cloudru-vm-" + fmt.Sprintf("%d", time.Now().Unix())
+		vmName = "evo-" + fmt.Sprintf("%d", time.Now().Unix())
 	}
 
 	// Resolve flavor: name -> UUID, "auto" -> smallest lowcost, UUID passthrough.

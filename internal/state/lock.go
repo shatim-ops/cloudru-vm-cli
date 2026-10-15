@@ -20,7 +20,7 @@ var errLocked = errors.New("locked")
 // away with the process, so a crash or kill -9 leaves nothing stale.
 func Lock(path string) (unlock func(), err error) {
 	dir := filepath.Dir(path)
-	if err := config.MkdirPrivate(dir); err != nil { // .cloudru-vm/ also holds the SSH key
+	if err := config.MkdirPrivate(dir); err != nil { // .evo/ also holds the SSH key
 		return nil, clierr.Wrap(clierr.CodeStateCorrupted, "failed to create state directory",
 			"Check write permissions for "+dir, err)
 	}
@@ -34,7 +34,7 @@ func Lock(path string) (unlock func(), err error) {
 		_ = f.Close()
 		if errors.Is(err, errLocked) {
 			return nil, clierr.New(clierr.CodeStateLocked,
-				"another cloudru-vm deploy or destroy is running in this directory",
+				"another evo deploy or destroy is running in this directory",
 				"Wait for it to finish; the lock ("+lockPath+") is released when that process exits.")
 		}
 		return nil, clierr.Wrap(clierr.CodeStateCorrupted, "failed to lock the state", "Check "+lockPath, err)

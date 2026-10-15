@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -21,7 +22,7 @@ import (
 //	Dir()/credentials.yaml     profiles: key_id, secret, s3            (0600)
 //	CacheDir()/token-<p>.json  IAM token cache                          (0600)
 const (
-	appDir          = "cloudru-vm"
+	appDir          = AppName
 	settingsName    = "config.yaml"
 	credentialsName = "credentials.yaml"
 
@@ -60,12 +61,81 @@ func Dir() string {
 	if d := os.Getenv(EnvConfigDir); d != "" {
 		return d
 	}
-	base, err := os.UserConfigDir()
+	return filepath.Join(configBase(), appDir)
+}
+
+// userConfigDir is os.UserConfigDir; tests point it at a temp dir.
+var userConfigDir = os.UserConfigDir
+
+func configBase() string {
+	base, err := userConfigDir()
 	if err != nil {
 		home, _ := os.UserHomeDir()
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, appDir)
+	return base
+}
+
+// MigrateLegacyDir copies the profiles of the old binary, once: when
+// the legacy <user config dir>/cloudru-vm exists and <user config dir>/evo does not,
+// config.yaml and credentials.yaml are copied into a new private directory
+// (0700, files 0600; on Windows an owner-only ACL). The legacy directory is
+// left as it was, for an older binary still in use. The token cache is not
+// copied: it lives elsewhere and the next call gets a fresh token. With
+// CLOUDRU_CONFIG_DIR set nothing is done: the variable names the directory.
+//
+// It returns a message for the user when it copied something.
+func MigrateLegacyDir() (string, error) {
+	if os.Getenv(EnvConfigDir) != "" {
+		return "", nil
+	}
+	base := configBase()
+	dir := filepath.Join(base, appDir)
+	legacy := filepath.Join(base, LegacyAppName)
+	if exists(dir) || !exists(legacy) {
+		return "", nil
+	}
+	// Into a temporary directory first and then one rename: an interrupted
+	// copy never leaves a half-filled evo/ that would stop the next try.
+	tmp := filepath.Join(base, "."+appDir+".migrate-"+strconv.Itoa(os.Getpid()))
+	_ = os.RemoveAll(tmp)
+	if err := MkdirPrivate(tmp); err != nil {
+		return "", fmt.Errorf("create %s: %w", tmp, err)
+	}
+	defer os.RemoveAll(tmp) // no-op after the rename
+	copied := 0
+	for _, name := range []string{settingsName, credentialsName} {
+		src := filepath.Join(legacy, name)
+		st, err := os.Lstat(src)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("read %s: %w", src, err)
+		}
+		if !st.Mode().IsRegular() {
+			return "", fmt.Errorf("%s is not a regular file", src)
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return "", fmt.Errorf("read %s: %w", src, err)
+		}
+		if err := WriteFilePrivate(filepath.Join(tmp, name), data); err != nil {
+			return "", err
+		}
+		copied++
+	}
+	if err := os.Rename(tmp, dir); err != nil {
+		if exists(dir) { // another process got there first
+			return "", nil
+		}
+		return "", fmt.Errorf("create %s: %w", dir, err)
+	}
+	if copied == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("profiles copied from %s to %s (the legacy directory is left as is; remove it when no older %s is used)",
+		legacy, dir, LegacyAppName), nil
 }
 
 // CacheDir is the directory with the token cache.
@@ -123,7 +193,7 @@ func readYAML(path string, v any) (exists bool, err error) {
 	}
 	if err := yaml.Unmarshal(data, v); err != nil {
 		return true, clerrors.Wrap(clerrors.CodeConfigInvalid, fmt.Sprintf("parsing %s: %v", path, err),
-			"Fix the YAML syntax or recreate the profile with 'cloudru-vm configure'", err)
+			"Fix the YAML syntax or recreate the profile with '"+AppName+" configure'", err)
 	}
 	return true, nil
 }
@@ -224,8 +294,8 @@ func lockProfiles() (unlock func(), err error) {
 		}
 		if time.Now().After(deadline) {
 			return nil, clerrors.New(clerrors.CodeConfigInvalid,
-				fmt.Sprintf("profiles are locked by another cloudru-vm process (%s)", path),
-				"Wait for the other 'cloudru-vm configure' to finish; if none is running, delete the lock file")
+				fmt.Sprintf("profiles are locked by another %s process (%s)", AppName, path),
+				"Wait for the other '"+AppName+" configure' to finish; if none is running, delete the lock file")
 		}
 		time.Sleep(lockPoll)
 	}
@@ -284,7 +354,7 @@ func DeleteProfile(name string) error {
 	if !ok1 && !ok2 {
 		return clerrors.New(clerrors.CodeConfigInvalid,
 			fmt.Sprintf("profile %q not found", name),
-			"Run 'cloudru-vm configure list' to see existing profiles")
+			"Run '"+AppName+" configure list' to see existing profiles")
 	}
 	delete(s.Profiles, name)
 	delete(cr.Profiles, name)

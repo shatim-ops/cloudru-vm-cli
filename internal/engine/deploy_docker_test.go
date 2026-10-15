@@ -174,7 +174,7 @@ func assertInterruptedWithVMHint(t *testing.T, err error, out string) {
 		t.Fatalf("exit code = %d (err %v), want %d", got, err, clerrors.ExitInterrupted)
 	}
 	var cliErr *clerrors.CLIError
-	if !stderrors.As(err, &cliErr) || !strings.Contains(cliErr.Hint, "vm-123") || !strings.Contains(cliErr.Hint, "cloudru-vm destroy --force") {
+	if !stderrors.As(err, &cliErr) || !strings.Contains(cliErr.Hint, "vm-123") || !strings.Contains(cliErr.Hint, "evo destroy --force") {
 		t.Errorf("hint must name the VM and how to delete it: %v", err)
 	}
 	if !strings.Contains(out, "VM vm-123 left running") {

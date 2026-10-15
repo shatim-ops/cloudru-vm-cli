@@ -56,7 +56,7 @@ func TestPrintVersion_Text(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := buf.String()
-	for _, want := range []string{"cloudru-vm 1.0.0-rc.1\n", "abc123", "2026-10-14T12:00:00Z", "go1.26.9", "linux/amd64"} {
+	for _, want := range []string{"evo 1.0.0-rc.1\n", "abc123", "2026-10-14T12:00:00Z", "go1.26.9", "linux/amd64"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
