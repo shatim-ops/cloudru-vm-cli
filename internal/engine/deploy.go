@@ -1013,7 +1013,7 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	}
 
 	hint := "Check that the VM resolves names (the subnet's DNS) and reaches its apt mirror and get.docker.com, " +
-		"then re-run 'evo deploy'. \"Temporary failure in name resolution\" above means no DNS inside the VM: a network problem of the zone or subnet, not of the compose project."
+		"then re-run 'evo deploy'. \"Temporary failure in name resolution\" above means no DNS inside the VM: a network problem of the zone or subnet, not of the compose project; if it repeats, destroy and deploy in another zone."
 	if tail := lastLines(lastOut, 15); tail != "" {
 		hint = "Last output of the Docker install:\n" + tail + "\n" + hint
 	}
