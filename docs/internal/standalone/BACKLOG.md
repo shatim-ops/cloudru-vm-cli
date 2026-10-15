@@ -92,3 +92,21 @@
 - [e2e] (облако) 15.10.2026 cloud-e2e на cd630ac (после #45–#50): ru.AZ-2 — ВМ active, но внутри нет DNS (`Temporary failure in name resolution` для ubuntu-mirror-1-deb.ar.cloud.ru): в первом прогоне SSH поднялся через 5,5 мин и упала установка Docker, во втором SSH не поднялся за 22 мин; **ru.AZ-1 — весь сценарий зелёный** (ВМ создавалась долго, но дошла); ru.AZ-3 — в тестовом проекте нет подсети, `deploy --dry-run` остановился с кодом 2 до создания ресурсов. Во всех прогонах destroy удалил ВМ, FIP и правило порта. Подсказки SSH_TIMEOUT / Docker not ready и docs/troubleshooting.md называют эту причину · .github/workflows/cloud-e2e.yml (зона по умолчанию ru.AZ-2) · если AZ-2 повторит — поддержка Cloud.ru и смена зоны по умолчанию на ru.AZ-1
 - [api-contract] Сверка запросов evo с официальными спецификациями Cloud.ru · все `internal/*/client.go`, `internal/provision/adapter.go` · спецификации 17 сервисов (22 файла) скачивает `scripts/cloudru-specs.py` со страниц справочников API (реестр: https://cloud.ru/docs/console_api/ug/topics/overview__reestr_api); в репозиторий не кладутся (материалы Cloud.ru), только скрипт. Уже видно: `GET /api/v1/vms` требует `project_id` (`required: true`), а старый `ListVMs` его не передавал — причина QA H5. План: (1) аудит — карта «эндпоинт → наш запрос → совпадение со спецификацией → проверено вживую», расхождения — PR-ами до rc.4; (2) ~~проверка контракта в CI~~ — **сделано (15.10)**: `.github/workflows/api-contract.yml` (раз в неделю, вручную, на PR с клиентами API), остаётся: сравнение хэшей с прошлым прогоном и issue при падении; (3) список мест, где живое API расходится со спецификацией, — вопросы к командам API Cloud.ru
 - [cli-practice] Из сравнения с gh/gcloud/az/aws/yc/flyctl/hcloud/doctl (15.10.2026), не в rc.4: (1) `--project <имя|uuid>` на любую команду, как `yc --folder-name` / `az --subscription` (сейчас имя принимает только `evo project use`); (2) `--yes` не снимает подтверждение без явного `--project-id`, когда ключ видит больше одного проекта (как `gh repo delete` без цели) — ломает CI с проектом в профиле, обсудить; (3) `--wait` у асинхронных `pg`/`k8s` create/delete через `opwait` (сейчас — `operation_id` и `evo tools call pg_operation --wait`); (4) примеры `--help` для остальных ~90 команд; (5) `--jq` на gojq, только по запросу. Не берём: языки запросов `--query`/`--format`, второй слой «configurations» поверх профилей, `-q` как подтверждение, интерактивные оболочки
+- [qa-r3] Остатки отчёта QA r3 (PR #60, `docs/internal/qa-r3.md` в ветке `claude/qa-fable-r3`) после #61, где закрыты R1–R3, R5–R9, R12, M1–M4, S1/I1, S2/C1, C2, C3, C9:
+  - **medium:**
+    - R4 — стек без write-ahead: kill -9 между create и `job.Save()` → второй ресурс;
+    - I2 — `tools call` печатает JSON инструмента со смешанными языками;
+    - W1 — `get.docker.com | sh` от root на ВМ, см. [sec-supply].
+  - **low:**
+    - R10 — `destroy vm_id` ищет в проекте конфигурации, а не записи;
+    - R11 — «уже удалено» по подстроке;
+    - R13 — нет блокировки state на solaris/aix/plan9;
+    - R14 — повторный deploy открывает новые порты без вопроса;
+    - R15 — `deploy_plan` создаёт SSH-ключ;
+    - M5 — `--allow-project` не проверяет проект записи в `destroy`;
+    - M6 — NAT64/RFC 6890 в `publicIP`;
+    - M7 — вытеснение HTTP-сессий;
+    - C4–C8, C10 — английские превью, `help nosuch`, метки источника, alias при `EVO_LANG=en`, тексты usage, Long при en;
+    - I3, I4, P1–P3;
+    - W2–W7 — wget без `--https-only`, cosign stderr, не-https без cosign, ID в публичном логе e2e, очистка e2e отдельным job, pyyaml без хэша.
+  - **info:** M8–M12, C11, C12, P4, W8–W13.
