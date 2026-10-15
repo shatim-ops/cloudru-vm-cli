@@ -15,6 +15,9 @@ func TestInstallScript_InstallsDockerAndPreparesUser(t *testing.T) {
 		`usermod -aG docker "$user"`,
 		`install -d -o "$user" /opt/app`,
 		"docker compose version",
+		// a failed first-boot apt mirror setup is re-run before get.docker.com
+		"cloud-init single --name bootcmd --frequency always",
+		"/var/lib/cloud/instance/sem/configure-apt-mirrors",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("install script lacks %q", want)
