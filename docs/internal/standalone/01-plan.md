@@ -1,4 +1,4 @@
-# План: cloudru-vm → самостоятельный CLI + MCP для Marketplace
+# План: cloudru-vm → самостоятельный CLI + MCP для управления инфраструктурой Cloud.ru
 
 Исполнитель кода — Opus 5.5. Каждый этап — отдельный самодостаточный бриф
 (`docs/internal/standalone/stages/NN-*.md`), который можно отдать агенту без истории
@@ -25,14 +25,14 @@
 | 1 | Фундамент CLI: ошибки, коды возврата, таймауты, контекст | 0 | S | Любая ошибка видна, коды 1/2/3/4 стабильны, Ctrl-C работает везде |
 | 2 | Креды и конфиг: `configure`, профили, `whoami`, `doctor` | 1 | M | Человек без env-переменных настраивает инструмент за минуту |
 | 3 | Подтверждения в CLI: `--yes`, `--dry-run`, превью с ценой, гейты в MCP | 1 | M | Ни одна платная/разрушающая операция не идёт без явного согласия |
-| 4 | Покрытие: `tools list/describe/call` + деревья vm/disk/vpc/k8s/pg/s3 | 2, 3 | L | Все 146 инструментов доступны из терминала |
+| 4 | Покрытие: `tools list/describe/call` + деревья vm/disk/vpc/k8s/pg/s3 | 2, 3 | L | Все 147 инструментов доступны из терминала |
 | 5 | Починка сценария deploy: bootstrap Docker, FIP в destroy, `logs -f`, хардкод | 1 | M | Путь `init → deploy → logs → destroy` работает на дефолтах |
 | 6 | Тесты: инъекция часов/backoff, без реальной сети; CI-матрица ОС | — | S | `go test` < 10 с; CI на ubuntu/macos/windows |
 | 7 | Релиз: goreleaser, ldflags, checksums, cosign, `version` | 0, 6 | S | Тег → GitHub Release с 6 бинарями и подписями |
-| 8 | MCP для Marketplace: Streamable HTTP, Dockerfile, protocolVersion, кэш токена | 2 | M | Образ в Artifact Registry запускается как MCP-сервер по HTTP |
+| 8 | MCP по HTTP: Streamable HTTP, Dockerfile, protocolVersion, кэш токена | 2 | M | Образ в Artifact Registry запускается как MCP-сервер по HTTP |
 | 9 | Документация: внешний README, install, роли SA, Windows/macOS, troubleshooting | 2, 4, 7 | S | Внешний пользователь проходит quickstart без вопросов |
 | 10 | Переименование в `evo` (`stages/10-rename.md`; после согласования бренда) | 7 | S | Новый бинарь, `cloudru-vm` как alias на один минорный релиз |
-| 11 | Заявка в Marketplace (человек) | 8, 9 | — | Карточка MCP-сервера + ссылка на релизы |
+| 11 | ~~Заявка в Marketplace (человек)~~ — снято с v1.0 (DECISIONS D3, 15.10), BACKLOG `[marketplace]` | 8, 9 | — | — |
 
 \* S — до одного рабочего дня агента, M — 1–3 дня, L — 3–5 дней. Это оценка
 объёма изменений, не календарь: этапы 5, 6, 8 можно вести параллельно с 2–4
@@ -62,7 +62,7 @@
 
 - [ ] `go test -race ./...` < 10 с, CI зелёный на трёх ОС
 - [ ] `<bin> configure && <bin> whoami` работает без единой env-переменной
-- [ ] `<bin> tools list | wc -l` = 146; `tools call` любого инструмента отдаёт тот же JSON, что MCP
+- [ ] `<bin> tools list --json | jq length` = 147 (146 исходных + `vm_list`, этап 4b; `wc -l` у табличного вывода даёт 148 — считает заголовок); `tools call` любого инструмента отдаёт тот же JSON, что MCP
 - [ ] `<bin> vm create …` без `--yes` и без TTY → код 3 и ничего не создано
 - [ ] `init → deploy → logs -f → destroy` на дефолтном образе: ВМ и FIP удалены, биллинг чистый
 - [ ] Тег `v1.0.0` → Release: linux/darwin/windows × amd64/arm64, `checksums.txt`, cosign-подписи
