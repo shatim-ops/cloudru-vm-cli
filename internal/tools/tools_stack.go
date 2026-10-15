@@ -478,7 +478,10 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_apply provisions BILLABLE resources. Call again with confirmed=true after the user approved."}), true
 	}
-	unlock := s.lockJob(id)
+	unlock, err := s.lockJob(id)
+	if err != nil {
+		return errResult(err), true
+	}
 	defer unlock()
 	job, err := stack.LoadJob(id)
 	if err != nil {
@@ -501,8 +504,10 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 // lockJob serializes the stack tools on one job and returns the unlock.
 // Each crank loads the job, starts the pending steps and saves it; two
 // concurrent cranks (two HTTP clients, a poll retried while the first one
-// still runs) would both see a step pending and create it twice.
-func (s *Registry) lockJob(id string) (unlock func()) {
+// still runs, a stdio and an HTTP server on one stack-jobs directory) would
+// both see a step pending and create it twice. The mutex orders the calls
+// of this process; the file lock, other processes.
+func (s *Registry) lockJob(id string) (unlock func(), err error) {
 	s.jobMu.Lock()
 	if s.jobLocks == nil {
 		s.jobLocks = map[string]*sync.Mutex{}
@@ -514,13 +519,28 @@ func (s *Registry) lockJob(id string) (unlock func()) {
 	}
 	s.jobMu.Unlock()
 	mu.Lock()
-	return mu.Unlock
+	fileUnlock, err := stack.LockJob(id, jobLockWait)
+	if err != nil {
+		mu.Unlock()
+		return nil, err
+	}
+	return func() {
+		fileUnlock()
+		mu.Unlock()
+	}, nil
 }
+
+// jobLockWait bounds the wait for another process's crank of the same job:
+// one crank is a few API calls, not minutes.
+const jobLockWait = time.Minute
 
 // crankJob loads the job and, while it is in progress, advances and saves
 // it, all under the job's lock.
 func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) {
-	unlock := s.lockJob(id)
+	unlock, err := s.lockJob(id)
+	if err != nil {
+		return nil, err
+	}
 	defer unlock()
 	job, err := stack.LoadJob(id)
 	if err != nil {
@@ -587,7 +607,10 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_destroy PERMANENTLY deletes all resources in this stack. Call again with confirmed=true."}), true
 	}
-	unlock := s.lockJob(id)
+	unlock, err := s.lockJob(id)
+	if err != nil {
+		return errResult(err), true
+	}
 	defer unlock()
 	job, err := stack.LoadJob(id)
 	if err != nil {

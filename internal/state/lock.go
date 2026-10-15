@@ -87,3 +87,40 @@ func Update(path string, maxWait time.Duration, change func(*File) error) error 
 	}
 	return Write(path, sf)
 }
+
+// ErrFileLocked is returned by FileLock when another holder kept the lock
+// for the whole wait.
+var ErrFileLocked = errors.New("held by another process")
+
+// FileLock takes an exclusive OS file lock on lockPath (created 0600 in a
+// private directory), waiting up to maxWait for another holder to release
+// it. Like Lock, it goes away with the process. Other files than state.json
+// use it: the stack jobs, which two MCP servers (stdio and HTTP) may crank
+// at once.
+func FileLock(lockPath string, maxWait time.Duration) (unlock func(), err error) {
+	if err := config.MkdirPrivate(filepath.Dir(lockPath)); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	deadline := time.Now().Add(maxWait)
+	for {
+		err = lockFile(f)
+		if err == nil {
+			return func() {
+				_ = unlockFile(f)
+				_ = f.Close()
+			}, nil
+		}
+		if !errors.Is(err, errLocked) || !time.Now().Before(deadline) {
+			_ = f.Close()
+			if errors.Is(err, errLocked) {
+				return nil, ErrFileLocked
+			}
+			return nil, err
+		}
+		time.Sleep(lockRetryEvery)
+	}
+}
