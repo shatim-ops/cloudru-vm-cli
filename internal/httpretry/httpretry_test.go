@@ -1,0 +1,179 @@
+package httpretry
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+// flaky fails the first n calls with err (or status), then answers 200.
+type flaky struct {
+	n      int32
+	calls  atomic.Int32
+	err    error
+	status int
+	bodies []string
+}
+
+func (f *flaky) RoundTrip(r *http.Request) (*http.Response, error) {
+	c := f.calls.Add(1)
+	if r.Body != nil {
+		b, _ := io.ReadAll(r.Body)
+		f.bodies = append(f.bodies, string(b))
+	}
+	if c <= f.n {
+		if f.err != nil {
+			return nil, f.err
+		}
+		return &http.Response{StatusCode: f.status, Body: io.NopCloser(strings.NewReader("busy")), Header: http.Header{}}, nil
+	}
+	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("ok")), Header: http.Header{}}, nil
+}
+
+func do(t *testing.T, f *flaky, method, body string) (*http.Response, error) {
+	t.Helper()
+	tr := &Transport{Base: f, Backoff: time.Millisecond}
+	var rdr io.Reader
+	if body != "" {
+		rdr = strings.NewReader(body)
+	}
+	req, _ := http.NewRequest(method, "https://example.invalid/x", rdr)
+	return tr.RoundTrip(req)
+}
+
+func TestTransportErrorRetriedOnGet(t *testing.T) {
+	f := &flaky{n: 2, err: errors.New("connection reset by peer")}
+	resp, err := do(t, f, http.MethodGet, "")
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("resp=%v err=%v", resp, err)
+	}
+	if f.calls.Load() != 3 {
+		t.Fatalf("calls = %d, want 3", f.calls.Load())
+	}
+}
+
+func TestTransportErrorNotRetriedOnWrites(t *testing.T) {
+	for _, m := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		f := &flaky{n: 1, err: errors.New("EOF")}
+		if _, err := do(t, f, m, `{"a":1}`); err == nil {
+			t.Fatalf("%s: want the transport error", m)
+		}
+		if f.calls.Load() != 1 {
+			t.Fatalf("%s: calls = %d, want 1", m, f.calls.Load())
+		}
+	}
+}
+
+func TestGiveUpAfterMaxRetries(t *testing.T) {
+	f := &flaky{n: 100, err: errors.New("EOF")}
+	if _, err := do(t, f, http.MethodGet, ""); err == nil {
+		t.Fatal("want error")
+	}
+	if got := f.calls.Load(); got != MaxRetries+1 {
+		t.Fatalf("calls = %d, want %d", got, MaxRetries+1)
+	}
+}
+
+func TestTooManyRequestsReplaysBody(t *testing.T) {
+	f := &flaky{n: 1, status: http.StatusTooManyRequests}
+	resp, err := do(t, f, http.MethodPost, `{"name":"x"}`)
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("resp=%v err=%v", resp, err)
+	}
+	if len(f.bodies) != 2 || f.bodies[0] != f.bodies[1] || f.bodies[1] != `{"name":"x"}` {
+		t.Fatalf("bodies = %q", f.bodies)
+	}
+}
+
+func TestServerErrorsOnlyForReads(t *testing.T) {
+	f := &flaky{n: 1, status: http.StatusServiceUnavailable}
+	if resp, _ := do(t, f, http.MethodGet, ""); resp.StatusCode != 200 {
+		t.Fatalf("GET status = %d, want 200 after a retry", resp.StatusCode)
+	}
+	f = &flaky{n: 1, status: http.StatusServiceUnavailable}
+	if resp, _ := do(t, f, http.MethodPost, "{}"); resp.StatusCode != 503 || f.calls.Load() != 1 {
+		t.Fatalf("POST status = %d calls = %d, want 503 once", resp.StatusCode, f.calls.Load())
+	}
+	f = &flaky{n: 1, status: http.StatusInternalServerError}
+	if resp, _ := do(t, f, http.MethodGet, ""); resp.StatusCode != 500 || f.calls.Load() != 1 {
+		t.Fatalf("500 must not be retried: status = %d calls = %d", resp.StatusCode, f.calls.Load())
+	}
+}
+
+func TestRetryAfter(t *testing.T) {
+	cases := map[string]time.Duration{"2": 2 * time.Second, "0": 0, "600": maxRetryAfter}
+	for v, want := range cases {
+		if got, ok := retryAfter(v); !ok || got != want {
+			t.Fatalf("retryAfter(%q) = %v %v, want %v", v, got, ok, want)
+		}
+	}
+	for _, v := range []string{"", "-1", "Wed, 21 Oct 2015 07:28:00 GMT"} {
+		if _, ok := retryAfter(v); ok {
+			t.Fatalf("retryAfter(%q) accepted", v)
+		}
+	}
+}
+
+func TestContextStopsBackoff(t *testing.T) {
+	f := &flaky{n: 100, err: errors.New("EOF")}
+	tr := &Transport{Base: f, Backoff: time.Hour}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://example.invalid/x", nil)
+	start := time.Now()
+	if _, err := tr.RoundTrip(req); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want deadline", err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatal("backoff ignored the context")
+	}
+}
+
+// http.Client.Timeout must cover the waits too: a client with a short
+// timeout does not sit through a long backoff.
+func TestClientTimeoutStopsBackoff(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	cl := &http.Client{Timeout: 200 * time.Millisecond, Transport: &Transport{Backoff: time.Hour}}
+	start := time.Now()
+	if _, err := cl.Get(srv.URL); err == nil {
+		t.Fatal("want timeout")
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatal("client timeout ignored during backoff")
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("calls = %d", calls.Load())
+	}
+}
+
+func TestRealServerRecovers(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+	resp, err := NewClient(5 * time.Second).Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 || calls.Load() != 2 {
+		t.Fatalf("status = %d calls = %d", resp.StatusCode, calls.Load())
+	}
+}

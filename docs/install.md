@@ -157,6 +157,11 @@ evo, — `evo doctor` (отсутствие — предупреждение, н
 - в **Docker-образе** MCP-сервера `kubectl` и `helm` нет — эти три
   инструмента отвечают ошибкой «not available in this mode»; используйте
   `k8s kubeconfig` и свой `kubectl` (см. [mcp.md](mcp.md#ограничения-http-режима));
+- флаги evo (`--json`, `--yes`, `--dry-run`, `--profile`) у `k8s kubectl`
+  ставятся до идентификатора кластера: `evo k8s kubectl --json <cluster-id>
+  get pods`. Всё после него уходит в `kubectl` как есть, поэтому
+  `--dry-run=server` после кластера — флаг kubectl; `--json` и `--yes` там
+  отклоняются с подсказкой (кроме части после `--`, команды в контейнере);
 - на **Windows** — без гарантий: поиск путей рассчитан на Unix, работает,
   только если `kubectl.exe`/`helm.exe` лежат в `PATH`.
 

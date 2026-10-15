@@ -1373,6 +1373,7 @@ Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin
 
 Runs the k8s_kubectl tool (see 'evo tools describe k8s_kubectl').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
+evo flags (--json, --yes, --dry-run, --profile) go before the arguments: everything after the first one is passed to the tool as is.
 ```
 
 ```

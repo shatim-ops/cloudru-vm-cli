@@ -16,6 +16,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // Client talks to a Managed-DB v1 API (Kafka/Redis).
@@ -28,7 +30,7 @@ type Client struct {
 
 // New builds a client for baseURL (e.g. https://kafka.api.cloud.ru).
 func New(token, projectID, baseURL string) *Client {
-	return &Client{http: &http.Client{Timeout: 60 * time.Second}, base: baseURL, token: token, projectID: projectID}
+	return &Client{http: httpretry.NewClient(60 * time.Second), base: baseURL, token: token, projectID: projectID}
 }
 
 // ProjectID exposes the configured project.
