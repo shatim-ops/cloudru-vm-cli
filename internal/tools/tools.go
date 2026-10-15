@@ -1997,15 +1997,63 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		return errResult(fmt.Errorf("no VM matching vm_id=%q name=%q in this project", vmID, name)), true
 	}
 
-	fip := target.FloatingIP
+	// The VM's floating IP, found before the VM goes: the record deploy or
+	// provision wrote (floating_ip_id), else an address on the VM, else the
+	// one boot FIP named for it. The list's flat floating_ip field is often
+	// empty (BACKLOG [04]), which used to leave the FIP billed (QA H4).
+	fipRec := state.DeploymentRecord{VMID: target.ID}
+	statePath := state.DefaultPath(eng.StateDir)
+	if sf, err := state.Read(statePath); err == nil {
+		for _, d := range sf.Deployments {
+			if d.VMID == target.ID {
+				if d.FloatingIPID != "" {
+					fipRec.FloatingIPID = d.FloatingIPID
+				}
+				if d.VMIP != "" {
+					fipRec.VMIP = d.VMIP
+				}
+			}
+		}
+	}
+	if fipRec.VMIP == "" {
+		fipRec.VMIP = firstNonEmptyStr(target.FloatingIP, target.PublicIP)
+	}
+	releaseIP := true
+	if v, ok := args["release_ip"].(bool); ok {
+		releaseIP = v
+	}
+	if releaseIP && fipRec.FloatingIPID == "" && fipRec.VMIP == "" && target.Name != "" {
+		if fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID); e == nil {
+			var named []*provision.FloatingIP
+			for _, f := range fips {
+				if strings.HasPrefix(f.Name, "fip-"+target.Name+"-") {
+					named = append(named, f)
+				}
+			}
+			if len(named) == 1 {
+				fipRec.FloatingIPID, fipRec.VMIP = named[0].ID, named[0].IPAddress
+			}
+		}
+	}
+	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
+
 	if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
+		if engine.IsNotDeletableYet(err) {
+			// A VM still being created cannot be deleted yet; say when to
+			// come back instead of a bare API error (QA H1/H4).
+			return toJSON(map[string]any{
+				"status": "not_deletable_yet",
+				"vm_id":  target.ID,
+				"message": fmt.Sprintf("VM %s is still being created or changing state, so Cloud.ru refuses to delete it now. "+
+					"Call destroy with vm_id %s again in a minute or two; nothing was deleted.", target.ID, target.ID),
+			}), true
+		}
 		return errResult(fmt.Errorf("delete VM: %w", err)), true
 	}
 
 	// Best-effort: remove from local state, deleting the port rules the
 	// deployment created (the same code as the CLI destroy).
 	var rules sgrules.CloseResult
-	statePath := state.DefaultPath(eng.StateDir)
 	stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
 		var ids []string
 		for _, d := range sf.Deployments {
@@ -2020,22 +2068,15 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		return nil
 	})
 
-	// Release the floating IP unless asked not to.
-	releaseIP := true
-	if v, ok := args["release_ip"].(bool); ok {
-		releaseIP = v
-	}
 	msg := "VM deleted"
-	if releaseIP && fip != "" {
-		if fips, e := eng.Cloud.ListFloatingIPs(ctx, eng.Config.ProjectID); e == nil {
-			for _, f := range fips {
-				if f.IPAddress == fip {
-					if de := eng.Cloud.DeleteFloatingIP(ctx, f.ID, eng.Config.ProjectID); de == nil {
-						msg += "; released floating IP " + fip
-					}
-					break
-				}
-			}
+	if releaseIP && hasFIP {
+		// The FIP stays attached until the VM is gone: wait, then retry.
+		eng.WaitVMGone(ctx, target.ID)
+		if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
+			msg += fmt.Sprintf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
+				"release it with release_floating_ip", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr)
+		} else {
+			msg += "; released floating IP " + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 		}
 	}
 	out := map[string]any{

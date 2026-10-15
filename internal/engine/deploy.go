@@ -1208,3 +1208,16 @@ func (e *Engine) waitVMGone(ctx context.Context, vmID string) {
 	}
 }
 
+// WaitVMGone is waitVMGone for MCP destroy by vm_id.
+func (e *Engine) WaitVMGone(ctx context.Context, vmID string) { e.waitVMGone(ctx, vmID) }
+
+// ReleaseFloatingIP releases the FIP a record names (floating_ip_id, else
+// its address or the after-boot name), retrying while the platform still
+// reports it attached to a just-deleted VM. Nothing to release is nil.
+func (e *Engine) ReleaseFloatingIP(ctx context.Context, rec *state.DeploymentRecord) error {
+	return e.releaseFloatingIP(ctx, rec)
+}
+
+// IsNotDeletableYet reports a 409/422 from deleting a VM that is still
+// being created or changing state.
+func IsNotDeletableYet(err error) bool { return isNotDeletableYet(err) }
