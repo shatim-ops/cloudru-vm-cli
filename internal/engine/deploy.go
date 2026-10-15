@@ -19,6 +19,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sizer"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -72,22 +73,25 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	// released) keeps the record for its retry; there is no VM to reuse.
 	if !isNewDeploy && existing.Status == "destroying" {
 		return clerrors.New(clerrors.CodeVMProvisionFailed,
-			fmt.Sprintf("deployment %s is being destroyed", existing.ID),
-			"Run 'evo destroy' to finish it, then deploy again.")
+			i18n.Tf("deployment %s is being destroyed", "развёртывание %s в процессе удаления", existing.ID),
+			i18n.T("Run 'evo destroy' to finish it, then deploy again.", "Завершите удаление командой 'evo destroy', затем разверните заново."))
 	}
 	// One directory holds one deployment: never send this compose file to
 	// a VM of another project, nor open its ports there.
 	if !isNewDeploy && existing.ProjectID != "" && e.Config.ProjectID != "" && existing.ProjectID != e.Config.ProjectID {
 		return clerrors.New(clerrors.CodeConfigInvalid,
-			fmt.Sprintf("this directory already has deployment %s in project %s, not in %s", existing.ID, existing.ProjectID, e.Config.ProjectID),
-			fmt.Sprintf("Update it with --project-id %s, or run 'evo destroy' first and deploy to the new project.", existing.ProjectID))
+			i18n.Tf("this directory already has deployment %s in project %s, not in %s",
+				"в этом каталоге уже есть развёртывание %s в проекте %s, а не в %s", existing.ID, existing.ProjectID, e.Config.ProjectID),
+			i18n.Tf("Update it with --project-id %s, or run 'evo destroy' first and deploy to the new project.",
+				"Обновите его с --project-id %s или сначала выполните 'evo destroy' и разверните в новом проекте.", existing.ProjectID))
 	}
 
 	// Skip only a deployment that finished: after an SSH or Docker failure the
 	// hash is already recorded, and a plain re-run must retry.
 	if !isNewDeploy && existing.ComposeHash == project.Hash && existing.Status == "running" && !opts.Force {
-		e.Printer.Success("No changes detected in compose file (hash unchanged). Nothing to deploy.")
-		e.Printer.Hint("Use --force to redeploy anyway.")
+		e.Printer.Success(i18n.T("No changes detected in compose file (hash unchanged). Nothing to deploy.",
+			"Compose-файл не изменился (хеш тот же), развёртывать нечего."))
+		e.Printer.Hint(i18n.T("Use --force to redeploy anyway.", "Развернуть заново всё равно: --force."))
 		return nil
 	}
 	if !isNewDeploy && opts.DryRun {
@@ -106,7 +110,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 
 	// Step 1: Auth (must happen before any API calls).
-	e.Printer.Step(1, totalSteps, "Authenticating...")
+	e.Printer.Step(1, totalSteps, i18n.T("Authenticating...", "Аутентификация..."))
 	tok, err := e.Auth.Token(ctx)
 	if err != nil {
 		return err
@@ -114,7 +118,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	if ts, ok := e.Cloud.(interface{ SetToken(string) }); ok {
 		ts.SetToken(tok.Value)
 	}
-	e.Printer.StepDone("IAM token valid")
+	e.Printer.StepDone(i18n.T("IAM token valid", "Токен IAM действителен"))
 
 	// Determine flavor (requires auth for ListFlavors API call).
 	var flavorName string
@@ -126,8 +130,8 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 
 	// Step 2: Analyze.
-	e.Printer.Step(2, totalSteps, "Analyzing compose file...")
-	e.Printer.StepDone(fmt.Sprintf("%d service(s), %d exposed port(s), hash=%s",
+	e.Printer.Step(2, totalSteps, i18n.T("Analyzing compose file...", "Разбор compose-файла..."))
+	e.Printer.StepDone(i18n.Tf("%d service(s), %d exposed port(s), hash=%s", "сервисов: %d, открытых портов: %d, хеш=%s",
 		len(project.Services), len(project.Ports)+len(project.UDPPorts), project.Hash[:12]))
 	for _, w := range project.Warnings {
 		e.Printer.Warning(w)
@@ -153,7 +157,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			return err
 		}
 	} else {
-		e.Printer.Step(3, totalSteps, "Reusing existing VM...")
+		e.Printer.Step(3, totalSteps, i18n.T("Reusing existing VM...", "Используется существующая ВМ..."))
 		rec = *existing
 		rec.ComposeHash = project.Hash
 		rec.ExposedPorts = project.Ports
@@ -173,16 +177,17 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			stateFile.UpsertDeployment(rec)
 			_ = state.Write(statePath, stateFile)
 		}
-		e.Printer.StepDone(fmt.Sprintf("VM %s at %s", rec.VMID, rec.VMIP))
+		e.Printer.StepDone(i18n.Tf("VM %s at %s", "ВМ %s, адрес %s", rec.VMID, rec.VMIP))
 	}
 
 	// Step 4: Deploy — SSH connect, upload, compose up.
-	e.Printer.Step(4, totalSteps, "Deploying application...")
+	e.Printer.Step(4, totalSteps, i18n.T("Deploying application...", "Развёртывание приложения..."))
 
 	if rec.VMIP == "" {
 		return clerrors.New(clerrors.CodeVMProvisionFailed,
-			"VM has no public IP address",
-			"Floating IP assignment failed. Check Cloud.ru console and assign a floating IP manually.")
+			i18n.T("VM has no public IP address", "у ВМ нет внешнего IP-адреса"),
+			i18n.T("Floating IP assignment failed. Check Cloud.ru console and assign a floating IP manually.",
+				"Не удалось привязать floating IP. Проверьте ВМ в консоли Cloud.ru и привяжите floating IP вручную."))
 	}
 
 	maxRetries := sshMaxRetries
@@ -226,14 +231,14 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		}
 		return err
 	}
-	e.Printer.StepDone("SSH connected, docker compose ready")
+	e.Printer.StepDone(i18n.T("SSH connected, docker compose ready", "SSH подключён, docker compose готов"))
 
 	// Upload compose file.
 	composeData, err := os.ReadFile(opts.ComposeFile)
 	if err != nil {
 		return clerrors.Wrap(clerrors.CodeComposeNotFound,
-			fmt.Sprintf("cannot read compose file: %s", opts.ComposeFile),
-			"Check file permissions.",
+			i18n.Tf("cannot read compose file: %s", "не удалось прочитать compose-файл: %s", opts.ComposeFile),
+			i18n.T("Check file permissions.", "Проверьте права на файл."),
 			err)
 	}
 
@@ -252,11 +257,11 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 	if err := e.Deployer.ExecStream(ctx, fmt.Sprintf("cd %s && docker compose -f docker-compose.yml up -d", remoteComposeDir), progress, progress); err != nil {
 		return clerrors.Wrap(clerrors.CodeSSHTimeout,
-			"docker compose up failed",
-			"Check your compose file and service logs on the VM.",
+			i18n.T("docker compose up failed", "docker compose up завершился ошибкой"),
+			i18n.T("Check your compose file and service logs on the VM.", "Проверьте compose-файл и журналы сервисов на ВМ."),
 			err)
 	}
-	e.Printer.StepDone("Application deployed")
+	e.Printer.StepDone(i18n.T("Application deployed", "Приложение развёрнуто"))
 
 	// Update state to running.
 	rec.Status = "running"
@@ -267,7 +272,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 
 	// Step 5: Verify.
-	e.Printer.Step(5, totalSteps, "Verifying health...")
+	e.Printer.Step(5, totalSteps, i18n.T("Verifying health...", "Проверка работоспособности..."))
 	if len(project.Ports) > 0 {
 		// Give containers a moment to start.
 		t := e.timings()
@@ -283,10 +288,10 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		results := probe(ctx, rec.VMIP, project.Ports, t.VerifyTimeout)
 		e.printVerifyResults(results, rec.VMIP)
 	} else {
-		e.Printer.StepDone("No exposed ports to verify")
+		e.Printer.StepDone(i18n.T("No exposed ports to verify", "Открытых портов нет, проверять нечего"))
 	}
 
-	e.Printer.Success(fmt.Sprintf("\nDeployment complete! VM IP: %s", rec.VMIP))
+	e.Printer.Success(i18n.Tf("\nDeployment complete! VM IP: %s", "\nГотово! IP ВМ: %s", rec.VMIP))
 	return nil
 }
 
@@ -318,11 +323,11 @@ func (e *Engine) resolveFlavor(ctx context.Context, opts DeployOptions, project 
 	match := sizer.Match(estimated, flavorList)
 	if match == nil {
 		return "", clerrors.New(clerrors.CodeConfigInvalid,
-			"no suitable flavor found for the workload",
-			"Specify a flavor explicitly with --flavor.")
+			i18n.T("no suitable flavor found for the workload", "не найден flavor, подходящий под нагрузку"),
+			i18n.T("Specify a flavor explicitly with --flavor.", "Задайте flavor явно: --flavor."))
 	}
 
-	e.Printer.StepDone(fmt.Sprintf("Recommended flavor: %s (%d vCPU, %d GB RAM)",
+	e.Printer.StepDone(i18n.Tf("Recommended flavor: %s (%d vCPU, %d GB RAM)", "Подобран flavor: %s (%d vCPU, %d ГБ RAM)",
 		match.Flavor.Name, match.Flavor.VCPUs, match.Flavor.RAMGB))
 
 	return match.Flavor.ID, nil
@@ -330,20 +335,22 @@ func (e *Engine) resolveFlavor(ctx context.Context, opts DeployOptions, project 
 
 // provisionVM creates a new VM and waits for it to become active.
 func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile *state.File, statePath string, project *compose.Project, flavorName, region string) (state.DeploymentRecord, error) {
-	e.Printer.Step(3, totalSteps, "Provisioning VM...")
+	e.Printer.Step(3, totalSteps, i18n.T("Provisioning VM...", "Создание ВМ..."))
 
 	projectID := e.Config.ProjectID
 	if projectID == "" {
 		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
-			"CLOUDRU_PROJECT_ID is required",
-			"Set CLOUDRU_PROJECT_ID environment variable or project_id in config file. Find it at https://console.cloud.ru")
+			i18n.T("CLOUDRU_PROJECT_ID is required", "не задан CLOUDRU_PROJECT_ID"),
+			i18n.T("Set CLOUDRU_PROJECT_ID environment variable or project_id in config file. Find it at https://console.cloud.ru",
+				"Задайте переменную CLOUDRU_PROJECT_ID или project_id в файле настроек ('evo configure'). ID проекта — в https://console.cloud.ru"))
 	}
 
 	imageID := e.Config.ImageID
 	if imageID == "" {
 		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
-			"CLOUDRU_IMAGE_ID is required",
-			"Set CLOUDRU_IMAGE_ID environment variable or image_id in config file. Find available images in Cloud.ru console.")
+			i18n.T("CLOUDRU_IMAGE_ID is required", "не задан CLOUDRU_IMAGE_ID"),
+			i18n.T("Set CLOUDRU_IMAGE_ID environment variable or image_id in config file. Find available images in Cloud.ru console.",
+				"Задайте переменную CLOUDRU_IMAGE_ID или image_id в .evo.yaml ('evo init' выберет образ сам; список — 'evo list-images')."))
 	}
 
 	projectName := e.Config.ProjectName
@@ -355,7 +362,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	// Fetch image details to discover required metadata field names.
 	imgDetail, err := e.Cloud.GetImage(ctx, imageID)
 	if err != nil {
-		return state.DeploymentRecord{}, fmt.Errorf("get image details: %w", err)
+		return state.DeploymentRecord{}, fmt.Errorf(i18n.T("get image details: %w", "сведения об образе: %w"), err)
 	}
 	diskSize, diskNote := provision.BootDiskGB(e.Config.DiskSize, imgDetail.MinDisk)
 	if diskNote != "" {
@@ -435,8 +442,9 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	}
 	if sshUser == "" {
 		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
-			fmt.Sprintf("image %s declares no login user", imageID),
-			"Choose a Linux image whose metadata has a 'name' field (evo list-images), e.g. Ubuntu-24.04.")
+			i18n.Tf("image %s declares no login user", "в образе %s не задан пользователь для входа", imageID),
+			i18n.T("Choose a Linux image whose metadata has a 'name' field (evo list-images), e.g. Ubuntu-24.04.",
+				"Выберите образ Linux, в метаданных которого есть поле 'name' (evo list-images), например Ubuntu-24.04."))
 	}
 
 	diskType, err := e.resolveDiskType(ctx, projectID, defaultDiskTypeName)
@@ -553,14 +561,16 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		// The VM exists and is billed; without its ID here nothing would
 		// point to it.
 		return rec, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
-			fmt.Sprintf("VM %s was created, but the state file could not be saved", vm.ID),
-			fmt.Sprintf("VM %s is running and billed. Delete it in the Cloud.ru console, or fix the state file problem and record it there.", vm.ID),
+			i18n.Tf("VM %s was created, but the state file could not be saved", "ВМ %s создана, но файл state не удалось сохранить", vm.ID),
+			i18n.Tf("VM %s is running and billed. Delete it in the Cloud.ru console, or fix the state file problem and record it there.",
+				"ВМ %s работает и тарифицируется. Удалите её в консоли Cloud.ru или устраните проблему с файлом state и запишите ВМ туда.", vm.ID),
 			err)
 	}
 	if createErr != nil {
 		return rec, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
-			fmt.Sprintf("VM %s was created, but the create call failed", vm.ID),
-			fmt.Sprintf("VM %s is billed and recorded in the state: run 'evo deploy' again to finish it, or 'evo destroy' to delete it.", vm.ID),
+			i18n.Tf("VM %s was created, but the create call failed", "ВМ %s создана, но запрос на создание завершился ошибкой", vm.ID),
+			i18n.Tf("VM %s is billed and recorded in the state: run 'evo deploy' again to finish it, or 'evo destroy' to delete it.",
+				"ВМ %s тарифицируется и записана в state: повторите 'evo deploy', чтобы завершить развёртывание, или удалите её: 'evo destroy'.", vm.ID),
 			createErr)
 	}
 
@@ -609,17 +619,18 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			return interrupted(sig.String())
 		case <-pollDeadline:
 			return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
-				fmt.Sprintf("VM %s did not become active within %s", vm.ID, t.VMPollTimeout),
-				fmt.Sprintf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).", vm.ID))
+				i18n.Tf("VM %s did not become active within %s", "ВМ %s не стала активной за %s", vm.ID, t.VMPollTimeout),
+				i18n.Tf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
+					"Проверьте ВМ: 'evo vm get %s' или консоль Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).", vm.ID))
 		case <-ticker.C:
 			updated, err := e.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
-				e.Printer.Warning(fmt.Sprintf("poll error: %v", err))
+				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))
 				continue
 			}
 			switch updated.Status {
 			case "active", "running":
-				e.Printer.StepDone(fmt.Sprintf("VM %s active", vm.ID))
+				e.Printer.StepDone(i18n.Tf("VM %s active", "ВМ %s активна", vm.ID))
 
 				// The floating (public) IP: attached at creation, or now.
 				var publicIP, fipID string
@@ -644,7 +655,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 					// Continue without public IP — user can assign manually.
 				}
 				if publicIP != "" {
-					e.Printer.StepDone(fmt.Sprintf("Public IP: %s", publicIP))
+					e.Printer.StepDone(i18n.Tf("Public IP: %s", "Внешний IP: %s", publicIP))
 				}
 				// The rule IDs go to state at once: destroy deletes them.
 				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
@@ -653,8 +664,8 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				return rec, nil
 			case "error":
 				return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
-					fmt.Sprintf("VM %s entered error state", vm.ID),
-					"Check Cloud.ru console for details.")
+					i18n.Tf("VM %s entered error state", "ВМ %s перешла в состояние error", vm.ID),
+					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru."))
 			}
 		case <-ctx.Done():
 			// The CLI cancels ctx on the same SIGINT/SIGTERM that sigCh
@@ -697,11 +708,11 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 	// Poll until the primary interface reaches "created" state.
 	// Cloud.ru returns 422 "interface_can_not_be_changed_from_current_state"
 	// if the interface is still being provisioned.
-	report("Waiting for the VM network interface...")
+	report("%s", i18n.T("Waiting for the VM network interface...", "Ожидание сетевого интерфейса ВМ..."))
 	var ifaceID string
 	for attempt := 0; attempt < ifaceMaxAttempts; attempt++ {
 		if attempt > 0 && attempt%fipProgressEvery == 0 {
-			report("Still waiting for the network interface (%s)", elapsed())
+			report(i18n.T("Still waiting for the network interface (%s)", "Всё ещё ждём сетевой интерфейс (%s)"), elapsed())
 		}
 		vmDetail, err := cloud.GetVMDetail(ctx, vmID)
 		if err != nil {
@@ -743,11 +754,12 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 		}
 	}
 	if ifaceID == "" {
-		return "", "", fmt.Errorf("no primary interface found on VM %s after %s (or interface not ready)", vmID, elapsed())
+		return "", "", fmt.Errorf(i18n.T("no primary interface found on VM %s after %s (or interface not ready)",
+			"у ВМ %s за %s не найден основной интерфейс (или он не готов)"), vmID, elapsed())
 	}
 
 	// Create floating IP with retry.
-	report("Creating floating IP...")
+	report("%s", i18n.T("Creating floating IP...", "Создание floating IP..."))
 	var fip *provision.FloatingIP
 	var err error
 	for attempt := 0; attempt < 5; attempt++ {
@@ -763,7 +775,7 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 		if ctx.Err() != nil {
 			return "", "", ctx.Err()
 		}
-		report("Creating floating IP failed (%v), retrying", err)
+		report(i18n.T("Creating floating IP failed (%v), retrying", "Не удалось создать floating IP (%v), повтор"), err)
 		select {
 		case <-ctx.Done():
 			return "", "", ctx.Err()
@@ -776,7 +788,7 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 		// It is billed, so find it by its name.
 		found := findFloatingIPByName(ctx, cloud, projectID, fipName(vmID))
 		if found == nil {
-			return "", "", fmt.Errorf("create floating IP: %w", err)
+			return "", "", fmt.Errorf(i18n.T("create floating IP: %w", "создание floating IP: %w"), err)
 		}
 		fip = found
 	}
@@ -788,9 +800,10 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 			return fip.IPAddress, fipID, nil
 		}
 		if attempt == 0 {
-			report("Waiting for floating IP %s to attach...", fip.IPAddress)
+			report(i18n.T("Waiting for floating IP %s to attach...", "Ожидание привязки floating IP %s..."), fip.IPAddress)
 		} else if attempt%fipProgressEvery == 0 {
-			report("Still waiting for floating IP %s (state %q, %s)", fip.IPAddress, fip.State, elapsed())
+			report(i18n.T("Still waiting for floating IP %s (state %q, %s)", "Всё ещё ждём floating IP %s (состояние %q, %s)"),
+				fip.IPAddress, fip.State, elapsed())
 		}
 		select {
 		case <-ctx.Done():
@@ -805,7 +818,8 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 	}
 
 	// Return whatever IP we got even if state isn't confirmed.
-	report("Floating IP %s not confirmed after %s; continuing", fip.IPAddress, elapsed())
+	report(i18n.T("Floating IP %s not confirmed after %s; continuing", "Привязка floating IP %s не подтвердилась за %s; продолжаем"),
+		fip.IPAddress, elapsed())
 	return fip.IPAddress, fipID, nil
 }
 
@@ -822,12 +836,15 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 	if err != nil || fip == nil || fip.ID == "" {
 		if provision.IsQuotaError(err) {
 			return nil, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
-				"no public IP can be reserved: the floating IP quota is exhausted",
-				"Nothing was created. Delete a floating IP you no longer need (list_floating_ips / release_floating_ip) or raise the quota in the Cloud.ru console, then retry.",
+				i18n.T("no public IP can be reserved: the floating IP quota is exhausted",
+					"не удалось зарезервировать внешний IP: квота floating IP исчерпана"),
+				i18n.T("Nothing was created. Delete a floating IP you no longer need (list_floating_ips / release_floating_ip) or raise the quota in the Cloud.ru console, then retry.",
+					"Ничего не создано. Освободите ненужный floating IP ('evo vpc fips', 'evo vpc fip-release') или увеличьте квоту в консоли Cloud.ru и повторите."),
 				err)
 		}
 		if ctx.Err() == nil {
-			e.Printer.Warning(fmt.Sprintf("could not reserve a public IP before creating the VM (%v); it will be attached after boot, which can make the first boot slow", err))
+			e.Printer.Warning(i18n.Tf("could not reserve a public IP before creating the VM (%v); it will be attached after boot, which can make the first boot slow",
+				"не удалось зарезервировать внешний IP до создания ВМ (%v); он будет привязан после загрузки, из-за этого первая загрузка может затянуться", err))
 		}
 		return nil, nil
 	}
@@ -842,7 +859,8 @@ func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := e.Cloud.DeleteFloatingIP(ctx, fip.ID, projectID); err != nil {
-		e.Printer.Warning(fmt.Sprintf("floating IP %s (%s) was not released: %v; delete it in the Cloud.ru console", fip.IPAddress, fip.ID, err))
+		e.Printer.Warning(i18n.Tf("floating IP %s (%s) was not released: %v; delete it in the Cloud.ru console",
+			"floating IP %s (%s) не освобождён: %v; удалите его в консоли Cloud.ru", fip.IPAddress, fip.ID, err))
 	}
 }
 
@@ -864,20 +882,21 @@ func (e *Engine) waitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmI
 		}
 	}
 	// Not attached at creation: bind it to the primary interface.
-	e.Printer.StepDone(fmt.Sprintf("Attaching floating IP %s...", fip.IPAddress))
+	e.Printer.StepDone(i18n.Tf("Attaching floating IP %s...", "Привязка floating IP %s...", fip.IPAddress))
 	detail, err := e.Cloud.GetVMDetail(ctx, vmID)
 	if err != nil {
-		return fip.IPAddress, fip.ID, fmt.Errorf("attach floating IP %s: %w", fip.IPAddress, err)
+		return fip.IPAddress, fip.ID, fmt.Errorf(i18n.T("attach floating IP %s: %w", "привязка floating IP %s: %w"), fip.IPAddress, err)
 	}
 	for _, iface := range detail.Interfaces {
 		if iface.Primary {
 			if _, err := e.Cloud.AttachFloatingIP(ctx, fip.ID, projectID, iface.ID, ""); err != nil {
-				return fip.IPAddress, fip.ID, fmt.Errorf("attach floating IP %s: %w", fip.IPAddress, err)
+				return fip.IPAddress, fip.ID, fmt.Errorf(i18n.T("attach floating IP %s: %w", "привязка floating IP %s: %w"), fip.IPAddress, err)
 			}
 			return fip.IPAddress, fip.ID, nil
 		}
 	}
-	return fip.IPAddress, fip.ID, fmt.Errorf("attach floating IP %s: no primary interface on VM %s", fip.IPAddress, vmID)
+	return fip.IPAddress, fip.ID, fmt.Errorf(i18n.T("attach floating IP %s: no primary interface on VM %s",
+		"привязка floating IP %s: у ВМ %s нет основного интерфейса"), fip.IPAddress, vmID)
 }
 
 // vmNameFor turns the project (directory) name into the VM name, which is
@@ -974,11 +993,15 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 		}
 	}
 	return clerrors.Wrap(clerrors.CodeSSHTimeout,
-		fmt.Sprintf("SSH connection failed after %d attempts", maxRetries),
-		"VM may still be booting: try 'evo deploy' again in a few minutes. If it stays unreachable, its first boot "+
+		i18n.Tf("SSH connection failed after %d attempts", "не удалось подключиться по SSH за %d попыток", maxRetries),
+		i18n.T("VM may still be booting: try 'evo deploy' again in a few minutes. If it stays unreachable, its first boot "+
 			"probably could not reach the network (seen on Cloud.ru: no DNS inside the VM, the image's apt mirror unreachable), "+
 			"so sshd never started: check the subnet's DNS in the Cloud.ru console, or 'evo destroy' and deploy again, "+
 			"in another zone if it repeats.",
+			"ВМ может ещё загружаться: повторите 'evo deploy' через несколько минут. Если она так и не станет доступной, "+
+				"вероятно, при первой загрузке у неё не было сети (на Cloud.ru встречалось: нет DNS внутри ВМ, недоступно "+
+				"apt-зеркало образа), и sshd не запустился: проверьте DNS подсети в консоли Cloud.ru или выполните "+
+				"'evo destroy' и разверните заново — если повторится, в другой зоне."),
 		lastErr)
 }
 
@@ -993,7 +1016,8 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	deadline := start.Add(t.DockerWaitTimeout)
 	installCmd := bootstrap.InstallCommand(user)
 
-	e.Printer.StepDone("Preparing Docker on the VM (a fresh VM takes a few minutes)...")
+	e.Printer.StepDone(i18n.T("Preparing Docker on the VM (a fresh VM takes a few minutes)...",
+		"Подготовка Docker на ВМ (на новой ВМ — несколько минут)..."))
 	var lastErr error
 	var lastOut string
 	for attempt := 1; ; attempt++ {
@@ -1022,7 +1046,8 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		if !time.Now().Before(deadline) {
 			break
 		}
-		e.Printer.Warning(fmt.Sprintf("Docker not ready yet (attempt %d, %s elapsed), retrying...",
+		e.Printer.Warning(i18n.Tf("Docker not ready yet (attempt %d, %s elapsed), retrying...",
+			"Docker ещё не готов (попытка %d, прошло %s), повтор...",
 			attempt, time.Since(start).Round(time.Second)))
 		select {
 		case <-ctx.Done():
@@ -1040,13 +1065,16 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		}
 	}
 
-	hint := "Check that the VM resolves names (the subnet's DNS) and reaches its apt mirror and get.docker.com, " +
-		"then re-run 'evo deploy'. \"Temporary failure in name resolution\" above means no DNS inside the VM: a network problem of the zone or subnet, not of the compose project; if it repeats, destroy and deploy in another zone."
+	hint := i18n.T("Check that the VM resolves names (the subnet's DNS) and reaches its apt mirror and get.docker.com, "+
+		"then re-run 'evo deploy'. \"Temporary failure in name resolution\" above means no DNS inside the VM: a network problem of the zone or subnet, not of the compose project; if it repeats, destroy and deploy in another zone.",
+		"Проверьте, что ВМ разрешает имена (DNS подсети) и достаёт до своего apt-зеркала и get.docker.com, "+
+			"затем повторите 'evo deploy'. \"Temporary failure in name resolution\" выше означает, что внутри ВМ нет DNS: "+
+			"это проблема сети зоны или подсети, а не compose-проекта; если повторится, удалите ВМ (destroy) и разверните в другой зоне.")
 	if tail := lastLines(lastOut, 15); tail != "" {
-		hint = "Last output of the Docker install:\n" + tail + "\n" + hint
+		hint = i18n.T("Last output of the Docker install:\n", "Последние строки установки Docker:\n") + tail + "\n" + hint
 	}
 	return clerrors.Wrap(clerrors.CodeSSHTimeout,
-		fmt.Sprintf("Docker is not ready on VM %s after %s", ip, t.DockerWaitTimeout),
+		i18n.Tf("Docker is not ready on VM %s after %s", "Docker на ВМ %s не готов за %s", ip, t.DockerWaitTimeout),
 		hint, lastErr)
 }
 
@@ -1077,7 +1105,7 @@ func lastLines(s string, n int) string {
 func (e *Engine) resolveDiskType(ctx context.Context, projectID, name string) (*provision.DiskType, error) {
 	types, err := e.Cloud.ListDiskTypes(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("list disk types: %w", err)
+		return nil, fmt.Errorf(i18n.T("list disk types: %w", "список типов дисков: %w"), err)
 	}
 	names := make([]string, 0, len(types))
 	for _, dt := range types {
@@ -1087,16 +1115,17 @@ func (e *Engine) resolveDiskType(ctx context.Context, projectID, name string) (*
 		names = append(names, dt.Name)
 	}
 	return nil, clerrors.New(clerrors.CodeConfigInvalid,
-		fmt.Sprintf("disk type %q not found in project", name),
-		fmt.Sprintf("Available disk types: %s.", strings.Join(names, ", ")))
+		i18n.Tf("disk type %q not found in project", "тип диска %q в проекте не найден", name),
+		i18n.Tf("Available disk types: %s.", "Доступные типы дисков: %s.", strings.Join(names, ", ")))
 }
 
 // sshUserOf returns the login user recorded for the deployment.
 func sshUserOf(rec *state.DeploymentRecord) (string, error) {
 	if rec.SSHUser == "" {
 		return "", clerrors.New(clerrors.CodeStateCorrupted,
-			fmt.Sprintf("deployment %s has no ssh_user in state", rec.ID),
-			"Set \"ssh_user\" in state.json (.evo/, or the legacy .cloudru-vm/) to the image's login user (Cloud.ru images: user1).")
+			i18n.Tf("deployment %s has no ssh_user in state", "у развёртывания %s в state нет ssh_user", rec.ID),
+			i18n.T("Set \"ssh_user\" in state.json (.evo/, or the legacy .cloudru-vm/) to the image's login user (Cloud.ru images: user1).",
+				"Задайте \"ssh_user\" в state.json (.evo/ или старый .cloudru-vm/) — пользователя для входа из образа (у образов Cloud.ru — user1)."))
 	}
 	return rec.SSHUser, nil
 }
@@ -1116,15 +1145,24 @@ func (e *Engine) vmLeftRunning(ctx context.Context, err error, vmID string) erro
 	if stderrors.As(err, &cliErr) && strings.Contains(cliErr.Hint, vmID) {
 		return err // handleInterrupt already said what happened to the VM
 	}
-	e.Printer.Warning(fmt.Sprintf("Interrupted. VM %s left running.", vmID))
+	e.Printer.Warning(i18n.Tf("Interrupted. VM %s left running.", "Прервано. ВМ %s продолжает работать.", vmID))
 	cause := err
 	if !stderrors.Is(err, context.Canceled) {
 		cause = fmt.Errorf("%w: %w", context.Canceled, err)
 	}
 	return clerrors.Wrap(clerrors.CodeVMProvisionFailed,
-		"deployment interrupted",
-		fmt.Sprintf("VM %s was created and is still running. Use 'evo destroy --force' to delete it.", vmID),
+		deployInterrupted(),
+		vmStillRunningHint(vmID),
 		cause)
+}
+
+func deployInterrupted() string {
+	return i18n.T("deployment interrupted", "развёртывание прервано")
+}
+
+func vmStillRunningHint(vmID string) string {
+	return i18n.Tf("VM %s was created and is still running. Use 'evo destroy --force' to delete it.",
+		"ВМ %s создана и работает. Удалить её: 'evo destroy --force'.", vmID)
 }
 
 // handleInterrupt handles SIGINT/SIGTERM (or a cancelled context) after VM
@@ -1132,36 +1170,39 @@ func (e *Engine) vmLeftRunning(ctx context.Context, err error, vmID string) erro
 // context.Canceled, so the CLI exits 130.
 func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) (deleted bool, _ error) {
 	if nonInteractive || !confirm.StdinIsTTY() {
-		e.Printer.Warning(fmt.Sprintf("Received %s. VM %s left running (non-interactive mode).", sig, vmID))
+		e.Printer.Warning(i18n.Tf("Received %s. VM %s left running (non-interactive mode).",
+			"Получен %s. ВМ %s продолжает работать (режим без вопросов).", sig, vmID))
 		return false, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
-			"deployment interrupted",
-			fmt.Sprintf("VM %s was created and is still running. Use 'evo destroy --force' to delete it.", vmID),
+			deployInterrupted(),
+			vmStillRunningHint(vmID),
 			context.Canceled)
 	}
 
-	fmt.Fprintf(e.Printer.ErrWriter(), "\nReceived %s. Delete the VM %s? [y/N] ", sig, vmID)
+	fmt.Fprintf(e.Printer.ErrWriter(), i18n.T("\nReceived %s. Delete the VM %s? [y/N] ",
+		"\nПолучен %s. Удалить ВМ %s? (y/д — да, Enter — нет) "), sig, vmID)
 	var answer string
 	fmt.Fscanln(confirm.Stdin, &answer)
 
-	if answer == "y" || answer == "Y" {
-		e.Printer.StepDone("Deleting VM...")
+	if confirm.IsYes(answer) {
+		e.Printer.StepDone(i18n.T("Deleting VM...", "Удаление ВМ..."))
 		// A VM still being created cannot be deleted yet: wait as destroy
 		// does instead of leaving it behind (QA H2).
 		deleteCtx, cancel := context.WithTimeout(context.Background(), e.timings().DeletableWaitTimeout+time.Minute)
 		defer cancel()
 		if err := e.deleteVMWhenDeletable(deleteCtx, vmID); err != nil {
-			e.Printer.Warning(fmt.Sprintf("Failed to delete VM: %v", err))
+			e.Printer.Warning(i18n.Tf("Failed to delete VM: %v", "Не удалось удалить ВМ: %v", err))
 		} else {
-			e.Printer.StepDone("VM deleted")
+			e.Printer.StepDone(i18n.T("VM deleted", "ВМ удалена"))
 			deleted = true
 		}
 	} else {
-		e.Printer.Warning(fmt.Sprintf("VM %s left running.", vmID))
+		e.Printer.Warning(i18n.Tf("VM %s left running.", "ВМ %s продолжает работать.", vmID))
 	}
 
 	return deleted, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
-		"deployment interrupted by signal",
-		fmt.Sprintf("VM %s was created. Use 'evo destroy' to clean up if needed.", vmID),
+		i18n.T("deployment interrupted by signal", "развёртывание прервано сигналом"),
+		i18n.Tf("VM %s was created. Use 'evo destroy' to clean up if needed.",
+			"ВМ %s была создана. Если она осталась, удалите её: 'evo destroy'.", vmID),
 		context.Canceled)
 }
 
@@ -1173,7 +1214,7 @@ func (e *Engine) printVerifyResults(results []verify.ProbeResult, ip string) {
 			e.Printer.StepDone(fmt.Sprintf(":%d -> %d (%s)", r.Port, r.StatusCode, r.Latency.Round(time.Millisecond)))
 		} else {
 			allHealthy = false
-			msg := fmt.Sprintf(":%d -> UNHEALTHY", r.Port)
+			msg := fmt.Sprintf(":%d -> %s", r.Port, i18n.T("UNHEALTHY", "НЕ ОТВЕЧАЕТ"))
 			if r.Error != "" {
 				msg += fmt.Sprintf(" (%s)", r.Error)
 			}
@@ -1181,7 +1222,8 @@ func (e *Engine) printVerifyResults(results []verify.ProbeResult, ip string) {
 		}
 	}
 	if !allHealthy {
-		e.Printer.Hint("Some health checks failed. Services may still be starting. Re-check with: curl http://" + ip + ":<port>/")
+		e.Printer.Hint(i18n.T("Some health checks failed. Services may still be starting. Re-check with: curl http://",
+			"Часть проверок не прошла. Возможно, сервисы ещё запускаются. Проверьте ещё раз: curl http://") + ip + i18n.T(":<port>/", ":<порт>/"))
 	}
 }
 

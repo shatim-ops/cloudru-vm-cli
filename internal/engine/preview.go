@@ -8,6 +8,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -16,6 +17,16 @@ import (
 // costNote goes next to every price shown before an operation: Cloud.ru has
 // no public price API, internal/pricing is a rate card.
 const costNote = "estimate, not a bill"
+
+func costNoteText() string { return i18n.T(costNote, "оценка, а не счёт") }
+
+// previewLabel is the name of a preview line, padded so the values line up.
+func previewLabel(en, ru string) string {
+	if i18n.Lang() == i18n.EN {
+		return fmt.Sprintf("%-11s", en+":")
+	}
+	return fmt.Sprintf("%-12s", ru+":")
+}
 
 // errDryRun stops provisionVM before the VM is created; Deploy turns it into
 // success.
@@ -73,22 +84,26 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 
 	flavor := vm.Flavor.Name
 	if vm.Flavor.VCPUs > 0 {
-		flavor += fmt.Sprintf(" (%d vCPU, %d GB RAM)", vm.Flavor.VCPUs, vm.Flavor.RAMGB)
+		flavor += i18n.Tf(" (%d vCPU, %d GB RAM)", " (%d vCPU, %d ГБ RAM)", vm.Flavor.VCPUs, vm.Flavor.RAMGB)
 	}
-	costLine := fmt.Sprintf("cost:      ~%.2f %s/month (compute %.2f + disk %.2f), %s",
-		cost.TotalMonthlyRub, cost.Currency, cost.ComputeMonthlyRub, cost.DiskMonthlyRub, costNote)
+	costLine := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (compute %.2f + disk %.2f), %s",
+		"~%.2f %s в месяц (вычисления %.2f + диск %.2f), %s",
+		cost.TotalMonthlyRub, cost.Currency, cost.ComputeMonthlyRub, cost.DiskMonthlyRub, costNoteText())
 	if vm.Flavor.VCPUs == 0 {
-		costLine += "; flavor size unknown, compute may be missing from the total"
+		costLine += i18n.T("; flavor size unknown, compute may be missing from the total",
+			"; размер flavor неизвестен, вычисления могут не войти в итог")
 	}
 
 	lines := []string{
-		"project:   " + projectText(req.ProjectID),
-		"flavor:    " + flavor,
-		"zone:      " + refText(vm.Zone),
-		"image:     " + refText(vm.Image),
-		fmt.Sprintf("disk:      %d GB boot disk (priced at the SSD rate)", vm.Disk.SizeGB),
-		fmt.Sprintf("network:   subnet %s, security group %s", network.SubnetName, network.SecurityGroup),
-		"public IP: a floating IP will be created and attached",
+		previewLabel("project", "проект") + projectText(req.ProjectID),
+		previewLabel("flavor", "flavor") + flavor,
+		previewLabel("zone", "зона") + refText(vm.Zone),
+		previewLabel("image", "образ") + refText(vm.Image),
+		previewLabel("disk", "диск") + i18n.Tf("%d GB boot disk (priced at the SSD rate)",
+			"загрузочный, %d ГБ (цена по тарифу SSD)", vm.Disk.SizeGB),
+		previewLabel("network", "сеть") + i18n.Tf("subnet %s, security group %s", "подсеть %s, группа безопасности %s",
+			network.SubnetName, network.SecurityGroup),
+		previewLabel("public IP", "внешний IP") + i18n.T("a floating IP will be created and attached", "будет создан и привязан floating IP"),
 	}
 	if len(ports)+len(udpPorts) > 0 {
 		ps := make([]string, 0, len(ports)+len(udpPorts))
@@ -98,15 +113,17 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		for _, p := range udpPorts {
 			ps = append(ps, fmt.Sprintf("%d/udp", p))
 		}
-		lines = append(lines, fmt.Sprintf("ports:     %s opened to 0.0.0.0/0 in security group %s (shared by every VM in it); "+
+		lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to 0.0.0.0/0 in security group %s (shared by every VM in it); "+
 			"destroy deletes the rules this deploy creates",
+			"%s открываются для 0.0.0.0/0 в группе безопасности %s (она общая для всех ВМ в ней); "+
+				"destroy удалит правила, которые создаст этот deploy",
 			strings.Join(ps, ","), network.SecurityGroup))
 	}
 	lines = append(lines, costLine)
 
 	return confirm.Preview{
 		Action:  "deploy",
-		Summary: fmt.Sprintf("create VM %s (%s) in %s", vm.Name, vm.Flavor.Name, vm.Zone.Name),
+		Summary: i18n.Tf("create VM %s (%s) in %s", "создать ВМ %s (%s) в зоне %s", vm.Name, vm.Flavor.Name, vm.Zone.Name),
 		Lines:   lines,
 		Details: map[string]any{
 			"project_id":     req.ProjectID,
@@ -117,7 +134,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 			"open_ports":     ports,
 			"open_udp_ports": udpPorts,
 			"cost":           cost,
-			"cost_note":      costNote,
+			"cost_note":      costNoteText(),
 		},
 	}
 }
@@ -125,17 +142,20 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 // redeployPreview describes an update of an already running VM.
 func redeployPreview(rec *state.DeploymentRecord, project string) confirm.Preview {
 	lines := []string{
-		"project:   " + projectText(project),
-		"upload the compose file to the existing VM and run 'docker compose up -d'",
-		"no new resources are created",
+		previewLabel("project", "проект") + projectText(project),
+		i18n.T("upload the compose file to the existing VM and run 'docker compose up -d'",
+			"загрузить compose-файл на существующую ВМ и выполнить 'docker compose up -d'"),
+		i18n.T("no new resources are created", "новые ресурсы не создаются"),
 	}
 	if rec.SecurityGroupID != "" {
-		lines = append(lines, "ports of the compose file not yet open are opened in security group "+rec.SecurityGroupID+
-			"; destroy deletes the rules deploy creates")
+		lines = append(lines, i18n.Tf("ports of the compose file not yet open are opened in security group %s"+
+			"; destroy deletes the rules deploy creates",
+			"ещё не открытые порты compose-файла открываются в группе безопасности %s"+
+				"; destroy удалит правила, которые создаст deploy", rec.SecurityGroupID))
 	}
 	return confirm.Preview{
 		Action:  "deploy",
-		Summary: fmt.Sprintf("update VM %s (%s)", rec.VMID, rec.VMIP),
+		Summary: i18n.Tf("update VM %s (%s)", "обновить ВМ %s (%s)", rec.VMID, rec.VMIP),
 		Lines:   lines,
 		Details: map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": []string{}},
 	}
@@ -159,16 +179,18 @@ func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
 	for _, p := range sgrules.Plan(sf, ids...) {
 		label := sgrules.Label(p.Rule.Port)
 		if p.KeptFor != "" {
-			note := "still needed by deployment " + p.KeptFor
+			note := i18n.T("still needed by deployment ", "нужно развёртыванию ") + p.KeptFor
 			res = append(res, destroyResource{Type: "security_group_rule", ID: p.Rule.ID, Address: p.Rule.Port, Action: "keep", Note: note})
-			lines = append(lines, fmt.Sprintf("keep the rule for port %s in security group %s (%s)", label, p.Rule.SecurityGroupID, note))
+			lines = append(lines, i18n.Tf("keep the rule for port %s in security group %s (%s)",
+				"оставить правило для порта %s в группе безопасности %s (%s)", label, p.Rule.SecurityGroupID, note))
 			continue
 		}
 		deleting = true
 		r := destroyResource{Type: "security_group_rule", ID: p.Rule.ID, Address: p.Rule.Port, Action: "delete"}
-		line := fmt.Sprintf("delete the rule %s opening port %s in security group %s", p.Rule.ID, label, p.Rule.SecurityGroupID)
+		line := i18n.Tf("delete the rule %s opening port %s in security group %s",
+			"удалить правило %s, которое открывает порт %s в группе безопасности %s", p.Rule.ID, label, p.Rule.SecurityGroupID)
 		if rec := sf.FindDeployment(p.RecordID); rec != nil && rec.Status == "destroyed" {
-			r.Note = "left by an earlier destroy"
+			r.Note = i18n.T("left by an earlier destroy", "осталось от прошлого destroy")
 			line += " (" + r.Note + ")"
 		}
 		res = append(res, r)
@@ -177,8 +199,10 @@ func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
 	if deleting {
 		// Other projects cannot be seen from this state: a VM deployed from
 		// another directory may rely on a rule this deploy created.
-		lines = append(lines, "the security group is shared: other VMs in it that rely on these ports lose them too "+
-			"(re-run 'evo deploy --force' in their directory to reopen)")
+		lines = append(lines, i18n.T("the security group is shared: other VMs in it that rely on these ports lose them too "+
+			"(re-run 'evo deploy --force' in their directory to reopen)",
+			"группа безопасности общая: другие ВМ в ней, которым нужны эти порты, тоже их потеряют "+
+				"(чтобы открыть снова, выполните 'evo deploy --force' в их каталоге)"))
 	}
 	return res, lines
 }
@@ -188,8 +212,9 @@ func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
 func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 	res, lines := rulePreview(sf, pending)
 	return confirm.Preview{
-		Action:  "destroy",
-		Summary: "delete security group rules left by an earlier destroy",
+		Action: "destroy",
+		Summary: i18n.T("delete security group rules left by an earlier destroy",
+			"удалить правила группы безопасности, оставшиеся от прошлого destroy"),
 		Lines:   lines,
 		Details: map[string]any{"resources": res},
 	}
@@ -198,27 +223,28 @@ func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 // destroyPreview lists what destroy deletes and what it leaves behind.
 func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, project string) confirm.Preview {
 	res := []destroyResource{
-		{Type: "vm", ID: rec.VMID, Address: rec.VMIP, Action: "delete", Note: "all data on its disks is lost"},
+		{Type: "vm", ID: rec.VMID, Address: rec.VMIP, Action: "delete",
+			Note: i18n.T("all data on its disks is lost", "все данные на её дисках будут потеряны")},
 	}
 	lines := []string{
-		"project:   " + projectText(project),
-		fmt.Sprintf("delete VM %s and all data on its disks", rec.VMID),
+		previewLabel("project", "проект") + projectText(project),
+		i18n.Tf("delete VM %s and all data on its disks", "удалить ВМ %s и все данные на её дисках", rec.VMID),
 	}
 	if rec.VMIP != "" || rec.FloatingIPID != "" {
 		// The public address of a deployed VM is a floating IP; destroy
 		// releases it after the VM (by floating_ip_id, else by address).
 		res = append(res, destroyResource{Type: "floating_ip", ID: rec.FloatingIPID, Address: rec.VMIP, Action: "release"})
-		lines = append(lines, fmt.Sprintf("release floating IP %s", fipLabel(rec.VMIP, rec.FloatingIPID)))
+		lines = append(lines, i18n.Tf("release floating IP %s", "освободить floating IP %s", fipLabel(rec.VMIP, rec.FloatingIPID)))
 	}
 	ruleRes, ruleLines := rulePreview(sf, append([]string{rec.ID}, pending...))
 	res = append(res, ruleRes...)
 	lines = append(lines, ruleLines...)
 	res = append(res, destroyResource{Type: "state_record", ID: rec.ID, Action: "remove"})
-	lines = append(lines, "remove the deployment from local state")
+	lines = append(lines, i18n.T("remove the deployment from local state", "удалить запись о развёртывании из локального state"))
 
-	summary := "destroy VM " + rec.VMID
+	summary := i18n.T("destroy VM ", "удалить ВМ ") + rec.VMID
 	if rec.Region != "" {
-		summary += " in " + rec.Region
+		summary += i18n.T(" in ", " в зоне ") + rec.Region
 	}
 	return confirm.Preview{
 		Action:  "destroy",
@@ -232,7 +258,7 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 // projects, the person approving must see which one is changed (QA P6).
 func projectText(id string) string {
 	if id == "" {
-		return "(not set)"
+		return i18n.T("(not set)", "(не задан)")
 	}
 	return id
 }

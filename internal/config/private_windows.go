@@ -12,6 +12,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Windows has no file modes: os.Chmod toggles only the read-only bit, and a
@@ -239,7 +241,8 @@ func PrivateFileWarning(path string) string {
 	if len(who) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%s is accessible by other users (%s); run: icacls \"%s\" /inheritance:r /grant:r \"%s:F\"",
+	return i18n.Tf("%s is accessible by other users (%s); run: icacls \"%s\" /inheritance:r /grant:r \"%s:F\"",
+		"%s доступен другим пользователям (%s); выполните: icacls \"%s\" /inheritance:r /grant:r \"%s:F\"",
 		path, strings.Join(who, ", "), path, currentUserName())
 }
 
@@ -250,6 +253,7 @@ func PrivateDirWarning(dir string) string {
 	if len(who) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%s is writable by other users (%s): they can replace the files in it; run: icacls \"%s\" /inheritance:r /grant:r \"%s:(OI)(CI)F\"",
+	return i18n.Tf("%s is writable by other users (%s): they can replace the files in it; run: icacls \"%s\" /inheritance:r /grant:r \"%s:(OI)(CI)F\"",
+		"в %s могут писать другие пользователи (%s) и подменить файлы; выполните: icacls \"%s\" /inheritance:r /grant:r \"%s:(OI)(CI)F\"",
 		dir, strings.Join(who, ", "), dir, currentUserName())
 }

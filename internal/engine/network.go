@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -40,26 +41,28 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 
 	subnets, err := e.Cloud.ListSubnets(ctx, projectID)
 	if err != nil {
-		return n, fmt.Errorf("list subnets: %w", err)
+		return n, fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
 	}
 	if sn := pickInZone(len(subnets), func(i int) (string, string) { return subnets[i].AvailabilityZoneID, subnets[i].Name }, zoneID, n.ZoneName); sn >= 0 {
 		n.SubnetID, n.SubnetName = subnets[sn].ID, subnets[sn].Name
 	} else {
 		return n, clerrors.New(clerrors.CodeConfigInvalid,
-			fmt.Sprintf("no subnet for zone %s in the project", zoneText(n.ZoneName, zoneID)),
-			"Create a network and a subnet in this zone in the Cloud.ru console, or pick another zone with 'evo init'.")
+			i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(n.ZoneName, zoneID)),
+			i18n.T("Create a network and a subnet in this zone in the Cloud.ru console, or pick another zone with 'evo init'.",
+				"Создайте сеть и подсеть в этой зоне в консоли Cloud.ru или выберите другую зону ('evo init')."))
 	}
 
 	sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID)
 	if err != nil {
-		return n, fmt.Errorf("list security groups: %w", err)
+		return n, fmt.Errorf(i18n.T("list security groups: %w", "список групп безопасности: %w"), err)
 	}
 	if g := pickInZone(len(sgs), func(i int) (string, string) { return sgs[i].AvailabilityZoneID, sgs[i].Name }, zoneID, n.ZoneName); g >= 0 {
 		n.SecurityGroupID, n.SecurityGroup = sgs[g].ID, sgs[g].Name
 	} else {
 		return n, clerrors.New(clerrors.CodeConfigInvalid,
-			fmt.Sprintf("no security group for zone %s in the project", zoneText(n.ZoneName, zoneID)),
-			"Create a security group whose name contains the zone name (e.g. 'web_ru.AZ-1') in the Cloud.ru console.")
+			i18n.Tf("no security group for zone %s in the project", "в проекте нет группы безопасности для зоны %s", zoneText(n.ZoneName, zoneID)),
+			i18n.T("Create a security group whose name contains the zone name (e.g. 'web_ru.AZ-1') in the Cloud.ru console.",
+				"Создайте в консоли Cloud.ru группу безопасности, в имени которой есть имя зоны (например, 'web_ru.AZ-1')."))
 	}
 	return n, nil
 }
@@ -103,13 +106,16 @@ func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp
 	res := sgrules.Open(ctx, e.Cloud, projectID, sgID, tcp, udp,
 		func(label string) string { return "evo: port " + label }, rec)
 	if len(res.Opened) > 0 {
-		e.Printer.StepDone("Opened ports " + strings.Join(res.Opened, ",") + " in the security group")
+		e.Printer.StepDone(i18n.Tf("Opened ports %s in the security group", "Открыты порты %s в группе безопасности", strings.Join(res.Opened, ",")))
 	}
 	if len(res.Failed) > 0 {
-		e.Printer.Warning("Could not open ports " + strings.Join(res.Failed, ",") + " — open them in the security group in the Cloud.ru console")
+		e.Printer.Warning(i18n.Tf("Could not open ports %s — open them in the security group in the Cloud.ru console",
+			"Не удалось открыть порты %s — откройте их в группе безопасности в консоли Cloud.ru", strings.Join(res.Failed, ",")))
 	}
 	if len(res.Untracked) > 0 {
-		e.Printer.Warning("Ports " + strings.Join(res.Untracked, ",") + " were opened, but the API returned no rule ID: destroy will not close them — delete those rules in the Cloud.ru console after destroy")
+		e.Printer.Warning(i18n.Tf("Ports %s were opened, but the API returned no rule ID: destroy will not close them — delete those rules in the Cloud.ru console after destroy",
+			"Порты %s открыты, но API не вернул ID правил: destroy их не закроет — после destroy удалите эти правила в консоли Cloud.ru",
+			strings.Join(res.Untracked, ",")))
 	}
 }
 
@@ -119,7 +125,7 @@ func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp
 func (e *Engine) flavorAPIName(ctx context.Context, ref string) (string, error) {
 	flavors, err := e.Cloud.ListFlavors(ctx)
 	if err != nil {
-		return "", fmt.Errorf("list flavors: %w", err)
+		return "", fmt.Errorf(i18n.T("list flavors: %w", "список flavor: %w"), err)
 	}
 	for _, f := range flavors {
 		if f.ID == ref || f.Name == ref {
@@ -127,8 +133,9 @@ func (e *Engine) flavorAPIName(ctx context.Context, ref string) (string, error) 
 		}
 	}
 	return "", clerrors.New(clerrors.CodeConfigInvalid,
-		fmt.Sprintf("flavor %q not found", ref),
-		"Use 'flavor: auto' or a flavor name from the Cloud.ru console.")
+		i18n.Tf("flavor %q not found", "flavor %q не найден", ref),
+		i18n.T("Use 'flavor: auto' or a flavor name from the Cloud.ru console.",
+			"Укажите 'flavor: auto' или имя flavor из консоли Cloud.ru ('evo vm flavors')."))
 }
 
 // randomPassword satisfies the image's complexity rules: one of each class,

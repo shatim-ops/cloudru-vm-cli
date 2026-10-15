@@ -8,6 +8,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/verify"
@@ -53,7 +54,7 @@ func (e *Engine) EnsureSSHKey() error {
 	}
 	priv, pub, err := e.SSHKeyLoader()
 	if err != nil {
-		return fmt.Errorf("SSH key: %w", err)
+		return fmt.Errorf(i18n.T("SSH key: %w", "SSH-ключ: %w"), err)
 	}
 	e.SSHKeyPEM, e.SSHPubKey = priv, pub
 	return nil

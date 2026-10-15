@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // File layout:
@@ -134,7 +135,8 @@ func MigrateLegacyDir() (string, error) {
 	if copied == 0 {
 		return "", nil
 	}
-	return fmt.Sprintf("profiles copied from %s to %s (the legacy directory is left as is; remove it when no older %s is used)",
+	return i18n.Tf("profiles copied from %s to %s (the legacy directory is left as is; remove it when no older %s is used)",
+		"профили скопированы из %s в %s (старый каталог не тронут; удалите его, когда старый %s больше не нужен)",
 		legacy, dir, LegacyAppName), nil
 }
 
@@ -169,8 +171,9 @@ var profileNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
 func ValidateProfileName(name string) error {
 	if !profileNameRe.MatchString(name) {
 		return clerrors.New(clerrors.CodeConfigInvalid,
-			fmt.Sprintf("invalid profile name %q", name),
-			"Use letters, digits, '-', '_' and '.', up to 64 characters")
+			i18n.Tf("invalid profile name %q", "недопустимое имя профиля %q", name),
+			i18n.T("Use letters, digits, '-', '_' and '.', up to 64 characters",
+				"Допустимы латинские буквы, цифры, '-', '_' и '.', не длиннее 64 символов"))
 	}
 	return nil
 }
@@ -188,12 +191,13 @@ func readYAML(path string, v any) (exists bool, err error) {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
-		return false, clerrors.Wrap(clerrors.CodeConfigInvalid, "reading "+path+": "+err.Error(),
-			"Check the file permissions", err)
+		return false, clerrors.Wrap(clerrors.CodeConfigInvalid, i18n.T("reading ", "чтение ")+path+": "+err.Error(),
+			i18n.T("Check the file permissions", "Проверьте права на файл"), err)
 	}
 	if err := yaml.Unmarshal(data, v); err != nil {
-		return true, clerrors.Wrap(clerrors.CodeConfigInvalid, fmt.Sprintf("parsing %s: %v", path, err),
-			"Fix the YAML syntax or recreate the profile with '"+AppName+" configure'", err)
+		return true, clerrors.Wrap(clerrors.CodeConfigInvalid, i18n.Tf("parsing %s: %v", "разбор %s: %v", path, err),
+			i18n.Tf("Fix the YAML syntax or recreate the profile with '%s configure'",
+				"Исправьте синтаксис YAML или создайте профиль заново: '%s configure'", AppName), err)
 	}
 	return true, nil
 }
@@ -215,16 +219,19 @@ func readCredentialsFile() (credentialsFile, []string, error) {
 	var warnings []string
 	if PermissionsEnforced() {
 		if st, err := os.Stat(path); err == nil && LooseMode(st.Mode()) {
-			warnings = append(warnings, fmt.Sprintf(
-				"%s is accessible by other users (mode %04o); run: chmod 600 %s", path, st.Mode().Perm(), path))
+			warnings = append(warnings, i18n.Tf(
+				"%s is accessible by other users (mode %04o); run: chmod 600 %s",
+				"%s доступен другим пользователям (права %04o); выполните: chmod 600 %s", path, st.Mode().Perm(), path))
 		}
 		// A 0600 file is no protection in a directory others can write:
 		// they replace credentials.yaml (with their key, or a symlink) and
 		// the token cache.
 		dir := filepath.Dir(path)
 		if st, err := os.Stat(dir); err == nil && st.Mode().Perm()&0o022 != 0 {
-			warnings = append(warnings, fmt.Sprintf(
-				"%s is writable by other users (mode %04o): they can replace credentials.yaml; run: chmod 700 %s", dir, st.Mode().Perm(), dir))
+			warnings = append(warnings, i18n.Tf(
+				"%s is writable by other users (mode %04o): they can replace credentials.yaml; run: chmod 700 %s",
+				"в %s могут писать другие пользователи (права %04o) и подменить credentials.yaml; выполните: chmod 700 %s",
+				dir, st.Mode().Perm(), dir))
 		}
 	} else {
 		// Windows: the same two checks on the ACL. Files written by older
@@ -294,8 +301,9 @@ func lockProfiles() (unlock func(), err error) {
 		}
 		if time.Now().After(deadline) {
 			return nil, clerrors.New(clerrors.CodeConfigInvalid,
-				fmt.Sprintf("profiles are locked by another %s process (%s)", AppName, path),
-				"Wait for the other '"+AppName+" configure' to finish; if none is running, delete the lock file")
+				i18n.Tf("profiles are locked by another %s process (%s)", "профили заблокированы другим процессом %s (%s)", AppName, path),
+				i18n.Tf("Wait for the other '%s configure' to finish; if none is running, delete the lock file",
+					"Дождитесь окончания другого '%s configure'; если он не запущен, удалите файл блокировки", AppName))
 		}
 		time.Sleep(lockPoll)
 	}
@@ -353,8 +361,8 @@ func DeleteProfile(name string) error {
 	_, ok2 := cr.Profiles[name]
 	if !ok1 && !ok2 {
 		return clerrors.New(clerrors.CodeConfigInvalid,
-			fmt.Sprintf("profile %q not found", name),
-			"Run '"+AppName+" configure list' to see existing profiles")
+			i18n.Tf("profile %q not found", "профиль %q не найден", name),
+			i18n.Tf("Run '%s configure list' to see existing profiles", "Список профилей: '%s configure list'", AppName))
 	}
 	delete(s.Profiles, name)
 	delete(cr.Profiles, name)

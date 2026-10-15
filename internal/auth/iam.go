@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // IAMEndpoint is the Cloud.ru IAM token exchange URL.
@@ -91,8 +91,9 @@ func (p *IAMProvider) Token(ctx context.Context) (Token, error) {
 	if p.creds.KeyID == "" || p.creds.Secret == "" {
 		return Token{}, clerrors.New(
 			clerrors.CodeAuthRequired,
-			"Cloud.ru credentials not set",
-			"Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET (create an access key for a service account at https://console.cloud.ru)",
+			i18n.T("Cloud.ru credentials not set", "не задан ключ доступа Cloud.ru"),
+			i18n.T("Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET (create an access key for a service account at https://console.cloud.ru)",
+				"Выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET (ключ доступа сервисного аккаунта создаётся в https://console.cloud.ru)"),
 		)
 	}
 
@@ -115,8 +116,9 @@ func (p *IAMProvider) Token(ctx context.Context) (Token, error) {
 	if tok.TTL() < minAcceptableTTL {
 		return Token{}, clerrors.New(
 			clerrors.CodeAuthExpired,
-			fmt.Sprintf("token TTL too short: %s remaining", tok.TTL().Truncate(time.Second)),
-			"Your credentials may be expiring soon. Rotate them at https://console.cloud.ru",
+			i18n.Tf("token TTL too short: %s remaining", "срок жизни токена слишком мал: осталось %s", tok.TTL().Truncate(time.Second)),
+			i18n.T("Your credentials may be expiring soon. Rotate them at https://console.cloud.ru",
+				"Возможно, срок действия ключа заканчивается. Выпустите новый в https://console.cloud.ru"),
 		)
 	}
 
@@ -157,8 +159,8 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 	if err != nil {
 		return Token{}, false, clerrors.Wrap(
 			clerrors.CodeAPIUnreachable,
-			"failed to create IAM token request",
-			"Check your network connection",
+			i18n.T("failed to create IAM token request", "не удалось сформировать запрос токена IAM"),
+			i18n.T("Check your network connection", "Проверьте подключение к сети"),
 			err,
 		)
 	}
@@ -173,8 +175,8 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 	if err != nil {
 		return Token{}, true, clerrors.Wrap(
 			clerrors.CodeAPIUnreachable,
-			"failed to reach IAM endpoint",
-			"Check your network connection and try again",
+			i18n.T("failed to reach IAM endpoint", "IAM недоступен"),
+			i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите"),
 			err,
 		)
 	}
@@ -183,15 +185,17 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return Token{}, false, clerrors.New(
 			clerrors.CodeAuthFailed,
-			fmt.Sprintf("IAM rejected the credentials (status %d)", resp.StatusCode),
-			"Verify the key ID and secret: 'evo configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET",
+			i18n.Tf("IAM rejected the credentials (status %d)", "IAM отклонил ключ доступа (статус %d)", resp.StatusCode),
+			i18n.T("Verify the key ID and secret: 'evo configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET",
+				"Проверьте Key ID и секрет: 'evo configure' или CLOUDRU_KEY_ID / CLOUDRU_SECRET"),
 		)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return Token{}, resp.StatusCode >= 500, clerrors.New(
 			clerrors.CodeAPIError,
-			fmt.Sprintf("IAM token exchange failed with status %d", resp.StatusCode),
-			"Retry later; if it persists, verify the key ID and secret",
+			i18n.Tf("IAM token exchange failed with status %d", "не удалось получить токен IAM: статус %d", resp.StatusCode),
+			i18n.T("Retry later; if it persists, verify the key ID and secret",
+				"Повторите позже; если ошибка не уходит, проверьте Key ID и секрет"),
 		)
 	}
 
@@ -203,16 +207,16 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 		// Usually a connection reset mid-body: worth another attempt.
 		return Token{}, true, clerrors.Wrap(
 			clerrors.CodeAPIError,
-			"failed to parse IAM token response",
-			"Unexpected response from IAM API",
+			i18n.T("failed to parse IAM token response", "не удалось разобрать ответ IAM с токеном"),
+			i18n.T("Unexpected response from IAM API", "Неожиданный ответ IAM API; повторите позже"),
 			err,
 		)
 	}
 	if result.AccessToken == "" {
 		return Token{}, false, clerrors.New(
 			clerrors.CodeAPIError,
-			"IAM returned empty access_token",
-			"Verify your credentials are correct",
+			i18n.T("IAM returned empty access_token", "IAM вернул пустой access_token"),
+			i18n.T("Verify your credentials are correct", "Проверьте ключ доступа"),
 		)
 	}
 
