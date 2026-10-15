@@ -126,6 +126,30 @@ func overlayInt(args map[string]any, key string, dst *int) {
 	}
 }
 
+// recordDeployment records the VM of a deploy_apply in the local state, so
+// status, list and destroy work on it. Best effort, as before: the answer
+// names the VM either way.
+func recordDeployment(stateDir string, plan *deployplan.Plan, res *deployplan.ApplyResult, status string) {
+	statePath := state.DefaultPath(stateDir)
+	sf, err := state.Read(statePath)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	sf.UpsertDeployment(state.DeploymentRecord{
+		ID:        res.VMID,
+		VMID:      res.VMID,
+		VMIP:      res.PublicIP,
+		VMFlavor:  plan.VM.Flavor.Name,
+		Region:    plan.VM.Zone.ID,
+		SSHUser:   plan.SSH.Login,
+		Status:    status,
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+	_ = state.Write(statePath, sf)
+}
+
 // handleDeployApply executes a previously-resolved plan, gated on confirmation.
 func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (string, bool) {
 	planID := stringArg(args, "plan_id")
@@ -150,28 +174,18 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	}
 	res, err := deployplan.Apply(ctx, eng.Cloud, plan)
 	if err != nil {
+		// Interrupted after the VM was created: record it, so status and
+		// destroy see it; the plan stays for a retry, which adopts the VM.
+		if res != nil && res.VMID != "" {
+			recordDeployment(eng.StateDir, plan, res, "creating")
+		}
 		return errResult(err), true
 	}
 	deployplan.Delete(eng.StateDir, planID)
 
 	// Record the VM in local state so status/list/destroy work on it.
 	if res.VMID != "" {
-		statePath := state.DefaultPath(eng.StateDir)
-		if sf, e := state.Read(statePath); e == nil {
-			now := time.Now()
-			sf.UpsertDeployment(state.DeploymentRecord{
-				ID:        res.VMID,
-				VMID:      res.VMID,
-				VMIP:      res.PublicIP,
-				VMFlavor:  plan.VM.Flavor.Name,
-				Region:    plan.VM.Zone.ID,
-				SSHUser:   plan.SSH.Login,
-				Status:    res.Status,
-				CreatedAt: now,
-				UpdatedAt: now,
-			})
-			_ = state.Write(statePath, sf)
-		}
+		recordDeployment(eng.StateDir, plan, res, res.Status)
 	}
 
 	if err := eng.EnsureSSHKey(); err != nil {

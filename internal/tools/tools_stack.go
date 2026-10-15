@@ -144,6 +144,12 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 	for progress := true; progress; {
 		progress = false
 		for _, st := range job.Steps {
+			if ctx.Err() != nil {
+				// The call was cancelled: every further tool call would fail
+				// on the context, burn an attempt and be reported as a cloud
+				// error. The job is saved as it is; the next crank goes on.
+				return
+			}
 			switch st.Status {
 			case "done", "error":
 				continue
@@ -221,11 +227,37 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				if !depsDone(st, job) {
 					continue
 				}
+				if st.Interrupted {
+					// The previous create was cut off and may have reached the
+					// cloud: adopt what it made instead of creating it twice.
+					id := st.ResourceID
+					if id == "" && st.FindTool != "" {
+						id = s.findIDByName(ctx, st.FindTool, st.FindField, st.FindName, st.FindArgs)
+					}
+					if ctx.Err() != nil {
+						return
+					}
+					st.Interrupted = false
+					if id != "" {
+						s.finalizeStep(ctx, job, st, id)
+						st.Detail = "adopted after an interrupted create"
+						progress = true
+						continue
+					}
+				}
 				args := substituteRefs(st.Args, job.Outputs)
 				// stack_apply was confirmed for the whole stack. Jobs planned
 				// before provision and s3_put got their gates lack the flag.
 				args["confirmed"] = true
 				res, err := s.callTool(ctx, st.Tool, args)
+				if err != nil && ctx.Err() != nil {
+					// Cancelled mid-create: not a failed attempt. Keep the id
+					// the tool reported (provision names the VM it made).
+					st.Interrupted = true
+					st.ResourceID = firstStr(res, "vm_id", "cluster_id", "id")
+					st.Detail = "interrupted: " + err.Error()
+					return
+				}
 				if err != nil {
 					st.Attempts++
 					st.Detail = err.Error()

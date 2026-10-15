@@ -178,6 +178,10 @@ type Step struct {
 	Attempts   int            `json:"attempts,omitempty"`  // create retries used (transient-error tolerance)
 	FindArgs   map[string]any `json:"find_args,omitempty"` // extra args for the find-by-name list call (e.g. dns zone_id)
 	Detail     string         `json:"detail,omitempty"`
+	// Interrupted marks a create cut off by a cancelled call: it may have
+	// reached the cloud, so the next crank looks for the resource before
+	// creating it again.
+	Interrupted bool `json:"interrupted,omitempty"`
 }
 
 type Job struct {
