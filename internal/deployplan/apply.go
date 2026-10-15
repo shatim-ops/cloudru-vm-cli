@@ -41,7 +41,13 @@ func Apply(ctx context.Context, cloud provision.CloudAPI, plan *Plan) (*ApplyRes
 	start := time.Now()
 
 	// --- Idempotency: adopt an existing VM with the same name ---
-	if existing := findVMByName(ctx, cloud, plan.VM.Name); existing != nil {
+	existing, lookErr := findVMByName(ctx, cloud, plan.ProjectID, plan.VM.Name)
+	if lookErr != nil {
+		// Unknown is not "absent": creating now could make a second
+		// billed VM next to one a lost answer already created (QA H5).
+		return nil, fmt.Errorf("cannot check whether VM %q already exists (%w); nothing was created — retry deploy_apply", plan.VM.Name, lookErr)
+	}
+	if existing != nil {
 		if existing.Status == "error" {
 			return &ApplyResult{
 				VMID:   existing.ID,
@@ -305,17 +311,21 @@ func joinNotes(notes ...string) string {
 	return strings.Join(parts, "; ")
 }
 
-func findVMByName(ctx context.Context, cloud provision.CloudAPI, name string) *provision.VM {
-	vms, err := cloud.ListVMs(ctx)
+// findVMByName looks the plan's VM up in its project. GET /vms without a
+// project_id returns no VMs (.github/review-context/cloudru-api.md), so the
+// adoption that a retry of deploy_apply promises never happened and the
+// retry created a second VM (QA H5).
+func findVMByName(ctx context.Context, cloud provision.CloudAPI, projectID, name string) (*provision.VM, error) {
+	vms, err := cloud.ListVMsInProject(ctx, projectID)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	for _, v := range vms {
 		if v.Name == name {
-			return v
+			return v, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 func sshString(login, ip string) string {

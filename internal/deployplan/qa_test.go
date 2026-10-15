@@ -48,6 +48,9 @@ type applyCloud struct {
 }
 
 func (applyCloud) ListVMs(context.Context) ([]*provision.VM, error) { return nil, nil }
+func (applyCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	return nil, nil
+}
 func (applyCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
 	return &provision.VM{ID: "vm-made"}, nil
 }
@@ -82,27 +85,81 @@ func TestPickSubnet_ByZoneName(t *testing.T) {
 	}
 }
 
-// lostAnswerCloud creates the VM but loses the answer.
+// lostAnswerCloud creates the VM but loses the answer: the VM is listed only
+// after the create call.
 type lostAnswerCloud struct {
 	provision.CloudAPI
+	created bool
 }
 
-func (lostAnswerCloud) ListVMs(context.Context) ([]*provision.VM, error) { return nil, nil }
-func (lostAnswerCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
+func (*lostAnswerCloud) ListVMs(context.Context) ([]*provision.VM, error) { return nil, nil }
+func (c *lostAnswerCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
+	c.created = true
 	return nil, errors.New("context deadline exceeded")
 }
-func (lostAnswerCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+func (c *lostAnswerCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	if !c.created {
+		return nil, nil
+	}
 	return []*provision.VM{{ID: "vm-lost", Name: "x", CreatedAt: time.Now()}}, nil
 }
 
 // The create call fails but the VM exists: the result names it, so
 // deploy_apply records it and a retry adopts it.
 func TestApply_CreateFailsButVMExists_NamesTheVM(t *testing.T) {
-	res, err := Apply(context.Background(), lostAnswerCloud{}, &Plan{ProjectID: "p", VM: VMSpec{Name: "x"}})
+	res, err := Apply(context.Background(), &lostAnswerCloud{}, &Plan{ProjectID: "p", VM: VMSpec{Name: "x"}})
 	if err == nil || !strings.Contains(err.Error(), "vm-lost") {
 		t.Fatalf("Apply = %v, want an error naming vm-lost", err)
 	}
 	if res == nil || res.VMID != "vm-lost" {
 		t.Fatalf("result %+v, want VMID vm-lost", res)
+	}
+}
+
+// existingCloud already has the plan's VM in the project, or fails to list.
+type existingCloud struct {
+	applyCloud
+	listErr error
+	creates int
+	project string
+}
+
+func (c *existingCloud) ListVMsInProject(_ context.Context, project string) ([]*provision.VM, error) {
+	c.project = project
+	if c.listErr != nil {
+		return nil, c.listErr
+	}
+	return []*provision.VM{{ID: "vm-old", Name: "x", Status: "running"}}, nil
+}
+func (c *existingCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
+	c.creates++
+	return &provision.VM{ID: "vm-second"}, nil
+}
+
+// A retried deploy_apply adopts the VM of the plan's project instead of
+// creating a second one (QA H5).
+func TestApply_AdoptsExistingVMInProject(t *testing.T) {
+	c := &existingCloud{}
+	res, err := Apply(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}})
+	if c.creates != 0 {
+		t.Fatalf("CreateVM called %d times, want 0 (the VM exists)", c.creates)
+	}
+	if c.project != "p-1" {
+		t.Errorf("listed project %q, want the plan's p-1", c.project)
+	}
+	if err == nil && (res == nil || res.VMID != "vm-old") {
+		t.Errorf("result %+v, want VMID vm-old", res)
+	}
+}
+
+// The lookup fails: nothing is created, so a retry cannot leave two VMs.
+func TestApply_LookupFails_CreatesNothing(t *testing.T) {
+	c := &existingCloud{listErr: errors.New("502 bad gateway")}
+	_, err := Apply(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}})
+	if err == nil || !strings.Contains(err.Error(), "nothing was created") {
+		t.Fatalf("Apply = %v, want a lookup error", err)
+	}
+	if c.creates != 0 {
+		t.Errorf("CreateVM called %d times after a failed lookup, want 0", c.creates)
 	}
 }
