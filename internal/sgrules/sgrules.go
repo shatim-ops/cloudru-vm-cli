@@ -96,7 +96,12 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 		}
 	}
 
-	type pending struct{ key, desc string }
+	// errored: the create failed without a refusal (lost answer, 5xx): the
+	// rule may exist, and is adopted if the listing shows it (QA r3 R6).
+	type pending struct {
+		key, desc string
+		errored   bool
+	}
 	var lost []pending
 	for _, set := range []struct {
 		proto string
@@ -122,14 +127,18 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 			}
 			created, err := cloud.AddSecurityGroupRule(ctx, sgID, projectID, rule)
 			if err != nil {
-				res.Failed = append(res.Failed, label)
+				if st := provision.HTTPStatus(err); st >= 400 && st < 500 {
+					res.Failed = append(res.Failed, label) // refused: nothing was created
+				} else {
+					lost = append(lost, pending{key, rule.Description, true})
+				}
 				continue
 			}
 			res.Opened = append(res.Opened, label)
 			if created != nil && created.ID != "" {
 				addRule(rec, state.SGRule{ID: created.ID, SecurityGroupID: sgID, Port: key})
 			} else {
-				lost = append(lost, pending{key, rule.Description})
+				lost = append(lost, pending{key, rule.Description, false})
 			}
 		}
 	}
@@ -154,8 +163,15 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 				}
 			}
 			if found == "" {
-				res.Untracked = append(res.Untracked, Label(l.key))
+				if l.errored {
+					res.Failed = append(res.Failed, Label(l.key))
+				} else {
+					res.Untracked = append(res.Untracked, Label(l.key))
+				}
 				continue
+			}
+			if l.errored {
+				res.Opened = append(res.Opened, Label(l.key))
 			}
 			before[found] = true
 			addRule(rec, state.SGRule{ID: found, SecurityGroupID: sgID, Port: l.key})

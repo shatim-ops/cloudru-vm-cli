@@ -68,7 +68,12 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 				out = append(out, &page.Items[i])
 			}
 			offset += len(page.Items)
-			if !paged || len(page.Items) == 0 || offset >= page.Total {
+			// Без total (спецификация его обещает) — до неполной страницы.
+			done := offset >= page.Total
+			if page.Total == 0 {
+				done = len(page.Items) < listPageSize
+			}
+			if !paged || len(page.Items) == 0 || done {
 				return out, nil
 			}
 			continue
