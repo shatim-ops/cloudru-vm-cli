@@ -28,19 +28,19 @@ evo version
 
 | Переменная | Что задаёт | По умолчанию |
 |---|---|---|
-| `CLOUDRU_VM_VERSION` | тег релиза, например `v1.0.0-rc.1` | последний стабильный; pre-release (`-rc.N`) надо назвать явно |
+| `CLOUDRU_VM_VERSION` | тег релиза, например `v1.0.0-rc.3` | последний стабильный; pre-release (`-rc.N`) надо назвать явно |
 | `INSTALL_DIR` | каталог для бинаря | `~/.local/bin`, под root `/usr/local/bin` |
 | `CLOUDRU_VM_BASE_URL` | откуда качать вместо GitHub (зеркало); ожидается `<base>/<тег>/<файл>` | GitHub Releases |
 
 ```sh
 # конкретная версия, в свой каталог
 curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh \
-  | CLOUDRU_VM_VERSION=v1.0.0-rc.1 INSTALL_DIR="$HOME/bin" sh
+  | CLOUDRU_VM_VERSION=v1.0.0-rc.3 INSTALL_DIR="$HOME/bin" sh
 ```
 
 Если стабильного релиза ещё нет (до `v1.0.0`), скрипт без версии
 останавливается с «стабильного релиза пока нет»: кандидат в релиз ставится с
-явной версией, `… | CLOUDRU_VM_VERSION=v1.0.0-rc.1 sh`. Релизы до
+явной версией, `… | CLOUDRU_VM_VERSION=v1.0.0-rc.3 sh`. Релизы до
 переименования (`v1.0.0-rc.1`) выпущены под старым именем — архив
 `cloudru-vm_<версия>_…` с одним бинарём `cloudru-vm`; скрипт узнаёт это по
 `checksums.txt` релиза и ставит `cloudru-vm`. С `v1.0.0-rc.2` — `evo` и alias
@@ -51,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh 
 ## Linux и macOS вручную
 
 ```sh
-V=1.0.0-rc.1; OS=linux; ARCH=amd64          # OS: linux | darwin; ARCH: amd64 | arm64
+V=1.0.0-rc.3; OS=linux; ARCH=amd64          # OS: linux | darwin; ARCH: amd64 | arm64
 base=https://github.com/shatim-ops/evo-cli/releases/download/v$V
 curl -fLO "$base/evo_${V}_${OS}_${ARCH}.tar.gz"
 curl -fLO "$base/checksums.txt"
@@ -76,7 +76,7 @@ v1.1, см. [README → «Переименование»](../README.md#пере�
    `checksums.txt`:
 
    ```powershell
-   (Get-FileHash .\evo_1.0.0-rc.1_windows_amd64.zip -Algorithm SHA256).Hash.ToLower()
+   (Get-FileHash .\evo_1.0.0-rc.3_windows_amd64.zip -Algorithm SHA256).Hash.ToLower()
    Select-String -Path .\checksums.txt -Pattern windows_amd64
    ```
 
