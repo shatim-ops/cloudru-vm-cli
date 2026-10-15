@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // A 307/308 from the IAM endpoint must not make the client re-POST the key

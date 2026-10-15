@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // Fake credentials: tests never see real ones.

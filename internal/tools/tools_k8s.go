@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/mk8s"
+	"github.com/shatim-ops/evo-cli/internal/mk8s"
 )
 
 // k8sClient builds an authenticated mk8s client and returns it together with

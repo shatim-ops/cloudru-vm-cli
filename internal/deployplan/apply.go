@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/sgrules"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 const pollTimeout = 7 * time.Minute // Cloud.ru VMs take 2-5 min; protocol v5 minimum

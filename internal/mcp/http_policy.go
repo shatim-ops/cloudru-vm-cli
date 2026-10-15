@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/kubetools"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/kubetools"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // binaryAvailable reports whether kubectl/helm can be run; tests replace it

@@ -1,6 +1,6 @@
 package tools
 
-import "github.com/shatim-ops/cloudru-vm-cli/internal/s3"
+import "github.com/shatim-ops/evo-cli/internal/s3"
 
 // accessKey returns the resolved access key (flags, env, profile) for the
 // mk8s OIDC exchange, which needs the key itself rather than an IAM token.

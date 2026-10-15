@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/auth"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/deploy"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/verify"
+	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/deploy"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/verify"
 )
 
 // --- Mocks ---

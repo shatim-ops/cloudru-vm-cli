@@ -18,7 +18,7 @@ import (
 
 	"golang.org/x/term"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // Stdin is where answers are read from; StdinIsTTY tells whether a human can

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // Обработчики получали context.Background(): ушедший клиент, закрытый

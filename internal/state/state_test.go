@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	clierr "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clierr "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 func TestReadWrite_Roundtrip(t *testing.T) {

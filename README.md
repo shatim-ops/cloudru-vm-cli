@@ -22,7 +22,7 @@ Storage, Secret Manager — и развёртывание `docker-compose`-пр�
 Linux и macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | sh
 evo version
 ```
 
@@ -30,7 +30,7 @@ evo version
 с «стабильного релиза пока нет»: кандидат в релиз ставится с явной версией —
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | CLOUDRU_VM_VERSION=v1.0.0-rc.1 sh
+curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | CLOUDRU_VM_VERSION=v1.0.0-rc.1 sh
 ```
 
 `v1.0.0-rc.1` вышел до переименования: бинарь в нём называется `cloudru-vm`
@@ -148,7 +148,7 @@ mv .cloudru-vm .evo && mv .cloudru-vm.yaml .evo.yaml
 
 ## Поддержка
 
-Ошибки и вопросы — в [Issues](https://github.com/shatim-ops/cloudru-vm-cli/issues)
+Ошибки и вопросы — в [Issues](https://github.com/shatim-ops/evo-cli/issues)
 этого репозитория. Приложите вывод `evo doctor --json` и
 `evo version` (секретов в них нет) — подробнее в
 [docs/troubleshooting.md](docs/troubleshooting.md#обращение-в-поддержку).

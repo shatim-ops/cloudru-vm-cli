@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/secret"
+	"github.com/shatim-ops/evo-cli/internal/secret"
 )
 
 // secretClient builds an authenticated Secret Management client.

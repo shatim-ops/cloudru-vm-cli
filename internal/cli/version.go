@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
 // The MCP server reports the same version string in initialize.serverInfo,

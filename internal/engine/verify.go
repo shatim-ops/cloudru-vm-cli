@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/verify"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/verify"
 )
 
 // Verify probes the exposed ports of the active deployment and prints the

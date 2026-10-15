@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"testing"
 
-	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 func TestExitCode(t *testing.T) {

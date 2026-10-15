@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 const (

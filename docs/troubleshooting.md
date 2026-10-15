@@ -210,7 +210,7 @@ compose-файла не изменился. Повторите с `evo deploy --
 
 ## Обращение в поддержку
 
-Ошибки evo — в [Issues](https://github.com/shatim-ops/cloudru-vm-cli/issues)
+Ошибки evo — в [Issues](https://github.com/shatim-ops/evo-cli/issues)
 репозитория; проблемы самого облака (квоты, ресурсы в ошибке, биллинг) — в
 [поддержку Cloud.ru](https://cloud.ru/docs/evolution/overview/contacts/technical-support).
 

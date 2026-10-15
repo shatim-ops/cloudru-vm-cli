@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/pricing"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/pricing"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-`)

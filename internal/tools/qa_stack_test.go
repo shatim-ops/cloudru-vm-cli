@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/stack"
+	"github.com/shatim-ops/evo-cli/internal/stack"
 )
 
 // stackHome points the job store (~/.evo/stack-jobs) at a temp dir.

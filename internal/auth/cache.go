@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/config"
 )
 
 // TokenCache persists IAM tokens between runs. Entries are bound to the key

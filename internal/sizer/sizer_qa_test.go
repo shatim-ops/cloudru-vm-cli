@@ -3,8 +3,8 @@ package sizer
 import (
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/compose"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/compose"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // A limit on one dimension only must not zero the other: postgres with

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	clierr "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clierr "github.com/shatim-ops/evo-cli/internal/errors"
 	"gopkg.in/yaml.v3"
 )
 

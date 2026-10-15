@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // InitOptions holds parameters for the init command.
@@ -85,7 +85,7 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 		projectLine = "project_id: " + e.Config.ProjectID
 	}
 	content := fmt.Sprintf(`# evo configuration
-# See: https://github.com/shatim-ops/cloudru-vm-cli
+# See: https://github.com/shatim-ops/evo-cli
 
 # Availability zone (evo list-zones)
 region: %s  # %s

@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // ---------------------------------------------------------------------------

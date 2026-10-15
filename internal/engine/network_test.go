@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // The create API answers 500 to UUIDs and to a request without an interface

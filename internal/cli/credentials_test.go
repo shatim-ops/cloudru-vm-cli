@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/auth"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/config"
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // All credentials below are fake; the Cloud.ru endpoints are httptest servers.

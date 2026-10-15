@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // The default 10 GB disk is below ubuntu-22.04's min_disk (11 GB since

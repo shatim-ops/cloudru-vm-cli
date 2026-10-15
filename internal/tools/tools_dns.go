@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/dns"
+	"github.com/shatim-ops/evo-cli/internal/dns"
 )
 
 // dnsClient builds an authenticated Evolution DNS client (standalone → newEngine token).

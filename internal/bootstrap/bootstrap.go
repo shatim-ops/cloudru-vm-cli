@@ -3,7 +3,7 @@ package bootstrap
 import (
 	"fmt"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // Config holds parameters for cloud-init template rendering.

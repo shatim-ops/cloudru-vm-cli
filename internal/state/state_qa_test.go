@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	clierr "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clierr "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 func codeOf(err error) string {

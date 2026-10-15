@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // listProjectScoped fetches a project-scoped list endpoint and decodes either a

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"testing"
 
-	clierrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // The documented create answer is 201 with the rule and its id: deploy

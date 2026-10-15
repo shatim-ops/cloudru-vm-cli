@@ -3,7 +3,7 @@
 # alias cloudru-vm (тот же бинарь под старым именем): скрипты и настройки
 # MCP со старым именем продолжают работать и получают ту же версию.
 #
-#   curl -fsSL https://raw.githubusercontent.com/shatim-ops/cloudru-vm-cli/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | sh
 #
 # Переменные окружения:
 #   CLOUDRU_VM_VERSION  тег релиза, например v1.0.0-rc.1 (по умолчанию —
@@ -18,7 +18,9 @@
 # release.yml этого репозитория). Windows: см. README, раздел «Установка».
 set -eu
 
-REPO="shatim-ops/cloudru-vm-cli"
+REPO="shatim-ops/evo-cli"
+# Имя репозитория до 15.10.2026: им подписаны v1.0.0-rc.1 и rc.2.
+LEGACY_REPO="shatim-ops/cloudru-vm-cli"
 BINARY="evo"
 # Убрать в v1.1 вместе с alias в .goreleaser.yaml.
 LEGACY_ALIAS="cloudru-vm"
@@ -111,9 +113,15 @@ main() {
 	if command -v cosign >/dev/null 2>&1; then
 		download "$base/$tag/checksums.txt.sigstore.json" "$tmp/checksums.txt.sigstore.json" ||
 			die "не удалось скачать подпись checksums.txt.sigstore.json"
+		# v1.0.0-rc.1 и rc.2 подписаны до переименования репозитория:
+		# identity в сертификате — старое имя.
+		signer=$REPO
+		case "$tag" in
+		v1.0.0-rc.1 | v1.0.0-rc.2) signer=$LEGACY_REPO ;;
+		esac
 		cosign verify-blob \
 			--bundle "$tmp/checksums.txt.sigstore.json" \
-			--certificate-identity "https://github.com/$REPO/.github/workflows/release.yml@refs/tags/$tag" \
+			--certificate-identity "https://github.com/$signer/.github/workflows/release.yml@refs/tags/$tag" \
 			--certificate-oidc-issuer https://token.actions.githubusercontent.com \
 			"$tmp/checksums.txt" >/dev/null 2>&1 || die "подпись checksums.txt не прошла проверку cosign"
 		say "Подпись checksums.txt: OK (cosign)"

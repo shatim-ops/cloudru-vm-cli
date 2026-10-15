@@ -1,4 +1,4 @@
-module github.com/shatim-ops/cloudru-vm-cli
+module github.com/shatim-ops/evo-cli
 
 go 1.26.0
 

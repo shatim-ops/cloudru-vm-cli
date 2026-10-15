@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/certmanager"
+	"github.com/shatim-ops/evo-cli/internal/certmanager"
 )
 
 // certClient builds an authenticated Certificate Manager client.

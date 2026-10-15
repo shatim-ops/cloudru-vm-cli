@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 )
 
 // Операции, которые создают платные ресурсы или меняют чужое состояние,

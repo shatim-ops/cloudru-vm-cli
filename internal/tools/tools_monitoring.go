@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/monitoring"
+	"github.com/shatim-ops/evo-cli/internal/monitoring"
 )
 
 // monitoringClient builds an authenticated Service Monitoring client.

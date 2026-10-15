@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 func lookup(t testing.TB, name string) tools.Tool {

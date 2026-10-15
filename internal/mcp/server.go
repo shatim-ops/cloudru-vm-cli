@@ -18,7 +18,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // supportedProtocolVersions are the MCP revisions the server speaks, newest

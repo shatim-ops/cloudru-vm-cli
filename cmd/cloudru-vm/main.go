@@ -1,7 +1,7 @@
 // Command cloudru-vm is the legacy build path of evo, kept until v1.1 for scripts that run "go build ./cmd/cloudru-vm"; the binary prints the rename notice and works as evo; the code is in internal/cli.
 package main
 
-import "github.com/shatim-ops/cloudru-vm-cli/internal/cli"
+import "github.com/shatim-ops/evo-cli/internal/cli"
 
 // Build identity, set by the release build:
 //

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/nlb"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/nlb"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // pickVMInterface returns the ID of a VM's network interface to use as an NLB

@@ -91,6 +91,6 @@ changelog:
 release:
   github:
     owner: shatim-ops
-    name: cloudru-vm-cli
+    name: evo-cli
   # v1.0.0-rc.1 и подобные помечаются как pre-release.
   prerelease: auto

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shatim-ops/cloudru-vm-cli/internal/stack"
+	"github.com/shatim-ops/evo-cli/internal/stack"
 )
 
 // --- stack orchestrator: crank-driven, disk-persisted multi-resource deploys ---
