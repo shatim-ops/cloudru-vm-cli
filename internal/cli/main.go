@@ -22,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -109,8 +110,9 @@ func run(args []string) int {
 	// Until flags are parsed: plain text to stderr.
 	config.SetWarnFunc(func(msg string) { output.New(false, true).Warning(msg) })
 	if msg, err := config.MigrateLegacyDir(); err != nil {
-		output.New(jsonRequested(args), true).Warning(fmt.Sprintf(
+		output.New(jsonRequested(args), true).Warning(i18n.Tf(
 			"could not copy the profiles of %s to %s: %v; run '%s configure' again or copy them by hand",
+			"не удалось скопировать профили %s в %s: %v; выполните '%s configure' заново или скопируйте их вручную",
 			config.LegacyAppName, config.Dir(), err, config.AppName))
 	} else if msg != "" {
 		output.New(jsonRequested(args), true).Warning(msg)
@@ -160,8 +162,8 @@ func jsonRequested(args []string) bool {
 // usageError turns a cobra parsing error (unknown command or flag, bad
 // argument) into a CLIError pointing at --help.
 func usageError(cmd *cobra.Command, err error) error {
-	return clerrors.Wrap(clerrors.CodeUsage, err.Error(),
-		fmt.Sprintf("Run '%s --help' for usage.", cmd.CommandPath()), err)
+	return clerrors.Wrap(clerrors.CodeUsage, usageMessage(err.Error()),
+		i18n.Tf("Run '%s --help' for usage.", "Справка: '%s --help'.", cmd.CommandPath()), err)
 }
 
 // asGroup makes cmd a command group that shows its help when called alone
@@ -173,9 +175,9 @@ func asGroup(cmd *cobra.Command) *cobra.Command {
 		if len(args) == 0 {
 			return nil
 		}
-		msg := fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath())
+		msg := i18n.Tf("unknown command %q for %q", "неизвестная команда %q для %q", args[0], cmd.CommandPath())
 		if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
-			msg += "; did you mean " + strings.Join(s, ", ") + "?"
+			msg += i18n.T("; did you mean ", "; может быть, ") + strings.Join(s, ", ") + "?"
 		}
 		return stderrors.New(msg)
 	}
@@ -186,9 +188,12 @@ func asGroup(cmd *cobra.Command) *cobra.Command {
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "evo",
-		Short: "Deploy docker-compose projects to Cloud.ru VMs",
-		Long: "Deploy docker-compose projects to Cloud.ru VMs.\n\n" +
-			clerrors.ExitCodesHelp,
+		Short: i18n.T("Deploy docker-compose projects to Cloud.ru VMs", "Развёртывание docker-compose проектов на ВМ Cloud.ru"),
+		Long: i18n.T("Deploy docker-compose projects to Cloud.ru VMs.",
+			"Развёртывание docker-compose проектов на ВМ Cloud.ru и управление ресурсами\n"+
+				"облака: ВМ, диски, сети, Kubernetes, PostgreSQL, Object Storage, секреты.\n\n"+
+				"Сообщения по-английски: EVO_LANG=en.") + "\n\n" +
+			clerrors.ExitCodesHelp(),
 		// Errors are printed once, by run(): as text or, with --json, as
 		// {"error": {...}} on stderr.
 		SilenceUsage:  true,
@@ -203,12 +208,15 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 
-	cmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output in JSON format")
-	cmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Enable verbose logging")
-	cmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
-	cmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Credentials profile (default: $CLOUDRU_PROFILE or \"default\")")
-	cmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, "Confirm operations that create paid resources or delete data, without a prompt")
-	cmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "Show what would be created or deleted (with a cost estimate) and exit")
+	cmd.PersistentFlags().BoolVar(&flagJSON, "json", false, i18n.T("Output in JSON format", "Вывод в формате JSON"))
+	cmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, i18n.T("Enable verbose logging", "Подробный журнал"))
+	cmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, i18n.T("Disable colored output", "Без цвета"))
+	cmd.PersistentFlags().StringVar(&flagProfile, "profile", "", i18n.T("Credentials profile (default: $CLOUDRU_PROFILE or \"default\")",
+		"Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или \"default\")"))
+	cmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, i18n.T("Confirm operations that create paid resources or delete data, without a prompt",
+		"Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные"))
+	cmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, i18n.T("Show what would be created or deleted (with a cost estimate) and exit",
+		"Показать, что будет создано или удалено (с оценкой цены), и выйти"))
 	addScopeFlags(cmd)
 
 	cmd.AddCommand(
@@ -228,6 +236,7 @@ func newRootCmd() *cobra.Command {
 		newToolsCmd(),
 	)
 	cmd.AddCommand(newTreeCmds()...)
+	localizeHelp(cmd)
 
 	return cmd
 }
@@ -247,7 +256,7 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 
 	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("get working directory: %w", err)
+		return nil, fmt.Errorf(i18n.T("get working directory: %w", "текущий каталог: %w"), err)
 	}
 
 	return &engine.Engine{
@@ -310,10 +319,10 @@ func loadOrGenerateSSHKey(projectDir string) (privPEM []byte, pubKey string, err
 	// Persist to disk: temporary file 0600 + rename, so the key is never
 	// readable by others and an existing file or symlink lends nothing.
 	if err := config.WriteFilePrivate(privPath, privPEM); err != nil {
-		return nil, "", fmt.Errorf("write private key: %w", err)
+		return nil, "", fmt.Errorf(i18n.T("write private key: %w", "запись закрытого ключа: %w"), err)
 	}
 	if err := config.WriteFileAtomic(pubPath, []byte(pubKey), 0o644); err != nil {
-		return nil, "", fmt.Errorf("write public key: %w", err)
+		return nil, "", fmt.Errorf(i18n.T("write public key: %w", "запись открытого ключа: %w"), err)
 	}
 
 	return privPEM, pubKey, nil
@@ -326,19 +335,21 @@ func ensureKeyDir(dir string) error {
 	switch {
 	case os.IsNotExist(err):
 		if err := config.MkdirPrivate(dir); err != nil {
-			return fmt.Errorf("create key directory: %w", err)
+			return fmt.Errorf(i18n.T("create key directory: %w", "создание каталога ключа: %w"), err)
 		}
 		return nil
 	case err != nil:
-		return fmt.Errorf("key directory: %w", err)
+		return fmt.Errorf(i18n.T("key directory: %w", "каталог ключа: %w"), err)
 	case !st.IsDir():
 		return clerrors.New(clerrors.CodeConfigInvalid,
-			fmt.Sprintf("%s is not a directory (a symlink?); refusing to keep the SSH key there", dir),
-			"Remove it (it may have come with the repository) and run the command again")
+			i18n.Tf("%s is not a directory (a symlink?); refusing to keep the SSH key there",
+				"%s — не каталог (символическая ссылка?); хранить в нём SSH-ключ нельзя", dir),
+			i18n.T("Remove it (it may have come with the repository) and run the command again",
+				"Удалите его (он мог прийти вместе с репозиторием) и повторите команду"))
 	}
 	if config.PermissionsEnforced() && config.LooseMode(st.Mode()) {
 		if err := os.Chmod(dir, 0o700); err != nil {
-			return fmt.Errorf("restrict key directory: %w", err)
+			return fmt.Errorf(i18n.T("restrict key directory: %w", "ограничение прав каталога ключа: %w"), err)
 		}
 	}
 	// Windows: a directory made by an older version inherited the ACL of
@@ -387,8 +398,10 @@ func readKeyFile(path string) ([]byte, error) {
 	}
 	if !st.Mode().IsRegular() {
 		return nil, clerrors.New(clerrors.CodeConfigInvalid,
-			fmt.Sprintf("%s is not a regular file (a symlink?); refusing to use it as the SSH key", path),
-			"Remove it (it may have come with the repository) and run the command again: a new key is created")
+			i18n.Tf("%s is not a regular file (a symlink?); refusing to use it as the SSH key",
+				"%s — не обычный файл (символическая ссылка?); как SSH-ключ он не используется", path),
+			i18n.T("Remove it (it may have come with the repository) and run the command again: a new key is created",
+				"Удалите его (он мог прийти вместе с репозиторием) и повторите команду: будет создан новый ключ"))
 	}
 	return os.ReadFile(path)
 }
@@ -401,14 +414,14 @@ func projectConfigPath() string {
 
 // handleError prints err to the printer's error writer: as text with the
 // hint of the CLIError found anywhere in the wrap chain, or, in JSON mode,
-// as {"error": {"code": N, "message": "...", "hint": "..."}}.
+// as {"error": {"code": N, "reason": "CODE", "message": "...", "hint": "..."}}.
 func handleError(p *output.Printer, err error) {
 	code := clerrors.ExitCode(err)
 	var message, hint string
 	var cliErr *clerrors.CLIError
 	switch {
 	case code == clerrors.ExitInterrupted:
-		message = "interrupted"
+		message = i18n.T("interrupted", "прервано")
 		if stderrors.As(err, &cliErr) {
 			// e.g. deploy: which VM was left running and how to delete it.
 			message += ": " + cliErr.Message
@@ -427,7 +440,7 @@ func handleError(p *output.Printer, err error) {
 	}
 
 	if p.IsJSON() {
-		_ = p.JSONError(code, message, hint)
+		_ = p.JSONError(code, clerrors.Reason(err), message, hint)
 		return
 	}
 	p.Errorf("%s", message)
@@ -453,7 +466,18 @@ func newDeployCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deploy",
 		Args:  cobra.NoArgs,
-		Short: "Deploy a docker-compose project to a Cloud.ru VM",
+		Short: i18n.T("Deploy a docker-compose project to a Cloud.ru VM", "Развернуть docker-compose проект на ВМ Cloud.ru"),
+		Long: i18n.T("", `Развернуть docker-compose проект на ВМ Cloud.ru.
+
+Первый запуск создаёт ВМ с floating IP, открывает порты из compose-файла в
+группе безопасности зоны, ставит Docker, загружает compose-файл и выполняет
+'docker compose up -d'. Перед созданием ВМ показывается превью с оценкой цены
+и запрашивается подтверждение: вопрос на терминале, --yes — согласие заранее,
+--dry-run — только превью. Повторный запуск обновляет ту же ВМ, если
+compose-файл изменился (с --force — и без изменений).`),
+		Example: i18n.T("", `  evo deploy --dry-run
+  evo deploy --yes
+  evo deploy -f compose.prod.yml --flavor lowcost10-2-4`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := map[string]any{}
 			if cmd.Flags().Changed("compose-file") {
@@ -497,14 +521,17 @@ func newDeployCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&composeFile, "compose-file", "f", "", "Path to docker-compose file (default: docker-compose.yml)")
-	cmd.Flags().StringVar(&flavor, "flavor", "", "VM flavor (default: auto)")
-	cmd.Flags().StringVar(&region, "region", "", "Availability zone UUID")
-	cmd.Flags().StringVar(&projectID, "project-id", "", "Cloud.ru project UUID")
-	cmd.Flags().StringVar(&imageID, "image-id", "", "Boot image UUID")
-	cmd.Flags().IntVar(&diskSize, "disk-size", 0, "Boot disk size in GB (default: 10)")
-	cmd.Flags().BoolVar(&force, "force", false, "Force redeploy even if compose hash unchanged")
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Never prompt; creating a VM then requires --yes")
+	cmd.Flags().StringVarP(&composeFile, "compose-file", "f", "", i18n.T("Path to docker-compose file (default: docker-compose.yml)",
+		"Путь к compose-файлу (по умолчанию docker-compose.yml)"))
+	cmd.Flags().StringVar(&flavor, "flavor", "", i18n.T("VM flavor (default: auto)", "Flavor ВМ (по умолчанию auto — подбор по сервисам)"))
+	cmd.Flags().StringVar(&region, "region", "", i18n.T("Availability zone UUID", "UUID зоны доступности"))
+	cmd.Flags().StringVar(&projectID, "project-id", "", i18n.T("Cloud.ru project UUID", "UUID проекта Cloud.ru"))
+	cmd.Flags().StringVar(&imageID, "image-id", "", i18n.T("Boot image UUID", "UUID загрузочного образа"))
+	cmd.Flags().IntVar(&diskSize, "disk-size", 0, i18n.T("Boot disk size in GB (default: 10)", "Размер загрузочного диска, ГБ (по умолчанию 10)"))
+	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Force redeploy even if compose hash unchanged",
+		"Развернуть заново, даже если compose-файл не изменился"))
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Never prompt; creating a VM then requires --yes",
+		"Никогда не спрашивать; тогда для создания ВМ нужен --yes"))
 
 	return cmd
 }
@@ -515,7 +542,7 @@ func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Args:  cobra.NoArgs,
-		Short: "Show current deployment status",
+		Short: i18n.T("Show current deployment status", "Состояние текущего развёртывания"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
@@ -541,7 +568,10 @@ func newLogsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs",
 		Args:  cobra.NoArgs,
-		Short: "View container logs from the deployed VM",
+		Short: i18n.T("View container logs from the deployed VM", "Журналы контейнеров на развёрнутой ВМ"),
+		Example: i18n.T("", `  evo logs
+  evo logs -s web -n 50
+  evo logs -f`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
@@ -561,9 +591,9 @@ func newLogsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&service, "service", "s", "", "Filter logs by service name")
-	cmd.Flags().IntVarP(&tail, "tail", "n", 100, "Number of lines to show (0 = all)")
-	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Follow log output")
+	cmd.Flags().StringVarP(&service, "service", "s", "", i18n.T("Filter logs by service name", "Только журнал этого сервиса"))
+	cmd.Flags().IntVarP(&tail, "tail", "n", 100, i18n.T("Number of lines to show (0 = all)", "Сколько последних строк показать (0 — все)"))
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, i18n.T("Follow log output", "Следить за журналом (до Ctrl-C)"))
 
 	return cmd
 }
@@ -576,7 +606,13 @@ func newDestroyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "destroy",
 		Args:  cobra.NoArgs,
-		Short: "Delete the deployed VM and clean up resources",
+		Short: i18n.T("Delete the deployed VM and clean up resources", "Удалить развёрнутую ВМ и связанные ресурсы"),
+		Long: i18n.T("", `Удалить ВМ развёртывания из этого каталога, освободить её floating IP и
+удалить правила группы безопасности, которые создал deploy.
+
+Перед удалением показывается превью и запрашивается подтверждение: вопрос на
+терминале, --yes (или --force) — согласие заранее, --dry-run — только превью.
+Данные на дисках ВМ теряются.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
@@ -591,7 +627,7 @@ func newDestroyCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt (same as --yes)")
+	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Skip confirmation prompt (same as --yes)", "Не спрашивать подтверждения (то же, что --yes)"))
 
 	return cmd
 }
@@ -600,9 +636,10 @@ func newDestroyCmd() *cobra.Command {
 
 func newVerifyCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "verify",
-		Args:  cobra.NoArgs,
-		Short: "Run health checks against the deployed application (exit 1 if unhealthy, 4 if nothing is deployed)",
+		Use:  "verify",
+		Args: cobra.NoArgs,
+		Short: i18n.T("Run health checks against the deployed application (exit 1 if unhealthy, 4 if nothing is deployed)",
+			"Проверить, отвечает ли приложение (код 1 — не отвечает, 4 — ничего не развёрнуто)"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
@@ -619,15 +656,21 @@ func newInitCmd() *cobra.Command {
 	var nonInteractive bool
 
 	cmd := &cobra.Command{
-		Use:   "init",
-		Args:  cobra.NoArgs,
-		Short: "Create .evo.yaml with a zone and image chosen from the Cloud.ru API",
-		Long: `Create .evo.yaml for this project.
+		Use:  "init",
+		Args: cobra.NoArgs,
+		Short: i18n.T("Create .evo.yaml with a zone and image chosen from the Cloud.ru API",
+			"Создать .evo.yaml с зоной и образом из API Cloud.ru"),
+		Long: i18n.T(`Create .evo.yaml for this project.
 
 The availability zone and the boot image are listed from the Cloud.ru API
 (credentials required). On a terminal you choose from a numbered list;
 with --non-interactive or without a terminal the first zone and the newest
-plain Ubuntu (else Debian) image are taken, and the choice is printed.`,
+plain Ubuntu (else Debian) image are taken, and the choice is printed.`, `Создать .evo.yaml для этого проекта.
+
+Зона доступности и загрузочный образ берутся из API Cloud.ru (нужен ключ
+доступа). На терминале их выбирают из нумерованного списка; с
+--non-interactive или без терминала берутся первая зона и самый новый
+обычный образ Ubuntu (если его нет — Debian), выбор печатается.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
@@ -640,7 +683,8 @@ plain Ubuntu (else Debian) image are taken, and the choice is printed.`,
 		},
 	}
 
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Take the first zone and the preferred image without asking")
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Take the first zone and the preferred image without asking",
+		"Без вопросов взять первую зону и предпочтительный образ"))
 
 	return cmd
 }
@@ -649,9 +693,10 @@ plain Ubuntu (else Debian) image are taken, and the choice is printed.`,
 
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "version",
-		Args:  cobra.NoArgs,
-		Short: "Print the version, commit, build date, Go version and platform",
+		Use:  "version",
+		Args: cobra.NoArgs,
+		Short: i18n.T("Print the version, commit, build date, Go version and platform",
+			"Версия, коммит, дата сборки, версия Go и платформа"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return printVersion(cmd.OutOrStdout(), flagJSON, currentVersion())
 		},
@@ -664,11 +709,14 @@ func newListZonesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list-zones",
 		Args:  cobra.NoArgs,
-		Short: "List available availability zones",
-		Long: `List availability zones from the Cloud.ru API.
+		Short: i18n.T("List available availability zones", "Список зон доступности"),
+		Long: i18n.T(`List availability zones from the Cloud.ru API.
 
 Use the zone ID as the --region flag or CLOUDRU_REGION env var for deploy.
-Use --json for machine-readable output.`,
+Use --json for machine-readable output.`, `Список зон доступности из API Cloud.ru.
+
+ID зоны передаётся в deploy флагом --region или переменной CLOUDRU_REGION.
+Для машинного разбора — --json.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
@@ -692,7 +740,7 @@ Use --json for machine-readable output.`,
 				return eng.Printer.JSON(zones)
 			}
 
-			headers := []string{"ID", "Name"}
+			headers := []string{"ID", i18n.T("Name", "Имя")}
 			rows := make([][]string, len(zones))
 			for i, z := range zones {
 				rows[i] = []string{z.ID, z.Name}
@@ -709,12 +757,16 @@ func newListImagesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list-images",
 		Args:  cobra.NoArgs,
-		Short: "List available VM boot images",
-		Long: `List boot images from the Cloud.ru API.
+		Short: i18n.T("List available VM boot images", "Список загрузочных образов ВМ"),
+		Long: i18n.T(`List boot images from the Cloud.ru API.
 
 Use the image ID as the --image-id flag or CLOUDRU_IMAGE_ID env var for deploy.
 deploy installs Docker on Ubuntu and Debian images (e.g. Ubuntu-24.04).
-Use --json for machine-readable output.`,
+Use --json for machine-readable output.`, `Список загрузочных образов из API Cloud.ru.
+
+ID образа передаётся в deploy флагом --image-id или переменной CLOUDRU_IMAGE_ID.
+deploy ставит Docker на образы Ubuntu и Debian (например, Ubuntu-24.04).
+Для машинного разбора — --json.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {

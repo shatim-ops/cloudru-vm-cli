@@ -12,9 +12,18 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
+
+// TestMain runs the tests in English: they assert the English texts.
+// Tests of the Russian output (ru_test.go, docs/commands.md) set the
+// language themselves.
+func TestMain(m *testing.M) {
+	i18n.SetLang("en")
+	os.Exit(m.Run())
+}
 
 func TestHandleError_WrappedCLIErrorKeepsHint(t *testing.T) {
 	err := fmt.Errorf("list zones: %w", clerrors.New(clerrors.CodeAuthRequired,

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -138,7 +139,11 @@ func newTreeCmds() []*cobra.Command {
 	reg := newRegistry()
 	var out []*cobra.Command
 	for _, g := range treeGroups {
-		group := asGroup(&cobra.Command{Use: g.Name, Short: g.Short})
+		short := g.Short
+		if ru, ok := treeGroupShortRU[g.Name]; ok {
+			short = i18n.T(g.Short, ru)
+		}
+		group := asGroup(&cobra.Command{Use: g.Name, Short: short})
 		for _, c := range g.Cmds {
 			t, ok := reg.Lookup(c.Tool)
 			if !ok {
@@ -229,6 +234,16 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	if t.Mutating {
 		long += "\nAsks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only."
 	}
+	if i18n.Lang() == i18n.RU {
+		if ru, ok := toolShortRU[t.Name]; ok {
+			short = ru
+		}
+		long = short + ".\n\nВызывает инструмент " + t.Name + " (подробнее: 'evo tools describe " + t.Name + "').\n" +
+			"Описание инструмента и его флагов — на английском, как в MCP:\n\n" + t.Description
+		if t.Mutating {
+			long += "\n\nСпрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью."
+		}
+	}
 
 	cmd := &cobra.Command{
 		Use:   strings.Join(use, " "),
@@ -236,10 +251,11 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		Long:  long,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if maxArgs == 0 && len(args) > 0 {
-				return fmt.Errorf("%s takes no arguments, got %q", cmd.CommandPath(), args[0])
+				return fmt.Errorf(i18n.T("%s takes no arguments, got %q", "%s не принимает аргументов, передано %q"), cmd.CommandPath(), args[0])
 			}
 			if len(args) < minArgs || (maxArgs >= 0 && len(args) > maxArgs) {
-				return fmt.Errorf("%s: want %s, got %d argument(s)", cmd.CommandPath(), strings.Join(use[1:], " "), len(args))
+				return fmt.Errorf(i18n.T("%s: want %s, got %d argument(s)", "%s: нужно %s, передано аргументов: %d"),
+					cmd.CommandPath(), strings.Join(use[1:], " "), len(args))
 			}
 			return nil
 		},
@@ -250,7 +266,8 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		// (kubectl get pods -n x): stop parsing flags at the first argument.
 		// evo's own flags go before it.
 		cmd.Flags().SetInterspersed(false)
-		long += "\nevo flags (--json, --yes, --dry-run, --profile) go before the arguments: everything after the first one is passed to the tool as is."
+		long += i18n.T("\nevo flags (--json, --yes, --dry-run, --profile) go before the arguments: everything after the first one is passed to the tool as is.",
+			"\nФлаги evo (--json, --yes, --dry-run, --profile) ставятся перед аргументами: всё после первого аргумента передаётся инструменту как есть.")
 		cmd.Long = long
 	}
 
@@ -306,8 +323,9 @@ func evoFlagInRest(cmd *cobra.Command, rest []string, firstArg string) error {
 		}
 		if evoFlagsKubectlLacks[a] || strings.HasPrefix(a, "--json=") || strings.HasPrefix(a, "--yes=") {
 			return clerrors.New(clerrors.CodeUsage,
-				fmt.Sprintf("%s: %s after the arguments would go to the tool", cmd.CommandPath(), a),
-				fmt.Sprintf("Put evo flags first: '%s %s <%s> …'.", cmd.CommandPath(), strings.SplitN(a, "=", 2)[0], firstArg))
+				i18n.Tf("%s: %s after the arguments would go to the tool", "%s: %s после аргументов достался бы инструменту", cmd.CommandPath(), a),
+				i18n.Tf("Put evo flags first: '%s %s <%s> …'.", "Флаги evo ставьте первыми: '%s %s <%s> …'.",
+					cmd.CommandPath(), strings.SplitN(a, "=", 2)[0], firstArg))
 		}
 	}
 	return nil
@@ -326,8 +344,8 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 		if args[i] == "" && !p.optional {
 			label := strings.ReplaceAll(strings.Join(p.names, "|"), "_", "-")
 			return nil, clerrors.New(clerrors.CodeUsage,
-				fmt.Sprintf("%s: <%s> is empty", cmd.CommandPath(), label),
-				fmt.Sprintf("Run '%s --help'.", cmd.CommandPath()))
+				i18n.Tf("%s: <%s> is empty", "%s: <%s> пустой", cmd.CommandPath(), label),
+				helpHint(cmd))
 		}
 		switch {
 		case p.rest:
@@ -374,10 +392,14 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 	}
 	if len(missing) > 0 {
 		return nil, clerrors.New(clerrors.CodeUsage,
-			fmt.Sprintf("%s: missing required flag(s): %s", cmd.CommandPath(), strings.Join(missing, ", ")),
-			fmt.Sprintf("Run '%s --help'.", cmd.CommandPath()))
+			i18n.Tf("%s: missing required flag(s): %s", "%s: не заданы обязательные флаги: %s", cmd.CommandPath(), strings.Join(missing, ", ")),
+			helpHint(cmd))
 	}
 	return out, nil
+}
+
+func helpHint(cmd *cobra.Command) string {
+	return i18n.Tf("Run '%s --help'.", "Справка: '%s --help'.", cmd.CommandPath())
 }
 
 // --- answer formatting ---
@@ -425,7 +447,7 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, columns []string)
 		}
 	}
 	if len(rows) > 0 {
-		p.Table([]string{"FIELD", "VALUE"}, rows)
+		p.Table([]string{i18n.T("FIELD", "ПОЛЕ"), i18n.T("VALUE", "ЗНАЧЕНИЕ")}, rows)
 	}
 	printed := len(rows) > 0
 	for _, k := range keys {
@@ -485,7 +507,7 @@ const maxAutoColumns = 7
 
 func renderList(p *output.Printer, w io.Writer, rows []any, columns []string) {
 	if len(rows) == 0 {
-		fmt.Fprintln(w, "No items.")
+		fmt.Fprintln(w, i18n.T("No items.", "Пусто."))
 		return
 	}
 	if _, isObj := rows[0].(map[string]any); !isObj {
@@ -493,7 +515,7 @@ func renderList(p *output.Printer, w io.Writer, rows []any, columns []string) {
 		for i, r := range rows {
 			out[i] = []string{cell(r, 0)}
 		}
-		p.Table([]string{"VALUE"}, out)
+		p.Table([]string{i18n.T("VALUE", "ЗНАЧЕНИЕ")}, out)
 		return
 	}
 	if len(columns) == 0 {

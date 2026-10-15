@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -44,13 +46,18 @@ type doctorCheck struct {
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Check configuration, credentials and connectivity",
-		Long: `Check the setup: config files and their permissions, where each setting
+		Short: i18n.T("Check configuration, credentials and connectivity", "Проверить настройки, ключ доступа и связь с API"),
+		Long: i18n.T(`Check the setup: config files and their permissions, where each setting
 comes from, reachability of the IAM and Compute APIs, the credentials, and
 kubectl/helm in PATH (needed only by the k8s tools; a warning, not an error).
 
 Exits with 2 if the configuration or credentials are broken, 1 if only
-connectivity checks failed.`,
+connectivity checks failed.`, `Проверить окружение: файлы настроек и их права, откуда взята каждая
+настройка, доступность IAM и Compute API, ключ доступа, kubectl/helm в PATH
+(нужны только инструментам k8s; их отсутствие — предупреждение, не ошибка).
+
+Код выхода 2 — сломаны настройки или ключ, 1 — не прошли только проверки
+связи.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)
@@ -84,10 +91,12 @@ func runDoctor(ctx context.Context) []doctorCheck {
 
 	switch {
 	case err != nil:
-		checks = append(checks, doctorCheck{Name: "credentials", Status: checkSkip, Detail: "configuration is broken"})
+		checks = append(checks, doctorCheck{Name: "credentials", Status: checkSkip,
+			Detail: i18n.T("configuration is broken", "настройки сломаны")})
 	case cfg.KeyID == "" || cfg.Secret == "":
 		checks = append(checks, doctorCheck{Name: "credentials", Status: checkFail, auth: true,
-			Detail: "no access key: run 'evo configure' or set CLOUDRU_KEY_ID and CLOUDRU_SECRET"})
+			Detail: i18n.T("no access key: run 'evo configure' or set CLOUDRU_KEY_ID and CLOUDRU_SECRET",
+				"нет ключа доступа: выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET")})
 	default:
 		provider := tokenProvider(cfg)
 		before := provider.Exchanges()
@@ -96,12 +105,13 @@ func runDoctor(ctx context.Context) []doctorCheck {
 			checks = append(checks, doctorCheck{Name: "credentials", Status: checkFail, Detail: errDetail(terr),
 				auth: clerrors.ExitCode(terr) == clerrors.ExitAuth})
 		} else {
-			src := "cached token"
+			src := i18n.T("cached token", "токен из кэша")
 			if provider.Exchanges() != before {
-				src = "token issued"
+				src = i18n.T("token issued", "токен выдан")
 			}
 			checks = append(checks, doctorCheck{Name: "credentials", Status: checkOK,
-				Detail: fmt.Sprintf("key %s: %s, valid for %s", config.MaskKeyID(cfg.KeyID), src, tok.TTL().Truncate(time.Minute))})
+				Detail: i18n.Tf("key %s: %s, valid for %s", "ключ %s: %s, действует ещё %s",
+					config.MaskKeyID(cfg.KeyID), src, tok.TTL().Truncate(time.Minute))})
 			checks = append(checks, keyScopeCheck(ctx, tok.Value))
 		}
 	}
@@ -111,7 +121,8 @@ func runDoctor(ctx context.Context) []doctorCheck {
 			checks = append(checks, doctorCheck{Name: bin, Status: checkOK, Detail: path})
 		} else {
 			checks = append(checks, doctorCheck{Name: bin, Status: checkWarn,
-				Detail: "not in PATH (needed only by the k8s_kubectl, k8s_apply and k8s_helm tools)"})
+				Detail: i18n.T("not in PATH (needed only by the k8s_kubectl, k8s_apply and k8s_helm tools)",
+					"нет в PATH (нужен только инструментам k8s_kubectl, k8s_apply и k8s_helm)")})
 		}
 	}
 	return checks
@@ -125,12 +136,13 @@ func fileChecks() []doctorCheck {
 	switch {
 	case os.IsNotExist(err):
 		return append(checks, doctorCheck{Name: "config dir", Status: checkWarn,
-			Detail: dir + " does not exist; run 'evo configure' (or use environment variables)"})
+			Detail: dir + i18n.T(" does not exist; run 'evo configure' (or use environment variables)",
+				" не существует; выполните 'evo configure' (или используйте переменные окружения)")})
 	case err != nil:
 		return append(checks, doctorCheck{Name: "config dir", Status: checkFail, Detail: err.Error(), auth: true})
 	case config.PermissionsEnforced() && config.LooseMode(st.Mode()):
 		checks = append(checks, doctorCheck{Name: "config dir", Status: checkWarn,
-			Detail: fmt.Sprintf("%s has mode %04o; run: chmod 700 %s", dir, st.Mode().Perm(), dir)})
+			Detail: i18n.Tf("%s has mode %04o; run: chmod 700 %s", "у %s права %04o; выполните: chmod 700 %s", dir, st.Mode().Perm(), dir)})
 	case !config.PermissionsEnforced() && config.PrivateDirWarning(dir) != "":
 		checks = append(checks, doctorCheck{Name: "config dir", Status: checkWarn, Detail: config.PrivateDirWarning(dir)})
 	default:
@@ -147,7 +159,7 @@ func fileChecks() []doctorCheck {
 		st, err := os.Stat(f.path)
 		switch {
 		case os.IsNotExist(err):
-			checks = append(checks, doctorCheck{Name: f.name, Status: checkWarn, Detail: "not found"})
+			checks = append(checks, doctorCheck{Name: f.name, Status: checkWarn, Detail: i18n.T("not found", "не найден")})
 		case err != nil:
 			checks = append(checks, doctorCheck{Name: f.name, Status: checkFail, Detail: err.Error(), auth: true})
 		case !config.PermissionsEnforced():
@@ -159,7 +171,8 @@ func fileChecks() []doctorCheck {
 				}
 				checks = append(checks, doctorCheck{Name: f.name, Status: status, auth: f.secret, Detail: w})
 			} else {
-				checks = append(checks, doctorCheck{Name: f.name, Status: checkOK, Detail: f.path + " (ACL: no access for other users)"})
+				checks = append(checks, doctorCheck{Name: f.name, Status: checkOK,
+					Detail: f.path + i18n.T(" (ACL: no access for other users)", " (ACL: у других пользователей доступа нет)")})
 			}
 		case config.LooseMode(st.Mode()):
 			status := checkWarn
@@ -167,7 +180,8 @@ func fileChecks() []doctorCheck {
 				status = checkFail
 			}
 			checks = append(checks, doctorCheck{Name: f.name, Status: status, auth: f.secret,
-				Detail: fmt.Sprintf("mode %04o, readable by others; run: chmod 600 %s", st.Mode().Perm(), f.path)})
+				Detail: i18n.Tf("mode %04o, readable by others; run: chmod 600 %s",
+					"права %04o, файл читают другие; выполните: chmod 600 %s", st.Mode().Perm(), f.path)})
 		default:
 			checks = append(checks, doctorCheck{Name: f.name, Status: checkOK, Detail: fmt.Sprintf("%s (%04o)", f.path, st.Mode().Perm())})
 		}
@@ -177,7 +191,8 @@ func fileChecks() []doctorCheck {
 		legacy := filepath.Join(home, config.LegacyProjectFileName)
 		if _, err := os.Stat(legacy); err == nil {
 			checks = append(checks, doctorCheck{Name: "legacy config", Status: checkWarn,
-				Detail: legacy + " is no longer read: move its settings to 'evo configure' or ./" + config.ProjectFileName})
+				Detail: legacy + i18n.T(" is no longer read: move its settings to 'evo configure' or ./",
+					" больше не читается: перенесите настройки в 'evo configure' или ./") + config.ProjectFileName})
 		}
 	}
 	return checks
@@ -187,12 +202,13 @@ func fileChecks() []doctorCheck {
 func configChecks(cfg config.Config, sources []config.Source) []doctorCheck {
 	checks := []doctorCheck{{
 		Name: "config", Status: checkOK,
-		Detail: fmt.Sprintf("profile %s; key_id from %s; project_id from %s",
+		Detail: i18n.Tf("profile %s; key_id from %s; project_id from %s", "профиль %s; key_id из %s; project_id из %s",
 			cfg.Profile, sourceOrigin(sources, "KeyID"), sourceOrigin(sources, "ProjectID")),
 	}}
 	if cfg.ProjectID == "" {
 		checks = append(checks, doctorCheck{Name: "project_id", Status: checkWarn,
-			Detail: "not set: run 'evo configure' or set CLOUDRU_PROJECT_ID"})
+			Detail: i18n.T("not set: run 'evo configure' or set CLOUDRU_PROJECT_ID",
+				"не задан: выполните 'evo configure' или задайте CLOUDRU_PROJECT_ID")})
 	}
 	for _, w := range cfg.Warnings {
 		checks = append(checks, doctorCheck{Name: "config", Status: checkWarn, Detail: w})
@@ -217,11 +233,11 @@ func probe(ctx context.Context, name, rawURL string) doctorCheck {
 	start := time.Now()
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return doctorCheck{Name: name, Status: checkFail, Detail: fmt.Sprintf("%s unreachable: %v", u.Host, err)}
+		return doctorCheck{Name: name, Status: checkFail, Detail: i18n.Tf("%s unreachable: %v", "%s недоступен: %v", u.Host, err)}
 	}
 	resp.Body.Close()
 	return doctorCheck{Name: name, Status: checkOK,
-		Detail: fmt.Sprintf("%s reachable (HTTP %d, %s)", u.Host, resp.StatusCode, time.Since(start).Round(time.Millisecond))}
+		Detail: i18n.Tf("%s reachable (HTTP %d, %s)", "%s доступен (HTTP %d, %s)", u.Host, resp.StatusCode, time.Since(start).Round(time.Millisecond))}
 }
 
 func errDetail(err error) string {
@@ -246,19 +262,43 @@ func reportDoctor(printer *output.Printer, checks []doctorCheck) error {
 	} else {
 		rows := make([][]string, len(checks))
 		for i, c := range checks {
-			rows[i] = []string{c.Status, c.Name, c.Detail}
+			rows[i] = []string{statusText(c.Status), c.Name, c.Detail}
 		}
-		printer.Table([]string{"Status", "Check", "Detail"}, rows)
+		printer.Table([]string{i18n.T("Status", "Статус"), i18n.T("Check", "Проверка"), i18n.T("Detail", "Подробности")}, rows)
 	}
 	switch {
 	case failed == 0:
 		return nil
 	case authFailed:
-		return clerrors.New(clerrors.CodeConfigInvalid, fmt.Sprintf("doctor: %d check(s) failed", failed),
-			"Fix the configuration or credentials above, e.g. with 'evo configure'")
+		return clerrors.New(clerrors.CodeConfigInvalid, failedChecks(failed),
+			i18n.T("Fix the configuration or credentials above, e.g. with 'evo configure'",
+				"Исправьте настройки или ключ (см. выше), например через 'evo configure'"))
 	default:
-		return fmt.Errorf("doctor: %d check(s) failed", failed)
+		return stderrors.New(failedChecks(failed))
 	}
+}
+
+// statusText is the status of a check in the text table; JSON keeps the
+// stable ok/warn/fail/skip.
+func statusText(s string) string {
+	if i18n.Lang() == i18n.EN {
+		return s
+	}
+	switch s {
+	case checkOK:
+		return "ок"
+	case checkWarn:
+		return "внимание"
+	case checkFail:
+		return "ошибка"
+	case checkSkip:
+		return "пропуск"
+	}
+	return s
+}
+
+func failedChecks(n int) string {
+	return i18n.Tf("doctor: %d check(s) failed", "doctor: не прошли проверки: %d", n)
 }
 
 // keyScopeCheck warns about a key that sees several projects: the project
