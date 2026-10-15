@@ -101,6 +101,18 @@ func TestPinHostKey(t *testing.T) {
 	if got, _ := os.ReadFile(path); string(got) != "198.51.100.7 ssh-ed25519 AAAAother\n" {
 		t.Fatalf("after drop:\n%s", got)
 	}
+	// IPv6: plain and bracketed with the port.
+	v6 := "[2001:db8::1]:22 ssh-ed25519 AAAAold\n2001:db8::1 ssh-ed25519 AAAAold2\n"
+	if err := os.WriteFile(path, []byte(v6), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := pinHostKey(path, "2001:db8::1", "ssh-ed25519 AAAAnew"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != "2001:db8::1 ssh-ed25519 AAAAnew\n" {
+		t.Fatalf("IPv6:\n%s", got)
+	}
+
 	// No file yet and nothing to pin: an empty file, no error.
 	fresh := filepath.Join(t.TempDir(), "known_hosts")
 	if err := pinHostKey(fresh, "203.0.113.5", ""); err != nil {

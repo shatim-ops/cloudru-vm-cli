@@ -10,6 +10,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // User SSH access used to be a manual post-install step ("append their
@@ -119,6 +120,13 @@ const knownHostsFile = "known_hosts"
 // the same address is dropped. An empty key only drops the old entries (the
 // first ssh then records the new one: StrictHostKeyChecking=accept-new).
 func pinHostKey(path, host, key string) error {
+	// Two deploy_apply in one project (stdio and HTTP servers) would
+	// otherwise read the same file and the last write drop the other's line.
+	unlock, err := state.FileLock(path+".lock", 30*time.Second)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	var keep []string
 	if data, err := os.ReadFile(path); err == nil {
 		for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
