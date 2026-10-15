@@ -116,7 +116,7 @@ func (s *Registry) handleK8sApply(ctx context.Context, args map[string]any) (str
 	// namespace goes to kubectl as an argument: a value starting with '-'
 	// would be read as another flag (as for k8s_helm).
 	if strings.HasPrefix(stringArg(args, "namespace"), "-") {
-		return errResult(fmt.Errorf("'namespace' must not start with '-'")), true
+		return usageResult(fmt.Errorf("'namespace' must not start with '-'")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -152,7 +152,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	// the server's host).
 	for _, k := range []string{"release", "chart", "namespace", "version"} {
 		if strings.HasPrefix(stringArg(args, k), "-") {
-			return errResult(fmt.Errorf("'%s' must not start with '-'", k)), true
+			return usageResult(fmt.Errorf("'%s' must not start with '-'", k)), true
 		}
 	}
 	mutating := map[string]bool{"install": true, "upgrade": true, "uninstall": true, "delete": true}
@@ -191,7 +191,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	switch action {
 	case "install", "upgrade":
 		if release == "" || chart == "" {
-			return errResult(fmt.Errorf("install/upgrade need release and chart")), true
+			return usageResult(fmt.Errorf("install/upgrade need release and chart")), true
 		}
 		hargs = []string{"upgrade", "--install", release, chart}
 		if ns != "" {
@@ -228,7 +228,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 		hargs = append(hargs, "--wait", "--timeout", "8m")
 	case "uninstall", "delete":
 		if release == "" {
-			return errResult(fmt.Errorf("uninstall needs release")), true
+			return usageResult(fmt.Errorf("uninstall needs release")), true
 		}
 		hargs = []string{"uninstall", release}
 		if ns != "" {
@@ -242,7 +242,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 			hargs = append(hargs, "-n", ns)
 		}
 	default:
-		return errResult(fmt.Errorf("unknown action %q", action)), true
+		return usageResult(fmt.Errorf("unknown action %q", action)), true
 	}
 
 	timeout := 120 * time.Second

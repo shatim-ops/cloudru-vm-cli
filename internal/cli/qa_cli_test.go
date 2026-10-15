@@ -178,6 +178,9 @@ func TestRun_JSONModeKeepsBothStreamsParseable(t *testing.T) {
 		if want == 0 && !json.Valid([]byte(stdout)) {
 			t.Errorf("%s --json: stdout is not JSON: %q", cmd, stdout)
 		}
+		if want != 0 && strings.TrimSpace(stdout) != "" {
+			t.Errorf("%s --json: an error must not print a result on stdout: %q", cmd, stdout)
+		}
 		assertJSONLines(t, cmd+" stderr", stderr)
 	}
 }
