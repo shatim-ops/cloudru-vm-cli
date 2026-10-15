@@ -20,6 +20,9 @@ on:
       image:
         description: "Image name"
         default: "ubuntu-22.04"
+      timeout:
+        description: "Seconds deploy waits for the VM to become active (CLOUDRU_TIMEOUT; ru.AZ-1 took over 10 min on 15.10.2026)"
+        default: "1200"
   push:
     branches: ["e2e/**"]
 
@@ -38,6 +41,7 @@ jobs:
       ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
       FLAVOR: ${{ inputs.flavor || 'lowcost10-2-4' }}
       IMAGE: ${{ inputs.image || 'ubuntu-22.04' }}
+      CLOUDRU_TIMEOUT: ${{ inputs.timeout || '1200' }}
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,6 +61,8 @@ jobs:
             printf '%s' "$v" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' ||
               { echo "::error::недопустимое значение входа: $v"; exit 1; }
           done
+          printf '%s' "$CLOUDRU_TIMEOUT" | grep -Eq '^[0-9]{2,5}$' ||
+            { echo "::error::timeout — число секунд"; exit 1; }
 
       - name: Сборка
         run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"

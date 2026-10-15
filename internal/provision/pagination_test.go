@@ -145,3 +145,25 @@ func TestDecode_NestedSpecFields(t *testing.T) {
 		}
 	}
 }
+
+// GetVM reads the state from a full answer with every key the live API
+// sends (api-probe, 15.10.2026), whatever the timestamp format.
+func TestGetVM_FullLiveShape(t *testing.T) {
+	for _, created := range []string{"2026-10-15T20:48:44.123456Z", "2026-10-15T20:48:44.123456+03:00", "2026-10-15T20:48:44.123456", "2026-10-15T20:48:44"} {
+		body := `{"additional_properties":{},"availability_zone":{"id":"z1","name":"ru.AZ-1"},"created_time":"` + created + `",
+			"description":"","flavor":{"id":"f1","name":"lowcost10-2-4","cpu":2,"ram":4},"guest_agent_state":"ready","icon":"<svg/>",
+			"id":"vm-1","image_id":"img-1","interfaces":[{"floating_ip":{"id":"fip-1","ip_address":"203.0.113.9","name":"fip","state":"in_use"},
+			"id":"if-1","interface_security_enabled":true,"ip_address":"10.0.0.4","name":"eth0","primary":true,"security_groups":[{"id":"sg"}],
+			"state":"created","subnet":{"id":"sn"},"type":"regular"}],"is_serial_ready":true,"locked":false,"metadata_fields":[],
+			"modified_time":"` + created + `","name":"evo-e2e-app","project_id":"p","remote_console_protocol":"vnc","state":"running","tags":[]}`
+		srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) })
+		vm, err := a.GetVM(context.Background(), "vm-1")
+		srv.Close()
+		if err != nil || vm.Status != "running" || vm.FloatingIP != "203.0.113.9" || vm.FlavorID != "f1" || vm.ZoneID() != "z1" {
+			t.Errorf("created_time %q: vm %+v, %v", created, vm, err)
+		}
+		if vm != nil && vm.CreatedAt.IsZero() {
+			t.Errorf("created_time %q not parsed", created)
+		}
+	}
+}

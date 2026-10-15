@@ -578,6 +578,10 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	t := e.timings()
 	pollDeadline := time.After(t.VMPollTimeout)
 	ticker := time.NewTicker(t.VMPollInterval)
+	// A new VM takes minutes, sometimes more than ten (ru.AZ-1, 15.10.2026):
+	// say the state once a minute, as destroy does, so a slow zone is told
+	// apart from a stuck deploy.
+	pollStart, lastReport, lastStatus := time.Now(), time.Now(), ""
 	defer ticker.Stop()
 
 	interrupted := func(sig string) (state.DeploymentRecord, error) {
@@ -629,6 +633,13 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))
 				continue
 			}
+			if updated.Status != lastStatus || time.Since(lastReport) >= time.Minute {
+				if updated.Status != "active" && updated.Status != "running" {
+					e.Printer.StepDone(i18n.Tf("VM is %s (%s elapsed)", "состояние ВМ — %s (прошло %s)",
+						statusText(updated.Status), time.Since(pollStart).Round(time.Second)))
+				}
+				lastStatus, lastReport = updated.Status, time.Now()
+			}
 			switch updated.Status {
 			case "active", "running":
 				e.Printer.StepDone(i18n.Tf("VM %s active", "ВМ %s активна", vm.ID))
@@ -676,6 +687,14 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			return interrupted("interrupt")
 		}
 	}
+}
+
+// statusText shows an empty VM state as such, not as a blank.
+func statusText(s string) string {
+	if s == "" {
+		return i18n.T("(not reported)", "(не сообщается)")
+	}
+	return s
 }
 
 // AssignFloatingIP creates a floating IP and attaches it to the VM's primary interface.
