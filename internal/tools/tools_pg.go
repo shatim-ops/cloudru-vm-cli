@@ -382,7 +382,7 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":      "confirmation_required",
-			"message":     "pg_create provisions a BILLABLE Managed PostgreSQL cluster (~minutes). Get the captain's approval, then call again with confirmed=true.",
+			"message":     "pg_create provisions a BILLABLE Managed PostgreSQL cluster (~minutes). Get the user's approval, then call again with confirmed=true.",
 			"will_create": willCreate,
 		}), true
 	}

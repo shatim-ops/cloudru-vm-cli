@@ -63,7 +63,7 @@ func (s *Registry) handleCertIssueLE(ctx context.Context, args map[string]any) (
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("cert_issue_le will request a Let's Encrypt certificate %q for %v (the domains must be delegated to Evolution DNS). Call again with confirmed=true after the captain approves.", name, dnsNames),
+			"message": fmt.Sprintf("cert_issue_le will request a Let's Encrypt certificate %q for %v (the domains must be delegated to Evolution DNS). Call again with confirmed=true after the user approves.", name, dnsNames),
 		}), true
 	}
 	cli, err := s.certClient(ctx)
@@ -88,7 +88,7 @@ func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (s
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("cert_import will upload certificate %q and its private key to Certificate Manager. Call again with confirmed=true after the captain approves.", name),
+			"message": fmt.Sprintf("cert_import will upload certificate %q and its private key to Certificate Manager. Call again with confirmed=true after the user approves.", name),
 		}), true
 	}
 	cli, err := s.certClient(ctx)
@@ -117,7 +117,7 @@ func (s *Registry) handleCertRenew(ctx context.Context, args map[string]any) (st
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("cert_renew will trigger Let's Encrypt renewal of certificate %q. Call again with confirmed=true after the captain approves.", id),
+			"message": fmt.Sprintf("cert_renew will trigger Let's Encrypt renewal of certificate %q. Call again with confirmed=true after the user approves.", id),
 		}), true
 	}
 	cli, err := s.certClient(ctx)
@@ -139,7 +139,7 @@ func (s *Registry) handleCertDelete(ctx context.Context, args map[string]any) (s
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("cert_delete permanently deletes certificate %q. If it is bound to a load balancer/listener, deletion can break HTTPS. Get the captain's approval, then call again with confirmed=true (add force=true to delete despite active usage).", id),
+			"message": fmt.Sprintf("cert_delete permanently deletes certificate %q. If it is bound to a load balancer/listener, deletion can break HTTPS. Get the user's approval, then call again with confirmed=true (add force=true to delete despite active usage).", id),
 		}), true
 	}
 	cli, err := s.certClient(ctx)
@@ -193,7 +193,7 @@ func (s *Registry) handleCertPrivateKey(ctx context.Context, args map[string]any
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": "cert_private_key returns the SECRET private key in plaintext. Only fetch it with the captain's explicit approval; call again with confirmed=true.",
+			"message": "cert_private_key returns the SECRET private key in plaintext. Only fetch it with the user's explicit approval; call again with confirmed=true.",
 		}), true
 	}
 	cli, err := s.certClient(ctx)

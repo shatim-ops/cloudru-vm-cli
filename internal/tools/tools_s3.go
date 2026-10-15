@@ -93,7 +93,7 @@ func (s *Registry) handleS3Put(ctx context.Context, args map[string]any) (string
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("s3_put will upload %d bytes to s3://%s/%s, overwriting the object if it exists. Call again with confirmed=true after the captain approves.", len(data), bucket, key),
+			"message": fmt.Sprintf("s3_put will upload %d bytes to s3://%s/%s, overwriting the object if it exists. Call again with confirmed=true after the user approves.", len(data), bucket, key),
 		}), true
 	}
 	cli, err := s.s3Client()
@@ -116,7 +116,7 @@ func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string,
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("s3_rm permanently deletes s3://%s/%s. Call again with confirmed=true after the captain approves.", bucket, key),
+			"message": fmt.Sprintf("s3_rm permanently deletes s3://%s/%s. Call again with confirmed=true after the user approves.", bucket, key),
 		}), true
 	}
 	cli, err := s.s3Client()
@@ -137,7 +137,7 @@ func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("s3_bucket_create creates bucket %q (billable storage). Call again with confirmed=true after the captain approves.", bucket),
+			"message": fmt.Sprintf("s3_bucket_create creates bucket %q (billable storage). Call again with confirmed=true after the user approves.", bucket),
 		}), true
 	}
 	cli, err := s.s3Client()
@@ -158,7 +158,7 @@ func (s *Registry) handleS3BucketDelete(ctx context.Context, args map[string]any
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("s3_bucket_delete permanently deletes bucket %q (it must be EMPTY). Call again with confirmed=true after the captain approves.", bucket),
+			"message": fmt.Sprintf("s3_bucket_delete permanently deletes bucket %q (it must be EMPTY). Call again with confirmed=true after the user approves.", bucket),
 		}), true
 	}
 	cli, err := s.s3Client()

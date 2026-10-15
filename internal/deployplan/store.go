@@ -22,7 +22,7 @@ import (
 )
 
 // planTTL bounds how long a plan_id stays valid between plan and apply.
-// 30 min gives the captain room to deliberate / re-confirm without the plan
+// 30 min gives the user room to deliberate / re-confirm without the plan
 // expiring mid-conversation.
 const planTTL = 30 * time.Minute
 
@@ -47,7 +47,7 @@ type DiskSpec struct {
 	TypeID string `json:"type_id,omitempty"`
 }
 
-// VMSpec is the resolved VM configuration shown to the captain.
+// VMSpec is the resolved VM configuration shown to the user.
 type VMSpec struct {
 	Name   string     `json:"name"`
 	Flavor FlavorSpec `json:"flavor"`
@@ -64,10 +64,10 @@ type NetworkSpec struct {
 	AttachFIPID     string `json:"attach_fip_id,omitempty"`
 }
 
-// SSHSpec describes how the captain will log in.
+// SSHSpec describes how the user will log in.
 type SSHSpec struct {
 	Login   string `json:"login"`
-	KeyName string `json:"key_name"` // "captain-key" | "generated-password"
+	KeyName string `json:"key_name"` // "user-key" | "generated-password"
 }
 
 // Plan is a fully-resolved, costed deploy plan.
@@ -91,7 +91,7 @@ type Plan struct {
 	ComposeFile  string            `json:"compose_file,omitempty"`
 	MetaFields   []string          `json:"meta_fields,omitempty"`   // dynamic image_metadata fields to fill (name/hostname/linux_password/public_key)
 	MetaStatic   map[string]string `json:"meta_static,omitempty"`   // image_metadata fields copied verbatim from image defaults
-	PublicKey    string            `json:"public_key,omitempty"`    // captain public key (safe to persist)
+	PublicKey    string            `json:"public_key,omitempty"`    // user public key (safe to persist)
 	SourceParams Params            `json:"source_params,omitempty"` // the request that produced this plan (for patch/re-plan)
 }
 

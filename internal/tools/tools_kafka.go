@@ -219,7 +219,7 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gib": storage, "brokers": brokers, "subnet_id": subnetID}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required",
-			"message":     "kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes). Get the captain's approval, then call again with confirmed=true.",
+			"message":     "kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes). Get the user's approval, then call again with confirmed=true.",
 			"will_create": willCreate}), true
 	}
 

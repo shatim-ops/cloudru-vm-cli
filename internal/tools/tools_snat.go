@@ -77,7 +77,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": "snat_create makes a billable SNAT gateway. Get the captain's approval, then call again with confirmed=true.",
+			"message": "snat_create makes a billable SNAT gateway. Get the user's approval, then call again with confirmed=true.",
 			"will_create": map[string]any{
 				"name":                 name,
 				"nat_type":             provision.NATTypePublicSNAT,

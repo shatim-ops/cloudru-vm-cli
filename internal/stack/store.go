@@ -218,7 +218,7 @@ type OrphanRef struct {
 // that still hold created resources (status != destroyed). Re-planning while one
 // exists risks duplicate billable resources (a failed job leaves e.g. a Postgres
 // cluster; a fresh apply creates a second) — the caller surfaces these so the
-// captain can stack_destroy the old job first.
+// the user can stack_destroy the old job first.
 func FindResourcefulJobs(name, excludeID string) []OrphanRef {
 	entries, err := os.ReadDir(jobsDir())
 	if err != nil {

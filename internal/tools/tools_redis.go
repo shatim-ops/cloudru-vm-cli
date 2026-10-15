@@ -169,7 +169,7 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		out := map[string]any{"status": "confirmation_required",
-			"message":     "redis_create provisions a BILLABLE Managed Redis cluster (async, ~minutes). Get the captain's approval, then call again with confirmed=true.",
+			"message":     "redis_create provisions a BILLABLE Managed Redis cluster (async, ~minutes). Get the user's approval, then call again with confirmed=true.",
 			"will_create": willCreate}
 		if warn != "" {
 			out["warning"] = warn

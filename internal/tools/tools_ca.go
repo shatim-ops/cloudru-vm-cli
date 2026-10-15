@@ -62,7 +62,7 @@ func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("ca_deploy will create+run container app %q from image %q (billable). Call again with confirmed=true after the captain approves.", name, image),
+			"message": fmt.Sprintf("ca_deploy will create+run container app %q from image %q (billable). Call again with confirmed=true after the user approves.", name, image),
 		}), true
 	}
 
@@ -136,7 +136,7 @@ func (s *Registry) handleCaDelete(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("ca_delete permanently deletes container app %q. Call again with confirmed=true after the captain approves.", name),
+			"message": fmt.Sprintf("ca_delete permanently deletes container app %q. Call again with confirmed=true after the user approves.", name),
 		}), true
 	}
 	cli, err := s.caClient(ctx)
@@ -182,7 +182,7 @@ func (s *Registry) handleCaStartStop(ctx context.Context, args map[string]any, a
 		}
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("ca_%s will %s container app %q (%s). Call again with confirmed=true after the captain approves.", action, action, name, effect),
+			"message": fmt.Sprintf("ca_%s will %s container app %q (%s). Call again with confirmed=true after the user approves.", action, action, name, effect),
 		}), true
 	}
 	cli, err := s.caClient(ctx)

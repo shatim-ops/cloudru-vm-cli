@@ -91,7 +91,7 @@ func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (s
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return toJSON(map[string]any{
 				"status":  "confirmation_required",
-				"message": fmt.Sprintf("kubectl %q changes the cluster. Get the captain's approval, then call again with confirmed=true. (Read-only verbs run without confirmation.)", verb),
+				"message": fmt.Sprintf("kubectl %q changes the cluster. Get the user's approval, then call again with confirmed=true. (Read-only verbs run without confirmation.)", verb),
 			}), true
 		}
 	}
@@ -121,7 +121,7 @@ func (s *Registry) handleK8sApply(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": "k8s_apply changes the cluster. Get the captain's approval, then call again with confirmed=true.",
+			"message": "k8s_apply changes the cluster. Get the user's approval, then call again with confirmed=true.",
 		}), true
 	}
 	kc, err := s.kubeconfigForCluster(ctx, clusterID)
@@ -160,7 +160,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return toJSON(map[string]any{
 				"status":  "confirmation_required",
-				"message": fmt.Sprintf("helm %s changes the cluster (billable workloads). Get the captain's approval, then call again with confirmed=true.", action),
+				"message": fmt.Sprintf("helm %s changes the cluster (billable workloads). Get the user's approval, then call again with confirmed=true.", action),
 			}), true
 		}
 	}
