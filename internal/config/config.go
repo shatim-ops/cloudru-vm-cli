@@ -27,11 +27,15 @@ type Config struct {
 
 	// Deploy
 	ProjectID string `yaml:"project_id" json:"project_id"` // required UUID
-	Region    string `yaml:"region" json:"region"`         // availability_zone_id UUID
-	Flavor    string `yaml:"flavor" json:"flavor"`
-	ImageID   string `yaml:"image_id" json:"image_id"` // boot image UUID
-	DiskSize  int    `yaml:"disk_size" json:"disk_size"`
-	Timeout   int    `yaml:"timeout" json:"timeout"` // seconds deploy waits for the VM to become active
+	// ProjectOrigin is where ProjectID came from (OriginProfile, …): the
+	// previews name it, since with a key that sees several projects the
+	// project is a setting the user may not have chosen on purpose.
+	ProjectOrigin string `yaml:"-" json:"-"`
+	Region        string `yaml:"region" json:"region"` // availability_zone_id UUID
+	Flavor        string `yaml:"flavor" json:"flavor"`
+	ImageID       string `yaml:"image_id" json:"image_id"` // boot image UUID
+	DiskSize      int    `yaml:"disk_size" json:"disk_size"`
+	Timeout       int    `yaml:"timeout" json:"timeout"` // seconds deploy waits for the VM to become active
 
 	// Output
 	JSON    bool `yaml:"-" json:"-"` // --json flag only
@@ -163,6 +167,11 @@ func resolve(opts Options) (Config, map[string]string, error) {
 		return Config{}, nil, err
 	}
 
+	profileProject := ""
+	if origins["ProjectID"] == OriginProfile {
+		profileProject = cfg.ProjectID
+	}
+
 	// Layer 2: project file.
 	if opts.ProjectFile != "" {
 		if err := applyProjectFile(&cfg, opts.ProjectFile, origins); err != nil {
@@ -187,6 +196,22 @@ func resolve(opts Options) (Config, map[string]string, error) {
 		return Config{}, nil, err
 	}
 
+	// .evo.yaml or CLOUDRU_PROJECT_ID silently taking over the profile's
+	// project is how a command lands in the wrong project: say so. A flag
+	// is explicit and needs no warning.
+	if profileProject != "" && cfg.ProjectID != profileProject {
+		from := ProjectFileName
+		if origins["ProjectID"] == OriginEnv {
+			from = "CLOUDRU_PROJECT_ID"
+		}
+		if _, flagged := opts.Flags["ProjectID"]; !flagged {
+			cfg.Warnings = append(cfg.Warnings, i18n.Tf(
+				"project %s from %s overrides project %s of profile %q",
+				"проект %s из %s заменяет проект %s профиля %q",
+				cfg.ProjectID, from, profileProject, name))
+		}
+	}
+
 	// Layer 4: CLI flags (highest precedence).
 	for key, val := range opts.Flags {
 		if err := setFieldAny(&cfg, key, val); err != nil {
@@ -194,6 +219,7 @@ func resolve(opts Options) (Config, map[string]string, error) {
 		}
 		origins[key] = OriginFlag
 	}
+	cfg.ProjectOrigin = origins["ProjectID"]
 
 	return cfg, origins, nil
 }

@@ -366,3 +366,46 @@ func TestMaskKeyID(t *testing.T) {
 }
 
 func asCLI(err error, target **clerrors.CLIError) bool { return stderrors.As(err, target) }
+
+// .evo.yaml or CLOUDRU_PROJECT_ID replacing the profile's project is
+// reported; --project-id is explicit and is not (best practice: no silent
+// "active project", cf. gcloud/az which take it silently).
+func TestResolve_WarnsWhenProjectOverridesProfile(t *testing.T) {
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{ProjectID: "proj-profile"})
+	project := filepath.Join(t.TempDir(), ".evo.yaml")
+	writeFile(t, project, "project_id: proj-dir\n")
+
+	warned := func(cfg Config, want string) bool {
+		for _, w := range cfg.Warnings {
+			if strings.Contains(w, want) {
+				return true
+			}
+		}
+		return false
+	}
+	cfg, _, err := ResolveWithSources(Options{ProjectFile: project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProjectID != "proj-dir" || cfg.ProjectOrigin != OriginProject || !warned(cfg, "proj-profile") {
+		t.Errorf(".evo.yaml: project %q from %q, warnings %q", cfg.ProjectID, cfg.ProjectOrigin, cfg.Warnings)
+	}
+
+	t.Setenv("CLOUDRU_PROJECT_ID", "proj-env")
+	cfg, _, _ = ResolveWithSources(Options{})
+	if cfg.ProjectOrigin != OriginEnv || !warned(cfg, "CLOUDRU_PROJECT_ID") {
+		t.Errorf("env: origin %q, warnings %q", cfg.ProjectOrigin, cfg.Warnings)
+	}
+
+	cfg, _, _ = ResolveWithSources(Options{Flags: map[string]any{"ProjectID": "proj-flag"}})
+	if cfg.ProjectOrigin != OriginFlag || warned(cfg, "proj-profile") {
+		t.Errorf("flag: origin %q, warnings %q", cfg.ProjectOrigin, cfg.Warnings)
+	}
+
+	t.Setenv("CLOUDRU_PROJECT_ID", "proj-profile") // same project: nothing to say
+	cfg, _, _ = ResolveWithSources(Options{})
+	if warned(cfg, "proj-profile") {
+		t.Errorf("same project warned: %q", cfg.Warnings)
+	}
+}

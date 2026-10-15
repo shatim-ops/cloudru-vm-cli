@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -132,11 +133,25 @@ func TestPreviews_NameTheProject(t *testing.T) {
 
 	rec := runningRecord()
 	rec.ProjectID = projectA
-	p := destroyPreview(&rec, &state.File{}, nil, projectA)
-	if len(p.Lines) == 0 || p.Lines[0] != "project:   "+projectA {
-		t.Errorf("destroy preview lines = %q, want the project first", p.Lines)
+	p := destroyPreview(&rec, &state.File{}, nil, projectA, originRecord)
+	if want := "project:   " + projectA + " (where the deployment was created)"; len(p.Lines) == 0 || p.Lines[0] != want {
+		t.Errorf("destroy preview lines = %q, want %q first", p.Lines, want)
 	}
-	if d, _ := p.Details.(map[string]any); d["project_id"] != projectA {
+	if d, _ := p.Details.(map[string]any); d["project_id"] != projectA || d["project_from"] != originRecord {
 		t.Errorf("destroy preview details = %v, want project_id", p.Details)
+	}
+}
+
+// The preview says where the project comes from (best practice from
+// 'aws configure list'; none of the compared CLIs does it in a preview).
+func TestPreview_ProjectSource(t *testing.T) {
+	eng, _, opts, stdout, _ := newDeployForConfirm(t)
+	eng.Config.ProjectOrigin = config.OriginEnv
+	opts.DryRun = true
+	if err := eng.Deploy(context.Background(), opts); err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	if want := eng.Config.ProjectID + " (from CLOUDRU_PROJECT_ID)"; !strings.Contains(stdout.String(), want) {
+		t.Errorf("deploy preview lacks %q:\n%s", want, stdout.String())
 	}
 }

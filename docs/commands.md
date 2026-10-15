@@ -66,6 +66,9 @@
     - [evo pg user-delete](#evo-pg-user-delete)
     - [evo pg users](#evo-pg-users)
     - [evo pg versions](#evo-pg-versions)
+  - [evo project](#evo-project)
+    - [evo project list](#evo-project-list)
+    - [evo project use](#evo-project-use)
   - [evo s3](#evo-s3)
     - [evo s3 bucket-create](#evo-s3-bucket-create)
     - [evo s3 bucket-delete](#evo-s3-bucket-delete)
@@ -162,6 +165,7 @@
 * [evo logs](#evo-logs)	 - Журналы контейнеров на развёрнутой ВМ
 * [evo mcp](#evo-mcp)	 - MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)
 * [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
+* [evo project](#evo-project)	 - Проекты, которые видит ключ, и проект профиля
 * [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 * [evo secret](#evo-secret)	 - Secret Manager: секреты
 * [evo status](#evo-status)	 - Состояние текущего развёртывания
@@ -444,6 +448,14 @@ https://github.com/shatim-ops/evo-cli/blob/main/docs/auth.md
 evo configure [flags]
 ```
 
+### Examples
+
+```
+  evo configure
+  evo configure --profile test
+  printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id <UUID>
+```
+
 ### Options
 
 ```
@@ -608,6 +620,14 @@ evo deploy [flags]
 
 ```
 evo destroy [flags]
+```
+
+### Examples
+
+```
+  evo destroy --dry-run
+  evo destroy
+  evo destroy --yes
 ```
 
 ### Options
@@ -873,6 +893,13 @@ List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VM
 evo disk list [flags]
 ```
 
+### Examples
+
+```
+  evo disk list
+  evo disk list --json
+```
+
 ### Options
 
 ```
@@ -1002,6 +1029,13 @@ evo disk types [flags]
 evo doctor [flags]
 ```
 
+### Examples
+
+```
+  evo doctor
+  evo doctor --json
+```
+
 ### Options
 
 ```
@@ -1042,6 +1076,13 @@ evo doctor [flags]
 
 ```
 evo init [flags]
+```
+
+### Examples
+
+```
+  evo init
+  evo init --non-interactive
 ```
 
 ### Options
@@ -1421,6 +1462,13 @@ Get the kubeconfig for a Managed Kubernetes cluster. By DEFAULT it embeds a stat
 evo k8s kubeconfig <cluster-id> [flags]
 ```
 
+### Examples
+
+```
+  evo k8s kubeconfig <cluster-id> > kubeconfig.yaml
+  evo k8s kubeconfig <cluster-id> --embed-token=false > kubeconfig.yaml
+```
+
 ### Options
 
 ```
@@ -1508,6 +1556,12 @@ List Managed Kubernetes (mk8s) clusters in the project (id, name, status). Read-
 
 ```
 evo k8s list [flags]
+```
+
+### Examples
+
+```
+  evo k8s list
 ```
 
 ### Options
@@ -1728,6 +1782,13 @@ ID зоны передаётся в deploy флагом --region или пере
 evo list-zones [flags]
 ```
 
+### Examples
+
+```
+  evo list-zones
+  evo list-zones --json
+```
+
 ### Options
 
 ```
@@ -1854,6 +1915,14 @@ k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой, если kubectl
 
 ```
 evo mcp [flags]
+```
+
+### Examples
+
+```
+  evo mcp
+  claude mcp add --transport stdio --scope project evo -- evo mcp
+  MCP_BEARER_TOKEN="$(openssl rand -hex 32)" evo mcp --http :8080 --allow-project <UUID>
 ```
 
 ### Options
@@ -2034,6 +2103,13 @@ Create a Managed PostgreSQL cluster. Resolves version (default: latest), specifi
 
 ```
 evo pg create <name> [flags]
+```
+
+### Examples
+
+```
+  evo pg create app-db --dry-run
+  evo pg create app-db --cpu 2 --ram 4
 ```
 
 ### Options
@@ -2309,6 +2385,12 @@ List Managed PostgreSQL clusters in the project (id, name, status, version, heal
 
 ```
 evo pg list [flags]
+```
+
+### Examples
+
+```
+  evo pg list
 ```
 
 ### Options
@@ -2593,6 +2675,127 @@ evo pg versions [flags]
 
 * [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 
+## evo project
+
+Проекты, которые видит ключ, и проект профиля
+
+```
+evo project [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по project
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo project list](#evo-project-list)	 - Проекты, которые видит ключ (* — активный)
+* [evo project use](#evo-project-use)	 - Сделать проект проектом профиля по умолчанию
+
+## evo project list
+
+Проекты, которые видит ключ (* — активный)
+
+```
+evo project list [flags]
+```
+
+### Examples
+
+```
+  evo project list
+  evo project list --json | jq -r '.projects[].id'
+```
+
+### Options
+
+```
+  -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo project](#evo-project)	 - Проекты, которые видит ключ, и проект профиля
+
+## evo project use
+
+Сделать проект проектом профиля по умолчанию
+
+### Synopsis
+
+```text
+Записать проект в активный профиль: команды работают в нём, если
+--project-id, CLOUDRU_PROJECT_ID или ./.evo.yaml не указывают другой.
+
+Проект задаётся UUID или, если ключ может получить список проектов, именем.
+Проект, которого ключ не видит, не принимается. Если Organization API не
+отдаёт этому ключу список проектов, UUID сохраняется как есть.
+```
+
+```
+evo project use <UUID|имя> [flags]
+```
+
+### Examples
+
+```
+  evo project use 3f2a8c1e-0000-0000-0000-000000000000
+  evo project use my-team-dev
+  evo --profile test project use <UUID>
+```
+
+### Options
+
+```
+  -h, --help   Справка по use
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo project](#evo-project)	 - Проекты, которые видит ключ, и проект профиля
+
 ## evo s3
 
 Object Storage: бакеты и объекты
@@ -2739,6 +2942,12 @@ List Object Storage (S3) buckets. Read-only. s3.cloud.ru (S3-compatible).
 evo s3 buckets [flags]
 ```
 
+### Examples
+
+```
+  evo s3 buckets
+```
+
 ### Options
 
 ```
@@ -2821,6 +3030,13 @@ List objects in an S3 bucket (key, size, last_modified). Read-only.
 
 ```
 evo s3 ls <bucket> [flags]
+```
+
+### Examples
+
+```
+  evo s3 ls my-bucket
+  evo s3 ls my-bucket --prefix backups/
 ```
 
 ### Options
@@ -3248,6 +3464,13 @@ evo secret value <path> [flags]
 evo status [flags]
 ```
 
+### Examples
+
+```
+  evo status
+  evo status --json
+```
+
 ### Options
 
 ```
@@ -3348,6 +3571,14 @@ evo tools [flags]
 evo tools call <name> [flags]
 ```
 
+### Examples
+
+```
+  evo tools call dns_zones
+  evo tools call vm_get --arg vm_id=<ID>
+  evo tools call pg_operation --arg operation_id=<ID> --wait
+```
+
 ### Options
 
 ```
@@ -3383,6 +3614,13 @@ evo tools call <name> [flags]
 evo tools describe <name> [flags]
 ```
 
+### Examples
+
+```
+  evo tools describe dns_zones
+  evo tools describe provision --json
+```
+
 ### Options
 
 ```
@@ -3412,6 +3650,13 @@ evo tools describe <name> [flags]
 
 ```
 evo tools list [flags]
+```
+
+### Examples
+
+```
+  evo tools list
+  evo tools list --json
 ```
 
 ### Options
@@ -3444,6 +3689,13 @@ evo tools list [flags]
 
 ```
 evo verify [flags]
+```
+
+### Examples
+
+```
+  evo verify
+  evo deploy --yes && evo verify
 ```
 
 ### Options
@@ -3558,6 +3810,14 @@ Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_pu
 evo vm create <name> [flags]
 ```
 
+### Examples
+
+```
+  evo vm create my-vm --dry-run
+  evo vm create my-vm --flavor lowcost10-2-4
+  evo vm create worker-1 --no-public-ip --yes
+```
+
 ### Options
 
 ```
@@ -3605,6 +3865,13 @@ Permanently delete a VM and all data on it (irreversible). ALWAYS requires confi
 
 ```
 evo vm delete <vm-id|name> [flags]
+```
+
+### Examples
+
+```
+  evo vm delete my-vm --dry-run
+  evo vm delete my-vm
 ```
 
 ### Options
@@ -3692,6 +3959,13 @@ Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any p
 evo vm get <vm-id|name> [flags]
 ```
 
+### Examples
+
+```
+  evo vm get my-vm
+  evo vm get <ID> --json
+```
+
 ### Options
 
 ```
@@ -3732,6 +4006,14 @@ List the project's VMs from the LIVE API: id, name, state, availability zone and
 
 ```
 evo vm list [flags]
+```
+
+### Examples
+
+```
+  evo vm list
+  evo vm list --json | jq -r '.vms[] | "\(.name)\t\(.state)"'
+  evo --project-id <UUID> vm list
 ```
 
 ### Options
@@ -4430,6 +4712,14 @@ Key ID (маскированный), проект и срок действия �
 
 ```
 evo whoami [flags]
+```
+
+### Examples
+
+```
+  evo whoami
+  evo --profile test whoami
+  evo whoami --json
 ```
 
 ### Options

@@ -526,3 +526,49 @@ func TestWhoamiDoctor_KeyScope(t *testing.T) {
 		t.Errorf("visible_projects reported without a list: %v", got)
 	}
 }
+
+// evo project list / use: the active project of the profile, by UUID or by
+// name, refused when the key does not see it (az account set, yc config).
+func TestProjectListUse(t *testing.T) {
+	fc := setupCLI(t)
+	saveProfile(t, "default", "p-1")
+	fc.orgProject = `[{"id":"p-1","name":"one"},{"id":"p-2","name":"two"}]`
+
+	code, stdout, stderr := runCLI(t, "", "project", "list")
+	if code != 0 || !strings.Contains(stdout, "p-1 *") || !strings.Contains(stdout, "two") {
+		t.Fatalf("project list: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+
+	newProcess()
+	if code, _, stderr := runCLI(t, "", "project", "use", "two"); code != 0 {
+		t.Fatalf("project use two: exit %d: %s", code, stderr)
+	}
+	if p, _, _, _ := config.LoadProfile("default"); p.ProjectID != "p-2" {
+		t.Errorf("profile project = %q, want p-2", p.ProjectID)
+	}
+
+	newProcess()
+	if code, _, _ := runCLI(t, "", "project", "use", "p-unknown"); code != clerrors.ExitAuth {
+		t.Errorf("unknown project: exit %d, want %d", code, clerrors.ExitAuth)
+	}
+	if p, _, _, _ := config.LoadProfile("default"); p.ProjectID != "p-2" {
+		t.Errorf("a refused project changed the profile: %q", p.ProjectID)
+	}
+
+	// No project list for this key (a project-level service account): a
+	// UUID is saved with a warning, a name is refused.
+	fc.orgStatus = http.StatusBadRequest
+	newProcess()
+	uuid := "3f2a8c1e-0000-4000-8000-000000000001"
+	code, _, stderr = runCLI(t, "", "project", "use", uuid)
+	if code != 0 || !strings.Contains(stderr, "unchecked") {
+		t.Fatalf("UUID without a list: exit %d: %s", code, stderr)
+	}
+	if p, _, _, _ := config.LoadProfile("default"); p.ProjectID != uuid {
+		t.Errorf("profile project = %q, want %s", p.ProjectID, uuid)
+	}
+	newProcess()
+	if code, _, _ := runCLI(t, "", "project", "use", "one"); code != clerrors.ExitAuth {
+		t.Errorf("name without a list: exit %d, want %d", code, clerrors.ExitAuth)
+	}
+}

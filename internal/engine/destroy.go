@@ -57,7 +57,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
-	proceed, err := confirm.Ask(ctx, destroyPreview(active, stateFile, pending, e.projectOf(active)), e.confirmOptions(opts.Force, opts.DryRun, false))
+	proceed, err := confirm.Ask(ctx, destroyPreview(active, stateFile, pending, e.projectOf(active), e.projectFrom(active)), e.confirmOptions(opts.Force, opts.DryRun, false))
 	if err != nil {
 		return err
 	}
