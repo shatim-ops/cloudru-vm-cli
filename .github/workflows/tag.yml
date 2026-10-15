@@ -1,0 +1,68 @@
+name: tag
+
+# Ставит тег релиза на коммит в main и запускает release.yml на нём —
+# для тех, кто не может запушить тег сам (облачные сессии пушат только
+# свои ветки). Тег от GITHUB_TOKEN не запускает workflow по push, поэтому
+# release.yml вызывается явно (workflow_dispatch от GITHUB_TOKEN разрешён).
+# Запуск: Actions → tag → Run workflow, или
+#   gh workflow run tag.yml -f tag=v1.2.3 -f sha=<полный SHA коммита в main>
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Тег: vX.Y.Z или vX.Y.Z-rc.N"
+        required: true
+      sha:
+        description: "Полный SHA коммита в main"
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    # Только из main: workflow с другой ветки мог бы быть изменён.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      # Запушить тег.
+      contents: write
+      # Запустить release.yml.
+      actions: write
+    env:
+      TAG: ${{ inputs.tag }}
+      SHA: ${{ inputs.sha }}
+    steps:
+      - name: Проверка входов
+        run: |
+          printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$' ||
+            { echo "::error::тег «$TAG» не в формате vX.Y.Z[-rc.N]"; exit 1; }
+          printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$' ||
+            { echo "::error::нужен полный SHA коммита (40 символов)"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # История и теги: проверить, что коммит в main и тега ещё нет.
+          fetch-depth: 0
+
+      - name: Тег
+        run: |
+          git merge-base --is-ancestor "$SHA" origin/main ||
+            { echo "::error::$SHA не входит в main"; exit 1; }
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::тег $TAG уже есть — опубликованный номер не переиспользуется"; exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG" "$SHA"
+          git push origin "refs/tags/$TAG"
+
+      - name: Запуск release.yml на теге
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
+          echo "::notice title=Тег $TAG::поставлен на $SHA, release.yml запущен"
