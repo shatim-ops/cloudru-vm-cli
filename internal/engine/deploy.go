@@ -97,7 +97,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	if !isNewDeploy && opts.DryRun {
 		// Updating an existing VM creates nothing billable, so it is not
 		// gated; --dry-run still must not touch it.
-		_, err := confirm.Ask(ctx, redeployPreview(existing, e.projectOf(existing)), e.confirmOptions(false, true, false))
+		_, err := confirm.Ask(ctx, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing)), e.confirmOptions(false, true, false))
 		return err
 	}
 

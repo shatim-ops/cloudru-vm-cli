@@ -235,11 +235,13 @@ func newRootCmd() *cobra.Command {
 		newListImagesCmd(),
 		newMCPCmd(),
 		newConfigureCmd(),
+		newProjectCmd(),
 		newWhoamiCmd(),
 		newDoctorCmd(),
 		newToolsCmd(),
 	)
 	cmd.AddCommand(newTreeCmds()...)
+	applyExamples(cmd)
 	localizeHelp(cmd)
 
 	return cmd

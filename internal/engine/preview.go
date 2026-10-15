@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -95,7 +96,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 	}
 
 	lines := []string{
-		previewLabel("project", "проект") + projectText(req.ProjectID),
+		previewLabel("project", "проект") + projectText(req.ProjectID, e.projectFrom(nil)),
 		previewLabel("flavor", "flavor") + flavor,
 		previewLabel("zone", "зона") + refText(vm.Zone),
 		previewLabel("image", "образ") + refText(vm.Image),
@@ -127,6 +128,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		Lines:   lines,
 		Details: map[string]any{
 			"project_id":     req.ProjectID,
+			"project_from":   e.projectFrom(nil),
 			"vm":             vm,
 			"floating_ip":    true,
 			"subnet_id":      network.SubnetID,
@@ -140,9 +142,9 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 }
 
 // redeployPreview describes an update of an already running VM.
-func redeployPreview(rec *state.DeploymentRecord, project string) confirm.Preview {
+func redeployPreview(rec *state.DeploymentRecord, project, from string) confirm.Preview {
 	lines := []string{
-		previewLabel("project", "проект") + projectText(project),
+		previewLabel("project", "проект") + projectText(project, from),
 		i18n.T("upload the compose file to the existing VM and run 'docker compose up -d'",
 			"загрузить compose-файл на существующую ВМ и выполнить 'docker compose up -d'"),
 		i18n.T("no new resources are created", "новые ресурсы не создаются"),
@@ -221,13 +223,13 @@ func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 }
 
 // destroyPreview lists what destroy deletes and what it leaves behind.
-func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, project string) confirm.Preview {
+func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, project, from string) confirm.Preview {
 	res := []destroyResource{
 		{Type: "vm", ID: rec.VMID, Address: rec.VMIP, Action: "delete",
 			Note: i18n.T("all data on its disks is lost", "все данные на её дисках будут потеряны")},
 	}
 	lines := []string{
-		previewLabel("project", "проект") + projectText(project),
+		previewLabel("project", "проект") + projectText(project, from),
 		i18n.Tf("delete VM %s and all data on its disks", "удалить ВМ %s и все данные на её дисках", rec.VMID),
 	}
 	if rec.VMIP != "" || rec.FloatingIPID != "" {
@@ -250,17 +252,49 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 		Action:  "destroy",
 		Summary: summary,
 		Lines:   lines,
-		Details: map[string]any{"project_id": project, "resources": res},
+		Details: map[string]any{"project_id": project, "project_from": from, "resources": res},
 	}
 }
 
-// projectText names the project in a preview: with a key that sees several
-// projects, the person approving must see which one is changed (QA P6).
-func projectText(id string) string {
+// projectText names the project in a preview and where it comes from: with
+// a key that sees several projects, the person approving must see which one
+// is changed and why that one (QA P6; like 'aws configure list').
+func projectText(id, from string) string {
 	if id == "" {
 		return i18n.T("(not set)", "(не задан)")
 	}
+	if label := originLabel(from); label != "" {
+		return id + " (" + label + ")"
+	}
 	return id
+}
+
+// Origins of the project in a preview, besides the config ones.
+const originRecord = "record"
+
+func originLabel(from string) string {
+	switch from {
+	case config.OriginProfile:
+		return i18n.T("from the profile", "из профиля")
+	case config.OriginProject:
+		return i18n.T("from ", "из ") + config.ProjectFileName
+	case config.OriginEnv:
+		return i18n.T("from CLOUDRU_PROJECT_ID", "из CLOUDRU_PROJECT_ID")
+	case config.OriginFlag:
+		return i18n.T("from --project-id", "из --project-id")
+	case originRecord:
+		return i18n.T("where the deployment was created", "где создано развёртывание")
+	}
+	return ""
+}
+
+// projectFrom is the origin of the project a deployment works in: its
+// state record, else the configuration.
+func (e *Engine) projectFrom(rec *state.DeploymentRecord) string {
+	if rec != nil && rec.ProjectID != "" {
+		return originRecord
+	}
+	return e.Config.ProjectOrigin
 }
 
 func refText(r deployplan.RefSpec) string {
