@@ -126,25 +126,6 @@ func (a *CloudRuAdapter) DeleteVM(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListVMs lists all virtual machines via GET /api/v1/vms.
-func (a *CloudRuAdapter) ListVMs(ctx context.Context) ([]*VM, error) {
-	resp, err := a.doWithRetry(ctx, http.MethodGet, "/api/v1/vms", nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var page paginatedResponse[VM]
-	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode VM list response", "API returned unexpected format", err)
-	}
-	result := make([]*VM, len(page.Items))
-	for i := range page.Items {
-		result[i] = &page.Items[i]
-	}
-	return result, nil
-}
-
 // ListFlavors lists available flavors via GET /api/v1/flavors.
 // Results are cached for 1 hour.
 func (a *CloudRuAdapter) ListFlavors(ctx context.Context) ([]*Flavor, error) {

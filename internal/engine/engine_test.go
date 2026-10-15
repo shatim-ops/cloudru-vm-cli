@@ -43,7 +43,6 @@ type mockCloudAPI struct {
 	createVMFn              func(ctx context.Context, req provision.CreateVMRequest) (*provision.VM, error)
 	getVMFn                 func(ctx context.Context, id string) (*provision.VM, error)
 	deleteVMFn              func(ctx context.Context, id string) error
-	listVMsFn               func(ctx context.Context) ([]*provision.VM, error)
 	listVMsInProjectFn      func(ctx context.Context, projectID string) ([]*provision.VM, error)
 	listFlavorsFn           func(ctx context.Context) ([]*provision.Flavor, error)
 	listAvailabilityZonesFn func(ctx context.Context) ([]*provision.AvailabilityZone, error)
@@ -110,13 +109,6 @@ func (m *mockCloudAPI) DeleteVM(ctx context.Context, id string) error {
 		return m.deleteVMFn(ctx, id)
 	}
 	return nil
-}
-
-func (m *mockCloudAPI) ListVMs(ctx context.Context) ([]*provision.VM, error) {
-	if m.listVMsFn != nil {
-		return m.listVMsFn(ctx)
-	}
-	return nil, nil
 }
 
 func (m *mockCloudAPI) ListFlavors(ctx context.Context) ([]*provision.Flavor, error) {

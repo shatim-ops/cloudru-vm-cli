@@ -273,3 +273,25 @@ func TestDestroy_PollTimeoutDoesNotClaimDeleted(t *testing.T) {
 		t.Errorf("claims the VM is deleted after a timeout:\n%s", out.String())
 	}
 }
+
+// 405 «the VM has related entities» (documented for DELETE /api/v1/vms/{id},
+// api-contract §4.8): a message that names the cause, the record and the
+// FIP kept for the retry.
+func TestDestroy_VM405_RelatedEntities(t *testing.T) {
+	eng, cloud, _ := destroyFixture(t, runningRecord())
+	cloud.deleteVMFn = func(context.Context, string) error {
+		return clerrors.Wrap(clerrors.CodeAPIError, "API returned status 405", "",
+			&provision.StatusError{Status: 405, Body: `{"code":"vm_has_related_entities"}`})
+	}
+	err := eng.Destroy(context.Background(), DestroyOptions{Force: true})
+	var ce *clerrors.CLIError
+	if !stderrors.As(err, &ce) || !strings.Contains(ce.Message, "405") || !strings.Contains(ce.Hint, "fip-release") {
+		t.Fatalf("Destroy = %v (hint %q), want the 405 explained", err, hintOf(err))
+	}
+	if a := readActive(t, eng.StateDir); a == nil {
+		t.Fatal("record dropped after a refused delete")
+	}
+	if len(cloud.deletedFIPs) != 0 {
+		t.Error("FIP released while the VM still exists")
+	}
+}

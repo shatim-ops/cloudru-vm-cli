@@ -8,7 +8,6 @@ type CloudAPI interface {
 	CreateVM(ctx context.Context, req CreateVMRequest) (*VM, error)
 	GetVM(ctx context.Context, id string) (*VM, error)
 	DeleteVM(ctx context.Context, id string) error
-	ListVMs(ctx context.Context) ([]*VM, error)
 	ListFlavors(ctx context.Context) ([]*Flavor, error)
 	ListAvailabilityZones(ctx context.Context) ([]*AvailabilityZone, error)
 	ListImages(ctx context.Context) ([]*Image, error)
