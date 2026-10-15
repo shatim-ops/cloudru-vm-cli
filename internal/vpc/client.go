@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 const defaultBaseURL = "https://vpc.api.cloud.ru"
@@ -32,7 +34,7 @@ func New(token, projectID, baseURL string) *Client {
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
-	return &Client{http: &http.Client{Timeout: 60 * time.Second}, base: baseURL, token: token, projectID: projectID}
+	return &Client{http: httpretry.NewClient(60 * time.Second), base: baseURL, token: token, projectID: projectID}
 }
 
 // ProjectID exposes the configured project (for request bodies).

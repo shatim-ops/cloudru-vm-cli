@@ -248,7 +248,10 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	if maxArgs < 0 {
 		// Everything after the fixed arguments belongs to the tool
 		// (kubectl get pods -n x): stop parsing flags at the first argument.
+		// evo's own flags go before it.
 		cmd.Flags().SetInterspersed(false)
+		long += "\nevo flags (--json, --yes, --dry-run, --profile) go before the arguments: everything after the first one is passed to the tool as is."
+		cmd.Long = long
 	}
 
 	flagArgs := c.flagArgs(t)
@@ -288,6 +291,28 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	return cmd
 }
 
+// evoFlagsKubectlLacks are evo's global flags that kubectl does not have.
+// After the first argument they would reach kubectl ("unknown flag"), so they
+// are refused with the right order instead. --dry-run and --profile are
+// kubectl flags too and pass through.
+var evoFlagsKubectlLacks = map[string]bool{"--json": true, "--yes": true, "-y": true}
+
+// evoFlagInRest refuses an evo flag placed in the pass-through tail, up to a
+// "--" (what follows it is a command inside the container).
+func evoFlagInRest(cmd *cobra.Command, rest []string, firstArg string) error {
+	for _, a := range rest {
+		if a == "--" {
+			return nil
+		}
+		if evoFlagsKubectlLacks[a] || strings.HasPrefix(a, "--json=") || strings.HasPrefix(a, "--yes=") {
+			return clerrors.New(clerrors.CodeUsage,
+				fmt.Sprintf("%s: %s after the arguments would go to the tool", cmd.CommandPath(), a),
+				fmt.Sprintf("Put evo flags first: '%s %s <%s> …'.", cmd.CommandPath(), strings.SplitN(a, "=", 2)[0], firstArg))
+		}
+	}
+	return nil
+}
+
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // treeArgs turns positionals and changed flags into the tool's arguments.
@@ -306,6 +331,9 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 		}
 		switch {
 		case p.rest:
+			if err := evoFlagInRest(cmd, args[i:], strings.ReplaceAll(strings.Join(pos[0].names, "|"), "_", "-")); err != nil {
+				return nil, err
+			}
 			out[p.names[0]] = strings.Join(args[i:], " ")
 			i = len(args)
 		case len(p.names) == 2:

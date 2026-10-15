@@ -9,6 +9,8 @@ import (
 	neturl "net/url"
 	"strings"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // adminGET performs an authenticated GET against an absolute Cloud.ru API URL
@@ -28,7 +30,7 @@ func (s *Registry) adminGET(ctx context.Context, rawurl string) (map[string]any,
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+tok.Value)
-	cl := &http.Client{Timeout: 30 * time.Second}
+	cl := httpretry.NewClient(30 * time.Second)
 	resp, err := cl.Do(req)
 	if err != nil {
 		return nil, err

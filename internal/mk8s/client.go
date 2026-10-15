@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 const defaultBaseURL = "https://mk8s.api.cloud.ru"
@@ -33,7 +35,7 @@ func New(token, projectID, baseURL string) *Client {
 		baseURL = defaultBaseURL
 	}
 	return &Client{
-		http:      &http.Client{Timeout: 60 * time.Second},
+		http:      httpretry.NewClient(60 * time.Second),
 		base:      baseURL,
 		token:     token,
 		projectID: projectID,

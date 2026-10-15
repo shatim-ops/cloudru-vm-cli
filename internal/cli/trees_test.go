@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -207,5 +208,37 @@ func TestRenderAnswer(t *testing.T) {
 
 	if got := render(`not json`, nil); got != "not json\n" {
 		t.Errorf("not JSON: %q", got)
+	}
+}
+
+// evo flags after <cluster-id> would go to kubectl; they are refused with
+// the right order, except after "--" (a command inside a container).
+func TestKubectlEvoFlagsAfterCluster(t *testing.T) {
+	run := func(argv ...string) (map[string]any, error) {
+		t.Helper()
+		cmd, c, tl := findLeaf(t, "k8s", "kubectl")
+		if err := cmd.ParseFlags(argv); err != nil {
+			t.Fatal(err)
+		}
+		return treeArgs(cmd, c, tl, parsePositionals(c.Args), c.flagArgs(tl), cmd.Flags().Args())
+	}
+	for _, f := range []string{"--json", "--yes", "-y", "--json=true"} {
+		_, err := run("c-1", "get", "pods", f)
+		var ce *clerrors.CLIError
+		if !errors.As(err, &ce) || ce.Code != clerrors.CodeUsage || !strings.Contains(ce.Hint, "<cluster-id>") {
+			t.Errorf("%s: err = %v, want USAGE with the right order", f, err)
+		}
+	}
+	got, err := run("c-1", "exec", "p", "--", "apt-get", "install", "-y", "curl")
+	if err != nil || got["args"] != "exec p -- apt-get install -y curl" {
+		t.Errorf("after --: %v %v", got, err)
+	}
+	got, err = run("c-1", "apply", "-f", "x.yaml", "--dry-run=server")
+	if err != nil || got["args"] != "apply -f x.yaml --dry-run=server" {
+		t.Errorf("kubectl --dry-run passes through: %v %v", got, err)
+	}
+	cmd, _, _ := findLeaf(t, "k8s", "kubectl")
+	if !strings.Contains(cmd.Long, "go before the arguments") {
+		t.Error("help does not say where evo flags go")
 	}
 }

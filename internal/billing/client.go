@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 const (
@@ -40,7 +42,7 @@ func New(token, agreementID, balanceBase, consumptionBase string) *Client {
 		consumptionBase = defaultConsumptionBase
 	}
 	return &Client{
-		http:            &http.Client{Timeout: 60 * time.Second},
+		http:            httpretry.NewClient(60 * time.Second),
 		balanceBase:     balanceBase,
 		consumptionBase: consumptionBase,
 		token:           token,
