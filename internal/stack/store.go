@@ -188,12 +188,16 @@ type Step struct {
 }
 
 type Job struct {
-	ID       string            `json:"id"`
-	Manifest Manifest          `json:"manifest"`
-	Status   string            `json:"status"` // running|done|error|destroying|destroyed
-	Steps    []*Step           `json:"steps"`
-	Outputs  map[string]string `json:"outputs"` // stepkey -> resource id; plus extras like lb_external_ip
-	Error    string            `json:"error,omitempty"`
+	ID       string   `json:"id"`
+	Manifest Manifest `json:"manifest"`
+	Status   string   `json:"status"` // running|done|error|destroying|destroyed
+	// ProjectID is the Cloud.ru project the stack was planned in: its step
+	// tools run in the server's project, so apply, status and destroy refuse
+	// a server on another one. Empty in jobs from older versions.
+	ProjectID string            `json:"project_id,omitempty"`
+	Steps     []*Step           `json:"steps"`
+	Outputs   map[string]string `json:"outputs"` // stepkey -> resource id; plus extras like lb_external_ip
+	Error     string            `json:"error,omitempty"`
 }
 
 // --- Persistence ---
@@ -773,6 +777,9 @@ func (j *Job) Compact() map[string]any {
 		"running": running,
 		"pending": pending,
 		"outputs": j.Outputs,
+	}
+	if j.ProjectID != "" {
+		out["project_id"] = j.ProjectID
 	}
 	if j.Error != "" {
 		out["error"] = j.Error
