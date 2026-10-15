@@ -1,0 +1,64 @@
+name: api-contract
+
+# Сверка запросов evo с официальными спецификациями API Cloud.ru
+# (docs/internal/api-contract.md §6). Без ключей облака и без ресурсов:
+# скачивает текущие спецификации со страниц справочников cloud.ru/docs и
+# проверяет опись запросов scripts/api-contract.json — пути, обязательные
+# параметры, максимумы, читаемые поля. Падает на error, не помеченном
+# accepted. Спецификации в репозиторий не кладутся (материалы Cloud.ru).
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # понедельник, 06:17 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/api-contract*"
+      - "scripts/cloudru-specs.py"
+      - "internal/provision/**"
+      - "internal/**/client.go"
+      - "internal/auth/iam.go"
+
+concurrency:
+  group: api-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Зависимости
+        run: python3 -m pip install --quiet pyyaml
+
+      - name: Спецификации Cloud.ru
+        id: specs
+        run: |
+          # Сайт документации иногда рвёт соединение: до трёх попыток.
+          for i in 1 2 3; do
+            python3 scripts/cloudru-specs.py .cache/cloudru-specs && exit 0
+            sleep $((i * 20))
+          done
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "::warning::не удалось скачать все спецификации с cloud.ru/docs — сверка пропущена"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::error::не удалось скачать спецификации: изменились адреса на cloud.ru/docs? (scripts/cloudru-specs.py, START_PAGES)"
+          exit 1
+
+      - name: Сверка контракта
+        if: steps.specs.outputs.skip != 'true'
+        run: |
+          python3 scripts/api-contract-check.py --specs .cache/cloudru-specs --markdown >> "$GITHUB_STEP_SUMMARY" || status=$?
+          python3 scripts/api-contract-check.py --specs .cache/cloudru-specs | tail -n 30
+          echo "### Хэши спецификаций" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.specs[] | "- \(.service)/\(.file | split("/") | last): `\(.sha256[0:16])`"' .cache/cloudru-specs/manifest.json >> "$GITHUB_STEP_SUMMARY"
+          exit "${status:-0}"
