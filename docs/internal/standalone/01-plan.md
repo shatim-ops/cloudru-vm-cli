@@ -25,7 +25,7 @@
 | 1 | Фундамент CLI: ошибки, коды возврата, таймауты, контекст | 0 | S | Любая ошибка видна, коды 1/2/3/4 стабильны, Ctrl-C работает везде |
 | 2 | Креды и конфиг: `configure`, профили, `whoami`, `doctor` | 1 | M | Человек без env-переменных настраивает инструмент за минуту |
 | 3 | Подтверждения в CLI: `--yes`, `--dry-run`, превью с ценой, гейты в MCP | 1 | M | Ни одна платная/разрушающая операция не идёт без явного согласия |
-| 4 | Покрытие: `tools list/describe/call` + деревья vm/disk/vpc/k8s/pg/s3 | 2, 3 | L | Все 146 инструментов доступны из терминала |
+| 4 | Покрытие: `tools list/describe/call` + деревья vm/disk/vpc/k8s/pg/s3 | 2, 3 | L | Все 147 инструментов доступны из терминала |
 | 5 | Починка сценария deploy: bootstrap Docker, FIP в destroy, `logs -f`, хардкод | 1 | M | Путь `init → deploy → logs → destroy` работает на дефолтах |
 | 6 | Тесты: инъекция часов/backoff, без реальной сети; CI-матрица ОС | — | S | `go test` < 10 с; CI на ubuntu/macos/windows |
 | 7 | Релиз: goreleaser, ldflags, checksums, cosign, `version` | 0, 6 | S | Тег → GitHub Release с 6 бинарями и подписями |
@@ -62,7 +62,7 @@
 
 - [ ] `go test -race ./...` < 10 с, CI зелёный на трёх ОС
 - [ ] `<bin> configure && <bin> whoami` работает без единой env-переменной
-- [ ] `<bin> tools list | wc -l` = 146; `tools call` любого инструмента отдаёт тот же JSON, что MCP
+- [ ] `<bin> tools list | wc -l` = 147 (146 исходных + `vm_list`, этап 4b); `tools call` любого инструмента отдаёт тот же JSON, что MCP
 - [ ] `<bin> vm create …` без `--yes` и без TTY → код 3 и ничего не создано
 - [ ] `init → deploy → logs -f → destroy` на дефолтном образе: ВМ и FIP удалены, биллинг чистый
 - [ ] Тег `v1.0.0` → Release: linux/darwin/windows × amd64/arm64, `checksums.txt`, cosign-подписи
