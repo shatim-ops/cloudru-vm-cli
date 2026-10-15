@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -136,17 +137,31 @@ func recordDeployment(stateDir string, plan *deployplan.Plan, res *deployplan.Ap
 		return
 	}
 	now := time.Now()
-	sf.UpsertDeployment(state.DeploymentRecord{
-		ID:        res.VMID,
-		VMID:      res.VMID,
-		VMIP:      res.PublicIP,
-		VMFlavor:  plan.VM.Flavor.Name,
-		Region:    plan.VM.Zone.ID,
-		SSHUser:   plan.SSH.Login,
-		Status:    status,
-		CreatedAt: now,
-		UpdatedAt: now,
-	})
+	rec := state.DeploymentRecord{
+		ID:                 res.VMID,
+		VMID:               res.VMID,
+		VMIP:               res.PublicIP,
+		VMFlavor:           plan.VM.Flavor.Name,
+		Region:             plan.VM.Zone.ID,
+		SSHUser:            plan.SSH.Login,
+		Status:             status,
+		SecurityGroupID:    res.Ports.SecurityGroupID,
+		SecurityGroupPorts: res.Ports.SecurityGroupPorts,
+		OpenedRules:        res.Ports.OpenedRules,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	// An adopted VM opens nothing now: the rules an earlier apply
+	// created stay with it, so destroy still deletes them.
+	if old := sf.FindDeployment(res.VMID); old != nil {
+		rec.CreatedAt = old.CreatedAt
+		if rec.SecurityGroupID == "" {
+			rec.SecurityGroupID = old.SecurityGroupID
+		}
+		rec.SecurityGroupPorts = mergeStrings(old.SecurityGroupPorts, rec.SecurityGroupPorts)
+		rec.OpenedRules = mergeRules(old.OpenedRules, rec.OpenedRules)
+	}
+	sf.UpsertDeployment(rec)
 	_ = state.Write(statePath, sf)
 }
 
@@ -215,6 +230,26 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	return toJSON(res), false
 }
 
+func mergeStrings(a, b []string) []string {
+	out := append([]string(nil), a...)
+	for _, s := range b {
+		if !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func mergeRules(a, b []state.SGRule) []state.SGRule {
+	out := append([]state.SGRule(nil), a...)
+	for _, r := range b {
+		if !slices.ContainsFunc(out, func(o state.SGRule) bool { return o.ID == r.ID }) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // handleListFlavors lists flavors with a monthly cost estimate each.
 func (s *Registry) handleListFlavors(ctx context.Context, args map[string]any) (string, bool) {
 	eng, err := s.authedEngine(ctx, nil)
@@ -276,7 +311,8 @@ func (s *Registry) handleListSubnets(ctx context.Context, args map[string]any) (
 	return toJSON(map[string]any{"subnets": out}), false
 }
 
-// handleListSecurityGroups lists security groups (id, name, zone).
+// handleListSecurityGroups lists security groups (id, name, zone), with
+// each group's rules when rules=true (one more API call per group).
 func (s *Registry) handleListSecurityGroups(ctx context.Context, args map[string]any) (string, bool) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -286,9 +322,21 @@ func (s *Registry) handleListSecurityGroups(ctx context.Context, args map[string
 	if err != nil {
 		return errResult(err), true
 	}
+	withRules, _ := args["rules"].(bool)
 	out := make([]map[string]any, 0, len(sgs))
 	for _, g := range sgs {
-		out = append(out, map[string]any{"id": g.ID, "name": g.Name, "availability_zone_id": g.AvailabilityZoneID})
+		item := map[string]any{"id": g.ID, "name": g.Name, "availability_zone_id": g.AvailabilityZoneID}
+		if withRules {
+			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, g.ID)
+			if err != nil {
+				return errResult(fmt.Errorf("rules of security group %s: %w", g.Name, err)), true
+			}
+			if rules == nil {
+				rules = []*provision.SGRule{}
+			}
+			item["rules"] = rules
+		}
+		out = append(out, item)
 	}
 	return toJSON(map[string]any{"security_groups": out}), false
 }
@@ -335,10 +383,13 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 		return errResult(fmt.Errorf("security group %q not found", sgRef)), true
 	}
 
+	// The group list carries no rules: read them, as deploy does.
 	existing := map[string]bool{}
-	for _, r := range target.Rules {
-		if r.Direction == "ingress" && r.PortRange != "" {
-			existing[r.PortRange] = true
+	if rules, e := eng.Cloud.ListSecurityGroupRules(ctx, target.ID); e == nil {
+		for _, r := range rules {
+			if r.Direction == "ingress" && r.PortRange != "" {
+				existing[r.PortRange] = true
+			}
 		}
 	}
 
@@ -357,7 +408,7 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 			RemoteIPPrefix: cidr,
 			Description:    "opened via open_ports",
 		}
-		if e := eng.Cloud.AddSecurityGroupRule(ctx, target.ID, eng.Config.ProjectID, rule); e != nil {
+		if _, e := eng.Cloud.AddSecurityGroupRule(ctx, target.ID, eng.Config.ProjectID, rule); e != nil {
 			failed = append(failed, strconv.Itoa(p))
 		} else {
 			opened = append(opened, strconv.Itoa(p))

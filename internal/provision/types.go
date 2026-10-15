@@ -91,6 +91,8 @@ type Subnet struct {
 }
 
 // SecurityGroup represents a Cloud.ru security group (GET /api/v1/security-groups).
+// The documented list response has no rules, only their counts: read them
+// with ListSecurityGroupRules.
 type SecurityGroup struct {
 	ID                 string   `json:"id"`
 	Name               string   `json:"name"`
@@ -101,8 +103,8 @@ type SecurityGroup struct {
 // SGRule is a security-group rule. Used both for reading existing rules and for
 // creating new ones (POST /api/v1/security-groups/{id}/rules). The create
 // endpoint requires direction/ether_type/ip_protocol/port_range and rejects
-// unknown fields (additionalProperties:false), so id/description/remote are
-// omitempty.
+// unknown fields (additionalProperties:false), so id/description/remote/state
+// are omitempty.
 type SGRule struct {
 	ID             string `json:"id,omitempty"`
 	Direction      string `json:"direction"`   // ingress | egress
@@ -111,6 +113,7 @@ type SGRule struct {
 	PortRange      string `json:"port_range"`  // e.g. "80:80"
 	RemoteIPPrefix string `json:"remote_ip_prefix,omitempty"`
 	Description    string `json:"description,omitempty"`
+	State          string `json:"state,omitempty"` // read only: created, creating, deleting, error…
 }
 
 // DiskType represents a Cloud.ru disk type (GET /api/v1/disk-types).

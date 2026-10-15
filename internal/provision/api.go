@@ -35,8 +35,13 @@ type CloudAPI interface {
 	ListVMsInProject(ctx context.Context, projectID string) ([]*VM, error)
 	DeleteVMInProject(ctx context.Context, id, projectID string) error
 
-	// AddSecurityGroupRule adds one ingress/egress rule to a security group.
-	AddSecurityGroupRule(ctx context.Context, sgID, projectID string, rule SGRule) error
+	// AddSecurityGroupRule adds one ingress/egress rule to a security group
+	// and returns the created rule (its ID, when the API sent one).
+	AddSecurityGroupRule(ctx context.Context, sgID, projectID string, rule SGRule) (*SGRule, error)
+	// ListSecurityGroupRules lists a group's rules (the group list has none).
+	ListSecurityGroupRules(ctx context.Context, sgID string) ([]*SGRule, error)
+	// DeleteSecurityGroupRule deletes one rule of a group by ID.
+	DeleteSecurityGroupRule(ctx context.Context, sgID, ruleID string) error
 
 	// NAT (SNAT) gateways — outbound internet egress for private subnets
 	// (e.g. mk8s worker nodes). Zone-level resource on the Compute API.

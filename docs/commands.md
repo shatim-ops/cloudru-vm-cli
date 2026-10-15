@@ -3371,7 +3371,7 @@ Permanently delete a VM and all data on it (irreversible).
 ### Synopsis
 
 ```text
-Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (captain approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip).
+Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (captain approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy.
 
 Runs the destroy tool (see 'cloudru-vm tools describe destroy').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -4058,7 +4058,7 @@ List Cloud.ru security groups (UUID, name, availability zone).
 ### Synopsis
 
 ```text
-List Cloud.ru security groups (UUID, name, availability zone). Read-only.
+List Cloud.ru security groups (UUID, name, availability zone). Read-only. With rules=true each group carries its rules (id, direction, protocol, port range, source, description, state).
 
 Runs the list_security_groups tool (see 'cloudru-vm tools describe list_security_groups').
 ```
@@ -4070,7 +4070,8 @@ cloudru-vm vpc security-groups [flags]
 ### Options
 
 ```
-  -h, --help   help for security-groups
+  -h, --help    help for security-groups
+      --rules   Also list each group's rules (one more API call per group).
 ```
 
 ### Options inherited from parent commands
