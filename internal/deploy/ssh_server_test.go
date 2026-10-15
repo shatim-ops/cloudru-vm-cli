@@ -183,6 +183,9 @@ func TestConnect_TOFUThenStrict(t *testing.T) {
 	if fp != ssh.FingerprintSHA256(srv.hostKey.PublicKey()) {
 		t.Fatalf("recorded fingerprint %q is not the server's", fp)
 	}
+	if want := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(srv.hostKey.PublicKey()))); d.HostKeyLine() != want {
+		t.Fatalf("HostKeyLine = %q, want %q", d.HostKeyLine(), want)
+	}
 	if err := d.Connect(context.Background(), host, port, "user1", keyPEM, fp); err != nil {
 		t.Fatalf("second connect with the recorded key: %v", err)
 	}

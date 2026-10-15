@@ -70,9 +70,11 @@ func isPublicKeyLine(line string) bool {
 // appendUserKeys SSHes into the freshly created VM with the agent's deploy
 // key and appends each user key to authorized_keys (idempotent). The VM's
 // sshd may lag VM-active by a few seconds, so connection is retried briefly.
-func appendUserKeys(ctx context.Context, host, login string, agentKeyPEM []byte, keys []string) error {
+// It returns the VM's host key (known_hosts form) seen on that first,
+// trust-on-first-use connection, for the project's known_hosts.
+func appendUserKeys(ctx context.Context, host, login string, agentKeyPEM []byte, keys []string) (hostKey string, err error) {
 	if len(keys) == 0 {
-		return nil
+		return "", nil
 	}
 
 	var script strings.Builder
@@ -87,7 +89,7 @@ func appendUserKeys(ctx context.Context, host, login string, agentKeyPEM []byte,
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return "", ctx.Err()
 			case <-time.After(10 * time.Second):
 			}
 		}
@@ -102,9 +104,52 @@ func appendUserKeys(ctx context.Context, host, login string, agentKeyPEM []byte,
 			lastErr = err
 			continue
 		}
-		return nil
+		return d.HostKeyLine(), nil
 	}
-	return lastErr
+	return "", lastErr
+}
+
+// knownHostsFile is the project's own known_hosts, next to the deploy key:
+// the ssh command deploy_apply hands back checks the VM's host key against
+// it instead of turning the check off.
+const knownHostsFile = "known_hosts"
+
+// pinHostKey makes the project's known_hosts trust key for host and nothing
+// else for it: Cloud.ru reuses public IPs, so an entry for an earlier VM on
+// the same address is dropped. An empty key only drops the old entries (the
+// first ssh then records the new one: StrictHostKeyChecking=accept-new).
+func pinHostKey(path, host, key string) error {
+	var keep []string
+	if data, err := os.ReadFile(path); err == nil {
+		for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+			if line == "" || knownHostsLineFor(line, host) {
+				continue
+			}
+			keep = append(keep, line)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if key != "" {
+		keep = append(keep, host+" "+key)
+	}
+	out := ""
+	if len(keep) > 0 {
+		out = strings.Join(keep, "\n") + "\n"
+	}
+	return os.WriteFile(path, []byte(out), 0o600)
+}
+
+// knownHostsLineFor reports whether a known_hosts line names host (plain or
+// "[host]:22", alone or in a comma list).
+func knownHostsLineFor(line, host string) bool {
+	hosts, _, _ := strings.Cut(line, " ")
+	for _, h := range strings.Split(hosts, ",") {
+		if h == host || h == "["+host+"]:22" {
+			return true
+		}
+	}
+	return false
 }
 
 // shellQuoteMCP single-quotes s for safe interpolation into a shell command.

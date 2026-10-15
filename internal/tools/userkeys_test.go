@@ -78,3 +78,32 @@ func TestLoadUserKeys_LegacyFile(t *testing.T) {
 		t.Fatalf("both files: got %v from %q, want the new file", got, file)
 	}
 }
+
+// pinHostKey keeps one entry per host: the key of an earlier VM on the same
+// reused IP goes, other hosts stay; an empty key only drops the old entry.
+func TestPinHostKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "known_hosts")
+	old := "203.0.113.5 ssh-ed25519 AAAAold\n[203.0.113.5]:22 ssh-rsa AAAAold2\n198.51.100.7,203.0.113.5 ssh-ed25519 AAAAboth\n198.51.100.7 ssh-ed25519 AAAAother\n"
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := pinHostKey(path, "203.0.113.5", "ssh-ed25519 AAAAnew"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	want := "198.51.100.7 ssh-ed25519 AAAAother\n203.0.113.5 ssh-ed25519 AAAAnew\n"
+	if string(got) != want {
+		t.Fatalf("known_hosts:\n%s\nwant:\n%s", got, want)
+	}
+	if err := pinHostKey(path, "203.0.113.5", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != "198.51.100.7 ssh-ed25519 AAAAother\n" {
+		t.Fatalf("after drop:\n%s", got)
+	}
+	// No file yet and nothing to pin: an empty file, no error.
+	fresh := filepath.Join(t.TempDir(), "known_hosts")
+	if err := pinHostKey(fresh, "203.0.113.5", ""); err != nil {
+		t.Fatal(err)
+	}
+}

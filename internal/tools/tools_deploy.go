@@ -217,20 +217,32 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		return errResult(err), true
 	}
 	// If we injected the agent's own deploy key, hand back an ssh command that
-	// uses it (and tolerates the reused-IP host-key change on ephemeral VMs).
+	// uses it. The host key is checked against the project's known_hosts:
+	// pinned from the first connection when we make one (user keys), else
+	// recorded by the first ssh (accept-new). The entry of an earlier VM on
+	// the same reused IP is dropped first, so the new VM is not refused.
 	if res.PublicIP != "" && plan.PublicKey == eng.SSHPubKey {
 		dataDir := config.DataDir(eng.StateDir)
 		keyPath := filepath.Join(dataDir, "id_ed25519")
-		res.SSH = fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s", keyPath, plan.SSH.Login, res.PublicIP)
+		knownHosts := filepath.Join(dataDir, knownHostsFile)
+		res.SSH = fmt.Sprintf("ssh -i %s -o UserKnownHostsFile=%s -o StrictHostKeyChecking=accept-new %s@%s", keyPath, knownHosts, plan.SSH.Login, res.PublicIP)
 		note := "Connect with the ssh command above (agent deploy key)."
+		hostKey := ""
 		if keys, keysFile := loadUserKeys(eng.StateDir); len(keys) > 0 {
-			if kErr := appendUserKeys(ctx, res.PublicIP, plan.SSH.Login, eng.SSHKeyPEM, keys); kErr != nil {
+			hk, kErr := appendUserKeys(ctx, res.PublicIP, plan.SSH.Login, eng.SSHKeyPEM, keys)
+			if kErr != nil {
 				note += fmt.Sprintf(" WARNING: user key auto-append failed (%v) — append the public key to ~/.ssh/authorized_keys on the VM manually.", kErr)
 			} else {
+				hostKey = hk
 				note += fmt.Sprintf(" User SSH access configured automatically (%d key(s) from %s/%s).", len(keys), filepath.Base(dataDir), keysFile)
 			}
 		} else {
 			note += " No " + filepath.Base(dataDir) + "/" + userKeysFile + " configured — to give the user SSH access, append their public key to ~/.ssh/authorized_keys on the VM after install."
+		}
+		if err := pinHostKey(knownHosts, res.PublicIP, hostKey); err != nil {
+			// Without the file the ssh command still works (accept-new
+			// creates it); a stale entry would make it refuse the new VM.
+			note += fmt.Sprintf(" WARNING: could not update %s (%v); if ssh reports a changed host key, remove the line for %s from it.", knownHosts, err, res.PublicIP)
 		}
 		if res.Note == "" {
 			res.Note = note
