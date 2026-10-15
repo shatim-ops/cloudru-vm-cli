@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -30,7 +30,7 @@ const (
 	repoRoot        = "../.."
 	commandsDocPath = repoRoot + "/docs/commands.md"
 	authDocPath     = repoRoot + "/docs/auth.md"
-	regenerateHint  = "go test ./cmd/evo -run TestCommandsDoc -update-docs"
+	regenerateHint  = "go test ./internal/cli -run TestCommandsDoc -update-docs"
 )
 
 const commandsDocHeader = `# Справка по командам

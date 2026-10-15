@@ -129,6 +129,7 @@ API цен у Cloud.ru нет.
 | Было | Стало | До v1.1 |
 |---|---|---|
 | бинарь `cloudru-vm` | `evo` | в архиве релиза и в `install.sh` есть alias `cloudru-vm` — тот же бинарь; печатает в stderr «cloudru-vm переименован в evo, alias будет удалён в v1.1» и работает как `evo` |
+| сборка из исходников `go build ./cmd/cloudru-vm` | `go build ./cmd/evo` | `./cmd/cloudru-vm` собирает тот же код (`internal/cli`): скрипты вида `go build -o bin/cloudru-vm ./cmd/cloudru-vm` продолжают работать, бинарь ведёт себя как alias |
 | профили в `<каталог конфигурации>/cloudru-vm/` | `<каталог конфигурации>/evo/` | при первом запуске `evo` копирует `config.yaml` и `credentials.yaml` (права `0600`, каталог `0700`, на Windows — свой ACL); старый каталог не трогается, кэш токена не копируется — токен выписывается заново |
 | `./.cloudru-vm.yaml` | `./.evo.yaml` | старый файл читается с предупреждением, если нового нет |
 | `./.cloudru-vm/` (state, SSH-ключ, планы), `~/.cloudru-vm/` (задания `stack_*`, цены) | `./.evo/`, `~/.evo/` | старый каталог используется на месте, с предупреждением; `destroy` и `status` видят ВМ из его `state.json` |
@@ -161,7 +162,7 @@ gofmt -l . && go vet ./... && go test -race ./... && govulncheck ./...
 
 Нужен Go из `go.mod`; CI гоняет то же на Linux, macOS и Windows
 (`.github/workflows/ci.yml`). После изменения команд или флагов обновите
-справку: `go test ./cmd/evo -run TestCommandsDoc -update-docs`.
+справку: `go test ./internal/cli -run TestCommandsDoc -update-docs`.
 Внутренние планы и история проекта — `docs/internal/`.
 
 ## Лицензия

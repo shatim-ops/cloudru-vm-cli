@@ -57,7 +57,7 @@ Registry Cloud.ru: `<реестр>/evo:<версия>`, для стабильн�
 после изменения команд, флагов или описаний инструментов:
 
 ```
-go test ./cmd/evo -run TestCommandsDoc -update-docs
+go test ./internal/cli -run TestCommandsDoc -update-docs
 ```
 
 `TestAuthDoc_ListsEveryEnvVar` падает, если код читает переменную окружения,

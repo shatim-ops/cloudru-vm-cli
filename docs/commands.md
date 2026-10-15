@@ -1,7 +1,7 @@
 # Справка по командам
 
 <!-- Файл сгенерирован из дерева команд (cobra/doc). Руками не править:
-     go test ./cmd/evo -run TestCommandsDoc -update-docs
+     go test ./internal/cli -run TestCommandsDoc -update-docs
      CI сверяет файл с бинарём (TestCommandsDoc). -->
 
 Справка — на английском, как `--help` (решение D6); то же самое печатает
