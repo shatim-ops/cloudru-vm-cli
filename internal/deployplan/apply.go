@@ -114,8 +114,20 @@ func Apply(ctx context.Context, cloud provision.CloudAPI, plan *Plan) (*ApplyRes
 		req.ImageMetadata = meta
 	}
 
+	createStart := time.Now()
 	vm, err := cloud.CreateVM(ctx, req)
 	if err != nil {
+		// The VM can exist although the call failed (timeout, cancel, a
+		// lost answer): name it, so the caller records it, and a retry of
+		// the plan adopts it.
+		if found := provision.FindCreatedVM(cloud, plan.ProjectID, plan.VM.Name, createStart); found != nil {
+			return &ApplyResult{
+					VMID: found.ID, Status: "interrupted",
+					ElapsedSec: int(time.Since(start).Seconds()),
+				}, fmt.Errorf("VM %s was created, but the create call failed; it is billed — "+
+					"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
+					"or delete it with destroy: %w", found.ID, err)
+		}
 		return nil, fmt.Errorf("create VM: %w", err)
 	}
 
@@ -276,19 +288,10 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	if e == nil {
 		return f.IPAddress, "public IP attached (created a new floating IP)"
 	}
-	if isQuotaError(e) {
+	if provision.IsQuotaError(e) {
 		return "", "⚠️ Floating-IP quota exhausted — the VM was created WITHOUT a public IP. Increase the floating-IP quota in the Cloud.ru console, then attach an IP to this VM manually."
 	}
 	return "", "could not attach a floating IP (" + e.Error() + ") — the VM was created without a public IP; attach one via the console"
-}
-
-// isQuotaError reports whether an error looks like a Cloud.ru quota rejection.
-func isQuotaError(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "quota") || strings.Contains(s, "organization_quota_exceeded")
 }
 
 // joinNotes concatenates non-empty notes with "; ".

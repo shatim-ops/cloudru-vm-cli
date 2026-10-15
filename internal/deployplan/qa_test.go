@@ -81,3 +81,28 @@ func TestPickSubnet_ByZoneName(t *testing.T) {
 		t.Errorf("single subnet = %q, want sn-1", got)
 	}
 }
+
+// lostAnswerCloud creates the VM but loses the answer.
+type lostAnswerCloud struct {
+	provision.CloudAPI
+}
+
+func (lostAnswerCloud) ListVMs(context.Context) ([]*provision.VM, error) { return nil, nil }
+func (lostAnswerCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
+	return nil, errors.New("context deadline exceeded")
+}
+func (lostAnswerCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	return []*provision.VM{{ID: "vm-lost", Name: "x", CreatedAt: time.Now()}}, nil
+}
+
+// The create call fails but the VM exists: the result names it, so
+// deploy_apply records it and a retry adopts it.
+func TestApply_CreateFailsButVMExists_NamesTheVM(t *testing.T) {
+	res, err := Apply(context.Background(), lostAnswerCloud{}, &Plan{ProjectID: "p", VM: VMSpec{Name: "x"}})
+	if err == nil || !strings.Contains(err.Error(), "vm-lost") {
+		t.Fatalf("Apply = %v, want an error naming vm-lost", err)
+	}
+	if res == nil || res.VMID != "vm-lost" {
+		t.Fatalf("result %+v, want VMID vm-lost", res)
+	}
+}

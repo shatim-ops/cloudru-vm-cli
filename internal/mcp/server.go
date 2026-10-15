@@ -473,7 +473,39 @@ func (s *Server) handleToolCall(ctx context.Context, req *rpcRequest) *rpcRespon
 	}
 
 	text, isErr := callHandler(ctx, handler, p.Name, p.Arguments)
-	return s.toolResult(req, text, isErr)
+	return s.toolResult(req, withApprovalNote(text), isErr)
+}
+
+// approvalNote goes into every confirmation_required answer. The gate stops
+// a call, not an agent: a model that reads "call again with confirmed=true"
+// can do just that on its own. Each tool words its own message; this one
+// line, the same everywhere, says whose decision it is.
+const approvalNote = "Stop here. Show this preview to the user and ask for explicit approval. " +
+	"Call again with confirmed=true only after the user approved this action in the conversation; never decide it yourself."
+
+// withApprovalNote adds approvalNote to a confirmation_required answer and
+// leaves every other answer as it is. Re-encoding sorts the keys and
+// indents: tools already answer that way (toJSON over a map), so nothing a
+// client relies on changes.
+func withApprovalNote(text string) string {
+	if !bytes.Contains([]byte(text), []byte(`"confirmation_required"`)) {
+		return text
+	}
+	dec := json.NewDecoder(bytes.NewReader([]byte(text)))
+	dec.UseNumber() // IDs and sizes come back exactly as the tool wrote them
+	var obj map[string]any
+	if dec.Decode(&obj) != nil || obj["status"] != "confirmation_required" {
+		return text
+	}
+	if _, ok := obj["approval"]; ok {
+		return text
+	}
+	obj["approval"] = approvalNote
+	b, err := json.MarshalIndent(obj, "", "  ")
+	if err != nil {
+		return text
+	}
+	return string(b)
 }
 
 // panicLog receives the stack of a panicking tool handler (stderr: in stdio

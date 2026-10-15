@@ -3,6 +3,9 @@ package tools
 import (
 	"bytes"
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -25,8 +28,26 @@ import (
 // ушедший сразу после POST создания.
 type cancelCloud struct {
 	provision.CloudAPI
-	cancel  context.CancelFunc
-	creates int
+	cancel      context.CancelFunc
+	creates     int
+	createReq   provision.CreateVMRequest
+	createErr   error
+	fipErr      error
+	deletedFIPs []string
+}
+
+func (c *cancelCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	if c.fipErr != nil {
+		return nil, c.fipErr
+	}
+	return &provision.FloatingIP{ID: "fip-boot", IPAddress: "203.0.113.9", State: "available"}, nil
+}
+func (*cancelCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	return nil, nil
+}
+func (c *cancelCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
+	c.deletedFIPs = append(c.deletedFIPs, id)
+	return nil
 }
 
 func (*cancelCloud) SetToken(string)                                  {}
@@ -46,8 +67,12 @@ func (*cancelCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, e
 func (*cancelCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
 	return nil, nil
 }
-func (c *cancelCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
+func (c *cancelCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
 	c.creates++
+	c.createReq = req
+	if c.createErr != nil {
+		return nil, c.createErr
+	}
 	c.cancel()
 	return &provision.VM{ID: "vm-made"}, nil
 }
@@ -94,8 +119,30 @@ func TestCancel_ProvisionAfterCreateNamesAndRecordsVM(t *testing.T) {
 	if !isErr || !strings.Contains(text, "vm-made") || !strings.Contains(text, `"vm_id": "vm-made"`) {
 		t.Fatalf("ответ не называет ВМ: %s", text)
 	}
-	if rec := stateHasVM(t, dir, "vm-made"); rec.Status != "creating" {
+	rec := stateHasVM(t, dir, "vm-made")
+	if rec.Status != "creating" {
 		t.Errorf("status в state = %q", rec.Status)
+	}
+	// Публичный IP — в запросе создания (ВМ грузится с интернетом), а в
+	// state — его ID, чтобы destroy его освободил.
+	if got := cloud.createReq.Interfaces[0].AttachExternalIPID; got != "fip-boot" {
+		t.Errorf("запрос создания привязывает %q, ожидался fip-boot", got)
+	}
+	if rec.FloatingIPID != "fip-boot" {
+		t.Errorf("FloatingIPID в state = %q", rec.FloatingIPID)
+	}
+}
+
+// ВМ не создана: зарезервированный под неё IP не остаётся оплачиваться.
+func TestProvision_CreateFails_ReleasesBootFIP(t *testing.T) {
+	cloud := &cancelCloud{cancel: func() {}, createErr: errors.New("422 quota")}
+	r, _ := cancelRegistry(t, cloud)
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
+	if !isErr || !strings.Contains(text, "422") {
+		t.Fatalf("ответ: %s", text)
+	}
+	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-boot" {
+		t.Errorf("освобождены %v, ожидался [fip-boot]", cloud.deletedFIPs)
 	}
 }
 
@@ -170,5 +217,36 @@ func TestCancel_StackStepInterruptedReconcilesByName(t *testing.T) {
 	job, _ := stack.LoadJob(j.ID)
 	if creates != 1 || job.Steps[0].ResourceID != "pg-1" || job.Steps[0].Status != "waiting" {
 		t.Fatalf("pg_create вызван %d раз, шаг %+v", creates, job.Steps[0])
+	}
+}
+
+// Квота публичных IP исчерпана: ВМ без интернета не создаётся вовсе.
+func TestProvision_FIPQuota_CreatesNothing(t *testing.T) {
+	cloud := &cancelCloud{cancel: func() {}, fipErr: errors.New("403 quota exceeded")}
+	r, _ := cancelRegistry(t, cloud)
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
+	if !isErr || !strings.Contains(text, "quota") {
+		t.Fatalf("ответ: %s", text)
+	}
+	if cloud.creates != 0 {
+		t.Errorf("ВМ создана без публичного IP")
+	}
+}
+
+// State не пишется: ответ говорит, что ВМ в state нет и destroy её не найдёт.
+func TestProvision_StateNotWritable_Warns(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cloud := &cancelCloud{cancel: cancel}
+	r, dir := cancelRegistry(t, cloud)
+	if err := os.MkdirAll(filepath.Dir(state.DefaultPath(dir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(state.DefaultPath(dir), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr := r.handlers["provision"](ctx, map[string]any{"name": "web", "confirmed": true})
+	if !isErr || !strings.Contains(text, "vm-made") || !strings.Contains(text, "NOT in the state") {
+		t.Fatalf("ответ не предупреждает о state: %s", text)
 	}
 }
