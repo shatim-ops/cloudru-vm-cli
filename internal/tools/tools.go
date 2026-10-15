@@ -13,6 +13,7 @@ import (
 	"github.com/shatim-ops/cloudru-vm-cli/internal/engine"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/output"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/sgrules"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
@@ -81,7 +82,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "destroy",
-			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (captain approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip).",
+			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (captain approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":      strProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
 				"name":       strProp("Delete a specific VM by name (alternative to vm_id). Requires confirmed=true."),
@@ -159,7 +160,7 @@ func (s *Registry) registerTools() {
 				"cpu":          intProp("Required vCPUs (auto-size picks the smallest fitting flavor)."),
 				"ram_gb":       intProp("Required RAM in GB (auto-size)."),
 				"disk_gb":      intProp("Boot disk size in GB (default: 10)."),
-				"ports":        map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Product ports to open in the VM's security group (e.g. [80,443] for a web server, from the README). deploy_apply opens them automatically."},
+				"ports":        map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Product ports to open in the VM's security group (e.g. [80,443] for a web server, from the README). deploy_apply opens them automatically; destroy deletes the rules it created."},
 				"name":         strProp("Explicit VM name (default: <product>-<timestamp>)."),
 				"compose_file": strProp("Path to a docker-compose.yml if this is a compose deploy (sets compose_required)."),
 				"external_ip":  boolProp("Attach a public floating IP (default: true)."),
@@ -196,8 +197,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "list_security_groups",
-			Description: "List Cloud.ru security groups (UUID, name, availability zone). Read-only.",
-			InputSchema: objSchema(nil),
+			Description: "List Cloud.ru security groups (UUID, name, availability zone). Read-only. With rules=true each group carries its rules (id, direction, protocol, port range, source, description, state).",
+			InputSchema: objSchema(map[string]any{
+				"rules": boolProp("Also list each group's rules (one more API call per group)."),
+			}),
 		},
 		{
 			Name:        "list_floating_ips",
@@ -1897,16 +1900,21 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		return errResult(fmt.Errorf("delete VM: %w", err)), true
 	}
 
-	// Best-effort: remove from local state.
+	// Best-effort: remove from local state, deleting the port rules the
+	// deployment created (the same code as the CLI destroy).
+	var rules sgrules.CloseResult
 	statePath := state.DefaultPath(eng.StateDir)
 	if sf, e := state.Read(statePath); e == nil {
-		kept := sf.Deployments[:0]
+		var ids []string
 		for _, d := range sf.Deployments {
-			if d.VMID != target.ID {
-				kept = append(kept, d)
+			if d.VMID == target.ID {
+				ids = append(ids, d.ID)
 			}
 		}
-		sf.Deployments = kept
+		for _, id := range ids {
+			rules.Add(sgrules.Close(ctx, eng.Cloud, sf, id))
+			sgrules.Retire(sf, id)
+		}
 		_ = state.Write(statePath, sf)
 	}
 
@@ -1928,12 +1936,22 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			}
 		}
 	}
-	return toJSON(map[string]any{
+	out := map[string]any{
 		"status":     "ok",
 		"deleted_vm": target.ID,
 		"name":       target.Name,
-		"message":    msg,
-	}), false
+	}
+	if len(rules.Closed) > 0 {
+		msg += "; closed ports " + strings.Join(rules.Closed, ",")
+	}
+	if len(rules.Failed) > 0 {
+		msg += "; WARNING: could not delete the rules for ports " + strings.Join(rules.Failed, "; ") + " — call destroy again to retry"
+	}
+	if !rules.Empty() {
+		out["security_group_rules"] = rules
+	}
+	out["message"] = msg
+	return toJSON(out), false
 }
 
 func (s *Registry) handleListZones(ctx context.Context, args map[string]any) (string, bool) {

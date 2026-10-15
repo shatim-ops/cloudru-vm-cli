@@ -79,17 +79,74 @@ func (a *CloudRuAdapter) DeleteVMInProject(ctx context.Context, id, projectID st
 }
 
 // AddSecurityGroupRule creates one rule via
-// POST /api/v1/security-groups/{id}/rules.
-func (a *CloudRuAdapter) AddSecurityGroupRule(ctx context.Context, sgID, projectID string, rule SGRule) error {
+// POST /api/v1/security-groups/{id}/rules and returns it as created. The
+// documented answer is 201 with the rule (id required); a body that does not
+// decode yields a rule without an ID rather than an error — the rule exists.
+func (a *CloudRuAdapter) AddSecurityGroupRule(ctx context.Context, sgID, projectID string, rule SGRule) (*SGRule, error) {
 	body, err := json.Marshal(rule)
 	if err != nil {
-		return clierrors.Wrap(clierrors.CodeAPIError, "failed to marshal SG rule", "Check parameters", err)
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to marshal SG rule", "Check parameters", err)
 	}
 	path := fmt.Sprintf("/api/v1/security-groups/%s/rules", seg(sgID))
 	if projectID != "" {
 		path += "?project_id=" + url.QueryEscape(projectID)
 	}
 	resp, err := a.doWithRetry(ctx, http.MethodPost, path, body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var created SGRule
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxErrorBody)).Decode(&created); err != nil {
+		created = SGRule{}
+	}
+	return &created, nil
+}
+
+const (
+	// sgRulesPageSize is the API's maximum limit for the rules list.
+	sgRulesPageSize = 100
+	// sgRulesMaxPages bounds the walk: a server that keeps answering full
+	// pages must not keep the CLI looping.
+	sgRulesMaxPages = 100
+	maxListBody     = 8 << 20
+)
+
+// ListSecurityGroupRules lists a group's rules via
+// GET /api/v1/security-groups/{id}/rules, following offset pages. The group
+// list (GET /api/v1/security-groups) carries only rule counts.
+func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string) ([]*SGRule, error) {
+	var out []*SGRule
+	offset := 0
+	for range sgRulesMaxPages {
+		path := fmt.Sprintf("/api/v1/security-groups/%s/rules?offset=%d&limit=%d", seg(sgID), offset, sgRulesPageSize)
+		resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
+		}
+		var page paginatedResponse[SGRule]
+		err = json.NewDecoder(io.LimitReader(resp.Body, maxListBody)).Decode(&page)
+		resp.Body.Close()
+		if err != nil {
+			return nil, clierrors.Wrap(clierrors.CodeAPIError, "failed to decode security group rules", "API returned unexpected format — run with --verbose to debug", err)
+		}
+		for i := range page.Items {
+			out = append(out, &page.Items[i])
+		}
+		offset += len(page.Items)
+		if len(page.Items) == 0 || offset >= page.Total {
+			return out, nil
+		}
+	}
+	return out, nil
+}
+
+// DeleteSecurityGroupRule deletes one rule via
+// DELETE /api/v1/security-groups/{id}/rules/{rule_id} (204; 404 when the
+// rule is gone, which the adapter reports as CodeVMNotFound).
+func (a *CloudRuAdapter) DeleteSecurityGroupRule(ctx context.Context, sgID, ruleID string) error {
+	path := fmt.Sprintf("/api/v1/security-groups/%s/rules/%s", seg(sgID), seg(ruleID))
+	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return err
 	}

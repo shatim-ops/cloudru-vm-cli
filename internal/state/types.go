@@ -4,20 +4,40 @@ import "time"
 
 // DeploymentRecord is the persisted form of a deployment.
 type DeploymentRecord struct {
-	ID                    string    `json:"id"`
-	VMID                  string    `json:"vm_id"`
-	VMIP                  string    `json:"vm_ip"`
-	FloatingIPID          string    `json:"floating_ip_id,omitempty"` // released by destroy
-	VMFlavor              string    `json:"vm_flavor"`
-	Region                string    `json:"region"`
-	Status                string    `json:"status"` // creating, provisioned, deploying, running, ssh_timeout, docker_failed, destroying, destroyed
-	ComposeHash           string    `json:"compose_hash"`
-	SSHUser               string    `json:"ssh_user,omitempty"`
-	SSHKeyFingerprint     string    `json:"ssh_key_fingerprint,omitempty"`
-	SSHHostKeyFingerprint string    `json:"ssh_host_key_fingerprint,omitempty"`
-	ExposedPorts          []int     `json:"exposed_ports,omitempty"`
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	ID                    string `json:"id"`
+	VMID                  string `json:"vm_id"`
+	VMIP                  string `json:"vm_ip"`
+	FloatingIPID          string `json:"floating_ip_id,omitempty"` // released by destroy
+	VMFlavor              string `json:"vm_flavor"`
+	Region                string `json:"region"`
+	Status                string `json:"status"` // creating, provisioned, deploying, running, ssh_timeout, docker_failed, destroying, destroyed
+	ComposeHash           string `json:"compose_hash"`
+	SSHUser               string `json:"ssh_user,omitempty"`
+	SSHKeyFingerprint     string `json:"ssh_key_fingerprint,omitempty"`
+	SSHHostKeyFingerprint string `json:"ssh_host_key_fingerprint,omitempty"`
+	ExposedPorts          []int  `json:"exposed_ports,omitempty"`
+	// SecurityGroupID is the group the VM's interface is in; a re-run of
+	// deploy opens missing ports there.
+	SecurityGroupID string `json:"security_group_id,omitempty"`
+	// SecurityGroupPorts are the ports ("80/tcp", "53/udp") this deployment
+	// needs open in that group, whoever created the rules. destroy keeps a
+	// rule that another deployment in this state still needs.
+	SecurityGroupPorts []string `json:"security_group_ports,omitempty"`
+	// OpenedRules are the rules this deployment created (never ones that
+	// were there before it); destroy deletes them.
+	OpenedRules []SGRule  `json:"opened_rules,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// SGRule is a security-group rule created by a deployment.
+type SGRule struct {
+	ID              string `json:"id"`
+	SecurityGroupID string `json:"security_group_id"`
+	Port            string `json:"port"` // "80/tcp", "53/udp"
+	// DeleteError is the last failed attempt to delete the rule: the record
+	// is kept, and the next destroy tries again.
+	DeleteError string `json:"delete_error,omitempty"`
 }
 
 // File is the root state file structure.

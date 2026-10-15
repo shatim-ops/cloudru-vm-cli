@@ -1,7 +1,7 @@
 name: cloud-e2e
 
 # Сквозная проверка на настоящем Cloud.ru: init → deploy → verify → logs -f →
-# destroy. Создаёт платную ВМ и floating IP, поэтому запускается только
+# destroy → правило порта 80 удалено из группы безопасности. Создаёт платную ВМ и floating IP, поэтому запускается только
 # вручную или пушем в ветку e2e/** — и всегда удаляет за собой ресурсы.
 #
 # Секреты репозитория (Settings → Secrets and variables → Actions):
@@ -104,9 +104,23 @@ jobs:
           cloudru-vm deploy --dry-run
           [ ! -s .cloudru-vm/state.json ] || ! jq -e '.deployments | length > 0' .cloudru-vm/state.json
 
+      # Группа безопасности зоны общая: правило для порта 80 могло быть в
+      # ней и до deploy (его destroy не трогает). Запоминаем, что было.
+      - name: Правила групп безопасности до deploy
+        working-directory: e2e-app
+        run: cloudru-vm tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg-before.json"
+
       - name: deploy --yes
         working-directory: e2e-app
         run: cloudru-vm deploy --yes
+
+      - name: Группа и правила deploy в state
+        working-directory: e2e-app
+        run: |
+          sg=$(jq -r '.deployments[0].security_group_id // empty' .cloudru-vm/state.json)
+          printf '%s' "$sg" | grep -Eq '^[A-Za-z0-9-]{1,64}$' || { echo "::error::нет security_group_id в state"; exit 1; }
+          echo "SG_ID=$sg" >> "$GITHUB_ENV"
+          jq '.deployments[0] | {security_group_id, security_group_ports, opened_rules}' .cloudru-vm/state.json
 
       - name: verify и HTTP снаружи
         working-directory: e2e-app
@@ -131,3 +145,21 @@ jobs:
           cd e2e-app 2>/dev/null && [ -f .cloudru-vm/state.json ] || { echo "нечего удалять"; exit 0; }
           for i in 1 2 3; do cloudru-vm destroy --yes && break; sleep 30; done
           jq -e '.deployments | length == 0' .cloudru-vm/state.json
+
+      # Если правила «cloudru-vm:» для 80 в группе до deploy не было, его
+      # создал deploy, и после destroy его быть не должно. Удаление может
+      # идти асинхронно (state=deleting) — несколько попыток.
+      - name: Правило порта 80 удалено после destroy
+        if: always() && env.SG_ID != ''
+        working-directory: e2e-app
+        run: |
+          rule80='[.security_groups[] | select(.id==$sg) | .rules[]? | select(.direction=="ingress" and .port_range=="80:80" and ((.description // "") | startswith("cloudru-vm:")))] | length'
+          had=$(jq --arg sg "$SG_ID" "$rule80" "$RUNNER_TEMP/sg-before.json")
+          if [ "$had" != 0 ]; then echo "правило для 80 было в группе до deploy — destroy его не удаляет, проверка пропущена"; exit 0; fi
+          for i in 1 2 3 4 5 6; do
+            left=$(cloudru-vm tools call list_security_groups --arg rules=true --json | jq --arg sg "$SG_ID" "$rule80")
+            [ "$left" = 0 ] && { echo "правило для 80 удалено"; exit 0; }
+            sleep 10
+          done
+          echo "::error::после destroy в группе $SG_ID осталось правило «cloudru-vm:» для порта 80"
+          exit 1

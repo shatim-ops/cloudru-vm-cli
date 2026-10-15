@@ -4,11 +4,11 @@ import (
 	"context"
 	crand "crypto/rand"
 	"fmt"
-	"strconv"
 	"strings"
 
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
-	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/sgrules"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
 // vmNetwork is where a new VM is plugged in. The compute create API 500s
@@ -94,71 +94,22 @@ func zoneText(name, id string) string {
 }
 
 // openPorts adds ingress rules for the compose ports (tcp and udp) to the
-// VM's security group, skipping ports already open for that protocol. The
-// group is shared by every VM placed in it — the deploy preview says so
-// before anything is created. Failures are reported, not fatal: the VM
-// exists and the ports can be opened in the console.
-func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp []int) {
-	if sgID == "" || len(tcp)+len(udp) == 0 {
-		return
+// VM's security group, skipping ports already open for that protocol, and
+// records in rec the rules it created — destroy deletes those. The group is
+// shared by every VM placed in it — the deploy preview says so before
+// anything is created. Failures are reported, not fatal: the VM exists and
+// the ports can be opened in the console.
+func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp []int, rec *state.DeploymentRecord) {
+	res := sgrules.Open(ctx, e.Cloud, projectID, sgID, tcp, udp,
+		func(label string) string { return "cloudru-vm: port " + label }, rec)
+	if len(res.Opened) > 0 {
+		e.Printer.StepDone("Opened ports " + strings.Join(res.Opened, ",") + " in the security group")
 	}
-	// Keyed by protocol and range: a udp rule on 53 does not open tcp 53. A
-	// rule without a protocol (or "any") covers both.
-	existing := map[string]bool{}
-	if sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID); err == nil {
-		for _, sg := range sgs {
-			if sg.ID != sgID {
-				continue
-			}
-			for _, r := range sg.Rules {
-				if r.Direction != "ingress" || r.PortRange == "" {
-					continue
-				}
-				switch proto := strings.ToLower(r.IPProtocol); proto {
-				case "", "any":
-					existing["tcp "+r.PortRange] = true
-					existing["udp "+r.PortRange] = true
-				default:
-					existing[proto+" "+r.PortRange] = true
-				}
-			}
-		}
+	if len(res.Failed) > 0 {
+		e.Printer.Warning("Could not open ports " + strings.Join(res.Failed, ",") + " — open them in the security group in the Cloud.ru console")
 	}
-	var opened, failed []string
-	for _, set := range []struct {
-		proto string
-		ports []int
-	}{{"tcp", tcp}, {"udp", udp}} {
-		for _, p := range set.ports {
-			pr := fmt.Sprintf("%d:%d", p, p)
-			if existing[set.proto+" "+pr] {
-				continue
-			}
-			existing[set.proto+" "+pr] = true
-			label := strconv.Itoa(p)
-			if set.proto != "tcp" {
-				label += "/" + set.proto
-			}
-			rule := provision.SGRule{
-				Direction:      "ingress",
-				EtherType:      "IPv4",
-				IPProtocol:     set.proto,
-				PortRange:      pr,
-				RemoteIPPrefix: "0.0.0.0/0",
-				Description:    fmt.Sprintf("cloudru-vm: port %s", label),
-			}
-			if err := e.Cloud.AddSecurityGroupRule(ctx, sgID, projectID, rule); err != nil {
-				failed = append(failed, label)
-			} else {
-				opened = append(opened, label)
-			}
-		}
-	}
-	if len(opened) > 0 {
-		e.Printer.StepDone("Opened ports " + strings.Join(opened, ",") + " in the security group")
-	}
-	if len(failed) > 0 {
-		e.Printer.Warning("Could not open ports " + strings.Join(failed, ",") + " — open them in the security group in the Cloud.ru console")
+	if len(res.Untracked) > 0 {
+		e.Printer.Warning("Ports " + strings.Join(res.Untracked, ",") + " were opened, but the API returned no rule ID: destroy will not close them — delete those rules in the Cloud.ru console after destroy")
 	}
 }
 

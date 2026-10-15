@@ -57,6 +57,10 @@ type mockCloudAPI struct {
 	listSubnetsFn           func(ctx context.Context, projectID string) ([]*provision.Subnet, error)
 	listSecurityGroupsFn    func(ctx context.Context, projectID string) ([]*provision.SecurityGroup, error)
 	addedRules              []provision.SGRule
+	addRuleFn               func(ctx context.Context, sgID string, rule provision.SGRule) (*provision.SGRule, error)
+	deleteRuleFn            func(ctx context.Context, sgID, ruleID string) error
+	deletedRules            []string // "sgID/ruleID"
+	ruleSeq                 int
 
 	token        string
 	createCalled bool
@@ -709,9 +713,53 @@ func (m *mockCloudAPI) ListSecurityGroups(ctx context.Context, projectID string)
 	return []*provision.SecurityGroup{{ID: "sg-1", Name: "SSH-access_ru-moscow-1"}}, nil
 }
 
-func (m *mockCloudAPI) AddSecurityGroupRule(ctx context.Context, sgID, projectID string, rule provision.SGRule) error {
+// AddSecurityGroupRule records the rule and, by default, answers as the
+// documented API does: the rule with a fresh ID.
+func (m *mockCloudAPI) AddSecurityGroupRule(ctx context.Context, sgID, projectID string, rule provision.SGRule) (*provision.SGRule, error) {
+	if m.addRuleFn != nil {
+		created, err := m.addRuleFn(ctx, sgID, rule)
+		if err == nil {
+			m.mu.Lock()
+			m.addedRules = append(m.addedRules, rule)
+			m.mu.Unlock()
+		}
+		return created, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.ruleSeq++
+	rule.ID = fmt.Sprintf("rule-%d", m.ruleSeq)
 	m.addedRules = append(m.addedRules, rule)
+	created := rule
+	return &created, nil
+}
+
+// ListSecurityGroupRules answers with the rules the group list fixture
+// carries for sgID.
+func (m *mockCloudAPI) ListSecurityGroupRules(ctx context.Context, sgID string) ([]*provision.SGRule, error) {
+	sgs, err := m.ListSecurityGroups(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	var out []*provision.SGRule
+	for _, g := range sgs {
+		if g.ID == sgID {
+			for i := range g.Rules {
+				out = append(out, &g.Rules[i])
+			}
+		}
+	}
+	return out, nil
+}
+
+func (m *mockCloudAPI) DeleteSecurityGroupRule(ctx context.Context, sgID, ruleID string) error {
+	if m.deleteRuleFn != nil {
+		if err := m.deleteRuleFn(ctx, sgID, ruleID); err != nil {
+			return err
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.deletedRules = append(m.deletedRules, sgID+"/"+ruleID)
 	return nil
 }

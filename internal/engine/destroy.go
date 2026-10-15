@@ -5,11 +5,13 @@ import (
 	stderrors "errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/cloudru-vm-cli/internal/errors"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/sgrules"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
@@ -35,7 +37,13 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 
 	active := stateFile.ActiveDeployment()
+	// Deployments destroyed earlier whose port rules could not be deleted
+	// then: this run tries again.
+	pending := sgrules.Pending(stateFile)
 	if active == nil {
+		if len(pending) > 0 {
+			return e.finishPendingRules(ctx, opts, statePath, stateFile, pending)
+		}
 		if e.Printer.IsJSON() {
 			return e.Printer.JSON(map[string]any{"status": "none", "message": "No active deployment to destroy."})
 		}
@@ -48,7 +56,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
-	proceed, err := confirm.Ask(ctx, destroyPreview(active), e.confirmOptions(opts.Force, opts.DryRun, false))
+	proceed, err := confirm.Ask(ctx, destroyPreview(active, stateFile, pending), e.confirmOptions(opts.Force, opts.DryRun, false))
 	if err != nil {
 		return err
 	}
@@ -67,8 +75,8 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 	e.Printer.StepDone("Authenticated")
 
-	// Delete VM, then its floating IP.
-	e.Printer.Step(3, 3, "Deleting VM and floating IP...")
+	// Delete VM, then its floating IP and the port rules deploy created.
+	e.Printer.Step(3, 3, "Deleting VM, floating IP and port rules...")
 	prevStatus := active.Status
 	active.Status = "destroying"
 	active.UpdatedAt = time.Now()
@@ -131,22 +139,94 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// The VM is gone but its floating IP is billed until released. On failure
 	// the record stays ("destroying"), so re-running destroy retries.
-	if err := e.releaseFloatingIP(ctx, active); err != nil {
-		stateFile.UpsertDeployment(*active)
+	stateFile.UpsertDeployment(*active)
+	fipErr := e.releaseFloatingIP(ctx, active)
+
+	// Port rules only now that the VM is gone: had its delete failed, the
+	// app would still be serving and must keep its ports. A failed rule
+	// delete is a warning, not a failed destroy: the record stays (as
+	// "destroyed") with the rule marked, and the next destroy retries.
+	rules := e.closeRules(ctx, stateFile, append([]string{active.ID}, pending...))
+	if fipErr != nil {
 		_ = state.Write(statePath, stateFile)
-		return err
+		return fipErr
 	}
 
-	// Clean up state.
-	stateFile.RemoveDeployment(active.ID)
+	// Clean up state. Retire moves records: active points into the slice.
+	vmID, vmIP := active.VMID, active.VMIP
+	for _, id := range append([]string{active.ID}, pending...) {
+		sgrules.Retire(stateFile, id)
+	}
 	if err := state.Write(statePath, stateFile); err != nil {
 		return err
 	}
 
 	if e.Printer.IsJSON() {
-		return e.Printer.JSON(map[string]any{"status": "destroyed", "vm_id": active.VMID, "vm_ip": active.VMIP})
+		out := map[string]any{"status": "destroyed", "vm_id": vmID, "vm_ip": vmIP}
+		if !rules.Empty() {
+			out["security_group_rules"] = rules
+		}
+		return e.Printer.JSON(out)
 	}
 	e.Printer.Success("Deployment destroyed successfully.")
+	return nil
+}
+
+// closeRules deletes the port rules the given deployments created and
+// reports it; see sgrules.Close.
+func (e *Engine) closeRules(ctx context.Context, sf *state.File, ids []string) sgrules.CloseResult {
+	var res sgrules.CloseResult
+	for _, id := range ids {
+		res.Add(sgrules.Close(ctx, e.Cloud, sf, id))
+	}
+	if len(res.Closed) > 0 {
+		e.Printer.StepDone("Closed ports " + strings.Join(res.Closed, ",") + " in the security group")
+	}
+	for _, k := range res.Kept {
+		e.Printer.StepDone("Kept port " + k)
+	}
+	if len(res.Failed) > 0 {
+		e.Printer.Warning("Could not delete the security group rules for ports " + strings.Join(res.Failed, "; ") +
+			". They stay in state: re-run 'cloudru-vm destroy' to retry, or delete them in the Cloud.ru console.")
+	}
+	return res
+}
+
+// finishPendingRules is destroy with no active deployment, only rules left
+// by an earlier destroy.
+func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, statePath string, sf *state.File, pending []string) error {
+	proceed, err := confirm.Ask(ctx, pendingRulesPreview(sf, pending), e.confirmOptions(opts.Force, opts.DryRun, false))
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		return nil // --dry-run
+	}
+	tok, err := e.Auth.Token(ctx)
+	if err != nil {
+		return err
+	}
+	if ts, ok := e.Cloud.(interface{ SetToken(string) }); ok {
+		ts.SetToken(tok.Value)
+	}
+	e.Printer.Step(1, 1, "Deleting port rules left by an earlier destroy...")
+	rules := e.closeRules(ctx, sf, pending)
+	for _, id := range pending {
+		sgrules.Retire(sf, id)
+	}
+	if err := state.Write(statePath, sf); err != nil {
+		return err
+	}
+	if e.Printer.IsJSON() {
+		status := "destroyed"
+		if len(rules.Failed) > 0 {
+			status = "rules_pending"
+		}
+		return e.Printer.JSON(map[string]any{"status": status, "security_group_rules": rules})
+	}
+	if len(rules.Failed) == 0 {
+		e.Printer.Success("Security group rules deleted.")
+	}
 	return nil
 }
 

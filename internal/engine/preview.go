@@ -9,6 +9,7 @@ import (
 	"github.com/shatim-ops/cloudru-vm-cli/internal/confirm"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/deployplan"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/provision"
+	"github.com/shatim-ops/cloudru-vm-cli/internal/sgrules"
 	"github.com/shatim-ops/cloudru-vm-cli/internal/state"
 )
 
@@ -96,7 +97,8 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		for _, p := range udpPorts {
 			ps = append(ps, fmt.Sprintf("%d/udp", p))
 		}
-		lines = append(lines, fmt.Sprintf("ports:     %s opened to 0.0.0.0/0 in security group %s (shared by every VM in it)",
+		lines = append(lines, fmt.Sprintf("ports:     %s opened to 0.0.0.0/0 in security group %s (shared by every VM in it); "+
+			"destroy deletes the rules this deploy creates",
 			strings.Join(ps, ","), network.SecurityGroup))
 	}
 	lines = append(lines, costLine)
@@ -120,13 +122,18 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 
 // redeployPreview describes an update of an already running VM.
 func redeployPreview(rec *state.DeploymentRecord) confirm.Preview {
+	lines := []string{
+		"upload the compose file to the existing VM and run 'docker compose up -d'",
+		"no new resources are created",
+	}
+	if rec.SecurityGroupID != "" {
+		lines = append(lines, "ports of the compose file not yet open are opened in security group "+rec.SecurityGroupID+
+			"; destroy deletes the rules deploy creates")
+	}
 	return confirm.Preview{
 		Action:  "deploy",
 		Summary: fmt.Sprintf("update VM %s (%s)", rec.VMID, rec.VMIP),
-		Lines: []string{
-			"upload the compose file to the existing VM and run 'docker compose up -d'",
-			"no new resources are created",
-		},
+		Lines:   lines,
 		Details: map[string]any{"vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": []string{}},
 	}
 }
@@ -140,8 +147,53 @@ type destroyResource struct {
 	Note    string `json:"note,omitempty"`
 }
 
+// rulePreview lists the port rules destroy deletes or keeps for the given
+// deployments, with a warning about the group being shared.
+func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
+	var res []destroyResource
+	var lines []string
+	deleting := false
+	for _, p := range sgrules.Plan(sf, ids...) {
+		label := sgrules.Label(p.Rule.Port)
+		if p.KeptFor != "" {
+			note := "still needed by deployment " + p.KeptFor
+			res = append(res, destroyResource{Type: "security_group_rule", ID: p.Rule.ID, Address: p.Rule.Port, Action: "keep", Note: note})
+			lines = append(lines, fmt.Sprintf("keep the rule for port %s in security group %s (%s)", label, p.Rule.SecurityGroupID, note))
+			continue
+		}
+		deleting = true
+		r := destroyResource{Type: "security_group_rule", ID: p.Rule.ID, Address: p.Rule.Port, Action: "delete"}
+		line := fmt.Sprintf("delete the rule %s opening port %s in security group %s", p.Rule.ID, label, p.Rule.SecurityGroupID)
+		if rec := sf.FindDeployment(p.RecordID); rec != nil && rec.Status == "destroyed" {
+			r.Note = "left by an earlier destroy"
+			line += " (" + r.Note + ")"
+		}
+		res = append(res, r)
+		lines = append(lines, line)
+	}
+	if deleting {
+		// Other projects cannot be seen from this state: a VM deployed from
+		// another directory may rely on a rule this deploy created.
+		lines = append(lines, "the security group is shared: other VMs in it that rely on these ports lose them too "+
+			"(re-run 'cloudru-vm deploy --force' in their directory to reopen)")
+	}
+	return res, lines
+}
+
+// pendingRulesPreview is the preview of a destroy that only finishes the
+// rules an earlier destroy could not delete.
+func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
+	res, lines := rulePreview(sf, pending)
+	return confirm.Preview{
+		Action:  "destroy",
+		Summary: "delete security group rules left by an earlier destroy",
+		Lines:   lines,
+		Details: map[string]any{"resources": res},
+	}
+}
+
 // destroyPreview lists what destroy deletes and what it leaves behind.
-func destroyPreview(rec *state.DeploymentRecord) confirm.Preview {
+func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string) confirm.Preview {
 	res := []destroyResource{
 		{Type: "vm", ID: rec.VMID, Address: rec.VMIP, Action: "delete", Note: "all data on its disks is lost"},
 	}
@@ -152,6 +204,9 @@ func destroyPreview(rec *state.DeploymentRecord) confirm.Preview {
 		res = append(res, destroyResource{Type: "floating_ip", ID: rec.FloatingIPID, Address: rec.VMIP, Action: "release"})
 		lines = append(lines, fmt.Sprintf("release floating IP %s", fipLabel(rec.VMIP, rec.FloatingIPID)))
 	}
+	ruleRes, ruleLines := rulePreview(sf, append([]string{rec.ID}, pending...))
+	res = append(res, ruleRes...)
+	lines = append(lines, ruleLines...)
 	res = append(res, destroyResource{Type: "state_record", ID: rec.ID, Action: "remove"})
 	lines = append(lines, "remove the deployment from local state")
 

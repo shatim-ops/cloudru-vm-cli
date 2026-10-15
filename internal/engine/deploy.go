@@ -157,6 +157,14 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			stateFile.UpsertDeployment(rec)
 			_ = state.Write(statePath, stateFile)
 		}
+		// An earlier run may have stopped before the ports were opened, or
+		// the compose file publishes new ones: open what is missing. Records
+		// from before security_group_id existed have no group to open in.
+		if rec.SecurityGroupID != "" {
+			e.openPorts(ctx, e.Config.ProjectID, rec.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
+			stateFile.UpsertDeployment(rec)
+			_ = state.Write(statePath, stateFile)
+		}
 		e.Printer.StepDone(fmt.Sprintf("VM %s at %s", rec.VMID, rec.VMIP))
 	}
 
@@ -501,8 +509,10 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		Status:       "creating",
 		ComposeHash:  project.Hash,
 		ExposedPorts: project.Ports,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		// Saved now: a re-run after an interruption opens the ports here.
+		SecurityGroupID: network.SecurityGroupID,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
 	}
 	stateFile.UpsertDeployment(rec)
 	if err := state.Write(statePath, stateFile); err != nil {
@@ -570,7 +580,10 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				if publicIP != "" {
 					e.Printer.StepDone(fmt.Sprintf("Public IP: %s", publicIP))
 				}
-				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports, project.UDPPorts)
+				// The rule IDs go to state at once: destroy deletes them.
+				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
+				stateFile.UpsertDeployment(rec)
+				_ = state.Write(statePath, stateFile)
 				return rec, nil
 			case "error":
 				return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
