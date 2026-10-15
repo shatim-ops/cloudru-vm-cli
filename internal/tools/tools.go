@@ -22,7 +22,7 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires Cloud.ru credentials (CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the captain approves; without it returns a preview only.",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires Cloud.ru credentials (CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the user approves; without it returns a preview only.",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
 				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),
@@ -31,12 +31,12 @@ func (s *Registry) registerTools() {
 				"image_id":     strProp("Boot image UUID (see list_images)."),
 				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
 				"force":        boolProp("Redeploy even if the compose hash is unchanged."),
-				"confirmed":    boolProp("Must be true — set only after the captain approved. Omit for a preview."),
+				"confirmed":    boolProp("Must be true — set only after the user approved. Omit for a preview."),
 			}),
 		},
 		{
 			Name:        "provision",
-			Description: "Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the captain approves; without it returns a preview only.",
+			Description: "Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only.",
 			InputSchema: objSchema(map[string]any{
 				"name":         strProp("VM name (e.g. 'hermes-agent')."),
 				"flavor":       strProp("VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier)."),
@@ -46,7 +46,7 @@ func (s *Registry) registerTools() {
 				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
 				"subnet_id":    strProp("Subnet UUID for the interface (default: a subnet in the target zone)."),
 				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
-				"confirmed":    boolProp("Must be true — set only after the captain approved. Omit for a preview."),
+				"confirmed":    boolProp("Must be true — set only after the user approved. Omit for a preview."),
 			}),
 		},
 		{
@@ -82,11 +82,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "destroy",
-			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (captain approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy.",
+			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":      strProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
 				"name":       strProp("Delete a specific VM by name (alternative to vm_id). Requires confirmed=true."),
-				"confirmed":  boolProp("Must be true for ANY destroy — set only after the captain approves."),
+				"confirmed":  boolProp("Must be true for ANY destroy — set only after the user approves."),
 				"release_ip": boolProp("Also release the VM's floating IP (default: true)."),
 			}),
 		},
@@ -123,7 +123,7 @@ func (s *Registry) registerTools() {
 						"Each entry: {name, display_name, display_position, field_type, default_value, sensitive, mandatory_group} — display_name and display_position are REQUIRED, and 'id'/'is_required' are rejected (the write schema differs from what image_get returns). " +
 						"field_type uses the platform's typed values (public_key, linux_password, linux_login, hostname, flag); put public_key and linux_password in the same mandatory_group ('authentication') so either satisfies access.",
 				},
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "name", "disk_id"),
 		},
 		{
@@ -132,7 +132,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"fip":       strProp("Floating IP address (e.g. '213.171.24.210') or its UUID, from list_floating_ips."),
 				"vm":        strProp("VM name or UUID to attach it to."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "fip", "vm"),
 		},
 		{
@@ -147,14 +147,14 @@ func (s *Registry) registerTools() {
 			Description: "Delete a VM image. Running VMs keep working, but no new VM can be created from it. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"image_id":  strProp("Image UUID (from list_images)."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "image_id"),
 		},
 		{
 			Name:        "deploy_plan",
-			Description: "STEP 1 of the deploy wizard (read-only, creates nothing). Resolves a full VM configuration — flavor, image, zone, disk, network, SSH — and returns it together with a MONTHLY COST estimate and a plan_id. In 'auto' mode pass the product's requirements (cpu/ram_gb/disk_gb from its README) and defaults fill the rest; in 'manual' mode pass explicit choices (flavor/zone/image/disk_type). Show the returned plan + cost to the captain for approval, then call deploy_apply with the plan_id.",
+			Description: "STEP 1 of the deploy wizard (read-only, creates nothing). Resolves a full VM configuration — flavor, image, zone, disk, network, SSH — and returns it together with a MONTHLY COST estimate and a plan_id. In 'auto' mode pass the product's requirements (cpu/ram_gb/disk_gb from its README) and defaults fill the rest; in 'manual' mode pass explicit choices (flavor/zone/image/disk_type). Show the returned plan + cost to the user for approval, then call deploy_apply with the plan_id.",
 			InputSchema: objSchema(map[string]any{
-				"base_plan_id": strProp("Optional: a prior plan_id to PATCH. Starts from that plan's parameters and overlays only the fields you pass here (e.g. just disk_gb), returning a fresh plan_id. Lets the captain tweak one value without restating everything."),
+				"base_plan_id": strProp("Optional: a prior plan_id to PATCH. Starts from that plan's parameters and overlays only the fields you pass here (e.g. just disk_gb), returning a fresh plan_id. Lets the user tweak one value without restating everything."),
 				"product":      strProp("Product/app name being deployed (used for the VM name and reporting)."),
 				"mode":         strProp("'auto' (defaults + requirements) or 'manual' (explicit choices). Default: auto."),
 				"cpu":          intProp("Required vCPUs (auto-size picks the smallest fitting flavor)."),
@@ -174,10 +174,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_apply",
-			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. REQUIRES the captain's approval: only call with confirmed=true AFTER the captain has explicitly approved the plan and its cost. Idempotent: if a VM with the plan's name already exists it is adopted, not duplicated. Returns vm_id, public_ip, ssh and (once) the generated password.",
+			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: if a VM with the plan's name already exists it is adopted, not duplicated. Returns vm_id, public_ip, ssh and (once) the generated password.",
 			InputSchema: objSchema(map[string]any{
 				"plan_id":   strProp("The plan_id returned by deploy_plan."),
-				"confirmed": boolProp("Must be true — set only after the captain approved the plan."),
+				"confirmed": boolProp("Must be true — set only after the user approved the plan."),
 			}, "plan_id"),
 		},
 		{
@@ -209,13 +209,13 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "open_ports",
-			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
 				"protocol":       strProp("Protocol: tcp (default) or udp."),
 				"cidr":           strProp("Source CIDR (default 0.0.0.0/0 = anywhere)."),
-				"confirmed":      boolProp("Must be true — set only after the captain approved opening these ports."),
+				"confirmed":      boolProp("Must be true — set only after the user approved opening these ports."),
 			}, "security_group"),
 		},
 		{
@@ -235,7 +235,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_plan",
-			Description: "STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master count, subnet, service account) WITHOUT creating anything. Show it to the captain, then call k8s_create with the same args + confirmed=true.",
+			Description: "STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master count, subnet, service account) WITHOUT creating anything. Show it to the user, then call k8s_create with the same args + confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"product":           strProp("What the cluster is for (used for the name)."),
 				"name":              strProp("Cluster name (3-60; default k8s-<product>)."),
@@ -252,7 +252,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_create",
-			Description: "STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the captain approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in ~10-20 min (poll k8s_get). Accepts the same args as k8s_plan.",
+			Description: "STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in ~10-20 min (poll k8s_get). Accepts the same args as k8s_plan.",
 			InputSchema: objSchema(map[string]any{
 				"product": strProp("What the cluster is for."), "name": strProp("Cluster name."),
 				"version": strProp("Kubernetes version."), "flavor": strProp("Control-plane flavor name."),
@@ -260,7 +260,7 @@ func (s *Registry) registerTools() {
 				"master_count": intProp("1, 3 or 5."), "zone": strProp("Zone name."),
 				"subnet_id": strProp("Control-plane VIP subnet UUID."), "cluster_sa_id": strProp("Cluster service-account UUID."),
 				"kube_api_internet": boolProp("Publish kube-apiserver to internet."),
-				"confirmed":         boolProp("Must be true — set only after the captain approved."),
+				"confirmed":         boolProp("Must be true — set only after the user approved."),
 			}),
 		},
 		{
@@ -274,10 +274,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_delete",
-			Description: "Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the captain approves. Async.",
+			Description: "Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the user approves. Async.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved."),
+				"confirmed":  boolProp("Must be true — set only after the user approved."),
 			}, "cluster_id"),
 		},
 		{
@@ -287,7 +287,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_add_nodepool",
-			Description: "Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has none). REQUIRES confirmed=true after the captain approves (billable). Async. Auto-resolves flavor (cpu/ram or name), nodes subnet and security group. NB: Cloud.ru's node-pool backend occasionally returns 503 'no healthy upstream' (transient outage) — just retry.",
+			Description: "Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has none). REQUIRES confirmed=true after the user approves (billable). Async. Auto-resolves flavor (cpu/ram or name), nodes subnet and security group. NB: Cloud.ru's node-pool backend occasionally returns 503 'no healthy upstream' (transient outage) — just retry.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id":        strProp("Cluster UUID (from k8s_list)."),
 				"name":              strProp("Node pool name, 4-60 (default nodepool-1)."),
@@ -299,7 +299,7 @@ func (s *Registry) registerTools() {
 				"zone":              strProp("Zone name (default from productConfiguration)."),
 				"nodes_subnet_id":   strProp("Subnet UUID for worker nodes (default auto zone-matched)."),
 				"security_group_id": strProp("Security group UUID for nodes (default auto zone-matched SSH-access)."),
-				"confirmed":         boolProp("Must be true — set only after the captain approved."),
+				"confirmed":         boolProp("Must be true — set only after the user approved."),
 			}, "cluster_id"),
 		},
 		{
@@ -308,17 +308,17 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"args":       strProp("kubectl arguments as a single string, e.g. \"get pods -A -o wide\"."),
-				"confirmed":  boolProp("Required only for mutating verbs — set true after the captain approves. Read verbs need no confirmation."),
+				"confirmed":  boolProp("Required only for mutating verbs — set true after the user approves. Read verbs need no confirmation."),
 			}, "cluster_id", "args"),
 		},
 		{
 			Name:        "k8s_apply",
-			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Mutation: requires confirmed=true after the captain approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
+			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"manifest":   strProp("The manifest YAML/JSON to apply (multi-doc allowed)."),
 				"namespace":  strProp("Namespace to apply into (optional; manifests may set their own)."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved."),
+				"confirmed":  boolProp("Must be true — set only after the user approved."),
 			}, "cluster_id", "manifest"),
 		},
 		{
@@ -334,7 +334,7 @@ func (s *Registry) registerTools() {
 				"version":    strProp("Chart version (optional; default latest)."),
 				"values":     strProp("Inline values.yaml content (optional)."),
 				"set":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Array of 'key=value' Helm --set overrides (optional)."},
-				"confirmed":  boolProp("Must be true for install/upgrade/uninstall — set only after the captain approved."),
+				"confirmed":  boolProp("Must be true for install/upgrade/uninstall — set only after the user approved."),
 			}, "cluster_id", "action"),
 		},
 		{
@@ -351,7 +351,7 @@ func (s *Registry) registerTools() {
 				"disk_type": strProp("Disk type name (e.g. from list_disk_types) or UUID. Default: an SSD type."),
 				"attach_to": strProp("VM name or UUID to create-in-zone and auto-attach to (e.g. 'vm-712c44')."),
 				"zone":      strProp("Availability zone name or UUID (alternative to attach_to; default: configured region)."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "name", "size_gb"),
 		},
 		{
@@ -360,7 +360,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   strProp("Disk UUID (from disk_list)."),
 				"vm":        strProp("VM name or UUID."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "disk_id", "vm"),
 		},
 		{
@@ -369,7 +369,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   strProp("Disk UUID (from disk_list)."),
 				"vm":        strProp("VM name or UUID the disk is attached to."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "disk_id", "vm"),
 		},
 		{
@@ -378,7 +378,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   strProp("Disk UUID (from disk_list)."),
 				"size_gb":   intProp("New size in GB (must be larger than current; max 65536)."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "disk_id", "size_gb"),
 		},
 		{
@@ -386,7 +386,7 @@ func (s *Registry) registerTools() {
 			Description: "Permanently delete a disk and all its data (irreversible). Detach it first if attached. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   strProp("Disk UUID (from disk_list)."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "disk_id"),
 		},
 		{
@@ -401,7 +401,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ca_deploy",
-			Description: "Deploy (create+run) a Container App from a container image — serverless, scales to zero when idle. REQUIRES confirmed=true after the captain approves. Async: returns operation_id; use ca_get for status + public URL. Ideal for stateless web services/APIs without managing a VM.",
+			Description: "Deploy (create+run) a Container App from a container image — serverless, scales to zero when idle. REQUIRES confirmed=true after the user approves. Async: returns operation_id; use ca_get for status + public URL. Ideal for stateless web services/APIs without managing a VM.",
 			InputSchema: objSchema(map[string]any{
 				"name":          strProp("Container app name (RFC1123, unique)."),
 				"image":         strProp("Container image URI, e.g. docker.io/library/nginx:latest or helloworld.cr.cloud.ru/... ."),
@@ -413,12 +413,12 @@ func (s *Registry) registerTools() {
 				"max_instances": intProp("Maximum instances (default 1)."),
 				"env":           map[string]any{"type": "object", "description": "Environment variables as a name→value object.", "additionalProperties": map[string]any{"type": "string"}},
 				"description":   strProp("Optional description."),
-				"confirmed":     boolProp("Must be true — set only after the captain approved."),
+				"confirmed":     boolProp("Must be true — set only after the user approved."),
 			}, "name", "image"),
 		},
 		{
 			Name:        "ca_delete",
-			Description: "Delete a Container App by name. REQUIRES confirmed=true after the captain approves. Async.",
+			Description: "Delete a Container App by name. REQUIRES confirmed=true after the user approves. Async.",
 			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": boolProp("Must be true.")}, "name"),
 		},
 		{
@@ -428,13 +428,13 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ca_start",
-			Description: "Start a stopped Container App (it is billed while running). Mutation: requires confirmed=true after the captain approves.",
-			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": boolProp("Must be true — set only after the captain approved.")}, "name"),
+			Description: "Start a stopped Container App (it is billed while running). Mutation: requires confirmed=true after the user approves.",
+			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": boolProp("Must be true — set only after the user approved.")}, "name"),
 		},
 		{
 			Name:        "ca_stop",
-			Description: "Stop a running Container App (it stops serving requests). Mutation: requires confirmed=true after the captain approves.",
-			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": boolProp("Must be true — set only after the captain approved.")}, "name"),
+			Description: "Stop a running Container App (it stops serving requests). Mutation: requires confirmed=true after the user approves.",
+			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": boolProp("Must be true — set only after the user approved.")}, "name"),
 		},
 		{
 			Name:        "iam_service_accounts",
@@ -453,11 +453,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "release_floating_ip",
-			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first). Mutation: requires confirmed=true after the captain approves.",
+			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":         strProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required."),
 				"ip_address": strProp("Floating IP address, e.g. '213.171.25.19' (alternative to id)."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved releasing this IP."),
+				"confirmed":  boolProp("Must be true — set only after the user approved releasing this IP."),
 			}),
 		},
 		{
@@ -467,20 +467,20 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "snat_create",
-			Description: "Create a SNAT gateway so a private subnet's nodes reach the internet (outbound egress). Zone-level: defaults to the configured region; override with 'zone' (name) or 'availability_zone_id'. Without confirmed=true this returns a preview only. Mutation (billable): requires confirmed=true after the captain approves. NOTE: this is NOT part of k8s_create — mk8s clusters come up without egress; create a SNAT gateway in the cluster's node zone if workloads need to pull public images.",
+			Description: "Create a SNAT gateway so a private subnet's nodes reach the internet (outbound egress). Zone-level: defaults to the configured region; override with 'zone' (name) or 'availability_zone_id'. Without confirmed=true this returns a preview only. Mutation (billable): requires confirmed=true after the user approves. NOTE: this is NOT part of k8s_create — mk8s clusters come up without egress; create a SNAT gateway in the cluster's node zone if workloads need to pull public images.",
 			InputSchema: objSchema(map[string]any{
 				"name":                 strProp("Name for the SNAT gateway (required)."),
 				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-2'). Optional; resolved to a UUID. Defaults to the configured region."),
 				"availability_zone_id": strProp("Availability-zone UUID (alternative to 'zone')."),
-				"confirmed":            boolProp("Must be true to actually create — set only after the captain approved. Omit for a preview."),
+				"confirmed":            boolProp("Must be true to actually create — set only after the user approved. Omit for a preview."),
 			}),
 		},
 		{
 			Name:        "snat_delete",
-			Description: "Delete a SNAT gateway by id (from snat_list). Nodes in that zone lose outbound internet. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Delete a SNAT gateway by id (from snat_list). Nodes in that zone lose outbound internet. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("SNAT gateway UUID (from snat_list). Required."),
-				"confirmed": boolProp("Must be true — set only after the captain approved deleting this gateway."),
+				"confirmed": boolProp("Must be true — set only after the user approved deleting this gateway."),
 			}),
 		},
 		{
@@ -510,7 +510,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_create",
-			Description: "Create a Managed PostgreSQL cluster. Resolves version (default: latest), specification (by specification_id OR cpu+ram), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the captain approves. Poll the returned operation_id with pg_operation.",
+			Description: "Create a Managed PostgreSQL cluster. Resolves version (default: latest), specification (by specification_id OR cpu+ram), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":                  strProp("Cluster name (required)."),
 				"version":               strProp("PostgreSQL version (from pg_versions). Optional; default = latest."),
@@ -525,16 +525,16 @@ func (s *Registry) registerTools() {
 				"no_backup":             boolProp("Disable automatic backups. Backups are ENABLED by default and CANNOT be toggled after creation; a cluster without backups rejects pg_backup_create/pg_backups with 'backup disabled'."),
 				"backup_schedule":       strProp("CRON schedule for automatic backups (default '0 3 * * 0' = weekly Sun 03:00; min once per 6h)."),
 				"backup_retention_days": intProp("Retention for automatic backups in days (default 14, max 30)."),
-				"confirmed":             boolProp("Must be true to actually create — set only after the captain approved. Omit for a preview."),
+				"confirmed":             boolProp("Must be true to actually create — set only after the user approved. Omit for a preview."),
 			}, "name"),
 		},
 		{
 			Name:        "pg_delete",
-			Description: "Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data. Mutation (async): requires confirmed=true after the captain approves.",
+			Description: "Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data. Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":         strProp("Cluster UUID (from pg_list). Required (alias: cluster_id)."),
 				"cluster_id": strProp("Alias for id."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved deleting this cluster."),
+				"confirmed":  boolProp("Must be true — set only after the user approved deleting this cluster."),
 			}),
 		},
 		{
@@ -567,7 +567,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_create",
-			Description: "Create a Managed Kafka cluster. Resolves version (latest), specification (by specification_id or cpu+ram), subnet (first project subnet), storage & brokers (spec minimum). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the captain approves; poll kafka_operation.",
+			Description: "Create a Managed Kafka cluster. Resolves version (latest), specification (by specification_id or cpu+ram), subnet (first project subnet), storage & brokers (spec minimum). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll kafka_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name (2-63 chars). Required."),
 				"version_id":       strProp("Kafka version UUID (from kafka_versions). Optional; default = latest."),
@@ -578,15 +578,15 @@ func (s *Registry) registerTools() {
 				"brokers":          intProp("Broker count. Optional; default = spec minimum."),
 				"ui_enabled":       boolProp("Enable the Kafka UI (default false)."),
 				"description":      strProp("Optional description."),
-				"confirmed":        boolProp("Must be true to create — set only after the captain approved. Omit for preview."),
+				"confirmed":        boolProp("Must be true to create — set only after the user approved. Omit for preview."),
 			}, "name"),
 		},
 		{
 			Name:        "kafka_delete",
-			Description: "Delete a Managed Kafka cluster by id AND its data. Mutation (async): requires confirmed=true after the captain approves.",
+			Description: "Delete a Managed Kafka cluster by id AND its data. Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID (from kafka_list). Required."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved."),
+				"confirmed":  boolProp("Must be true — set only after the user approved."),
 			}, "cluster_id"),
 		},
 		{
@@ -616,7 +616,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster. Resolves version (latest), specification (by specification_id or cpu+ram), subnet. type STANDALONE (default) or MASTER_REPLICA. Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the captain approves; poll redis_operation.",
+			Description: "Create a Managed Redis cluster. Resolves version (latest), specification (by specification_id or cpu+ram), subnet. type STANDALONE (default) or MASTER_REPLICA. Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name. Required."),
 				"version_id":       strProp("Redis version UUID (from redis_versions). Optional; default = latest."),
@@ -628,15 +628,15 @@ func (s *Registry) registerTools() {
 				"replicas":         intProp("Replica count (default 0)."),
 				"type":             strProp("STANDALONE (default) or MASTER_REPLICA."),
 				"description":      strProp("Optional description."),
-				"confirmed":        boolProp("Must be true to create — set only after the captain approved. Omit for preview."),
+				"confirmed":        boolProp("Must be true to create — set only after the user approved. Omit for preview."),
 			}, "name"),
 		},
 		{
 			Name:        "redis_delete",
-			Description: "Delete a Managed Redis cluster by id AND its data. Mutation (async): requires confirmed=true after the captain approves.",
+			Description: "Delete a Managed Redis cluster by id AND its data. Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID (from redis_list). Required."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved."),
+				"confirmed":  boolProp("Must be true — set only after the user approved."),
 			}, "cluster_id"),
 		},
 		{
@@ -653,23 +653,23 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_db_create",
-			Description: "Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("Database name. Required."),
 				"owner":      strProp("Owning user (from pg_users). Required."),
 				"lc_collate": strProp("Collation locale (optional, default C)."),
 				"lc_ctype":   strProp("Character-set locale (optional, default C)."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved."),
+				"confirmed":  boolProp("Must be true — set only after the user approved."),
 			}, "cluster_id", "name", "owner"),
 		},
 		{
 			Name:        "pg_db_delete",
-			Description: "Drop a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Drop a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("Database name. Required."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved."),
+				"confirmed":  boolProp("Must be true — set only after the user approved."),
 			}, "cluster_id", "name"),
 		},
 		{
@@ -681,21 +681,21 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_user_create",
-			Description: "Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves. The password is never echoed back.",
+			Description: "Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The password is never echoed back.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),
 				"password":   strProp("User password. Required."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved."),
+				"confirmed":  boolProp("Must be true — set only after the user approved."),
 			}, "cluster_id", "name", "password"),
 		},
 		{
 			Name:        "pg_user_delete",
-			Description: "Delete a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Delete a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved."),
+				"confirmed":  boolProp("Must be true — set only after the user approved."),
 			}, "cluster_id", "name"),
 		},
 		{
@@ -707,11 +707,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_backup_create",
-			Description: "Start a manual backup of a PostgreSQL cluster (async). Mutation: requires confirmed=true after the captain approves.",
+			Description: "Start a manual backup of a PostgreSQL cluster (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("Backup name (letters/digits/hyphens/dots; not starting/ending with - or .). Required."),
-				"confirmed":  boolProp("Must be true — set only after the captain approved."),
+				"confirmed":  boolProp("Must be true — set only after the user approved."),
 			}, "cluster_id", "name"),
 		},
 		{
@@ -741,19 +741,19 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "tg_create",
-			Description: "Create a target group (the set of VMs a load balancer distributes traffic to). Provide targets as just vm_id (single) or a 'targets' array of {id}. The VM's network interface is AUTO-RESOLVED — you do NOT need interface_id (only pass it to override). Targets must be private VPC-subnet VMs (provision with no_public_ip). Mutation (async): requires confirmed=true after the captain approves.",
+			Description: "Create a target group (the set of VMs a load balancer distributes traffic to). Provide targets as just vm_id (single) or a 'targets' array of {id}. The VM's network interface is AUTO-RESOLVED — you do NOT need interface_id (only pass it to override). Targets must be private VPC-subnet VMs (provision with no_public_ip). Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":         strProp("Target group name (unique in project). Required."),
 				"vm_id":        strProp("VM UUID for a single target. The interface is auto-resolved."),
 				"interface_id": strProp("Optional: network interface UUID (auto-resolved from the VM if omitted)."),
 				"targets":      map[string]any{"type": "array", "description": "Multiple targets: array of {id} (interface_id optional, auto-resolved).", "items": map[string]any{"type": "object"}},
-				"confirmed":    boolProp("Must be true — set only after the captain approved."),
+				"confirmed":    boolProp("Must be true — set only after the user approved."),
 			}, "name"),
 		},
 		{
 			Name:        "tg_delete",
-			Description: "Delete a target group by id (from tg_list). Mutation (async): requires confirmed=true after the captain approves.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Target group UUID. Required."), "confirmed": boolProp("Must be true — set only after the captain approved.")}, "id"),
+			Description: "Delete a target group by id (from tg_list). Mutation (async): requires confirmed=true after the user approves.",
+			InputSchema: objSchema(map[string]any{"id": strProp("Target group UUID. Required."), "confirmed": boolProp("Must be true — set only after the user approved.")}, "id"),
 		},
 		{
 			Name:        "lb_create",
@@ -767,13 +767,13 @@ func (s *Registry) registerTools() {
 				"external":        boolProp("Allocate a public IP (default true). Set false for an internal-only balancer."),
 				"vpc_id":          strProp("VPC UUID. Optional; default = the target group's VPC."),
 				"subnet_id":       strProp("Subnet UUID for the balancer's AZ. Optional; default = first project subnet."),
-				"confirmed":       boolProp("Must be true to actually create — set only after the captain approved. Omit for a preview."),
+				"confirmed":       boolProp("Must be true to actually create — set only after the user approved. Omit for a preview."),
 			}, "name", "target_group_id", "port"),
 		},
 		{
 			Name:        "lb_delete",
-			Description: "Delete a load balancer by id (from lb_list). Mutation (async): requires confirmed=true after the captain approves.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Load balancer UUID. Required."), "confirmed": boolProp("Must be true — set only after the captain approved.")}, "id"),
+			Description: "Delete a load balancer by id (from lb_list). Mutation (async): requires confirmed=true after the user approves.",
+			InputSchema: objSchema(map[string]any{"id": strProp("Load balancer UUID. Required."), "confirmed": boolProp("Must be true — set only after the user approved.")}, "id"),
 		},
 		{
 			Name:        "vpc_list",
@@ -787,19 +787,19 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_create",
-			Description: "Create a new VPC (virtual private cloud) (async). Mutation: requires confirmed=true after the captain approves.",
+			Description: "Create a new VPC (virtual private cloud) (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("VPC name. Required."),
 				"description": strProp("Optional description."),
-				"confirmed":   boolProp("Must be true — set only after the captain approved."),
+				"confirmed":   boolProp("Must be true — set only after the user approved."),
 			}, "name"),
 		},
 		{
 			Name:        "vpc_delete",
-			Description: "Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("VPC UUID (from vpc_list). Required."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "id"),
 		},
 		{
@@ -814,7 +814,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_route_create",
-			Description: "Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az). Mutation: requires confirmed=true after the captain approves.",
+			Description: "Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"vpc_id":                   strProp("VPC UUID. Required."),
 				"subnet":                   strProp("Destination CIDR, e.g. '192.168.0.0/24'. Required."),
@@ -824,16 +824,16 @@ func (s *Registry) registerTools() {
 				"next_hop_magic_router_id": strProp("Magic Router UUID for a Magic-Router next hop (with next_hop_az)."),
 				"next_hop_az":              strProp("Availability zone name (e.g. 'ru.AZ-1') for a Magic-Router next hop."),
 				"description":              strProp("Optional route description."),
-				"confirmed":                boolProp("Must be true — set only after the captain approved."),
+				"confirmed":                boolProp("Must be true — set only after the user approved."),
 			}, "vpc_id", "subnet"),
 		},
 		{
 			Name:        "vpc_route_delete",
-			Description: "Delete a static route from a VPC by id (from vpc_routes) (async). Mutation: requires confirmed=true after the captain approves.",
+			Description: "Delete a static route from a VPC by id (from vpc_routes) (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"vpc_id":    strProp("VPC UUID. Required."),
 				"route_id":  strProp("Static route UUID (from vpc_routes). Required."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "vpc_id", "route_id"),
 		},
 		{
@@ -851,21 +851,21 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_zone_create",
-			Description: "Create a DNS zone. type=public (default) or private. A public zone needs domain-ownership delegation (returns a validation record) to serve traffic; a private zone is internal. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Create a DNS zone. type=public (default) or private. A public zone needs domain-ownership delegation (returns a validation record) to serve traffic; a private zone is internal. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"domain":      strProp("Zone FQDN, e.g. 'example.com.' (required)."),
 				"type":        strProp("Zone visibility: 'public' (default) or 'private'."),
 				"description": strProp("Optional zone description."),
-				"confirmed":   boolProp("Must be true — set only after the captain approved."),
+				"confirmed":   boolProp("Must be true — set only after the user approved."),
 			}, "domain"),
 		},
 		{
 			Name:        "dns_zone_delete",
-			Description: "Delete a DNS zone by id (from dns_zones) AND its records (async). type must match the zone (public|private). Mutation: requires confirmed=true after the captain approves.",
+			Description: "Delete a DNS zone by id (from dns_zones) AND its records (async). type must match the zone (public|private). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("Zone UUID (from dns_zones). Required."),
 				"type":      strProp("Zone visibility: 'public' (default) or 'private' — must match the zone."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "id"),
 		},
 		{
@@ -891,7 +891,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_record_create",
-			Description: "Add a DNS record to a zone (async). Mutation: requires confirmed=true after the captain approves.",
+			Description: "Add a DNS record to a zone (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"zone_id":     strProp("Zone UUID (from dns_zones). Required."),
 				"name":        strProp("Record name/host (e.g. 'www' or '@'). Required."),
@@ -900,16 +900,16 @@ func (s *Registry) registerTools() {
 				"values":      map[string]any{"type": "array", "description": "Multiple record values.", "items": map[string]any{"type": "string"}},
 				"ttl":         intProp("TTL seconds (default 300)."),
 				"type":        strProp("Zone visibility: 'public' (default) or 'private'."),
-				"confirmed":   boolProp("Must be true — set only after the captain approved."),
+				"confirmed":   boolProp("Must be true — set only after the user approved."),
 			}, "zone_id", "name", "record_type"),
 		},
 		{
 			Name:        "dns_record_delete",
-			Description: "Delete a DNS record by id (from dns_records) (async). Mutation: requires confirmed=true after the captain approves.",
+			Description: "Delete a DNS record by id (from dns_records) (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"record_id": strProp("Record UUID (from dns_records). Required."),
 				"type":      strProp("Zone visibility: 'public' (default) or 'private'."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "record_id"),
 		},
 		{
@@ -932,31 +932,31 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_create",
-			Description: "Store a new secret at a path (value is Base64-encoded internally; never echoed back). Path 'folder/name' places it in a folder. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Store a new secret at a path (value is Base64-encoded internally; never echoed back). Path 'folder/name' places it in a folder. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"path":        strProp("Secret path: 'name' at root, or 'folder/name'. Required."),
 				"value":       strProp("Secret value (plaintext; stored encrypted). Required."),
 				"description": strProp("Optional description."),
 				"kms_key_id":  strProp("Optional KMS key id for encryption."),
-				"confirmed":   boolProp("Must be true — set only after the captain approved."),
+				"confirmed":   boolProp("Must be true — set only after the user approved."),
 			}, "path", "value"),
 		},
 		{
 			Name:        "secret_add_version",
-			Description: "Add a new value version to an existing secret (rotation). Mutation: requires confirmed=true after the captain approves.",
+			Description: "Add a new value version to an existing secret (rotation). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
 				"value":     strProp("New secret value (plaintext). Required."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "path", "value"),
 		},
 		{
 			Name:        "secret_delete",
-			Description: "Delete a secret by path AND all its versions. Set force=true to delete one that is in use. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Delete a secret by path AND all its versions. Set force=true to delete one that is in use. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
 				"force":     boolProp("Delete even if the secret is in use by other resources."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "path"),
 		},
 		{
@@ -971,21 +971,21 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ar_create",
-			Description: "Create an Artifact Registry registry (async). type=DOCKER (default), DEBIAN, RPM, GENERIC, or PYPI. Mutation (BILLABLE): requires confirmed=true after the captain approves. Poll ar_operation; then push images via docker login to <registry>.cr.cloud.ru.",
+			Description: "Create an Artifact Registry registry (async). type=DOCKER (default), DEBIAN, RPM, GENERIC, or PYPI. Mutation (BILLABLE): requires confirmed=true after the user approves. Poll ar_operation; then push images via docker login to <registry>.cr.cloud.ru.",
 			InputSchema: objSchema(map[string]any{
 				"name":          strProp("Registry name. Required."),
 				"registry_type": strProp("Registry type: DOCKER (default), DEBIAN, RPM, GENERIC, PYPI."),
 				"public":        boolProp("Make the registry public (default false)."),
 				"tariff":        strProp("Tariff: BASIC (default) or PREMIUM."),
-				"confirmed":     boolProp("Must be true — set only after the captain approved."),
+				"confirmed":     boolProp("Must be true — set only after the user approved."),
 			}, "name"),
 		},
 		{
 			Name:        "ar_delete",
-			Description: "Delete an Artifact Registry registry by id (from ar_list) AND its artifacts (async). Mutation: requires confirmed=true after the captain approves.",
+			Description: "Delete an Artifact Registry registry by id (from ar_list) AND its artifacts (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("Registry UUID (from ar_list). Required."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "id"),
 		},
 		{
@@ -1058,37 +1058,37 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_issue_le",
-			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). This is the path for HTTPS on a site (e.g. shkrbkv.ru): issue → bind to the LB listener. ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). This is the path for HTTPS on a site (e.g. shkrbkv.ru): issue → bind to the LB listener. ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Display name for the certificate. Required."),
 				"dns_names":   strProp("Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"] (array or comma-separated). Required."),
 				"description": strProp("Optional description."),
-				"confirmed":   boolProp("Must be true — set only after the captain approved."),
+				"confirmed":   boolProp("Must be true — set only after the user approved."),
 			}, "name", "dns_names"),
 		},
 		{
 			Name:        "cert_import",
-			Description: "Certificate Manager — import a user-managed certificate (bring-your-own). server_certificate and private_key are Base64-encoded PEM. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Certificate Manager — import a user-managed certificate (bring-your-own). server_certificate and private_key are Base64-encoded PEM. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":                     strProp("Display name. Required."),
 				"server_certificate":       strProp("Public cert, Base64-encoded PEM. Required."),
 				"private_key":              strProp("Private key, Base64-encoded PEM. Required."),
 				"intermediate_certificate": strProp("Intermediate chain, Base64-encoded PEM (optional)."),
 				"description":              strProp("Optional description."),
-				"confirmed":                boolProp("Must be true — set only after the captain approved."),
+				"confirmed":                boolProp("Must be true — set only after the user approved."),
 			}, "name", "server_certificate", "private_key"),
 		},
 		{
 			Name:        "cert_renew",
-			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Mutation: requires confirmed=true after the captain approves.",
-			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": boolProp("Must be true — set only after the captain approved.")}, "certificate_id"),
+			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Mutation: requires confirmed=true after the user approves.",
+			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": boolProp("Must be true — set only after the user approved.")}, "certificate_id"),
 		},
 		{
 			Name:        "cert_delete",
 			Description: "Certificate Manager — permanently delete a certificate. Gated: requires confirmed=true. If bound to a load balancer, deletion can break HTTPS (use force=true to delete anyway).",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("Certificate id. Required."),
-				"confirmed": boolProp("Must be true — set only after the captain approves."),
+				"confirmed": boolProp("Must be true — set only after the user approves."),
 				"force":     boolProp("Delete even if the certificate is in use by other services (default false)."),
 			}, "id"),
 		},
@@ -1140,55 +1140,55 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_put",
-			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the captain approves.",
+			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":         strProp("Bucket name. Required."),
 				"key":            strProp("Object key. Required."),
 				"content":        strProp("Inline text content to upload."),
 				"content_base64": strProp("Base64-encoded binary content (alternative to content)."),
 				"content_type":   strProp("MIME type (default application/octet-stream)."),
-				"confirmed":      boolProp("Must be true — set only after the captain approved."),
+				"confirmed":      boolProp("Must be true — set only after the user approved."),
 			}, "bucket", "key"),
 		},
 		{
 			Name:        "s3_rm",
-			Description: "Delete an S3 object. Destructive mutation: requires confirmed=true after the captain approves.",
+			Description: "Delete an S3 object. Destructive mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("Bucket name. Required."),
 				"key":       strProp("Object key. Required."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "bucket", "key"),
 		},
 		{
 			Name:        "s3_bucket_create",
-			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the captain approves.",
+			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("New bucket name (globally-unique, lowercase). Required."),
 				"region":    strProp("Region (optional; defaults to the configured S3 region, e.g. ru-central-1)."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "bucket"),
 		},
 		{
 			Name:        "s3_bucket_delete",
-			Description: "Delete an EMPTY S3 bucket. Destructive mutation: requires confirmed=true after the captain approves.",
+			Description: "Delete an EMPTY S3 bucket. Destructive mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("Bucket name. Required."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "bucket"),
 		},
 		{
 			Name:        "stack_plan",
-			Description: "Plan a multi-resource STACK from ONE declarative manifest. Use this for ANY multi-service deploy instead of calling pg_create/k8s_create/provision/tg_create/… yourself — the engine runs the whole chain server-side so your context stays small. Returns a job_id AND a rate-card cost estimate (show it to the captain, get «го», THEN stack_apply). Read-only (creates nothing). manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]}. (container-apps: not yet — needs a registry image.)",
+			Description: "Plan a multi-resource STACK from ONE declarative manifest. Use this for ANY multi-service deploy instead of calling pg_create/k8s_create/provision/tg_create/… yourself — the engine runs the whole chain server-side so your context stays small. Returns a job_id AND a rate-card cost estimate (show it to the user, get explicit approval, THEN stack_apply). Read-only (creates nothing). manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]}. (container-apps: not yet — needs a registry image.)",
 			InputSchema: objSchema(map[string]any{
 				"manifest": map[string]any{"type": "object", "description": "Declarative stack spec (see description)."},
 			}, "manifest"),
 		},
 		{
 			Name:        "stack_apply",
-			Description: "Apply a planned stack (from stack_plan). BILLABLE mutation: requires confirmed=true after the captain approved the cost. Returns immediately with a compact status; the engine runs the deploy across cranks — poll stack_status(job_id) until status=done. You do NOT orchestrate the resources yourself.",
+			Description: "Apply a planned stack (from stack_plan). BILLABLE mutation: requires confirmed=true after the user approved the cost. Returns immediately with a compact status; the engine runs the deploy across cranks — poll stack_status(job_id) until status=done. You do NOT orchestrate the resources yourself.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id from stack_plan. Required."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "job_id"),
 		},
 		{
@@ -1201,10 +1201,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_destroy",
-			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the captain approved.",
+			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the user approved.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id. Required."),
-				"confirmed": boolProp("Must be true — set only after the captain approved."),
+				"confirmed": boolProp("Must be true — set only after the user approved."),
 			}, "job_id"),
 		},
 	}
@@ -1366,7 +1366,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":      "confirmation_required",
-			"message":     "deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the captain's approval, then call again with confirmed=true.",
+			"message":     "deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the user's approval, then call again with confirmed=true.",
 			"will_deploy": previewArgs(args, "compose_file", "flavor", "region", "project_id", "image_id", "disk_size", "force"),
 		}), true
 	}
@@ -1425,7 +1425,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		will["public_ip"] = !noPublicIP
 		return toJSON(map[string]any{
 			"status":      "confirmation_required",
-			"message":     "provision creates a billable VM (and a public floating IP unless no_public_ip=true). For a costed preview use deploy_plan or list_flavors. Get the captain's approval, then call again with confirmed=true.",
+			"message":     "provision creates a billable VM (and a public floating IP unless no_public_ip=true). For a costed preview use deploy_plan or list_flavors. Get the user's approval, then call again with confirmed=true.",
 			"will_create": will,
 		}), true
 	}
@@ -1930,7 +1930,7 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": "destroy permanently deletes the current deployment VM and all its data (irreversible). Get the captain's approval, then call again with confirmed=true.",
+			"message": "destroy permanently deletes the current deployment VM and all its data (irreversible). Get the user's approval, then call again with confirmed=true.",
 		}), true
 	}
 	eng, err := s.newEngine(nil)
@@ -1952,7 +1952,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": "deleting a specific VM requires confirmed=true. Get the captain's approval, then call again with confirmed=true.",
+			"message": "deleting a specific VM requires confirmed=true. Get the user's approval, then call again with confirmed=true.",
 		}), true
 	}
 	eng, err := s.authedEngine(ctx, nil)

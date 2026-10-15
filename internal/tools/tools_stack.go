@@ -370,13 +370,13 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		"job_id":  job.ID,
 		"steps":   steps,
 		"cost":    stack.EstimateCost(m),
-		"message": "Stack planned. BILLABLE — show the captain the cost and get «го», then call stack_apply with this job_id and confirmed=true.",
+		"message": "Stack planned. BILLABLE — show the user the cost and get explicit approval, then call stack_apply with this job_id and confirmed=true.",
 	}
 	if len(s3Notes) > 0 {
 		out["s3"] = s3Notes
 	}
 	// Warn if a prior job for this stack name still holds resources — applying now
-	// would create duplicates (double billing). Point the captain at stack_destroy.
+	// would create duplicates (double billing). Point the user at stack_destroy.
 	if orphans := stack.FindResourcefulJobs(m.Name, job.ID); len(orphans) > 0 {
 		out["warning"] = fmt.Sprintf("%d earlier job(s) for stack %q still hold resources — applying THIS plan will create DUPLICATES. Run stack_destroy on them first.", len(orphans), m.Name)
 		out["existing_jobs"] = orphans
@@ -476,7 +476,7 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 		return errResult(fmt.Errorf("'job_id' is required (from stack_plan)")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_apply provisions BILLABLE resources. Call again with confirmed=true after the captain approved."}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_apply provisions BILLABLE resources. Call again with confirmed=true after the user approved."}), true
 	}
 	unlock := s.lockJob(id)
 	defer unlock()

@@ -327,7 +327,7 @@ func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID string
 		key := "generated-password"
 		if p.SSHKey != "" {
 			fields = append(fields, "public_key")
-			key = "captain-key"
+			key = "user-key"
 		}
 		return fields, static, login, key, err
 	}

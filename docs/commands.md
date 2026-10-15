@@ -1060,7 +1060,7 @@ Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — 
 ### Synopsis
 
 ```text
-Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has none). REQUIRES confirmed=true after the captain approves (billable). Async. Auto-resolves flavor (cpu/ram or name), nodes subnet and security group. NB: Cloud.ru's node-pool backend occasionally returns 503 'no healthy upstream' (transient outage) — just retry.
+Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has none). REQUIRES confirmed=true after the user approves (billable). Async. Auto-resolves flavor (cpu/ram or name), nodes subnet and security group. NB: Cloud.ru's node-pool backend occasionally returns 503 'no healthy upstream' (transient outage) — just retry.
 
 Runs the k8s_add_nodepool tool (see 'evo tools describe k8s_add_nodepool').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -1109,7 +1109,7 @@ Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — 
 ### Synopsis
 
 ```text
-Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Mutation: requires confirmed=true after the captain approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.
+Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.
 
 Runs the k8s_apply tool (see 'evo tools describe k8s_apply').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -1151,7 +1151,7 @@ STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan.
 ### Synopsis
 
 ```text
-STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the captain approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in ~10-20 min (poll k8s_get). Accepts the same args as k8s_plan.
+STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in ~10-20 min (poll k8s_get). Accepts the same args as k8s_plan.
 
 Runs the k8s_create tool (see 'evo tools describe k8s_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -1202,7 +1202,7 @@ Permanently delete a Managed Kubernetes cluster.
 ### Synopsis
 
 ```text
-Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the captain approves. Async.
+Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the user approves. Async.
 
 Runs the k8s_delete tool (see 'evo tools describe k8s_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -1526,7 +1526,7 @@ STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-pl
 ### Synopsis
 
 ```text
-STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master count, subnet, service account) WITHOUT creating anything. Show it to the captain, then call k8s_create with the same args + confirmed=true.
+STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master count, subnet, service account) WITHOUT creating anything. Show it to the user, then call k8s_create with the same args + confirmed=true.
 
 Runs the k8s_plan tool (see 'evo tools describe k8s_plan').
 ```
@@ -1816,7 +1816,7 @@ Start a manual backup of a PostgreSQL cluster (async).
 ### Synopsis
 
 ```text
-Start a manual backup of a PostgreSQL cluster (async). Mutation: requires confirmed=true after the captain approves.
+Start a manual backup of a PostgreSQL cluster (async). Mutation: requires confirmed=true after the user approves.
 
 Runs the pg_backup_create tool (see 'evo tools describe pg_backup_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -1895,7 +1895,7 @@ Create a Managed PostgreSQL cluster.
 ### Synopsis
 
 ```text
-Create a Managed PostgreSQL cluster. Resolves version (default: latest), specification (by specification_id OR cpu+ram), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the captain approves. Poll the returned operation_id with pg_operation.
+Create a Managed PostgreSQL cluster. Resolves version (default: latest), specification (by specification_id OR cpu+ram), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.
 
 Runs the pg_create tool (see 'evo tools describe pg_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -1986,7 +1986,7 @@ Create a database in a PostgreSQL cluster.
 ### Synopsis
 
 ```text
-Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves.
+Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.
 
 Runs the pg_db_create tool (see 'evo tools describe pg_db_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2029,7 +2029,7 @@ Drop a database in a PostgreSQL cluster.
 ### Synopsis
 
 ```text
-Drop a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves.
+Drop a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.
 
 Runs the pg_db_delete tool (see 'evo tools describe pg_db_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2069,7 +2069,7 @@ Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data.
 ### Synopsis
 
 ```text
-Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data. Mutation (async): requires confirmed=true after the captain approves.
+Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data. Mutation (async): requires confirmed=true after the user approves.
 
 Runs the pg_delete tool (see 'evo tools describe pg_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2269,7 +2269,7 @@ Create a user in a PostgreSQL cluster.
 ### Synopsis
 
 ```text
-Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves. The password is never echoed back.
+Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The password is never echoed back.
 
 Runs the pg_user_create tool (see 'evo tools describe pg_user_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2310,7 +2310,7 @@ Delete a user in a PostgreSQL cluster.
 ### Synopsis
 
 ```text
-Delete a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the captain approves.
+Delete a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.
 
 Runs the pg_user_delete tool (see 'evo tools describe pg_user_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2466,7 +2466,7 @@ Create an Object Storage (S3) bucket.
 ### Synopsis
 
 ```text
-Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the captain approves.
+Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the user approves.
 
 Runs the s3_bucket_create tool (see 'evo tools describe s3_bucket_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2507,7 +2507,7 @@ Delete an EMPTY S3 bucket.
 ### Synopsis
 
 ```text
-Delete an EMPTY S3 bucket. Destructive mutation: requires confirmed=true after the captain approves.
+Delete an EMPTY S3 bucket. Destructive mutation: requires confirmed=true after the user approves.
 
 Runs the s3_bucket_delete tool (see 'evo tools describe s3_bucket_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2666,7 +2666,7 @@ Upload an S3 object from inline content (content) or base64 (content_base64).
 ### Synopsis
 
 ```text
-Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the captain approves.
+Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves.
 
 Runs the s3_put tool (see 'evo tools describe s3_put').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2709,7 +2709,7 @@ Delete an S3 object.
 ### Synopsis
 
 ```text
-Delete an S3 object. Destructive mutation: requires confirmed=true after the captain approves.
+Delete an S3 object. Destructive mutation: requires confirmed=true after the user approves.
 
 Runs the s3_rm tool (see 'evo tools describe s3_rm').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2786,7 +2786,7 @@ Add a new value version to an existing secret (rotation).
 ### Synopsis
 
 ```text
-Add a new value version to an existing secret (rotation). Mutation: requires confirmed=true after the captain approves.
+Add a new value version to an existing secret (rotation). Mutation: requires confirmed=true after the user approves.
 
 Runs the secret_add_version tool (see 'evo tools describe secret_add_version').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2827,7 +2827,7 @@ Store a new secret at a path (value is Base64-encoded internally; never echoed b
 ### Synopsis
 
 ```text
-Store a new secret at a path (value is Base64-encoded internally; never echoed back). Path 'folder/name' places it in a folder. Mutation: requires confirmed=true after the captain approves.
+Store a new secret at a path (value is Base64-encoded internally; never echoed back). Path 'folder/name' places it in a folder. Mutation: requires confirmed=true after the user approves.
 
 Runs the secret_create tool (see 'evo tools describe secret_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -2870,7 +2870,7 @@ Delete a secret by path AND all its versions.
 ### Synopsis
 
 ```text
-Delete a secret by path AND all its versions. Set force=true to delete one that is in use. Mutation: requires confirmed=true after the captain approves.
+Delete a secret by path AND all its versions. Set force=true to delete one that is in use. Mutation: requires confirmed=true after the user approves.
 
 Runs the secret_delete tool (see 'evo tools describe secret_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -3326,7 +3326,7 @@ Provision a bare Cloud.ru VM.
 ### Synopsis
 
 ```text
-Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the captain approves; without it returns a preview only.
+Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only.
 
 Runs the provision tool (see 'evo tools describe provision').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -3371,7 +3371,7 @@ Permanently delete a VM and all data on it (irreversible).
 ### Synopsis
 
 ```text
-Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (captain approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy.
+Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy.
 
 Runs the destroy tool (see 'evo tools describe destroy').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -3612,7 +3612,7 @@ Create a new VPC (virtual private cloud) (async).
 ### Synopsis
 
 ```text
-Create a new VPC (virtual private cloud) (async). Mutation: requires confirmed=true after the captain approves.
+Create a new VPC (virtual private cloud) (async). Mutation: requires confirmed=true after the user approves.
 
 Runs the vpc_create tool (see 'evo tools describe vpc_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -3653,7 +3653,7 @@ Delete a VPC by id (from vpc_list) (async).
 ### Synopsis
 
 ```text
-Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the captain approves.
+Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the user approves.
 
 Runs the vpc_delete tool (see 'evo tools describe vpc_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -3734,7 +3734,7 @@ Release (delete) a floating IP, freeing it from the project.
 ### Synopsis
 
 ```text
-Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first). Mutation: requires confirmed=true after the captain approves.
+Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first). Mutation: requires confirmed=true after the user approves.
 
 Runs the release_floating_ip tool (see 'evo tools describe release_floating_ip').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -3932,7 +3932,7 @@ Add a static route to a VPC (async).
 ### Synopsis
 
 ```text
-Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az). Mutation: requires confirmed=true after the captain approves.
+Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az). Mutation: requires confirmed=true after the user approves.
 
 Runs the vpc_route_create tool (see 'evo tools describe vpc_route_create').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.
@@ -3979,7 +3979,7 @@ Delete a static route from a VPC by id (from vpc_routes) (async).
 ### Synopsis
 
 ```text
-Delete a static route from a VPC by id (from vpc_routes) (async). Mutation: requires confirmed=true after the captain approves.
+Delete a static route from a VPC by id (from vpc_routes) (async). Mutation: requires confirmed=true after the user approves.
 
 Runs the vpc_route_delete tool (see 'evo tools describe vpc_route_delete').
 Asks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only.

@@ -12,23 +12,34 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 )
 
-// Captain SSH access used to be a manual post-install step ("append their
+// User SSH access used to be a manual post-install step ("append their
 // public key to authorized_keys") that was routinely forgotten — VMs came up
 // reachable only by the agent. deploy_apply now closes that loop itself:
-// every public key listed in <state>/.evo/captain_authorized_keys is
+// every public key listed in <state>/.evo/user_authorized_keys is
 // appended (deduplicated) to ~/.ssh/authorized_keys on the new VM over the
 // agent's own deploy key. The file is one authorized_keys-format line per key;
 // '#' comments and blank lines are skipped. Missing/empty file = no-op, and
 // any failure is reported in the deploy note rather than failing the deploy —
 // the VM is already up, access repair must not destroy it.
 
-const captainKeysFile = "captain_authorized_keys"
+const userKeysFile = "user_authorized_keys"
 
-// loadCaptainKeys returns the captain public keys configured for auto-append.
-func loadCaptainKeys(stateDir string) []string {
-	raw, err := os.ReadFile(filepath.Join(config.DataDir(stateDir), captainKeysFile))
+// legacyUserKeysFile is the file's name before v1.0; it is read when the new
+// one is absent, until v1.1 (BACKLOG [10]).
+const legacyUserKeysFile = "captain_authorized_keys"
+
+// loadUserKeys returns the user public keys configured for auto-append and
+// the name of the file they came from.
+func loadUserKeys(stateDir string) ([]string, string) {
+	dir := config.DataDir(stateDir)
+	name := userKeysFile
+	raw, err := os.ReadFile(filepath.Join(dir, name))
+	if os.IsNotExist(err) {
+		name = legacyUserKeysFile
+		raw, err = os.ReadFile(filepath.Join(dir, name))
+	}
 	if err != nil {
-		return nil
+		return nil, userKeysFile
 	}
 	var keys []string
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -43,7 +54,7 @@ func loadCaptainKeys(stateDir string) []string {
 		}
 		keys = append(keys, line)
 	}
-	return keys
+	return keys, name
 }
 
 // isPublicKeyLine reports whether line looks like an authorized_keys entry.
@@ -56,10 +67,10 @@ func isPublicKeyLine(line string) bool {
 	return false
 }
 
-// appendCaptainKeys SSHes into the freshly created VM with the agent's deploy
-// key and appends each captain key to authorized_keys (idempotent). The VM's
+// appendUserKeys SSHes into the freshly created VM with the agent's deploy
+// key and appends each user key to authorized_keys (idempotent). The VM's
 // sshd may lag VM-active by a few seconds, so connection is retried briefly.
-func appendCaptainKeys(ctx context.Context, host, login string, agentKeyPEM []byte, keys []string) error {
+func appendUserKeys(ctx context.Context, host, login string, agentKeyPEM []byte, keys []string) error {
 	if len(keys) == 0 {
 		return nil
 	}

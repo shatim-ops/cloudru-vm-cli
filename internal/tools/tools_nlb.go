@@ -328,7 +328,7 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":      "confirmation_required",
-			"message":     "lb_create provisions a BILLABLE L4 load balancer (async). Get the captain's approval, then call again with confirmed=true.",
+			"message":     "lb_create provisions a BILLABLE L4 load balancer (async). Get the user's approval, then call again with confirmed=true.",
 			"will_create": willCreate,
 		}), true
 	}

@@ -38,7 +38,7 @@ func (s *Registry) authedEngine(ctx context.Context, overrides map[string]any) (
 // handleDeployPlan resolves a plan (read-only) and returns it with a cost
 // estimate and a plan_id. Creates nothing. If base_plan_id is given, it starts
 // from that plan's parameters and overlays only the provided fields (a patch),
-// so the captain can tweak one value without restating everything.
+// so the user can tweak one value without restating everything.
 func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (string, bool) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -80,7 +80,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 
 	// Default to the AGENT's deploy key so the agent can SSH in to install
 	// software (the image is pubkey-only; password SSH is disabled). The
-	// captain's own key is added to authorized_keys post-install (see SKILL).
+	// the user's own key is added to authorized_keys post-install (see SKILL).
 	// An explicit ssh_key arg overrides this.
 	if params.SSHKey == "" {
 		if err := eng.EnsureSSHKey(); err != nil {
@@ -97,7 +97,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 		return errResult(err), true
 	}
 
-	// Compact, captain-facing view (omit internal fields like meta_fields/public_key).
+	// Compact, user-facing view (omit internal fields like meta_fields/public_key).
 	view := map[string]any{
 		"plan_id":          plan.PlanID,
 		"expires_at":       plan.ExpiresAt,
@@ -109,7 +109,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 		"cost":             plan.Cost,
 		"warnings":         plan.Warnings,
 		"compose_required": plan.ComposeRequired,
-		"next":             "Show this plan and its monthly cost to the captain. On explicit approval, call deploy_apply with this plan_id and confirmed=true.",
+		"next":             "Show this plan and its monthly cost to the user. On explicit approval, call deploy_apply with this plan_id and confirmed=true.",
 	}
 	return toJSON(view), false
 }
@@ -176,7 +176,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	if !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": "deploy_apply requires confirmed=true. Obtain the captain's explicit approval of the plan and its cost first, then call again with confirmed=true.",
+			"message": "deploy_apply requires confirmed=true. Obtain the user's explicit approval of the plan and its cost first, then call again with confirmed=true.",
 		}), true
 	}
 
@@ -222,14 +222,14 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		keyPath := filepath.Join(dataDir, "id_ed25519")
 		res.SSH = fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s", keyPath, plan.SSH.Login, res.PublicIP)
 		note := "Connect with the ssh command above (agent deploy key)."
-		if keys := loadCaptainKeys(eng.StateDir); len(keys) > 0 {
-			if kErr := appendCaptainKeys(ctx, res.PublicIP, plan.SSH.Login, eng.SSHKeyPEM, keys); kErr != nil {
-				note += fmt.Sprintf(" WARNING: captain key auto-append failed (%v) — append their public key to ~/.ssh/authorized_keys on the VM manually.", kErr)
+		if keys, keysFile := loadUserKeys(eng.StateDir); len(keys) > 0 {
+			if kErr := appendUserKeys(ctx, res.PublicIP, plan.SSH.Login, eng.SSHKeyPEM, keys); kErr != nil {
+				note += fmt.Sprintf(" WARNING: user key auto-append failed (%v) — append the public key to ~/.ssh/authorized_keys on the VM manually.", kErr)
 			} else {
-				note += fmt.Sprintf(" Captain SSH access configured automatically (%d key(s) from %s/%s).", len(keys), filepath.Base(dataDir), captainKeysFile)
+				note += fmt.Sprintf(" User SSH access configured automatically (%d key(s) from %s/%s).", len(keys), filepath.Base(dataDir), keysFile)
 			}
 		} else {
-			note += " No " + filepath.Base(dataDir) + "/" + captainKeysFile + " configured — to give the captain SSH access, append their public key to ~/.ssh/authorized_keys on the VM after install."
+			note += " No " + filepath.Base(dataDir) + "/" + userKeysFile + " configured — to give the user SSH access, append their public key to ~/.ssh/authorized_keys on the VM after install."
 		}
 		if res.Note == "" {
 			res.Note = note
@@ -361,7 +361,7 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("open_ports would open %v on security group %q (shared per zone — affects every VM in it). Get the captain's approval, then call again with confirmed=true.", ports, sgRef),
+			"message": fmt.Sprintf("open_ports would open %v on security group %q (shared per zone — affects every VM in it). Get the user's approval, then call again with confirmed=true.", ports, sgRef),
 		}), true
 	}
 
@@ -475,7 +475,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": "release_floating_ip requires confirmed=true. Get the captain's approval to release this IP first, then call again with confirmed=true.",
+			"message": "release_floating_ip requires confirmed=true. Get the user's approval to release this IP first, then call again with confirmed=true.",
 		}), true
 	}
 

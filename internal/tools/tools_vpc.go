@@ -64,7 +64,7 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("vpc_create creates a new VPC %q (async). Call again with confirmed=true after the captain approves.", name),
+			"message": fmt.Sprintf("vpc_create creates a new VPC %q (async). Call again with confirmed=true after the user approves.", name),
 		}), true
 	}
 	cli, err := s.vpcClient(ctx)

@@ -69,7 +69,7 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("ar_create makes a BILLABLE %s registry %q (public=%v). Call again with confirmed=true after the captain approves.", regType, name, public),
+			"message": fmt.Sprintf("ar_create makes a BILLABLE %s registry %q (public=%v). Call again with confirmed=true after the user approves.", regType, name, public),
 		}), true
 	}
 	cli, err := s.arClient(ctx)

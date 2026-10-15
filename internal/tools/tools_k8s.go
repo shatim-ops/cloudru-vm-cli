@@ -259,7 +259,7 @@ func (s *Registry) handleK8sPlan(ctx context.Context, args map[string]any) (stri
 		"cluster_sa_id":     req.IdentityConfiguration.ClusterSaID,
 		"kube_api_internet": req.NetworkConfiguration.KubeApiInternet,
 		"warnings":          warnings,
-		"note":              "Read-only plan. On the captain's approval call k8s_create with the same args + confirmed=true. Cluster creation is async (~10-20 min); poll k8s_get. Add workers with k8s_add_nodepool (TODO) or via kubeconfig.",
+		"note":              "Read-only plan. On the user's approval call k8s_create with the same args + confirmed=true. Cluster creation is async (~10-20 min); poll k8s_get. Add workers with k8s_add_nodepool (TODO) or via kubeconfig.",
 	}), false
 }
 
@@ -268,7 +268,7 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": "k8s_create builds a real (billable) Kubernetes cluster. Show the k8s_plan to the captain; call again with confirmed=true after approval.",
+			"message": "k8s_create builds a real (billable) Kubernetes cluster. Show the k8s_plan to the user; call again with confirmed=true after approval.",
 		}), true
 	}
 	req, _, _, err := s.resolveK8sPlan(ctx, args)
@@ -355,7 +355,7 @@ func (s *Registry) handleK8sDelete(ctx context.Context, args map[string]any) (st
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("k8s_delete permanently deletes cluster %s. Call again with confirmed=true after the captain approves.", id),
+			"message": fmt.Sprintf("k8s_delete permanently deletes cluster %s. Call again with confirmed=true after the user approves.", id),
 		}), true
 	}
 	cli, _, _, err := s.k8sClient(ctx)
@@ -416,7 +416,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": "k8s_add_nodepool creates billable worker nodes. Call again with confirmed=true after the captain approves.",
+			"message": "k8s_add_nodepool creates billable worker nodes. Call again with confirmed=true after the user approves.",
 		}), true
 	}
 
