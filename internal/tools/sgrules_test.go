@@ -179,3 +179,20 @@ func TestDeployApply_StateNotWritable_NamesVMAndKeepsPlan(t *testing.T) {
 		t.Errorf("plan deleted although the VM is not in the state: %v", err)
 	}
 }
+
+// The VM is deleted but the state cannot be updated: the answer says the
+// record and the port rules were left behind instead of staying silent.
+func TestDestroyTargeted_StateNotWritable_Warns(t *testing.T) {
+	cloud := &sgCloud{vm: &provision.VM{ID: "vm-1", Name: "wiki-1", Status: "running"}}
+	r, dir := sgRegistry(t, cloud)
+	if err := os.MkdirAll(filepath.Dir(state.DefaultPath(dir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(state.DefaultPath(dir), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	text := callSGTool(t, r, "destroy", map[string]any{"vm_id": "vm-1", "confirmed": true, "release_ip": false})
+	if !strings.Contains(text, "local state was not updated") {
+		t.Fatalf("answer does not warn about the state: %s", text)
+	}
+}

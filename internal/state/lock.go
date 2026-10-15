@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierr "github.com/shatim-ops/evo-cli/internal/errors"
@@ -43,4 +44,46 @@ func Lock(path string) (unlock func(), err error) {
 		_ = unlockFile(f)
 		_ = f.Close()
 	}, nil
+}
+
+// errStateLocked matches Lock's "held by another process" error (CLIError.Is
+// compares codes).
+var errStateLocked = clierr.New(clierr.CodeStateLocked, "", "")
+
+// lockRetryEvery is how often LockWait retries a held lock.
+var lockRetryEvery = 500 * time.Millisecond
+
+// LockWait is Lock for a short write that must not be dropped: the record of
+// a VM that already exists. It waits up to maxWait for a deploy or destroy
+// in the same directory to finish instead of failing at once, then returns
+// Lock's error. It ignores the caller's context on purpose: a cancelled MCP
+// call still has to record the VM it created.
+func LockWait(path string, maxWait time.Duration) (unlock func(), err error) {
+	deadline := time.Now().Add(maxWait)
+	for {
+		unlock, err = Lock(path)
+		if err == nil || !errors.Is(err, errStateLocked) || !time.Now().Before(deadline) {
+			return unlock, err
+		}
+		time.Sleep(lockRetryEvery)
+	}
+}
+
+// Update applies change to the state file at path under the lock: read,
+// change, write — so a concurrent deploy or destroy in the same directory
+// cannot drop the change, or have its own dropped.
+func Update(path string, maxWait time.Duration, change func(*File) error) error {
+	unlock, err := LockWait(path, maxWait)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	sf, err := Read(path)
+	if err != nil {
+		return err
+	}
+	if err := change(sf); err != nil {
+		return err
+	}
+	return Write(path, sf)
 }

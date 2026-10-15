@@ -21,11 +21,15 @@ const opWaitMaxSeconds = 300
 var opWaitFirstDelay = 2 * time.Second
 
 // opTerminalStates are the status/state values we treat as "operation finished".
+// RUNNING is not one of them: for an operation it means "still in progress", and
+// wait_seconds would return on the first poll. An operation that ends without
+// one of these states still ends on done=true or a non-empty error; at worst the
+// wait runs to its cap and returns the last state.
 var opTerminalStates = map[string]bool{
 	"DONE": true, "READY": true, "ACTIVE": true, "AVAILABLE": true,
 	"COMPLETED": true, "COMPLETE": true, "SUCCEEDED": true, "SUCCESS": true,
 	"ERROR": true, "FAILED": true, "FAILURE": true, "CANCELLED": true,
-	"CANCELED": true, "DELETED": true, "RUNNING": true,
+	"CANCELED": true, "DELETED": true,
 }
 
 // opTerminal reports whether an operation JSON map looks finished: an explicit

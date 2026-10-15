@@ -100,7 +100,7 @@ func (p *IAMProvider) Token(ctx context.Context) (Token, error) {
 		return *p.cached, nil
 	}
 	if p.cache != nil {
-		if tok, ok := p.cache.Load(p.creds.KeyID); ok && tok.IsValid(refreshTTL) {
+		if tok, ok := p.cache.Load(CacheKey(p.creds)); ok && tok.IsValid(refreshTTL) {
 			p.cached = &tok
 			return tok, nil
 		}
@@ -124,7 +124,7 @@ func (p *IAMProvider) Token(ctx context.Context) (Token, error) {
 	if p.cache != nil {
 		// The cache only saves IAM round trips; failing to write it must
 		// not fail the command.
-		_ = p.cache.Store(p.creds.KeyID, tok)
+		_ = p.cache.Store(CacheKey(p.creds), tok)
 	}
 	return tok, nil
 }

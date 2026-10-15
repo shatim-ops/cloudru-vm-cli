@@ -1732,23 +1732,21 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// missing from the state is billed and destroy cannot find it.
 	statePath := state.DefaultPath(eng.StateDir)
 	saveState := func(vmID, status, publicIP string) error {
-		sf, err := state.Read(statePath)
-		if err != nil {
-			return err
-		}
-		sf.UpsertDeployment(state.DeploymentRecord{
-			ID:           vmID,
-			VMID:         vmID,
-			VMIP:         publicIP,
-			VMFlavor:     flavorID,
-			Region:       region,
-			SSHUser:      sshUser,
-			Status:       status,
-			FloatingIPID: fipID,
-			CreatedAt:    time.Now(),
-			UpdatedAt:    time.Now(),
+		return state.Update(statePath, stateLockWait, func(sf *state.File) error {
+			sf.UpsertDeployment(state.DeploymentRecord{
+				ID:           vmID,
+				VMID:         vmID,
+				VMIP:         publicIP,
+				VMFlavor:     flavorID,
+				Region:       region,
+				SSHUser:      sshUser,
+				Status:       status,
+				FloatingIPID: fipID,
+				CreatedAt:    time.Now(),
+				UpdatedAt:    time.Now(),
+			})
+			return nil
 		})
-		return state.Write(statePath, sf)
 	}
 	// notInState is the sentence an answer gets when saveState failed.
 	notInState := func(vmID string, err error) string {
@@ -1985,7 +1983,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	// deployment created (the same code as the CLI destroy).
 	var rules sgrules.CloseResult
 	statePath := state.DefaultPath(eng.StateDir)
-	if sf, e := state.Read(statePath); e == nil {
+	stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
 		var ids []string
 		for _, d := range sf.Deployments {
 			if d.VMID == target.ID {
@@ -1996,8 +1994,8 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			rules.Add(sgrules.Close(ctx, eng.Cloud, sf, id))
 			sgrules.Retire(sf, id)
 		}
-		_ = state.Write(statePath, sf)
-	}
+		return nil
+	})
 
 	// Release the floating IP unless asked not to.
 	releaseIP := true
@@ -2030,6 +2028,11 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	}
 	if !rules.Empty() {
 		out["security_group_rules"] = rules
+	}
+	if stateErr != nil {
+		// The VM is gone; only the local bookkeeping is stale. Say so rather
+		// than leave port rules open without a word.
+		msg += fmt.Sprintf("; WARNING: the local state was not updated (%v): its record of this VM stays, and the port rules that deployment opened were not closed — close them in the Cloud.ru console if nothing else uses them", stateErr)
 	}
 	out["message"] = msg
 	return toJSON(out), false

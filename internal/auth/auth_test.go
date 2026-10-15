@@ -168,7 +168,7 @@ func TestFileCache_FreshTokenNeedsNoNetwork(t *testing.T) {
 func TestFileCache_ExpiredTokenIsRefreshed(t *testing.T) {
 	srv, calls := newMockIAMServer(t, time.Hour)
 	cache := FileCache{Path: filepath.Join(t.TempDir(), "token-default.json")}
-	if err := cache.Store(testCreds.KeyID, Token{Value: "stale", ExpiresAt: time.Now().Add(2 * time.Minute)}); err != nil {
+	if err := cache.Store(CacheKey(testCreds), Token{Value: "stale", ExpiresAt: time.Now().Add(2 * time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -179,7 +179,7 @@ func TestFileCache_ExpiredTokenIsRefreshed(t *testing.T) {
 	if tok.Value == "stale" || calls.Load() != 1 {
 		t.Fatalf("expected refresh, got %q after %d calls", tok.Value, calls.Load())
 	}
-	if stored, ok := cache.Load(testCreds.KeyID); !ok || stored.Value != tok.Value {
+	if stored, ok := cache.Load(CacheKey(testCreds)); !ok || stored.Value != tok.Value {
 		t.Errorf("refreshed token not written back: %+v %v", stored, ok)
 	}
 }
@@ -220,5 +220,25 @@ func TestToken_IsValid(t *testing.T) {
 				t.Errorf("IsValid(%v) = %v, want %v", tt.minTTL, got, tt.want)
 			}
 		})
+	}
+}
+
+// A live cached token of the same key ID does not vouch for another secret:
+// the provider goes to IAM, which rejects a wrong secret.
+func TestCache_WrongSecretIsAMiss(t *testing.T) {
+	srv, calls := newMockIAMServer(t, time.Hour)
+	cache := FileCache{Path: filepath.Join(t.TempDir(), "token-default.json")}
+	if _, err := NewIAMProvider(testCreds, srv.Client(), cache).Token(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	wrong := Credentials{KeyID: testCreds.KeyID, Secret: "wrong-secret"}
+	if _, err := NewIAMProvider(wrong, srv.Client(), cache).Token(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("IAM called %d times, want 2: the cached token of the right secret was reused for a wrong one", calls.Load())
+	}
+	if CacheKey(testCreds) == CacheKey(wrong) {
+		t.Fatal("cache key does not depend on the secret")
 	}
 }

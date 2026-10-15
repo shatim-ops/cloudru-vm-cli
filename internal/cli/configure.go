@@ -219,7 +219,7 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 	if err != nil {
 		return fmt.Errorf("checking the access key: %w", err)
 	}
-	_ = auth.FileCache{Path: config.TokenCachePath(name)}.Store(keyID, tok)
+	_ = auth.FileCache{Path: config.TokenCachePath(name)}.Store(auth.CacheKey(auth.Credentials{KeyID: keyID, Secret: secret}), tok)
 
 	projectID := opts.projectID
 	if projectID == "" {

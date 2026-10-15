@@ -19,6 +19,9 @@ func TestOpTerminal(t *testing.T) {
 		{"status-ready-lower", map[string]any{"status": "ready"}, true},
 		{"state-failed", map[string]any{"state": "FAILED"}, true},
 		{"status-provisioning", map[string]any{"status": "PROVISIONING"}, false},
+		// An operation that is RUNNING is in progress, not finished.
+		{"status-running", map[string]any{"status": "RUNNING"}, false},
+		{"running-but-done", map[string]any{"status": "RUNNING", "done": true}, true},
 		{"error-nonempty", map[string]any{"error": "boom"}, true},
 		{"error-empty-string", map[string]any{"error": ""}, false},
 		{"error-null", map[string]any{"error": nil}, false},

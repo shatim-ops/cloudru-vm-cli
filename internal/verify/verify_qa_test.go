@@ -2,6 +2,7 @@ package verify
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -67,5 +68,41 @@ func TestCheck_SlowServiceTimesOut(t *testing.T) {
 	}
 	if d := time.Since(start); d > 3*time.Second {
 		t.Fatalf("probe took %s with a 100ms timeout", d)
+	}
+}
+
+// A database or cache port answers in its own protocol (or just closes):
+// it is up, not broken — verify must not fail a working deployment.
+func TestCheck_NonHTTPServiceIsHealthyTCP(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_, _ = c.Write([]byte("-ERR unknown command 'GET'\r\n")) // like Redis
+			_ = c.Close()
+		}
+	}()
+	r := Check(context.Background(), "127.0.0.1", []int{ln.Addr().(*net.TCPAddr).Port}, time.Second)[0]
+	if !r.Healthy || r.Protocol != "tcp" {
+		t.Fatalf("result = %+v, want healthy tcp", r)
+	}
+}
+
+// An HTTP answer keeps its meaning: 5xx is unhealthy, and the protocol says http.
+func TestCheck_HTTPProtocolReported(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	r := Check(context.Background(), "127.0.0.1", []int{serverPort(t, srv)}, time.Second)[0]
+	if r.Healthy || r.Protocol != "http" || r.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("result = %+v, want unhealthy http 503", r)
 	}
 }

@@ -59,6 +59,9 @@ func (e *Engine) Verify(ctx context.Context) error {
 		for _, r := range results {
 			healthy := "yes"
 			status := fmt.Sprintf("%d", r.StatusCode)
+			if r.Protocol == "tcp" {
+				status = "tcp open"
+			}
 			if !r.Healthy {
 				healthy = "no"
 				if r.Error != "" {

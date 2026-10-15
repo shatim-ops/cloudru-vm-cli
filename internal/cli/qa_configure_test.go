@@ -41,7 +41,7 @@ func TestConfigure_ChecksTheSecretEvenWithACachedToken(t *testing.T) {
 	if code, _, stderr := runCLI(t, fakeSecret+"\n", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", "p"); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
-	if tok, ok := cache.Load(fakeKeyID); !ok || tok.Value == "cached" {
+	if tok, ok := cache.Load(auth.CacheKey(auth.Credentials{KeyID: fakeKeyID, Secret: fakeSecret})); !ok || tok.Value == "cached" {
 		t.Errorf("token cache not refreshed: %+v %v", tok, ok)
 	}
 }

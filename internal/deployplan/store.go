@@ -67,7 +67,7 @@ type NetworkSpec struct {
 // SSHSpec describes how the user will log in.
 type SSHSpec struct {
 	Login   string `json:"login"`
-	KeyName string `json:"key_name"` // "user-key" | "generated-password"
+	KeyName string `json:"key_name"` // "user-key" | "generated-password" | "image-default"
 }
 
 // Plan is a fully-resolved, costed deploy plan.
