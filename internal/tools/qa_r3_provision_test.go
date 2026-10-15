@@ -1,0 +1,73 @@
+package tools
+
+import (
+	"bytes"
+	"context"
+	"testing"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
+)
+
+// pollCheckCloud records whether the new VM is in the state while
+// provision waits for it.
+type pollCheckCloud struct {
+	cancelCloud
+	dir       string
+	seenState bool
+	polls     int
+}
+
+func (c *pollCheckCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
+	c.creates++
+	return &provision.VM{ID: "vm-made"}, nil
+}
+func (c *pollCheckCloud) GetVM(context.Context, string) (*provision.VM, error) {
+	c.polls++
+	if sf, err := state.Read(state.DefaultPath(c.dir)); err == nil {
+		for _, d := range sf.Deployments {
+			if d.VMID == "vm-made" {
+				c.seenState = true
+			}
+		}
+	}
+	if c.polls >= 2 {
+		return &provision.VM{ID: "vm-made", Status: "active"}, nil
+	}
+	return &provision.VM{ID: "vm-made", Status: "creating"}, nil
+}
+func (c *pollCheckCloud) GetFloatingIP(context.Context, string) (*provision.FloatingIP, error) {
+	return &provision.FloatingIP{ID: "fip-boot", IPAddress: "203.0.113.9", State: "in_use"}, nil
+}
+
+// R5: provision records the VM right after creating it, as the CLI deploy:
+// a hard stop during the wait left the VM and its FIP without a record.
+func TestQAr3_Provision_VMRecordedBeforeWait(t *testing.T) {
+	cloud := &pollCheckCloud{}
+	dir := t.TempDir()
+	cloud.dir = dir
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		var buf bytes.Buffer
+		return &engine.Engine{
+			Config:    config.Config{ProjectID: "p", Region: "z", ImageID: "img-1", KeyID: "k", Secret: "s"},
+			Auth:      staticToken{},
+			Cloud:     cloud,
+			Printer:   output.NewWithWriter(&buf, output.ModeText, false),
+			StateDir:  dir,
+			SSHKeyPEM: []byte("key"),
+			SSHPubKey: "ssh-ed25519 AAAA test",
+			Timings:   engine.Timings{VMPollInterval: time.Millisecond, FIPPollInterval: time.Millisecond, FIPRetryInterval: time.Millisecond},
+		}, nil
+	})
+	_, _ = r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
+	if cloud.polls == 0 {
+		t.Fatal("provision never waited for the VM")
+	}
+	if !cloud.seenState {
+		t.Fatal("the VM was not in the state while provision waited for it")
+	}
+}

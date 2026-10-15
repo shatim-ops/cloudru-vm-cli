@@ -635,6 +635,22 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 	}
 }
 
+// stepMayHaveCreated reports whether a step may have reached the cloud: it
+// ran (running, waiting, error after a try) or its create was cut off. Only
+// such a step is looked up by name at destroy: a step that never ran owns
+// nothing, and a resource with its name belongs to someone else — deleting
+// it destroyed a foreign cluster (QA r3 R3).
+func stepMayHaveCreated(st *stack.Step) bool {
+	if st.Interrupted || st.Attempts > 0 || st.OpID != "" {
+		return true
+	}
+	switch st.Status {
+	case "running", "waiting", "done":
+		return true
+	}
+	return false
+}
+
 func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
@@ -667,7 +683,7 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		}
 		if st.ResourceID != "" {
 			job.Outputs[st.Key] = st.ResourceID
-		} else if st.FindTool != "" && st.FindName != "" {
+		} else if st.FindTool != "" && st.FindName != "" && stepMayHaveCreated(st) {
 			if id := s.findIDByName(ctx, st.FindTool, st.FindField, st.FindName, st.FindArgs); id != "" {
 				job.Outputs[st.Key] = id
 			}

@@ -103,7 +103,7 @@ list projects for the key, the UUID is saved as given.`,
 					i18n.Tf("profile %q not found", "профиль %q не найден", name),
 					i18n.T("Create it with 'evo configure'.", "Создайте его командой 'evo configure'."))
 			}
-			cfg, err := resolveConfig(printer, nil)
+			cfg, err := resolveConfig(printer, scopeOverrides())
 			if err != nil {
 				return err
 			}
