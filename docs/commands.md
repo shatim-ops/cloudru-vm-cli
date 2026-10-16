@@ -4485,7 +4485,7 @@ evo vpc [flags]
 * [evo vpc create](#evo-vpc-create)	 - Создать VPC (асинхронно)
 * [evo vpc delete](#evo-vpc-delete)	 - Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы)
 * [evo vpc fip-attach](#evo-vpc-fip-attach)	 - Привязать свободный floating IP к основному интерфейсу ВМ
-* [evo vpc fip-release](#evo-vpc-fip-release)	 - Освободить floating IP (адрес, занятый ВМ, не освобождается)
+* [evo vpc fip-release](#evo-vpc-fip-release)	 - Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается)
 * [evo vpc fips](#evo-vpc-fips)	 - Floating IP: адрес, состояние, свободен ли
 * [evo vpc get](#evo-vpc-get)	 - VPC по ID: все сведения
 * [evo vpc list](#evo-vpc-list)	 - Список VPC проекта
@@ -4632,17 +4632,17 @@ evo vpc fip-attach <fip> [flags]
 
 ## evo vpc fip-release
 
-Освободить floating IP (адрес, занятый ВМ, не освобождается)
+Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается)
 
 ### Synopsis
 
 ```text
-Освободить floating IP (адрес, занятый ВМ, не освобождается).
+Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается).
 
 Вызывает инструмент release_floating_ip (подробнее: 'evo tools describe release_floating_ip').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first). Mutation: requires confirmed=true after the user approves.
+Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: nat_delete). Mutation: requires confirmed=true after the user approves.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```

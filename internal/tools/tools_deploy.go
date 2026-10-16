@@ -509,12 +509,13 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 
 	// Resolve to a concrete FIP (id, address, state).
 	var fipID, fipIP, state string
+	onNAT := false
 	if id != "" {
 		f, e := eng.Cloud.GetFloatingIP(ctx, id)
 		if e != nil {
 			return errResult(fmt.Errorf("floating IP %q not found: %w", id, e)), true
 		}
-		fipID, fipIP, state = id, f.IPAddress, f.State
+		fipID, fipIP, state, onNAT = id, f.IPAddress, f.State, f.OnNATGateway()
 	} else {
 		fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID)
 		if e != nil {
@@ -522,13 +523,22 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 		}
 		for _, f := range fips {
 			if f.IPAddress == ip {
-				fipID, fipIP, state = f.ID, f.IPAddress, f.State
+				fipID, fipIP, state, onNAT = f.ID, f.IPAddress, f.State, f.OnNATGateway()
 				break
 			}
 		}
 		if fipID == "" {
 			return errResult(fmt.Errorf("no floating IP with address %q in this project", ip)), true
 		}
+	}
+
+	// A SNAT gateway's address goes with the gateway: the API refuses to
+	// release it alone (422 floating_ip_address_is_used_by_nat_gateway).
+	if onNAT {
+		return toJSON(map[string]any{
+			"status":  "refused",
+			"message": fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (nat_delete); not released", fipIP, fipID),
+		}), true
 	}
 
 	// Safety: never release an IP that is attached to a VM.
@@ -563,11 +573,12 @@ func (s *Registry) handleListFloatingIPs(ctx context.Context, args map[string]an
 	out := make([]map[string]any, 0, len(fips))
 	for _, f := range fips {
 		out = append(out, map[string]any{
-			"id":         f.ID,
-			"name":       f.Name,
-			"ip_address": f.IPAddress,
-			"state":      f.State,
-			"available":  f.Available(),
+			"id":          f.ID,
+			"name":        f.Name,
+			"ip_address":  f.IPAddress,
+			"state":       f.State,
+			"available":   f.Available(),
+			"nat_gateway": f.OnNATGateway(),
 		})
 	}
 	return toJSON(map[string]any{"floating_ips": out}), false

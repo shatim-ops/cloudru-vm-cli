@@ -523,7 +523,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "release_floating_ip",
-			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first). Mutation: requires confirmed=true after the user approves.",
+			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: nat_delete). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":         strProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required."),
 				"ip_address": strProp("Floating IP address, e.g. '213.171.25.19' (alternative to id)."),

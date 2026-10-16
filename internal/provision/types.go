@@ -444,12 +444,25 @@ type FloatingIP struct {
 	State     string          `json:"state"`
 	Interface json.RawMessage `json:"interface,omitempty"`
 	VM        json.RawMessage `json:"vm,omitempty"`
+	// NATGateway: the SNAT gateway the address belongs to
+	// (PublicFloatingIpResponse.nat_gateway). Such an address is the
+	// gateway's: it cannot be released on its own (DELETE answers 422
+	// floating_ip_address_is_used_by_nat_gateway; docs, «Публичные
+	// IP-адреса», FAQ).
+	NATGateway json.RawMessage `json:"nat_gateway,omitempty"`
 }
+
+// OnNATGateway reports an address bound to a SNAT gateway.
+func (f FloatingIP) OnNATGateway() bool { return !isEmptyRaw(f.NATGateway) }
 
 // Available reports whether this floating IP can be attached to a new VM.
 // Mirrors the Python reference: state=="available", or no interface/vm bound
-// (some tenants omit the state field on the list endpoint).
+// (some tenants omit the state field on the list endpoint). An address of a
+// SNAT gateway is in use whatever its state.
 func (f FloatingIP) Available() bool {
+	if f.OnNATGateway() {
+		return false
+	}
 	if f.State == "available" {
 		return true
 	}

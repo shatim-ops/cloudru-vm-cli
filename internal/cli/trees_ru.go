@@ -59,7 +59,7 @@ var toolShortRU = map[string]string{
 	"list_security_groups": "Группы безопасности (с --rules — вместе с правилами)",
 	"list_floating_ips":    "Floating IP: адрес, состояние, свободен ли",
 	"fip_attach":           "Привязать свободный floating IP к основному интерфейсу ВМ",
-	"release_floating_ip":  "Освободить floating IP (адрес, занятый ВМ, не освобождается)",
+	"release_floating_ip":  "Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается)",
 
 	"k8s_list":         "Кластеры Managed Kubernetes проекта",
 	"k8s_get":          "Кластер Managed Kubernetes по ID",
