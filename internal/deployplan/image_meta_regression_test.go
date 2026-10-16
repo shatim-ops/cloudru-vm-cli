@@ -94,6 +94,10 @@ func TestApply_ImageMetadataUbuntu2404Unchanged(t *testing.T) {
 	if plan.SSH != (SSHSpec{Login: "user1", KeyName: "ssh-key (deploy)"}) {
 		t.Errorf("ssh в плане = %+v", plan.SSH)
 	}
+	// План лежит на диске: пароля в нём нет, он делается при apply.
+	if _, ok := plan.MetaStatic["linux_password"]; ok || len(plan.MetaFields) != 1 || plan.MetaFields[0] != "linux_password" {
+		t.Errorf("план: meta_static=%v meta_fields=%v", plan.MetaStatic, plan.MetaFields)
+	}
 
 	// Без ключа — только пароль; модель доступа — generated-password.
 	plan, req, _ = resolveAndApply(t, ubuntu2404Fields(), Params{Name: "web"})
@@ -102,5 +106,35 @@ func TestApply_ImageMetadataUbuntu2404Unchanged(t *testing.T) {
 	}
 	if len(req.ImageMetadata) != 3 || plan.SSH.KeyName != "generated-password" {
 		t.Errorf("без ключа: метаданные %d ключей, ssh %+v", len(req.ImageMetadata), plan.SSH)
+	}
+}
+
+// Планы, сохранённые до internal/images, перечисляют в meta_fields ещё name,
+// hostname и public_key: apply по-прежнему их заполняет.
+func TestApply_OldPlanMetaFields(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cloud := &metaCloud{cancel: cancel}
+	plan := &Plan{
+		VM:         VMSpec{Name: "web"},
+		SSH:        SSHSpec{Login: "user1"},
+		MetaFields: []string{"name", "hostname", "linux_password", "public_key"},
+		MetaStatic: map[string]string{"motd": "hi"},
+		PublicKey:  "ssh-ed25519 AAAA agent",
+	}
+	_, _ = ApplyWithTimeout(ctx, cloud, plan, 0)
+	meta := cloud.createReq.ImageMetadata
+	if meta["name"] != "user1" || meta["hostname"] != "web" || meta["public_key"] != plan.PublicKey || meta["motd"] != "hi" || len(meta["linux_password"]) != 16 {
+		t.Errorf("image_metadata старого плана = %v", meta)
+	}
+}
+
+// РЕД ОС 7.3: обязательное fqdn типа hostname теперь заполняется (раньше
+// поле с незнакомым именем пропускалось — 422 от API).
+func TestApply_RedOSFqdnFilled(t *testing.T) {
+	fields := append(ubuntu2404Fields(), provision.ImageMetadataField{Name: "fqdn", FieldType: "hostname", MandatoryGroup: "fqdn"})
+	_, req, _ := resolveAndApply(t, fields, Params{Name: "web", SSHKey: "ssh-ed25519 AAAA agent"})
+	if req.ImageMetadata["fqdn"] != "web" {
+		t.Errorf("fqdn = %q, image_metadata = %v", req.ImageMetadata["fqdn"], req.ImageMetadata)
 	}
 }

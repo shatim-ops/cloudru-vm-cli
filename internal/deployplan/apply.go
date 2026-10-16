@@ -94,6 +94,9 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	for k, v := range plan.MetaStatic {
 		meta[k] = v
 	}
+	// MetaFields are the access-password fields (linux_password, or the
+	// plain_password of a Windows image). Plans saved before internal/images
+	// also list name, hostname and public_key there: they are still filled.
 	password := ""
 	for _, f := range plan.MetaFields {
 		switch f {
@@ -101,13 +104,16 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			meta["name"] = plan.SSH.Login
 		case "hostname":
 			meta["hostname"] = plan.VM.Name
-		case "linux_password":
-			password = generatePassword(16)
-			meta["linux_password"] = password
 		case "public_key":
 			if plan.PublicKey != "" {
 				meta["public_key"] = plan.PublicKey
 			}
+		default:
+			pw := generatePassword(16)
+			if password == "" {
+				password = pw
+			}
+			meta[f] = pw
 		}
 	}
 

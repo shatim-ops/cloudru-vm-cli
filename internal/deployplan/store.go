@@ -89,8 +89,8 @@ type Plan struct {
 
 	// Internal fields needed by Apply (persisted, no secrets).
 	ComposeFile  string            `json:"compose_file,omitempty"`
-	MetaFields   []string          `json:"meta_fields,omitempty"`   // dynamic image_metadata fields to fill (name/hostname/linux_password/public_key)
-	MetaStatic   map[string]string `json:"meta_static,omitempty"`   // image_metadata fields copied verbatim from image defaults
+	MetaFields   []string          `json:"meta_fields,omitempty"`   // image_metadata password fields generated at apply (older plans: also name/hostname/public_key)
+	MetaStatic   map[string]string `json:"meta_static,omitempty"`   // image_metadata fields sent verbatim (no secrets)
 	PublicKey    string            `json:"public_key,omitempty"`    // user public key (safe to persist)
 	SourceParams Params            `json:"source_params,omitempty"` // the request that produced this plan (for patch/re-plan)
 }
