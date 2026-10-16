@@ -5,7 +5,8 @@ Cloud.ru Evolution). Адресаты — продуктовые команды 
 и дальше: новое расхождение — новый пункт с доказательством, снятое — в раздел
 «Снятые вопросы».
 
-- **Период наблюдений:** 14–16.10.2026.
+- **Период наблюдений:** 14–16.10.2026; сверка с документацией (CMP-9…13, NET-4…6,
+  K8S-6…8, IAM-4, BIL-5, DB-5, DB-6, DOC-2 и дополнения к пунктам) — 16.10.2026.
 - **Как получены факты:** GitHub Actions репозитория `shatim-ops/evo-cli`:
   `api-probe` (только GET и расчёт цены, в лог — коды HTTP, имена полей,
   счётчики) и `cloud-e2e` (создание и удаление ВМ и кластера Kubernetes,
@@ -36,18 +37,18 @@ API» — ответ неверен независимо от документа
 | Команда | Пунктов | Подтверждено | Гипотез | Главная проблема |
 |---|---|---|---|---|
 | [Образы и Маркетплейс](#образы-и-маркетплейс) | 5 | 5 | 0 | 23 из 86 образов общего каталога, включая все отечественные ОС, проекту недоступны; создание ВМ — 422 «Image … not found» |
-| [Биллинг, расчёт цены](#биллинг-и-расчёт-цены) | 4 | 3 | 1 | `price-calculation` даёт 0 за лицензию у всех образов маркетплейса, хотя у Windows Server на карточке 1 006 ₽/мес |
-| [Compute (ВМ)](#compute-вм) | 8 | 8 | 0 | обязательное поле интерфейса `interface_security_enabled` отсутствует в спецификации с `additionalProperties: false` |
-| [Managed Kubernetes](#managed-kubernetes) | 5 | 5 | 0 | `addonNamespace` релиза плагина повторяет `addonVersion`; инструкция «Установить плагин → API» описывает устаревший v2 |
-| [IAM и Organization](#iam-и-organization) | 3 | 3 | 0 | сервисный аккаунт проекта не может узнать свой проект: `GET /v3/projects` → 400 «user not found» |
+| [Биллинг, расчёт цены](#биллинг-и-расчёт-цены) | 5 | 3 | 2 | `price-calculation` даёт 0 за лицензию у всех образов маркетплейса, хотя у Windows Server на карточке 1 006 ₽/мес |
+| [Compute (ВМ)](#compute-вм) | 13 | 10 | 3 | обязательное поле интерфейса `interface_security_enabled` отсутствует в спецификации с `additionalProperties: false` |
+| [Managed Kubernetes](#managed-kubernetes) | 8 | 8 | 0 | `addonNamespace` релиза плагина повторяет `addonVersion`; инструкция «Установить плагин → API» описывает устаревший v2 |
+| [IAM и Organization](#iam-и-organization) | 4 | 3 | 1 | сервисный аккаунт проекта не может узнать свой проект: `GET /v3/projects` → 400 «user not found» |
 | [Аудит-логирование](#аудит-логирование) | 2 | 2 | 0 | 401 вместо 403 при отсутствии доступа и 415 на лишний параметр |
-| [VPC, DNS, группы безопасности, SNAT](#vpc-dns-группы-безопасности-snat) | 3 | 2 | 1 | snake_case принимается при camelCase в спецификации — не ясно, гарантия ли это |
-| [DBaaS: Kafka, Redis, PostgreSQL](#dbaas-kafka-redis-postgresql) | 4 | 1 | 3 | списки кластеров и спецификаций Kafka/Redis отвечают ошибкой, хотя запросы совпадают со спецификацией |
+| [VPC, DNS, группы безопасности, SNAT](#vpc-dns-группы-безопасности-snat) | 6 | 2 | 4 | snake_case принимается при camelCase в спецификации — не ясно, гарантия ли это |
+| [DBaaS: Kafka, Redis, PostgreSQL](#dbaas-kafka-redis-postgresql) | 6 | 1 | 5 | списки кластеров и спецификаций Kafka/Redis отвечают ошибкой, хотя запросы совпадают со спецификацией |
 | [Мониторинг](#мониторинг) | 1 | 0 | 1 | единицы `start`/`end` и формат ответа `export_metrics` не описаны |
 | [Foundation Models](#foundation-models) | 1 | 1 | 0 | токен IAM отклоняется сообщением про API-ключ |
-| [Портал документации](#портал-документации) | 1 | 1 | 0 | ответ cloud.ru/docs зависит от User-Agent: без него — 403 |
+| [Портал документации](#портал-документации) | 2 | 2 | 0 | ответ cloud.ru/docs зависит от User-Agent: без него — 403 |
 | Container Apps, Artifact Registry, NLB, Secret Manager, Certificate Manager | 0 | — | — | расхождений не найдено; вживую проверены только списки (cloud-e2e #48, `readonly`) |
-| **Итого** | **37** | **31** | **6** | |
+| **Итого** | **53** | **37** | **16** | |
 
 Пять пунктов с наибольшим влиянием: [IMG-1](#img-1-часть-общего-каталога-недоступна-проекту-ошибка-выдаётся-как-image-not-found),
 [BIL-1](#bil-1-лицензия-образа-маркетплейса-в-расчёте-цены-всегда-0),
@@ -64,6 +65,7 @@ API» — ответ неверен независимо от документа
 - **Живое (создание):** cloud-e2e #31, job `os-smoke` (16.10, 11:52 UTC): `POST /api/v1.1/vms` с `AstraLinuxSmolensk1.8.3KES` и `redos_7.3_image` → 422 `[{"message":"Image with this id is not found","code":"wrong_image"}]`, хотя образ есть в каталоге.
 - **Влияние:** ВМ на отечественных ОС через API не создаётся, а текст ошибки указывает не на причину (доступ), а на опечатку. Автоматизация не может отличить «нет образа» от «образ не подключён».
 - **Просим:** описать, что делает образ общего каталога доступным проекту (подключение продукта, лицензия, роль, регион); отдельный код ошибки (например, `image_not_available_for_project`); признак доступности в ответе `GET /images`.
+- **Доп. (гипотеза):** «сервисы могут не отображаться, если у организации не заключён договор или оферта для доступа к Маркетплейсу» ([showcase-empty](https://cloud.ru/docs/marketplace/ug/topics/troubleshooting__showcase-empty)); подключение не проходит при нулевом балансе ([connect-error](https://cloud.ru/docs/marketplace/ug/topics/troubleshooting__connect-error)).
 
 #### IMG-2. «Маркетплейс — только Linux и бесплатно», а в каталоге Windows Server с платной лицензией
 Расхождение · подтверждено вживую
@@ -121,6 +123,14 @@ API» — ответ неверен независимо от документа
 - **Живое:** `billing_balance`/`billing_finops` в cloud-e2e `readonly` (#23–#48) — ошибка; причина (нет `agreement_id` в CI или ответ API) не установлена.
 - **Влияние:** расчёт «на сколько хватит баланса» держится на неопубликованном контракте.
 - **Просим:** опубликовать эндпоинт баланса или назвать официальный; описать `amount`/`cost`/`amount_nds`. Проба — P13.
+- **Доп. (документация):** документированный способ получить договор — `GET organization.api.cloud.ru/v3/agreements?customer_ids=…` и только для ролей «Администратор организации» и «Администратор затрат» ([FAQ](https://cloud.ru/docs/billing/ug/topics/faq__api_id_agreement), [роли](https://cloud.ru/docs/billing/ug/topics/concepts_billing_role)); баланс по API не описан нигде. См. BIL-5.
+
+#### BIL-5. Потребление по проекту без договора
+Нет в документации · гипотеза
+- **Док:** спецификация «Контроль затрат» v2: в `/v2/consumption` `agreement_id` необязателен, есть `project_ids`; [Начало работы с API](https://cloud.ru/docs/billing/ug/topics/api-ref_start): `platform.project.admin` может запрашивать потребление «по проекту». [FAQ](https://cloud.ru/docs/billing/ug/topics/faq__api_id_agreement): ID договора видят только «Администратор организации» и «Администратор затрат».
+- **Живое:** не проверено.
+- **Влияние:** ключ уровня проекта не может получить ID договора; если потребление без него не отдаётся, расходы проекта по API недоступны.
+- **Просим:** подтвердить запрос по `project_ids` без договора. Проба — P20.
 
 ## Compute (ВМ)
 
@@ -130,6 +140,7 @@ API» — ответ неверен независимо от документа
 - **Живое:** без `interface_security_enabled: true` создание ВМ — 500 (разбор отказов cloud-e2e 14–15.10, `.github/review-context/cloudru-api.md`); с полем все e2e 15–16.10 создают ВМ. Поле приходит в `GET /api/v1/vms` у интерфейса (api-probe #8).
 - **Влияние:** клиент, сгенерированный по спецификации, ВМ не создаст; строгий валидатор отбросит рабочий запрос.
 - **Просим:** добавить поле в схему (тип, умолчание) или не требовать его; отсутствие поля — 422 с именем поля, а не 500.
+- **Доп. (документация):** Terraform документирует `interface_security_enabled` у интерфейса ([compute_interface](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_compute_interface)), спецификация compute — нет.
 
 #### CMP-2. `new_external_ip: true` → 500 `ExternalNetNotFound`
 Ошибка API · подтверждено вживую
@@ -179,6 +190,40 @@ API» — ответ неверен независимо от документа
 - **Влияние:** запрос «образ с именем X» возвращает несколько; точного совпадения на сервере нет.
 - **Просим:** описать семантику фильтра; при желании — отдельный параметр точного совпадения.
 
+#### CMP-9. ВМ в `error_creating` удаляется через API, а документация отправляет в поддержку
+Расхождение · подтверждено вживую (косвенно)
+- **Док:** [Удалить ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/guides__delete-vm): удалить можно «в статусах Запущена или Остановлена»; [Статусы ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/concepts__vm-statuses): при статусе «Ошибка» — обращаться в поддержку.
+- **Живое:** cloud-e2e #18 (15.10): ВМ в `error_creating` удалена `DELETE /api/v1/vms/{id}`; по журналу BACKLOG [e2e] во всех прогонах `destroy` убирал ВМ, в каком бы статусе она ни была.
+- **Влияние:** низкое; пользователь, поверивший документации, ждёт поддержку, хотя может удалить ВМ сам, и платит за неё всё это время.
+- **Просим:** перечислить статусы, в которых DELETE допустим (вместе с CMP-7).
+
+#### CMP-10. `VmState`: `rebuilding` есть в описании, но не в enum
+Расхождение спецификации с самой собой · подтверждено (текст спецификации)
+- **Спека:** `VM-spec`, `VmState`: в описании поля статус `rebuilding` есть, в `enum` — нет.
+- **Живое:** вживую не встречался.
+- **Влияние:** низкое; строгий клиент по enum отвергнет ответ с этим статусом.
+- **Просим:** добавить значение в enum или убрать из описания.
+
+#### CMP-11. Удаляет ли DELETE ВМ без тела её загрузочный диск
+Нет в документации · гипотеза
+- **Док:** [Удалить ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/guides__delete-vm): «Диски и публичный IP-адрес можно удалить вместе с ВМ или оставить… тарификация продолжается»; release notes 10.2025: загрузочный диск можно оставить при удалении ВМ. **Спека:** `VmDeleteRequest.delete_attachments{disk_ids, external_ips}` — что происходит с дисками без тела, не сказано.
+- **Живое:** не проверено. evo (`destroy`) шлёт DELETE без тела; ни e2e, ни уборка диски не проверяют.
+- **Влияние:** высокое для счёта, если гипотеза верна: после каждого удаления ВМ остаётся платный загрузочный диск.
+- **Просим:** описать поведение по умолчанию для загрузочного и дополнительных дисков. Проба — P14.
+
+#### CMP-12. Максимальный размер диска: 16384 ГБ или 65536
+Расхождение · гипотеза
+- **Док/Спека:** [Ограничения дисков](https://cloud.ru/docs/disks/ug/topics/overview__limitations) — до 16 ТБ; `VM-spec` — `size: maximum 16384` (`PublicDiskCreateRequest`, `PublicDiskUpdateRequest`, `VmCreateNewDiskItem`).
+- **Живое:** в review-context evo со времён первых прогонов записано «до 65536 ГБ» (источник не сохранён; evo с ветки `tails` проверяет 16384).
+- **Просим:** подтвердить предел; если API принимает больше — отразить в спецификации. Проба — P15.
+
+#### CMP-13. Две ВМ с одним именем в проекте: ошибка создания не описана
+Нет в документации · гипотеза
+- **Док:** [Создать ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/guides__create-vm): в проекте не может быть двух ВМ с одним именем. **Спека:** среди кодов 422 у `POST /api/v1.1/vms` такого нет.
+- **Живое:** не проверено.
+- **Влияние:** клиент не отличит дубль имени от других 422 и не предложит другое имя.
+- **Просим:** отдельный код ошибки в спецификации. Проба — P16.
+
 ## Managed Kubernetes
 
 #### K8S-1. `addonNamespace` повторяет `addonVersion`
@@ -195,6 +240,7 @@ API» — ответ неверен независимо от документа
 - **Живое:** v3-запрос с `RESOLVE_CONFLICTS_MODE_NONE` устанавливает cert-manager 1.21.1, поды Ready менее чем за минуту (k8s-smoke #46, #48); без `resolveMode` — 400 `resolveMode: must be specified` (k8s-smoke 16.10).
 - **Влияние:** по инструкции пишут код на устаревший API, с другими именами полей и с OVERWRITE (откатывает пользовательские изменения) в примере.
 - **Просим:** перевести инструкцию на v3; согласовать описание режимов; в примере — NONE.
+- **Доп. (документация):** [информация о плагине](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__addons__get-info) тоже описывает v2 (`GET /v2/clusters/{id}/addons`, поля `addonId`, `addonName`, `addedAt`, `history`), а у `ClusterAddon` v3 поля `id`, `name`, `createdAt`.
 
 #### K8S-3. Плагины ставятся без SNAT-шлюза — это не описано
 Нет в документации · подтверждено вживую (отсутствие SNAT — подтвердить P10)
@@ -217,6 +263,27 @@ API» — ответ неверен независимо от документа
 - **Влияние:** проверка совместимости и выбор «последней версии» требуют нормализации на клиенте.
 - **Просим:** один формат диапазона; порядок по умолчанию в спецификации.
 
+#### K8S-6. `networkPlugin` обязателен в спецификации, а кластер создаётся без него
+Расхождение · подтверждено вживую
+- **Спека:** `mk8s-spec`, `NetworkConfigurationRequest.required: [networkPlugin, privateVipSubnetId]`. **Док:** [Создать кластер](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__create): CNI (Cilium или Calico) после установки удалить нельзя.
+- **Живое:** k8s-smoke #46 и #48 (16.10): `POST /v3/clusters` с `networkConfiguration` без `networkPlugin` → кластер `RUNNING`. Какой CNI получил кластер, не установлено.
+- **Влияние:** необратимый выбор CNI делает сервер молча; клиент по спецификации не знает умолчания.
+- **Просим:** описать умолчание или отвечать 400. Проба — P22 (на живом кластере, только чтение).
+
+#### K8S-7. Имя группы узлов: спецификация строже консоли и API
+Расхождение · подтверждено вживую
+- **Спека:** `CreateNodePoolRequest.name` — «буквы, цифры, подчёркивание», 4–60 символов. **Док:** [Создать группу узлов](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__node-pool__create) — ещё пробелы и дефисы.
+- **Живое:** k8s-smoke #46 и #48: имя с дефисом принято.
+- **Влияние:** низкое; валидатор по спецификации отвергнет рабочее имя.
+- **Просим:** выровнять спецификацию с API.
+
+#### K8S-8. Версии cert-manager в справочнике плагинов устарели
+Расхождение · подтверждено вживую
+- **Док:** [cert-manager](https://cloud.ru/docs/kubernetes-evolution/ug/topics/addons-ref__cert-manager): «Доступные версии 1.19.1, 1.18.2».
+- **Живое:** api-probe #8 и k8s-smoke 16.10: каталог отдаёт 1.21.1, она и ставится.
+- **Влияние:** версия из документации, переданная явно, может не найтись.
+- **Просим:** ссылаться на каталог (`GET /v3/addons/{name}`) вместо списка версий.
+
 ## IAM и Organization
 
 #### IAM-1. Ответ токена IAM — snake_case, в спецификации camelCase
@@ -225,6 +292,7 @@ API» — ответ неверен независимо от документа
 - **Живое:** api-probe #1 (15.10) и #8 (16.10): 200, ключи `access_token, expires_in (число), id_token, not_before, refresh_expires_in, refresh_token, scopes, token_type`.
 - **Влияние:** клиент по спецификации не находит токен — самая первая операция любой интеграции.
 - **Просим:** исправить спецификацию (или ответ) и зафиксировать написание.
+- **Доп. (документация):** страница [Аутентификация в API](https://cloud.ru/docs/console_api/ug/topics/guides__auth_api) велит брать `access_token` (как живое API) — документация расходится со спецификацией.
 
 #### IAM-2. Список сервисных аккаунтов — snake_case, в спецификации camelCase
 Расхождение · подтверждено вживую
@@ -239,6 +307,14 @@ API» — ответ неверен независимо от документа
 - **Живое:** 14.10 и api-probe #1, #8: 400, тело `{code, details, message}`, «(user_id) is invalid argument: user not found». cloud-e2e #43/#44 (`whoami`): список проектов недоступен.
 - **Влияние:** CLI и агенты не могут предложить проект ключа — UUID вводится вручную; 400 похож на ошибку клиента.
 - **Просим:** назвать официальный способ узнать проект(ы) SA (например, `GET /api/v2/serviceAccounts/{id}`); для SA — 200 со своим проектом или 403 с понятной причиной; описать в спецификации. Пробы — P7, P8.
+- **Доп. (документация):** официальный путь к проекту SA — `GET /api/v2/serviceAccounts/{id}`, поле `target` (схема `iamv2ServiceAccount`), и, возможно, claim `project_id` токена (IAM-4, проба P19).
+
+#### IAM-4. Есть ли в токене SA claim `project_id`
+Нет в документации · гипотеза
+- **Док:** [Токен для имперсонации](https://cloud.ru/docs/administration/ug/topics/guides__service-account-impersonation_token): в примере декодированного токена — `sub`, `sub_type`, `customer_id`, `project_id`. Для токена `POST /api/v1/auth/token` (ключ доступа) состав claims не описан.
+- **Живое:** не проверено.
+- **Влияние:** если claim есть, проект ключа можно узнать без Organization API (обход IAM-3); если нет — нужен официальный способ.
+- **Просим:** описать claims токена ключа доступа. Проба — P19.
 
 ## Аудит-логирование
 
@@ -248,6 +324,7 @@ API» — ответ неверен независимо от документа
 - **Живое:** api-probe #1 и #8: `GET /events/list/{projectId}?start&end&limit=5` → 401, тело `{code, details, message}`; тот же токен в ту же минуту принимается compute, IAM, mk8s.
 - **Влияние:** клиент считает токен недействительным и уходит в повторную аутентификацию вместо сообщения «функция не включена».
 - **Просим:** 403 с причиной («аудит не подключён для организации»); описать в спецификации.
+- **Доп. (документация, 16.10):** три страницы — три правила доступа к логам проекта (DOC-2); живой 401 ни одному не соответствует. evo с ветки `tails` показывает 401/403 как «аудит не включён для проекта — обратитесь в поддержку».
 
 #### AUD-2. Неизвестный query-параметр → 415, раньше проверки доступа
 Ошибка API · подтверждено вживую
@@ -271,6 +348,7 @@ API» — ответ неверен независимо от документа
 - **Живое:** api-probe #8: в тестовом проекте группа с этим шаблоном имени есть во всех трёх зонах; в ответе есть поле `default`. Создаётся ли она в каждом новом проекте и всегда ли `default=true` — не проверено.
 - **Влияние:** низкое; автоматизация, ищущая «группу по умолчанию» по имени, ломается после переименования (документация переименование разрешает).
 - **Просим:** уточнить в документации «проект/организация»; сослаться на поле `default` как на признак. Проба — P3.
+- **Доп. (спецификация, 16.10):** у `POST /api/v1.1/vms` есть 422 «Не удалось найти группу безопасности по умолчанию»; вместе с полем `default` в ответе это значит, что признак группы по умолчанию живёт в проекте, а не в организации.
 
 #### NET-3. SNAT: «ровно одно из `availability_zone_id` / `availability_zone_name`»
 Расхождение · подтверждено вживую
@@ -278,6 +356,27 @@ API» — ответ неверен независимо от документа
 - **Живое:** валидатор отвергает запрос без обоих и с обоими полями (review-context, 14–15.10).
 - **Влияние:** низкое; ошибка только на этапе отладки.
 - **Просим:** отразить в спецификации (`oneOf` или текст).
+
+#### NET-4. cloud-init в публичных образах: «не поддерживается» и «для всех типов»
+Документация противоречит себе · гипотеза (поведение)
+- **Док:** FAQ [образов](https://cloud.ru/docs/images/ug/topics/faq__cloud-init) и [ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/faq__vm-cloud-init): в публичных образах пользовательский cloud-init «не поддерживается»; [release notes ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/overview__release-notes), 09.2026: скрипт «доступен для всех типов образов». **Спека:** у `POST /api/v1.1/vms` есть поле `cloud_init`; Terraform документирует `cloud_init_userdata` ([compute_vm](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_compute_vm)).
+- **Живое:** не проверено; проверяется только созданием ВМ (`cloud_init` с `runcmd: [touch /var/tmp/evo-ci]`, проверка по SSH).
+- **Влияние:** установка ПО при первой загрузке без SSH — неясно, доступна ли.
+- **Просим:** привести FAQ и release notes к одному ответу.
+
+#### NET-5. Подсеть по умолчанию: только `Default_ru.AZ-1` или в каждой зоне
+Нет в документации · гипотеза
+- **Док:** [Подсеть](https://cloud.ru/docs/subnets/ug/topics/concepts__subnet) и [Сеть ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/concepts__network): в проекте автоматически создаётся одна подсеть `Default_ru.AZ-1` в зоне ru.AZ-1; [FAQ](https://cloud.ru/docs/subnets/ug/topics/faq__default-subnet): основную подсеть можно назначить в каждой зоне. «Если квота на VPC исчерпана, VPC-сеть Default не будет создаваться» ([ограничения VPC](https://cloud.ru/docs/evolution-vpc/ug/topics/overview__limitations)).
+- **Живое:** api-probe #8: у подсетей приходят `default`, `routed_network`, `dns_servers`; по зонам не разобрано.
+- **Влияние:** инструменты, выбирающие зону по умолчанию (evo `init` выбирал ru.AZ-2), отправляют нового пользователя туда, где подсети нет.
+- **Просим:** описать, где появляется подсеть по умолчанию и как её найти через API (`default`). Проба — P17.
+
+#### NET-6. Как адрес SNAT-шлюза выглядит в списке публичных IP
+Нет в документации · гипотеза
+- **Док:** [Создать шлюз](https://cloud.ru/docs/gateways/ug/topics/guides__create-gw): «При создании шлюзу назначается публичный IP-адрес»; [FAQ](https://cloud.ru/docs/public-ip/ug/topics/faq__deallocate-ip-unavailable): освободить его отдельно нельзя. **Спека:** `PublicFloatingIpResponse.nat_gateway`; у DELETE — 422 `floating_ip_address_is_used_by_nat_gateway`.
+- **Живое:** не проверено, какие `state`, `interface`, `vm` у такого адреса.
+- **Влияние:** клиент, считающий свободным IP без интерфейса, может предложить адрес шлюза для ВМ или для удаления (evo с ветки `tails` читает `nat_gateway`).
+- **Просим:** описать состояние такого IP. Проба — P18.
 
 ## DBaaS: Kafka, Redis, PostgreSQL
 
@@ -287,6 +386,7 @@ API» — ответ неверен независимо от документа
 - **Живое:** cloud-e2e `readonly` #23 … #48 (16.10, последний 21:20 UTC): `kafka_list`, `redis_list`, `kafka_specs`, `redis_specs` — ошибка API, `kafka_versions`/`redis_versions` того же хоста — 200. Запрос: `?product_type=kafka&project_id=…&page_size=1000`. Код HTTP в лог не попал.
 - **Подозрения:** недокументированный максимум `page_size`; обязательный `availability_zone_id` у specifications (DB-2).
 - **Просим:** описать диапазон `page_size` и обязательные параметры. Пробы — P4, P5.
+- **Доп. подозрения (документация, 16.10):** списку кластеров нужна отдельная сервисная роль — право `dbaas.kafka.instance.list` / `dbaas.redis.instance.list` (роли `*.readonlyuser`, `*.dba`, `*.admin`; [Kafka](https://cloud.ru/docs/paas-kafka/ug/topics/security), [Redis](https://cloud.ru/docs/redis/ug/topics/security)) — `pg_list` в тех же прогонах проходил, у PostgreSQL своя роль; `kafka/v1/specifications` может требовать недокументированный `product_type=kafka` (у PostgreSQL он описан). Если причина — роли, нужен только текст ошибки в теле (DB-4).
 
 #### DB-2. `GET /v1/specifications` требует `availability_zone_id`, помеченный необязательным
 Расхождение · гипотеза
@@ -306,6 +406,20 @@ API» — ответ неверен независимо от документа
 - **Спека:** тело ошибки — `rpcStatus` (`code, message, details`).
 - **Живое:** клиенты PostgreSQL и Kafka/Redis разбирают `grpc-message`, потому что тело приходило пустым (например, «backup disabled»); дата не сохранена.
 - **Просим:** причину в теле по спецификации. Проба — P4 (печатает заголовок).
+
+#### DB-5. PostgreSQL: подключение «из той же подсети» или «из той же VPC»
+Документация противоречит себе · гипотеза
+- **Док:** [Подключиться к базе](https://cloud.ru/docs/paas-postgresql/ug/topics/guides__databases__connecting-to-database): ВМ «в одном проекте и в одной подсети»; [FAQ](https://cloud.ru/docs/paas-postgresql/ug/topics/faq__connecting-from-local-machine): «в одном проекте и в одной VPC».
+- **Живое:** не проверено (нужна ВМ в другой подсети той же VPC).
+- **Влияние:** пользователь создаёт лишние ВМ или подсети.
+- **Просим:** одна формулировка.
+
+#### DB-6. PostgreSQL: формат cron резервного копирования
+Расхождение документации и спецификации · гипотеза
+- **Док:** [Политика резервного копирования](https://cloud.ru/docs/paas-postgresql/ug/topics/guides__backups__backup-policy): пример `15 14 * * *`. **Спека:** `paas-postgresql/…/openapi-postgresql.yaml`, `BackupSpec`: пример `15 14 ? * *` (синтаксис Quartz).
+- **Живое:** не проверено (нужно создание кластера).
+- **Влияние:** расписание, скопированное из консоли, может быть отвергнуто API или наоборот.
+- **Просим:** назвать формат в спецификации.
 
 ## Мониторинг
 
@@ -331,6 +445,16 @@ API» — ответ неверен независимо от документа
 - **Живое:** 16.10, 21:48 UTC, `https://cloud.ru/docs/kubernetes-evolution/ug/topics/overview__limitations`: без заголовка User-Agent — 403; `python-requests/…` и `Python-urllib` — 403; `curl/8.x`, `Go-http-client`, `Mozilla/5.0` — 200. Ранее 16.10 из окружения агентов (WebFetch и curl по умолчанию) получали 400 «Not found»; с `-A 'Mozilla/5.0'` — 200. Спецификации `/docs/api/specs/…` в 21:48 UTC отдавались и без браузерного UA.
 - **Влияние:** документацию не читают агенты и скрипты (в том числе скачивание спецификаций для проверки контракта); 400 «Not found» маскирует блокировку под отсутствие страницы.
 - **Просим:** 200 для любых UA или явный 403/429 с причиной; не возвращать «Not found» для существующих страниц.
+
+#### DOC-2. Документация платформы противоречит себе
+Расхождение (документация) · подтверждено по текстам страниц
+- **Переменные окружения ключа:** MCP-гайд Container Apps — `CLOUDRU_KEY_ID`/`CLOUDRU_KEY_SECRET`/`CLOUDRU_PROJECT_ID` ([guides__mcp-server](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__mcp-server)); kubeconfig mk8s — `CLOUDRU_KEY_ID`/`CLOUDRU_SECRET_ID` ([подключение к кластеру](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__connect)); SOPS/KMS — `CLOUDRU_ACCESS_KEY_ID`/`CLOUDRU_ACCESS_KEY_SECRET` ([tutorials_sops](https://cloud.ru/docs/kms/ug/topics/tutorials_sops)); AI Agents — `EVOLUTION_SERVICE_ACCOUNT_KEY_ID`/`_SECRET`, `EVOLUTION_PROJECT_ID` ([переменные MCP-сервера](https://cloud.ru/docs/ai-agents/ug/topics/concepts__variables-mcp-server)).
+- **Роли AI Agents:** `ai-agents.mcp-servers.admin` и `ai-agents.mcp_server.invoker`, `ai-agents.prompt.admin` и `ai-agents.prompts.user` ([доступ](https://cloud.ru/docs/ai-agents/ug/topics/access)).
+- **Квота AI Agents:** «RAM 20 ГБ» ([ограничения](https://cloud.ru/docs/ai-agents/ug/topics/overview__limitations)) и «Объём VRAM 20 ГБ» ([квоты Evolution](https://cloud.ru/docs/evolution/overview/topics/quotas)).
+- **Аудит:** логи проекта видят администратор и пользователь проекта ([роли](https://cloud.ru/docs/audit-logging/ug/topics/roles), [FAQ](https://cloud.ru/docs/audit-logging/ug/topics/faq__general__logs-access)) — и «доступ только администратору организации», «обратитесь в поддержку» ([краткие логи](https://cloud.ru/docs/audit-logging/ug/topics/guides__logs__get-short-logs)); см. AUD-1.
+- **Прочее:** MCP-гайд Container Apps просит роль «Администратор пользователей» (`platform.project.iam-admin`) для создания контейнеров; траблшутинг Terraform на 401 советует «проверить API-ключ», хотя провайдер работает на ключе доступа ([troubleshooting](https://cloud.ru/docs/terraform-evolution/ug/topics/troubleshooting/troubleshooting)); сервисные аккаунты «создаются в рамках проектов» ([service_accounts](https://cloud.ru/docs/console_api/ug/topics/guides__service_accounts)) и бывают уровня «Организация» ([создание SA](https://cloud.ru/docs/console_api/ug/topics/guides__service_accounts_create)).
+- **Влияние:** пользователь копирует блок `env` или роль из одной страницы и получает отказ в другом инструменте.
+- **Просим:** одно имя переменных и ролей на платформе; согласовать страницы.
 
 ## Снятые вопросы
 
@@ -358,9 +482,9 @@ API» — ответ неверен независимо от документа
 
 - **OPS-1. ru.AZ-2, 16.10: ВМ активна, SSH не отвечает.** cloud-e2e #43 (16:42 UTC) и #44 (17:05 UTC): ВМ `ubuntu-22.04` активна за 2 мин 25 с / 2 мин 30 с, 60 попыток SSH за 14 мин — таймаут. Группа безопасности ВМ разрешала tcp/22 с 0.0.0.0/0 и весь исходящий трафик (api-probe #8, 17:25 UTC). Тот же план зелёный в #42 (16:08), #46 (17:23), #47 (17:44), #48 (21:19). Вероятно, сеть первой загрузки.
 - **OPS-2. ru.AZ-2, 16.10 днём: apt-зеркало образа недоступно из ВМ.** Установка Docker не завершилась за 10 мин в 4 из 6 прогонов (по BACKLOG [e2e]: «прогоны 30, 33, 33-повтор, 34»; в журнале #35 — тот же исход, 12:53–13:10 UTC); диагностика: `W: Failed to fetch https://repo.mng.sbercloud…`. Код и образ одни и те же в зелёных и красных прогонах.
-- **OPS-3. ru.AZ-2, 15.10 утром: нет DNS внутри ВМ.** `Temporary failure in name resolution` для `ubuntu-mirror-1-deb.ar.cloud.ru`; SSH поднялся через 5,5 мин, во втором прогоне — не поднялся за 22 мин.
+- **OPS-3. ru.AZ-2, 15.10 утром: нет DNS внутри ВМ.** `Temporary failure in name resolution` для `ubuntu-mirror-1-deb.ar.cloud.ru`; SSH поднялся через 5,5 мин, во втором прогоне — не поднялся за 22 мин. Документация называет причину прямо — пустой `dns_servers` подсети ([troubleshooting](https://cloud.ru/docs/virtual-machines/ug/topics/troubleshooting__failure-name-resolution)); при удалении всех DNS-серверов Evolution DNS из VPC подсети теряют разрешение имён ([концепции DNS](https://cloud.ru/docs/evolution-dns/ug/topics/concepts__private)). Проба — P17; evo с ветки `tails` предупреждает о подсети без DNS до создания ВМ.
 - **OPS-4. ru.AZ-1, 15.10 вечером: ВМ не создаются.** #17 — 10 мин в `creating`; #18 — 19,5 мин в `creating`, затем `error_creating`; #21 — активна за 5 мин 20 с, SSH не поднялся за 15 мин. В ru.AZ-2 в то же время — зелёные #19, #20.
-- **OPS-5. Сроки mk8s (ru.AZ-2, 16.10).** Кластер с одним мастером `OBJECT_STATUS_PENDING → PROVISIONING → RUNNING` — 9 мин (#46) и 7 мин (#48); группа из одного узла — 6 мин; удаление кластера — 4–5 мин (`OBJECT_STATUS_DELETING`, затем исчезает из списка). Полезно для документации ожидаемых сроков.
+- **OPS-5. Сроки mk8s (ru.AZ-2, 16.10).** Кластер с одним мастером `OBJECT_STATUS_PENDING → PROVISIONING → RUNNING` — 9 мин (#46) и 7 мин (#48); группа из одного узла — 6 мин; удаление кластера — 4–5 мин (`OBJECT_STATUS_DELETING`, затем исчезает из списка). Полезно для документации ожидаемых сроков. Документация: создание — 5–10 мин ([создать кластер](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__create)), удаление — 2–3 мин ([удалить](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__delete)).
 - **OPS-6. Разовые сетевые сбои.** api-probe #8: `dns.api.cloud.ru` — `Connection reset by peer` (один запрос из пяти); 15.10: `list-zones` из контейнера — обрыв примерно в одном запуске из трёх; cloud.ru/docs 16.10 — `SSL_ERROR_SYSCALL` и 55 таймаутов соединения при обходе 1600 страниц.
 
 ## Что проверить пробой
@@ -385,6 +509,15 @@ API» — ответ неверен независимо от документа
 | P11 | `GET mk8s/v3/addons?projectId=P&filter=` `isBillable%20%3D%20true`, `isBillable%3Dtrue`, `isBillable%3Dfalse` | `http`, число, имена плагинов | K8S-4 |
 | P12 | `GET monitoring.api.cloud.ru/v1/P/export_metrics?match=up&start&end` — секунды и миллисекунды, окно 1 ч и 8 дней | `http`, длина тела, первый символ тела, `.message[0:160]` | MON-1 |
 | P13 | `GET organization.api.cloud.ru/v3/agreements`; `GET https://billing.api.cloud.ru/` | `http`, ключи (без значений) | BIL-4 |
+| P14 | `GET compute/api/v1/disks?project_id=P&limit=100` | по признакам `evo-…`, `…-boot`, `bootable`, подключён ли (`vms`), `state` — число дисков; число дисков `evo-…` без ВМ (в api-probe: `disks_by_attachment`, `disks_evo_detached`) | CMP-11 |
+| P15 | `POST …/price-calculation` с `disks:[{disk_type_id, size: 20000}]` | `http`, `.[0].message[0:160]` | CMP-12 (в api-probe пока нет) |
+| P16 | `GET compute/api/v1/vms?project_id=P&limit=100` | число повторяющихся `name` (без имён) | CMP-13 (в api-probe пока нет) |
+| P17 | `GET compute/api/v1/subnets?project_id=P&limit=100` | по зонам: есть ли поля `default`, `routed_network`, `dns_servers`, их значения, число DNS-серверов, `type`, `state`, имя начинается с `Default` (в api-probe: `subnet_flags`) | NET-5, OPS-3 |
+| P18 | `GET compute/api/v1/floating-ips?project_id=P&limit=100`; `GET …/nat-gateways?project_id=P` | `{state, nat: (.nat_gateway != null), iface, vm}` с числом; шлюзы по зонам, типы, состояния (в api-probe: `fip_nat_flags`, `nat_by_zone`) | NET-6, K8S-3 |
+| P19 | payload токена `POST /api/v1/auth/token` (декодировать, не печатать) | имена claims, совпадает ли `project_id` с проектом, есть ли `customer_id`, `exp - iat` (в api-probe: `token_claims`) | IAM-4, IAM-3 |
+| P20 | `GET organization.api.cloud.ru/v2/consumption?project_ids=P&start_date=…&end_date=…&page_filter.page_size=10` | `http`, ключи, `.message[0:160]` | BIL-5 (в api-probe пока нет) |
+| P21 | `GET mk8s/v3/productConfiguration?projectId=P` | `.channels[] \| {channel, availableVersions}`; `.flavors[] \| {cpu, ram, oversubscription, purpose}` | порядок версий и назначение флейворов (сверка k8s, 16.10) |
+| P22 | `GET mk8s/v3/clusterAddons?clusterId=<живой кластер k8s-smoke>` | имена плагинов CNI (`cilium`, `calico`, `tigera-operator`), `status` | K8S-6 |
 
 ## Источники
 
@@ -406,6 +539,9 @@ API» — ответ неверен независимо от документа
   `openapi-v3.yaml`, paas-kafka `openapi-kafka.yaml`, redis
   `openapi-redis.yaml`, evolution-vpc `openapi.yaml`, service-monitoring
   `openapi-v3.yaml`.
+- Сверка с документацией 16.10.2026 (четыре обзора: compute и сеть,
+  Kubernetes и контейнеры, платформа, сервисы данных; ссылки на страницы — в
+  самих пунктах).
 - Страницы документации (16.10.2026):
   [Группы безопасности](https://cloud.ru/docs/security-groups/ug/topics/concepts__security-group),
   [Ограничения mk8s](https://cloud.ru/docs/kubernetes-evolution/ug/topics/overview__limitations),
