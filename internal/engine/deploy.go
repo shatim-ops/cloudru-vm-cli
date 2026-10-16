@@ -602,12 +602,12 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	// Poll until active.
 	t := e.timings()
 	pollDeadline := time.After(t.VMPollTimeout)
-	ticker := time.NewTicker(t.VMPollInterval)
+	pollTick, stopPoll := newPollTicker(t.VMPollInterval)
 	// A new VM takes minutes, sometimes more than ten (ru.AZ-1, 15.10.2026):
 	// say the state once a minute, as destroy does, so a slow zone is told
 	// apart from a stuck deploy.
 	pollStart, lastReport, lastStatus := time.Now(), time.Now(), ""
-	defer ticker.Stop()
+	defer stopPoll()
 
 	interrupted := func(sig string) (state.DeploymentRecord, error) {
 		deleted, err := e.handleInterrupt(sig, vm.ID, opts.NonInteractive)
@@ -652,7 +652,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				i18n.Tf("VM %s did not become active within %s", "ВМ %s не стала активной за %s", vm.ID, t.VMPollTimeout),
 				i18n.Tf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
 					"Проверьте ВМ: 'evo vm get %s' или консоль Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).", vm.ID))
-		case <-ticker.C:
+		case <-pollTick:
 			updated, err := e.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
 				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))

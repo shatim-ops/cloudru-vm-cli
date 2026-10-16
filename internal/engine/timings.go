@@ -71,3 +71,28 @@ func (t Timings) withDefaults() Timings {
 func (e *Engine) timings() Timings {
 	return e.Timings.withDefaults()
 }
+
+// newPollTicker is time.NewTicker that also ticks at once: the first check
+// of a VM that is already active (or already gone) should not wait a full
+// interval — that cost deploy 5 s and destroy 3 s every time. Like a
+// ticker, it drops ticks nobody reads. stop releases it.
+func newPollTicker(d time.Duration) (c <-chan time.Time, stop func()) {
+	ch := make(chan time.Time, 1)
+	ch <- time.Now()
+	t := time.NewTicker(d)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case tick := <-t.C:
+				select {
+				case ch <- tick:
+				default:
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	return ch, func() { t.Stop(); close(done) }
+}

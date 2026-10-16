@@ -113,8 +113,8 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		// Poll until gone.
 		t := e.timings()
 		deadline := time.After(t.DestroyPollTimeout)
-		ticker := time.NewTicker(t.DestroyPollInterval)
-		defer ticker.Stop()
+		pollTick, stopPoll := newPollTicker(t.DestroyPollInterval)
+		defer stopPoll()
 		confirmed := false
 	pollLoop:
 		for {
@@ -122,7 +122,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			case <-deadline:
 				e.Printer.Warning(i18n.T("Timeout waiting for VM deletion confirmation", "Не дождались подтверждения удаления ВМ"))
 				break pollLoop
-			case <-ticker.C:
+			case <-pollTick:
 				_, getErr := e.Cloud.GetVM(ctx, active.VMID)
 				if getErr != nil {
 					if cliErr, ok := getErr.(*clerrors.CLIError); ok && cliErr.Code == clerrors.CodeVMNotFound {
