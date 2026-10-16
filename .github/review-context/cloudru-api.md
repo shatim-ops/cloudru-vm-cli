@@ -70,7 +70,7 @@
 
 - `POST /api/v1/disks`: обязательны `name`, `size`, `project_id`,
   `availability_zone_id` (UUID) и ровно одно из `disk_type_id` /
-  `disk_type_name`. Размер до 65536 ГБ; уменьшение и resize бесплатных
+  `disk_type_name`. Размер до 16384 ГБ (16 ТБ: `maximum` в спецификации и ограничения «Дисков»); уменьшение и resize бесплатных
   дисков — 422.
 - Образ из диска: диск загрузочный и **отключён** от ВМ (состояние
   `available`); остановки ВМ мало — `invalid_disk_state_to_create_image`.

@@ -417,7 +417,7 @@ func (s *Registry) registerTools() {
 			Description: "Create a block-storage disk. Pass attach_to=<VM name/uuid> to create it in that VM's zone and (with confirmed) attach it in one step — disks must be in the SAME zone as the VM. NB: attaching adds a NEW block device; it does NOT grow the VM's existing filesystem (you then partition/format/mount it on the VM). Resizing the boot disk in place is NOT available via this API (console-only). Mutation (billable): requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"name":      strProp("Disk name."),
-				"size_gb":   intProp("Disk size in GB (required)."),
+				"size_gb":   intProp("Disk size in GB (required; max 16384)."),
 				"disk_type": strProp("Disk type name (e.g. from list_disk_types) or UUID. Default: an SSD type."),
 				"attach_to": strProp("VM name or UUID to create-in-zone and auto-attach to (e.g. 'vm-712c44')."),
 				"zone":      strProp("Availability zone name or UUID (alternative to attach_to; default: configured region)."),
@@ -444,10 +444,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "disk_resize",
-			Description: "Grow a disk in place via PUT /disks/{id} (up to 65536 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead). Mutation: requires confirmed=true.",
+			Description: "Grow a disk in place via PUT /disks/{id} (up to 16384 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead). Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   strProp("Disk UUID (from disk_list)."),
-				"size_gb":   intProp("New size in GB (must be larger than current; max 65536)."),
+				"size_gb":   intProp("New size in GB (must be larger than current; max 16384)."),
 				"confirmed": confirmedProp(),
 			}, "disk_id", "size_gb"),
 		},
