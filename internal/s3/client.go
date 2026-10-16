@@ -113,16 +113,42 @@ func (c *Client) ListObjects(ctx context.Context, bucket, prefix string, maxKeys
 	return out, nil
 }
 
-// GetObject returns an object's bytes.
-func (c *Client) GetObject(ctx context.Context, bucket, key string) ([]byte, error) {
+// TooLargeError: the object is over the limit GetObject was given.
+type TooLargeError struct {
+	Size  int64 // the object's size; 0 when unknown
+	Limit int64
+}
+
+func (e *TooLargeError) Error() string {
+	if e.Size > 0 {
+		return fmt.Sprintf("object is %d bytes, over the %d-byte limit", e.Size, e.Limit)
+	}
+	return fmt.Sprintf("object is over the %d-byte limit", e.Limit)
+}
+
+// GetObject returns an object's bytes, at most limit of them (limit <= 0:
+// no limit). A larger object is a *TooLargeError, read no further than
+// the limit: an object can be up to 5 TB (docs, Object Storage limits).
+func (c *Client) GetObject(ctx context.Context, bucket, key string, limit int64) ([]byte, error) {
 	obj, err := c.mc.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("get object: %w", err)
 	}
 	defer obj.Close()
-	data, err := io.ReadAll(obj)
+	var r io.Reader = obj
+	if limit > 0 {
+		// The size from the answer's headers, before any body is read.
+		if st, serr := obj.Stat(); serr == nil && st.Size > limit {
+			return nil, &TooLargeError{Size: st.Size, Limit: limit}
+		}
+		r = io.LimitReader(obj, limit+1)
+	}
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("read object %s/%s: %w", bucket, key, err)
+	}
+	if limit > 0 && int64(len(data)) > limit {
+		return nil, &TooLargeError{Limit: limit}
 	}
 	return data, nil
 }

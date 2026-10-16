@@ -1208,7 +1208,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_get",
-			Description: "Download an S3 object. Returns text inline (utf-8) when small & valid, else base64. Read-only.",
+			Description: "Download an S3 object up to 10 MiB (a larger one is refused with USAGE: use an S3 client or the console). Returns text inline (utf-8) when small & valid, else base64. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"bucket": strProp("Bucket name. Required."),
 				"key":    strProp("Object key. Required."),

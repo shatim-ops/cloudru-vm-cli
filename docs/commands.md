@@ -3162,7 +3162,7 @@ evo s3 [flags]
 * [evo s3 bucket-create](#evo-s3-bucket-create)	 - Создать бакет
 * [evo s3 bucket-delete](#evo-s3-bucket-delete)	 - Удалить пустой бакет
 * [evo s3 buckets](#evo-s3-buckets)	 - Бакеты Object Storage
-* [evo s3 get](#evo-s3-get)	 - Скачать объект (небольшой текст — как есть, остальное — в base64)
+* [evo s3 get](#evo-s3-get)	 - Скачать объект до 10 МиБ (небольшой текст — как есть, остальное — в base64; больший объект — через S3-клиент или консоль)
 * [evo s3 ls](#evo-s3-ls)	 - Объекты бакета: ключ, размер, время изменения
 * [evo s3 put](#evo-s3-put)	 - Загрузить объект (существующий ключ перезаписывается)
 * [evo s3 rm](#evo-s3-rm)	 - Удалить объект
@@ -3306,17 +3306,17 @@ evo s3 buckets [flags]
 
 ## evo s3 get
 
-Скачать объект (небольшой текст — как есть, остальное — в base64)
+Скачать объект до 10 МиБ (небольшой текст — как есть, остальное — в base64; больший объект — через S3-клиент или консоль)
 
 ### Synopsis
 
 ```text
-Скачать объект (небольшой текст — как есть, остальное — в base64).
+Скачать объект до 10 МиБ (небольшой текст — как есть, остальное — в base64; больший объект — через S3-клиент или консоль).
 
 Вызывает инструмент s3_get (подробнее: 'evo tools describe s3_get').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Download an S3 object. Returns text inline (utf-8) when small & valid, else base64. Read-only.
+Download an S3 object up to 10 MiB (a larger one is refused with USAGE: use an S3 client or the console). Returns text inline (utf-8) when small & valid, else base64. Read-only.
 ```
 
 ```
