@@ -60,10 +60,20 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 	}
 	if want := e.Config.SecurityGroup; want != "" {
 		for _, g := range sgs {
-			if g.ID == want || g.Name == want {
-				n.SecurityGroupID, n.SecurityGroup = g.ID, g.Name
-				return n, nil
+			if g.ID != want && g.Name != want {
+				continue
 			}
+			// A group of another zone keeps the VM from booting, and deploy
+			// would open the compose ports in it. A group without a zone in
+			// the API answer is taken as is: nothing to check it against.
+			if g.AvailabilityZoneID != "" && g.AvailabilityZoneID != zoneID {
+				return n, clerrors.New(clerrors.CodeConfigInvalid,
+					i18n.Tf("security group %q from security_group is not in zone %s", "группа безопасности %q из security_group не в зоне %s", want, zoneText(n.ZoneName, zoneID)),
+					i18n.T("Name a group of this zone in security_group, or remove the key: evo then takes the zone's Default group.",
+						"Укажите в security_group группу этой зоны или уберите ключ: тогда evo возьмёт группу Default зоны."))
+			}
+			n.SecurityGroupID, n.SecurityGroup = g.ID, g.Name
+			return n, nil
 		}
 		return n, clerrors.New(clerrors.CodeConfigInvalid,
 			i18n.Tf("security group %q from security_group is not in the project", "группы безопасности %q из security_group нет в проекте", want),
@@ -72,7 +82,7 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 	}
 	if g := pickGroup(sgs, zoneID, n.ZoneName); g >= 0 {
 		n.SecurityGroupID, n.SecurityGroup = sgs[g].ID, sgs[g].Name
-		if others := zoneGroups(sgs, zoneID, n.ZoneName); len(others) > 1 && !isDefaultGroup(sgs[g].Name) {
+		if others := zoneGroups(sgs, zoneID, n.ZoneName); len(others) > 1 && !isDefaultGroup(sgs[g].Name, n.ZoneName) {
 			e.Printer.Warning(i18n.Tf("several security groups in zone %s (%s), none is Default: took %s; deploy opens the compose ports in it. Set security_group in .evo.yaml to choose",
 				"в зоне %s несколько групп безопасности (%s), группы Default нет: взята %s, в ней deploy откроет порты compose. Выбрать другую — security_group в .evo.yaml",
 				zoneText(n.ZoneName, zoneID), strings.Join(others, ", "), sgs[g].Name))
@@ -100,9 +110,9 @@ func pickGroup(sgs []*provision.SecurityGroup, zoneID, zoneName string) int {
 		switch {
 		case best < 0:
 			best = i
-		case isDefaultGroup(g.Name) && !isDefaultGroup(sgs[best].Name):
+		case isDefaultGroup(g.Name, zoneName) && !isDefaultGroup(sgs[best].Name, zoneName):
 			best = i
-		case isDefaultGroup(g.Name) == isDefaultGroup(sgs[best].Name) && strings.ToLower(g.Name) < strings.ToLower(sgs[best].Name):
+		case isDefaultGroup(g.Name, zoneName) == isDefaultGroup(sgs[best].Name, zoneName) && strings.ToLower(g.Name) < strings.ToLower(sgs[best].Name):
 			best = i
 		}
 	}
@@ -129,9 +139,19 @@ func inZone(itemZoneID, name, zoneID, zoneName string) bool {
 	return (itemZoneID != "" && itemZoneID == zoneID) || (zoneName != "" && strings.Contains(name, zoneName))
 }
 
-// isDefaultGroup reports a zone's default group: "Default_ru.AZ-2", "default".
-func isDefaultGroup(name string) bool {
-	return strings.HasPrefix(strings.ToLower(name), "default")
+// isDefaultGroup reports a zone's default group: "Default_ru.AZ-2" (the
+// console's name for it) or "default". Not any "default…" prefix:
+// "DefaultWeb" or "default-ssh" are someone's groups. Without the zone name
+// any "default_<zone>" counts.
+func isDefaultGroup(name, zoneName string) bool {
+	n, z := strings.ToLower(name), strings.ToLower(zoneName)
+	if n == "default" {
+		return true
+	}
+	if z == "" {
+		return strings.HasPrefix(n, "default_")
+	}
+	return n == "default_"+z
 }
 
 // pickInZone returns the index of the item in the zone: by zone ID, then by
