@@ -2053,8 +2053,13 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		if vmID != "" && recordedVM(statePath, vmID) {
 			_, gerr := eng.Cloud.GetVM(ctx, vmID)
 			var ce *clierrors.CLIError
-			if stderrors.As(gerr, &ce) && ce.Code == clierrors.CodeVMNotFound {
+			switch {
+			case stderrors.As(gerr, &ce) && ce.Code == clierrors.CodeVMNotFound:
 				target, alreadyGone = &provision.VM{ID: vmID}, true
+			case gerr != nil:
+				// Not "no VM matching": the cloud did not say the VM is gone.
+				return errResult(fmt.Errorf("VM %s is not in this project's VM list, and asking for it by ID failed (%w); "+
+					"nothing was deleted and its local record is kept — call destroy again", vmID, gerr)), true
 			}
 		}
 		if target == nil {
