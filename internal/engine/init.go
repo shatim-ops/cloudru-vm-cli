@@ -24,8 +24,9 @@ type InitOptions struct {
 // Init writes a project config with an availability zone and a boot image
 // taken from the Cloud.ru API, not from a list baked into the binary: zone
 // and image UUIDs differ between tenants and change over time. Without a
-// terminal (or with NonInteractive) it takes the first zone and the newest
-// plain Ubuntu (else Debian) image and prints what it chose.
+// terminal (or with NonInteractive) it takes the preferred zone (else the
+// first) and the newest plain Ubuntu (else Debian) image and prints what it
+// chose.
 func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	if _, err := os.Stat(opts.Path); err == nil {
 		e.Printer.Warning(opts.Path + i18n.T(" already exists. Skipping.", " уже существует, файл не изменён."))
@@ -60,6 +61,7 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 
 	interactive := !opts.NonInteractive && confirm.StdinIsTTY()
 
+	zones = preferredZoneFirst(zones)
 	zoneNames := make([]string, len(zones))
 	for i, z := range zones {
 		zoneNames[i] = z.Name
@@ -101,6 +103,26 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 		e.Printer.Hint(i18n.T("Run 'evo deploy'.", "Дальше: 'evo deploy'."))
 	}
 	return nil
+}
+
+// preferredZone is the default zone of init: offered first and taken
+// without a terminal. 15.10.2026 ru.AZ-1 failed three cloud-e2e runs in a row
+// (a VM 10–20 min in creating, error_creating, no SSH after boot) while
+// ru.AZ-2 passed every one; the API lists ru.AZ-1 first.
+const preferredZone = "ru.AZ-2"
+
+// preferredZoneFirst moves preferredZone to the front, keeping the order of
+// the rest; zones without it are returned as they are.
+func preferredZoneFirst(zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
+	for i, z := range zones {
+		if z.Name == preferredZone {
+			out := make([]*provision.AvailabilityZone, 0, len(zones))
+			out = append(out, z)
+			out = append(out, zones[:i]...)
+			return append(out, zones[i+1:]...)
+		}
+	}
+	return zones
 }
 
 // initTemplateEN and initTemplateRU are the generated project file; the
