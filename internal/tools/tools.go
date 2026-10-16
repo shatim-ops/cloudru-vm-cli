@@ -1648,11 +1648,12 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 
 	// Resolve a subnet + security group for the network interface. Omitting the
 	// interfaces section makes the create API 500 — the request MUST carry an
-	// explicit interface (subnet + SG). Prefer a subnet/SG in the target zone.
-	// The subnet/SG availability_zone_id is empty in the API — match by NAME
-	// containing the zone name (e.g. "ru.AZ-2"), mirroring deploy_apply. Picking
-	// by the (empty) az id defaults to the FIRST SG, which is usually the WRONG
-	// zone (e.g. an AZ-1 SG on an AZ-2 VM) → the VM fails to boot (error_creating).
+	// explicit interface (subnet + SG). The subnet and the group are the
+	// zone's (by the nested availability_zone id, else by a name containing
+	// the zone name), as deploy picks them. A subnet or a group of another
+	// zone keeps the VM from booting (error_creating) while the boot FIP and
+	// the VM are billed, so a zone without them is refused here, before
+	// anything is created — CONFIG_INVALID, as deploy.
 	zoneName := ""
 	if zones, e := eng.Cloud.ListAvailabilityZones(ctx); e == nil {
 		for _, z := range zones {
@@ -1669,32 +1670,45 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	if len(subnets) == 0 {
 		return errResult(fmt.Errorf("no subnets in project — cannot attach a network interface")), true
 	}
-	// The zone's main subnet, then a routed one (provision.PickSubnet, as
-	// deploy); the first of the project only when none is in the zone.
-	subnet := subnets[0]
-	if i := provision.PickSubnet(subnets, region, zoneName); i >= 0 {
+	// subnet_id as given; else the zone's main subnet, then a routed one
+	// (provision.PickSubnet, as deploy).
+	var subnet *provision.Subnet
+	subnetID := stringArg(args, "subnet_id")
+	if subnetID != "" {
+		for _, s := range subnets {
+			if s.ID == subnetID {
+				subnet = s
+			}
+		}
+	} else if i := provision.PickSubnet(subnets, region, zoneName); i >= 0 {
 		subnet = subnets[i]
+		subnetID = subnet.ID
+	} else {
+		return errResult(engine.NoSubnetError(zoneName, region)), true
 	}
-	subnetID := subnet.ID
 	var netWarnings []string
-	if v := stringArg(args, "subnet_id"); v != "" {
-		subnetID = v
-	} else if subnet.NoDNS() {
-		netWarnings = append(netWarnings, "subnet "+subnet.Name+" has no DNS servers: the VM will not resolve names — Docker and images will not download; add a DNS server to the subnet in the Cloud.ru console")
+	gateway := ""
+	if subnet != nil {
+		gateway = subnet.DefaultGateway
+		if subnet.NoDNS() {
+			netWarnings = append(netWarnings, "subnet "+subnet.Name+" has no DNS servers: the VM will not resolve names — Docker and images will not download; add a DNS server to the subnet in the Cloud.ru console")
+		}
 	}
-	// The zone's default group (provision.PickSecurityGroup, as deploy),
-	// else the first group of the project.
+	// The zone's default group (provision.PickSecurityGroup, as deploy).
+	// Groups only in other zones: refused, as the subnet. When the list
+	// fails or is empty, the VM goes without a group, as before.
 	var sgIDs []string
 	if sgs, e := eng.Cloud.ListSecurityGroups(ctx, projectID); e == nil && len(sgs) > 0 {
-		chosen := sgs[0]
-		if i := provision.PickSecurityGroup(sgs, region, zoneName); i >= 0 {
-			chosen = sgs[i]
+		i := provision.PickSecurityGroup(sgs, region, zoneName)
+		if i < 0 {
+			return errResult(engine.NoSecurityGroupError(zoneName, region)), true
 		}
+		chosen := sgs[i]
 		sgIDs = []string{chosen.ID}
 		// What a new VM needs from its group (ingress TCP 22, system
 		// egress): in the answer, the VM is created either way.
 		if rules, re := provision.GroupRules(ctx, eng.Cloud, chosen); re == nil {
-			netWarnings = append(netWarnings, provision.CheckVMGroupRules(rules, subnet.DefaultGateway).Warnings(chosen.Name)...)
+			netWarnings = append(netWarnings, provision.CheckVMGroupRules(rules, gateway).Warnings(chosen.Name)...)
 		}
 	}
 

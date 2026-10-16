@@ -54,10 +54,7 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 			e.Printer.Warning(subnetNoDNSWarning(subnets[sn].Name))
 		}
 	} else {
-		return n, clerrors.New(clerrors.CodeConfigInvalid,
-			i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(n.ZoneName, zoneID)),
-			i18n.T("Create a network and a subnet in this zone in the Cloud.ru console, or pick another zone with 'evo init'.",
-				"Создайте сеть и подсеть в этой зоне в консоли Cloud.ru или выберите другую зону ('evo init')."))
+		return n, NoSubnetError(n.ZoneName, zoneID)
 	}
 
 	sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID)
@@ -96,12 +93,29 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 		}
 		e.warnGroupRules(ctx, sgs[g], gateway)
 	} else {
-		return n, clerrors.New(clerrors.CodeConfigInvalid,
-			i18n.Tf("no security group for zone %s in the project", "в проекте нет группы безопасности для зоны %s", zoneText(n.ZoneName, zoneID)),
-			i18n.T("Create a security group whose name contains the zone name (e.g. 'web_ru.AZ-1') in the Cloud.ru console.",
-				"Создайте в консоли Cloud.ru группу безопасности, в имени которой есть имя зоны (например, 'web_ru.AZ-1')."))
+		return n, NoSecurityGroupError(n.ZoneName, zoneID)
 	}
 	return n, nil
+}
+
+// NoSubnetError: the project has no subnet in the VM's zone. A subnet of
+// another zone keeps the VM from booting (error_creating) while its boot
+// FIP is billed, so deploy and the MCP provision refuse before creating
+// anything.
+func NoSubnetError(zoneName, zoneID string) error {
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(zoneName, zoneID)),
+		i18n.T("Create a network and a subnet in this zone in the Cloud.ru console, or pick another zone with 'evo init'.",
+			"Создайте сеть и подсеть в этой зоне в консоли Cloud.ru или выберите другую зону ('evo init')."))
+}
+
+// NoSecurityGroupError: the project has groups, none in the VM's zone; a
+// group of another zone keeps the VM from booting.
+func NoSecurityGroupError(zoneName, zoneID string) error {
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("no security group for zone %s in the project", "в проекте нет группы безопасности для зоны %s", zoneText(zoneName, zoneID)),
+		i18n.T("Create a security group whose name contains the zone name (e.g. 'web_ru.AZ-1') in the Cloud.ru console.",
+			"Создайте в консоли Cloud.ru группу безопасности, в имени которой есть имя зоны (например, 'web_ru.AZ-1')."))
 }
 
 // warnGroupRules warns, before the preview, when the VM's group lacks what
@@ -158,7 +172,7 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 	var c NetworkCheck
 	gateway := ""
 	if subnets, err := e.Cloud.ListSubnets(ctx, projectID); err == nil && len(subnets) > 0 {
-		sn := subnets[0]
+		var sn *provision.Subnet
 		if i := provision.PickSubnet(subnets, zoneID, zoneName); i >= 0 {
 			sn = subnets[i]
 		}
@@ -177,11 +191,9 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 			}
 		}
 	}
-	if sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID); err == nil && len(sgs) > 0 {
-		g := sgs[0]
-		if i := provision.PickSecurityGroup(sgs, zoneID, zoneName); i >= 0 {
-			g = sgs[i]
-		}
+	// No subnet or group in the zone: provision refuses (NoSubnetError,
+	// NoSecurityGroupError), so there is nothing to warn about here.
+	if g := pickGroup(ctx, e, projectID, zoneID, zoneName); g != nil {
 		if rules, err := provision.GroupRules(ctx, e.Cloud, g); err == nil {
 			gaps := provision.CheckVMGroupRules(rules, gateway)
 			if gaps.NoSSH || gaps.NoSystemEgress {
@@ -193,6 +205,19 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 		return nil
 	}
 	return &c
+}
+
+// pickGroup is the zone's group provision takes; nil when the list
+// fails or no group is in the zone.
+func pickGroup(ctx context.Context, e *Engine, projectID, zoneID, zoneName string) *provision.SecurityGroup {
+	sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID)
+	if err != nil {
+		return nil
+	}
+	if i := provision.PickSecurityGroup(sgs, zoneID, zoneName); i >= 0 {
+		return sgs[i]
+	}
+	return nil
 }
 
 // lines words the check for the preview.
