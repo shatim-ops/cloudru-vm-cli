@@ -105,6 +105,24 @@ done
 run vmget evo vm get 00000000-0000-4000-8000-000000000000 --json
 if [ "$rc" = 4 ]; then ok "vm get <нет такой> → 4" "reason $reason"; else warn "vm get <нет такой> → 4" "код $rc, reason $reason"; fi
 
+# Плагины mk8s: каталог общий (api-probe #5: 42 плагина), печатаются только
+# счётчики. Версии cert-manager и «не найдено» — необязательные: состав
+# каталога меняет Cloud.ru.
+run addons evo k8s addons --json
+if [ "$rc" = 0 ] && jq -e '.total > 0 and (.addons | length) == .total' "$tmp/out" >/dev/null; then
+	ok "k8s addons --json" "плагинов: $(j -r '.total' "$tmp/out"), категорий: $(j -r '.categories | length' "$tmp/out")"
+else
+	bad "k8s addons --json" "код $rc, reason $reason"
+fi
+run addonver evo k8s addon-versions cert-manager --json
+if [ "$rc" = 0 ] && jq -e '(.releases | length) > 0' "$tmp/out" >/dev/null; then
+	ok "k8s addon-versions cert-manager --json" "версий: $(j -r '.releases | length' "$tmp/out"), со схемой: $(j -r '[.releases[] | select(.has_schema)] | length' "$tmp/out"), latest: $(j -r 'if .latest then "есть" else "нет" end' "$tmp/out")"
+else
+	warn "k8s addon-versions cert-manager --json" "код $rc, reason $reason"
+fi
+run addonnf evo k8s addon-versions no-such-addon-evo --json
+if [ "$rc" = 4 ]; then ok "k8s addon-versions <нет такого> → 4" "reason $reason"; else warn "k8s addon-versions <нет такого> → 4" "код $rc, reason $reason"; fi
+
 echo "== Инструменты только для чтения"
 # Без аргументов вызываются все, кроме читающих локальный state/каталог
 # (status, list, logs) и пишущих план на диск (deploy_plan, k8s_plan).

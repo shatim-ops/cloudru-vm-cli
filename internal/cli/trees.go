@@ -102,6 +102,8 @@ var treeGroups = []treeGroup{
 		{Verb: "kubeconfig", Tool: "k8s_kubeconfig", Args: []string{"cluster_id"}},
 		{Verb: "nodepools", Tool: "k8s_nodepools", Args: []string{"cluster_id"}},
 		{Verb: "add-nodepool", Tool: "k8s_add_nodepool", Args: []string{"cluster_id"}},
+		{Verb: "addons", Tool: "k8s_addons", Args: []string{"query?"}, Render: renderAddonList},
+		{Verb: "addon-versions", Tool: "k8s_addon_versions", Args: []string{"name"}, Render: renderAddonVersions},
 		{Verb: "kubectl", Tool: "k8s_kubectl", Args: []string{"cluster_id", "args..."}},
 		{Verb: "apply", Tool: "k8s_apply", Args: []string{"cluster_id"}},
 		{Verb: "helm", Tool: "k8s_helm", Args: []string{"cluster_id", "action"}},

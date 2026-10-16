@@ -44,6 +44,8 @@
 - `deploy` на образе Astra Linux, Альт или РЕД ОС — `2` (`CONFIG_INVALID`,
   до создания ВМ; `evo init --image` с таким образом — `1`, `USAGE`).
   `image` и `image_id` в одном слое настроек — `2` (`CONFIG_INVALID`).
+- Плагины Kubernetes (`evo k8s addon-versions`): неизвестный плагин — `4`
+  (`NOT_FOUND`, подсказка `evo k8s addons <подстрока>`).
 - Нет развёртывания в каталоге: `status` и `destroy` — `0` (сообщают, что
   нечего показывать или удалять), `logs` и `verify` — `4`: им нечего
   проверять, и «нечего» не значит «здорово».

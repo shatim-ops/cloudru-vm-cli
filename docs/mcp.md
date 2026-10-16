@@ -106,7 +106,7 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 
 ## Только нужные группы инструментов
 
-По умолчанию сервер предлагает агенту все 148 инструментов. Это около 90 КБ
+По умолчанию сервер предлагает агенту все 150 инструментов. Это около 95 КБ
 `tools/list`, и агент читает их в каждой сессии. Если нужен только deploy и
 работа с ВМ и сетью, оставьте эти группы:
 
@@ -189,6 +189,29 @@ not available to the project») до резервирования floating IP и
 строит (`USAGE`), без `compose_file` — строит обычную ВМ. `deploy_plan` тоже
 принимает `image_metadata` и без обязательных полей не строит план; значения хранятся
 в локальном файле плана (`.evo/plans`, права `0600`) до `deploy_apply`.
+
+## Плагины Kubernetes
+
+Плагины (addons) Managed Kubernetes — в группе `k8s` (`--toolsets k8s`):
+
+- `k8s_addons` (`query`, `category`, `billable`) — поиск по каталогу Cloud.ru:
+  подстрока имени, отображаемого имени или описания без учёта регистра,
+  категория (слова консоли по-русски: «Сети», «Безопасность», «Мониторинг»…;
+  все категории — в поле `categories` ответа), платный или нет. Строки
+  `{name, display_name, categories, billable}`, плюс `shown` и `total`.
+  Только чтение.
+- `k8s_addon_versions` (`name`, `full`) — версии плагина, новые первыми:
+  `version` (версия приложения), `addon_version`, `mode`
+  (`ACTIVE`, `EXPERIMENTAL`, `END_OF_SUPPORT`, `END_OF_LIFE`, `INACTIVE`),
+  `kube_versions` (диапазон версий Kubernetes кластера), `ready_workers`,
+  `namespace`, `has_schema`, `schema_bytes`, `latest` (рекомендуемая —
+  новейшая `ACTIVE`). Схема настроек (`configuration_schema`, до ~94 КБ) —
+  только с `full=true`. Только чтение.
+
+Инструмента установки плагина в v1.0 нет: плагины ставят в консоли
+Cloud.ru.
+
+Неизвестный плагин — `NOT_FOUND` с подсказкой и похожими именами в `hint`.
 
 ## stdio
 

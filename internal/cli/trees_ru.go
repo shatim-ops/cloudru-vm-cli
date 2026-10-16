@@ -64,6 +64,9 @@ var toolShortRU = map[string]string{
 	"k8s_kubectl":      "Команда kubectl в кластере (изменяющие — с подтверждением)",
 	"k8s_apply":        "Применить манифест Kubernetes (как kubectl apply -f -)",
 	"k8s_helm":         "Helm в кластере: install, upgrade, uninstall, list, status",
+	// Addons of a cluster.
+	"k8s_addons":         "Каталог плагинов Kubernetes: поиск по имени и описанию, категория, платность",
+	"k8s_addon_versions": "Версии плагина: режим поддержки, требования к кластеру, схема настроек",
 
 	"pg_list":          "Кластеры Managed PostgreSQL проекта",
 	"pg_get":           "Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние",

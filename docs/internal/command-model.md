@@ -235,7 +235,7 @@ running, ssh_timeout, docker_failed, destroying, destroyed`. В коде пиш�
 | `vpc list`, `get`, `operation`, `routes`, `subnets`, `security-groups`, `fips` | `vpc_list`, `vpc_get`, `vpc_operation`, `vpc_routes`, `list_subnets`, `list_security_groups`, `list_floating_ips` | нет | нет |
 | `vpc create`, `delete`, `route-create`, `route-delete` | `vpc_create`, `vpc_delete`, `vpc_route_create`, `vpc_route_delete` | да | нет |
 | `vpc fip-attach`, `fip-release` | `fip_attach`, `release_floating_ip` | да | нет |
-| `k8s list`, `get`, `options`, `plan`, `kubeconfig`, `nodepools` | `k8s_list`, `k8s_get`, `k8s_options`, `k8s_plan`, `k8s_kubeconfig`, `k8s_nodepools` | нет | нет |
+| `k8s list`, `get`, `options`, `plan`, `kubeconfig`, `nodepools`, `addons`, `addon-versions` | `k8s_list`, `k8s_get`, `k8s_options`, `k8s_plan`, `k8s_kubeconfig`, `k8s_nodepools`, `k8s_addons`, `k8s_addon_versions` | нет | нет |
 | `k8s create`, `delete`, `add-nodepool`, `kubectl`, `apply`, `helm` | `k8s_create`, `k8s_delete`, `k8s_add_nodepool`, `k8s_kubectl`, `k8s_apply`, `k8s_helm` | да | нет |
 | `pg list`, `get`, `versions`, `specs`, `operation`, `databases`, `users`, `backups` | `pg_list`, `pg_get`, `pg_versions`, `pg_specs`, `pg_operation`, `pg_databases`, `pg_users`, `pg_backups` | нет | нет |
 | `pg create`, `delete`, `db-create`, `db-delete`, `user-create`, `user-delete`, `backup-create` | `pg_create`, `pg_delete`, `pg_db_create`, `pg_db_delete`, `pg_user_create`, `pg_user_delete`, `pg_backup_create` | да | нет |

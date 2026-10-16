@@ -335,6 +335,23 @@ func (s *Registry) registerTools() {
 			}, "cluster_id"),
 		},
 		{
+			Name:        "k8s_addons",
+			Description: "Search the Managed Kubernetes addon catalogue (Cloud.ru-packaged plugins: ingress, cert-manager, monitoring, CSI drivers, …). Read-only. Compact rows {name, display_name, categories, billable}; categories are Russian words of the console (e.g. 'Сети', 'Безопасность', 'Мониторинг'), the answer lists them all. Next: k8s_addon_versions for versions and requirements. evo does not install addons yet: install them in the Cloud.ru console.",
+			InputSchema: objSchema(map[string]any{
+				"query":    strProp("Substring of the name, display name or description, case-insensitive (e.g. 'cert', 'ingress'). Default: the whole catalogue."),
+				"category": strProp("Only addons of this category, exact and case-insensitive (see 'categories' in the answer)."),
+				"billable": boolProp("true: only billable addons; false: only free ones. Default: both."),
+			}),
+		},
+		{
+			Name:        "k8s_addon_versions",
+			Description: "List the releases of one Managed Kubernetes addon, newest first: version (appVersion), addon_version, mode (ACTIVE, EXPERIMENTAL, END_OF_SUPPORT, END_OF_LIFE, INACTIVE), kube_versions (semver range the cluster must satisfy), ready_workers (ready worker nodes needed), namespace, has_schema and schema_bytes of the configuration JSON Schema, latest (the recommended release: newest ACTIVE). Read-only; evo does not install addons yet (the Cloud.ru console does). The schema itself (up to ~94 KB) only with full=true.",
+			InputSchema: objSchema(map[string]any{
+				"name": strProp("Addon name from k8s_addons, e.g. 'cert-manager'."),
+				"full": boolProp("Include configuration_schema of every release (large; default false)."),
+			}, "name"),
+		},
+		{
 			Name:        "k8s_kubectl",
 			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
 			InputSchema: objSchema(map[string]any{
@@ -1278,6 +1295,8 @@ func (s *Registry) registerTools() {
 		"k8s_delete":           s.handleK8sDelete,
 		"k8s_add_nodepool":     s.handleK8sAddNodePool,
 		"k8s_nodepools":        s.handleK8sNodePools,
+		"k8s_addons":           s.handleK8sAddons,
+		"k8s_addon_versions":   s.handleK8sAddonVersions,
 		"k8s_kubectl":          s.handleK8sKubectl,
 		"k8s_apply":            s.handleK8sApply,
 		"k8s_helm":             s.handleK8sHelm,

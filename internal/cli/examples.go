@@ -61,6 +61,11 @@ var commandExamples = map[string]string{
 	"evo k8s list": `  evo k8s list`,
 	"evo k8s kubeconfig": `  evo k8s kubeconfig <cluster-id> > kubeconfig.yaml
   evo k8s kubeconfig <cluster-id> --embed-token=false > kubeconfig.yaml`,
+	"evo k8s addons": `  evo k8s addons cert
+  evo k8s addons --category Сети
+  evo k8s addons --json | jq -r '.addons[].name'`,
+	"evo k8s addon-versions": `  evo k8s addon-versions cert-manager
+  evo k8s addon-versions cert-manager --full --json | jq '.releases[0].configuration_schema'`,
 	"evo pg list": `  evo pg list`,
 	"evo pg create": `  evo pg create app-db --dry-run
   evo pg create app-db --cpu 2 --ram 4`,

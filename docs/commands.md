@@ -38,6 +38,8 @@
   - [evo init](#evo-init)
   - [evo k8s](#evo-k8s)
     - [evo k8s add-nodepool](#evo-k8s-add-nodepool)
+    - [evo k8s addon-versions](#evo-k8s-addon-versions)
+    - [evo k8s addons](#evo-k8s-addons)
     - [evo k8s apply](#evo-k8s-apply)
     - [evo k8s create](#evo-k8s-create)
     - [evo k8s delete](#evo-k8s-delete)
@@ -1277,6 +1279,8 @@ evo k8s [flags]
 
 * [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo k8s add-nodepool](#evo-k8s-add-nodepool)	 - Добавить группу рабочих узлов (платно, асинхронно)
+* [evo k8s addon-versions](#evo-k8s-addon-versions)	 - Версии плагина: режим поддержки, требования к кластеру, схема настроек
+* [evo k8s addons](#evo-k8s-addons)	 - Каталог плагинов Kubernetes: поиск по имени и описанию, категория, платность
 * [evo k8s apply](#evo-k8s-apply)	 - Применить манифест Kubernetes (как kubectl apply -f -)
 * [evo k8s create](#evo-k8s-create)	 - Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут)
 * [evo k8s delete](#evo-k8s-delete)	 - Удалить кластер Managed Kubernetes (асинхронно)
@@ -1323,6 +1327,108 @@ evo k8s add-nodepool <cluster-id> [flags]
       --ram-gb int                 Node RAM GB for auto flavor (default 4).
       --security-group-id string   Security group UUID for nodes (default auto zone-matched SSH-access).
       --zone string                Zone name (default from productConfiguration).
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+
+## evo k8s addon-versions
+
+Версии плагина: режим поддержки, требования к кластеру, схема настроек
+
+### Synopsis
+
+```text
+Версии плагина: режим поддержки, требования к кластеру, схема настроек.
+
+Вызывает инструмент k8s_addon_versions (подробнее: 'evo tools describe k8s_addon_versions').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+List the releases of one Managed Kubernetes addon, newest first: version (appVersion), addon_version, mode (ACTIVE, EXPERIMENTAL, END_OF_SUPPORT, END_OF_LIFE, INACTIVE), kube_versions (semver range the cluster must satisfy), ready_workers (ready worker nodes needed), namespace, has_schema and schema_bytes of the configuration JSON Schema, latest (the recommended release: newest ACTIVE). Read-only; evo does not install addons yet (the Cloud.ru console does). The schema itself (up to ~94 KB) only with full=true.
+```
+
+```
+evo k8s addon-versions <name> [flags]
+```
+
+### Examples
+
+```
+  evo k8s addon-versions cert-manager
+  evo k8s addon-versions cert-manager --full --json | jq '.releases[0].configuration_schema'
+```
+
+### Options
+
+```
+      --full   Include configuration_schema of every release (large; default false).
+  -h, --help   Справка по addon-versions
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+
+## evo k8s addons
+
+Каталог плагинов Kubernetes: поиск по имени и описанию, категория, платность
+
+### Synopsis
+
+```text
+Каталог плагинов Kubernetes: поиск по имени и описанию, категория, платность.
+
+Вызывает инструмент k8s_addons (подробнее: 'evo tools describe k8s_addons').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Search the Managed Kubernetes addon catalogue (Cloud.ru-packaged plugins: ingress, cert-manager, monitoring, CSI drivers, …). Read-only. Compact rows {name, display_name, categories, billable}; categories are Russian words of the console (e.g. 'Сети', 'Безопасность', 'Мониторинг'), the answer lists them all. Next: k8s_addon_versions for versions and requirements. evo does not install addons yet: install them in the Cloud.ru console.
+```
+
+```
+evo k8s addons [query] [flags]
+```
+
+### Examples
+
+```
+  evo k8s addons cert
+  evo k8s addons --category Сети
+  evo k8s addons --json | jq -r '.addons[].name'
+```
+
+### Options
+
+```
+      --billable          true: only billable addons; false: only free ones. Default: both.
+      --category string   Only addons of this category, exact and case-insensitive (see 'categories' in the answer).
+  -h, --help              Справка по addons
 ```
 
 ### Options inherited from parent commands

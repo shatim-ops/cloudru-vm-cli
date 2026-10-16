@@ -190,5 +190,9 @@ jobs:
           for a in $addons; do
             probe "addon_$a" "$M/v3/addons/$a?projectId=$PROJECT" "{top: (if type == \"object\" then keys else type end), n: ($rel | length), rel_keys: ($rel | .[0] // null | if . == null then null else keys end), modes: ([${rel}[]?.mode] | unique), versions: [${rel}[]? | .appVersion // .addonVersion], schema_len: (($rel | .[0].configurationSchema // \"\") | length), required: (($rel | .[0].configurationSchema // \"{}\") | fromjson? | .required // null), kube: ($rel | .[0].requirements // null)}"
           done
+          # k8s-smoke 16.10: addonNamespace у cert-manager выглядел как версия
+          # («1.21.1-sbc.0»). Сырые поля трёх релизов (каталог общий).
+          probe addon_raw_certmanager "$M/v3/addons/cert-manager?projectId=$PROJECT" "[$rel | .[0:3][] | {appVersion, addonVersion, addonNamespace, mode}]"
+          probe addon_raw_traefik     "$M/v3/addons/traefik?projectId=$PROJECT" "[$rel | .[0:2][] | {appVersion, addonVersion, addonNamespace, mode}]"
           probe cluster_addons        "$M/v3/clusterAddons?projectId=$PROJECT" "{top: (if type == \"object\" then keys else type end), n: ((.clusterAddons // .items // []) | length)}"
           probe clusters_count        "$M/v3/clusters?projectId=$PROJECT" '{n: ((.clusters // .items // []) | length)}'

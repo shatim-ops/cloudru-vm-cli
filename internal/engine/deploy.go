@@ -1112,6 +1112,12 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		"Проверьте, что ВМ разрешает имена (DNS подсети) и достаёт до своего apt-зеркала и get.docker.com, "+
 			"затем повторите 'evo deploy'. \"Temporary failure in name resolution\" в выводе установки означает, что внутри ВМ нет DNS: "+
 			"это проблема сети зоны или подсети, а не compose-проекта; если повторится, удалите ВМ (destroy) и разверните в другой зоне.")
+	// What the output says outright comes first: an apt mirror that does
+	// not answer is the cloud's, not the project's (cloud-e2e 16.10.2026:
+	// "W: Failed to fetch https://repo.mng.sbercloud…" in ru.AZ-2).
+	if d := installDiagnosis(failOut + "\n" + lastOut); d != "" {
+		hint = d + "\n" + hint
+	}
 	// The install's own output, and always how the last attempt ended: with
 	// an empty output (a dropped session, sudo refused, a timeout) the
 	// reason is all there is to tell "no DNS" from the rest (QA r4 Q14).
@@ -1136,6 +1142,20 @@ func errLine(err error) string {
 		return i18n.T("no error reported", "ошибка не сообщается")
 	}
 	return clipLine(err.Error())
+}
+
+// installDiagnosis names the cause the Docker install output shows
+// outright, or "".
+func installDiagnosis(out string) string {
+	switch {
+	case strings.Contains(out, "Temporary failure in name resolution") || strings.Contains(out, "Could not resolve"):
+		return i18n.T("Diagnosis: the VM does not resolve names (no DNS inside the VM) — a network problem of the zone or subnet.",
+			"Диагноз: ВМ не разрешает имена (внутри ВМ нет DNS) — проблема сети зоны или подсети.")
+	case strings.Contains(out, "Failed to fetch"):
+		return i18n.T("Diagnosis: apt cannot download packages from the image's mirror (\"Failed to fetch\") — the mirror or the way to it is down, not the compose project; re-run 'evo deploy' later or deploy in another zone.",
+			"Диагноз: apt не скачивает пакеты с зеркала образа («Failed to fetch») — недоступно зеркало или путь к нему, а не compose-проект; повторите 'evo deploy' позже или разверните в другой зоне.")
+	}
+	return ""
 }
 
 // clipLine is s on one line, at most 200 characters.
