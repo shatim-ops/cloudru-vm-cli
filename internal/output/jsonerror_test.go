@@ -20,3 +20,17 @@ func TestJSONError_GoesToErrWriter(t *testing.T) {
 		t.Errorf("got %q, want %q", stderr.String(), want)
 	}
 }
+
+// An error without a hint has no "hint" key, not "hint":"" (QA r4 Q10).
+func TestJSONError_NoHintOmitted(t *testing.T) {
+	var stderr bytes.Buffer
+	p := NewWithWriters(&bytes.Buffer{}, &stderr, ModeJSON, false)
+
+	if err := p.JSONError(4, "NOT_FOUND", "dns_zones: not found", ""); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"error":{"code":4,"reason":"NOT_FOUND","message":"dns_zones: not found"}}` + "\n"
+	if stderr.String() != want {
+		t.Errorf("got %q, want %q", stderr.String(), want)
+	}
+}
