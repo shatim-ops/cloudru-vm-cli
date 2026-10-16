@@ -293,7 +293,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_create",
-			Description: "STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in ~10-20 min (poll k8s_get). Accepts the same args as k8s_plan.",
+			Description: "STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in about 10 min (5-10 per the docs; poll k8s_get). Accepts the same args as k8s_plan.",
 			InputSchema: objSchema(map[string]any{
 				"product": strProp("What the cluster is for."), "name": strProp("Cluster name."),
 				"version": strProp("Kubernetes version."), "flavor": strProp("Control-plane flavor name."),
@@ -367,7 +367,7 @@ func (s *Registry) registerTools() {
 				"cluster_id":   strProp("Cluster UUID (from k8s_list)."),
 				"name":         strProp("Addon name from k8s_addons."),
 				"version":      strProp("Release version: the app version from k8s_addon_versions. The API installs by app version and picks the addon_version itself, so an addon_version is accepted only when it is the newest of its app version. Default: newest ACTIVE."),
-				"config":       map[string]any{"type": "object", "description": "Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}} and {{clusterName}} in it. Default: the addon's defaults."},
+				"config":       map[string]any{"type": "object", "description": "Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}}, {{clusterName}}, {{productInstanceID}}, {{nodeCIDR}} and {{serviceCIDR}} in it. Default: the API reuses the addon's last configuration in the cluster (the addon's defaults on a first install)."},
 				"resolve_mode": strProp("What to do with objects of the addon already in the cluster (installed by hand): NONE keeps them, the install may then fail; OVERWRITE resets them to the recommended values. Default NONE."),
 				"confirmed":    confirmedProp(),
 			}, "cluster_id", "name"),
@@ -474,10 +474,10 @@ func (s *Registry) registerTools() {
 			Description: "Deploy (create+run) a Container App from a container image — serverless, scales to zero when idle. REQUIRES confirmed=true after the user approves. Async: returns operation_id; use ca_get for status + public URL. Ideal for stateless web services/APIs without managing a VM.",
 			InputSchema: objSchema(map[string]any{
 				"name":          strProp("Container app name (RFC1123, unique)."),
-				"image":         strProp("Container image URI, e.g. docker.io/library/nginx:latest or helloworld.cr.cloud.ru/... ."),
+				"image":         strProp("Container image URI from Artifact Registry of this project (or a public registry of another project), linux/amd64, e.g. <registry>.cr.cloud.ru/<repository>:<tag>. The app must listen on 0.0.0.0:$PORT."),
 				"cpu":           strProp("CPU request, e.g. '0.1', '1' (default 0.1)."),
 				"memory":        strProp("Memory request, e.g. '256Mi', '1Gi' (default 256Mi)."),
-				"port":          intProp("Container port the app listens on (default 8080)."),
+				"port":          intProp("Container port the app listens on (default 8080). Ports 8008, 8012, 8013, 8022, 8112, 9090-9092 are reserved. A port of 1024 or below makes evo run the container in privileged mode (as root): by default it runs as UID 1000, which cannot bind such a port."),
 				"public":        boolPropTrue("Expose a public URL (default true)."),
 				"min_instances": intProp("Minimum instances (default 0 = scale to zero)."),
 				"max_instances": intProp("Maximum instances (default 1)."),
@@ -537,7 +537,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "snat_create",
-			Description: "Create a SNAT gateway so a private subnet's nodes reach the internet (outbound egress). Zone-level: defaults to the configured region; override with 'zone' (name) or 'availability_zone_id'. Without confirmed=true this returns a preview only. Mutation (billable): requires confirmed=true after the user approves. NOTE: this is NOT part of k8s_create — mk8s clusters come up without egress; create a SNAT gateway in the cluster's node zone if workloads need to pull public images.",
+			Description: "Create a public SNAT gateway: outbound internet for every ROUTED subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out directly). One gateway per zone; it gets a public IP that counts against the public-IP quota and is released only with the gateway. Zone-level: defaults to the configured region; override with 'zone' (name) or 'availability_zone_id'. Without confirmed=true this returns a preview only. Mutation (billable): requires confirmed=true after the user approves. NOTE: this is NOT part of k8s_create — mk8s clusters come up without egress; create a SNAT gateway in the cluster's node zone if workloads need to pull public images.",
 			InputSchema: objSchema(map[string]any{
 				"name":                 strProp("Name for the SNAT gateway (required)."),
 				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-2'). Optional; resolved to a UUID. Defaults to the configured region."),
@@ -600,7 +600,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_delete",
-			Description: "Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data. Mutation (async): requires confirmed=true after the user approves.",
+			Description: "Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":         strProp("Cluster UUID (from pg_list). Required (alias: cluster_id)."),
 				"cluster_id": strProp("Alias for id."),
@@ -1239,8 +1239,8 @@ func (s *Registry) registerTools() {
 			Name:        "s3_bucket_create",
 			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"bucket":    strProp("New bucket name (globally-unique, lowercase). Required."),
-				"region":    strProp("Region (optional; defaults to the configured S3 region, e.g. ru-central-1)."),
+				"bucket":    strProp("New bucket name: 3-63 lowercase letters, digits, dots and hyphens, unique within the tenant. Required."),
+				"region":    strProp("Region: only ru-central-1 is accepted (the API answers 'unexpected region' otherwise). Optional; default: the configured S3 region."),
 				"confirmed": confirmedProp(),
 			}, "bucket"),
 		},

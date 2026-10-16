@@ -1282,7 +1282,7 @@ evo k8s [flags]
 * [evo k8s addon-versions](#evo-k8s-addon-versions)	 - Версии плагина: режим поддержки, требования к кластеру, схема настроек
 * [evo k8s addons](#evo-k8s-addons)	 - Каталог плагинов Kubernetes: поиск по имени и описанию, категория, платность
 * [evo k8s apply](#evo-k8s-apply)	 - Применить манифест Kubernetes (как kubectl apply -f -)
-* [evo k8s create](#evo-k8s-create)	 - Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут)
+* [evo k8s create](#evo-k8s-create)	 - Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут)
 * [evo k8s delete](#evo-k8s-delete)	 - Удалить кластер Managed Kubernetes (асинхронно)
 * [evo k8s get](#evo-k8s-get)	 - Кластер Managed Kubernetes по ID
 * [evo k8s helm](#evo-k8s-helm)	 - Helm в кластере: install, upgrade, uninstall, list, status
@@ -1318,13 +1318,13 @@ evo k8s add-addon <cluster-id> <name> [flags]
 
 ```
   evo k8s add-addon <cluster-id> cert-manager --dry-run
-  evo k8s add-addon <cluster-id> cert-manager --version v1.14.0 --config settings.json
+  evo k8s add-addon <cluster-id> cert-manager --config settings.json
 ```
 
 ### Options
 
 ```
-      --config string         A file with the value ('-' reads stdin until EOF: Ctrl-D on a terminal). Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}} and {{clusterName}} in it. Default: the addon's defaults.
+      --config string         A file with the value ('-' reads stdin until EOF: Ctrl-D on a terminal). Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}}, {{clusterName}}, {{productInstanceID}}, {{nodeCIDR}} and {{serviceCIDR}} in it. Default: the API reuses the addon's last configuration in the cluster (the addon's defaults on a first install).
   -h, --help                  Справка по add-addon
       --resolve-mode string   What to do with objects of the addon already in the cluster (installed by hand): NONE keeps them, the install may then fail; OVERWRITE resets them to the recommended values. Default NONE.
       --version string        Release version: the app version from k8s_addon_versions. The API installs by app version and picks the addon_version itself, so an addon_version is accepted only when it is the newest of its app version. Default: newest ACTIVE.
@@ -1550,17 +1550,17 @@ evo k8s apply <cluster-id> [flags]
 
 ## evo k8s create
 
-Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут)
+Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут)
 
 ### Synopsis
 
 ```text
-Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут).
+Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут).
 
 Вызывает инструмент k8s_create (подробнее: 'evo tools describe k8s_create').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in ~10-20 min (poll k8s_get). Accepts the same args as k8s_plan.
+STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in about 10 min (5-10 per the docs; poll k8s_get). Accepts the same args as k8s_plan.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -2321,7 +2321,7 @@ evo pg [flags]
 * [evo pg databases](#evo-pg-databases)	 - Базы данных кластера
 * [evo pg db-create](#evo-pg-db-create)	 - Создать базу данных
 * [evo pg db-delete](#evo-pg-db-delete)	 - Удалить базу данных
-* [evo pg delete](#evo-pg-delete)	 - Удалить кластер PostgreSQL вместе с данными (асинхронно)
+* [evo pg delete](#evo-pg-delete)	 - Удалить кластер PostgreSQL вместе с данными и всеми резервными копиями (асинхронно)
 * [evo pg get](#evo-pg-get)	 - Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние
 * [evo pg list](#evo-pg-list)	 - Кластеры Managed PostgreSQL проекта
 * [evo pg operation](#evo-pg-operation)	 - Состояние асинхронной операции PostgreSQL
@@ -2615,17 +2615,17 @@ evo pg db-delete <cluster-id> <name> [flags]
 
 ## evo pg delete
 
-Удалить кластер PostgreSQL вместе с данными (асинхронно)
+Удалить кластер PostgreSQL вместе с данными и всеми резервными копиями (асинхронно)
 
 ### Synopsis
 
 ```text
-Удалить кластер PostgreSQL вместе с данными (асинхронно).
+Удалить кластер PostgreSQL вместе с данными и всеми резервными копиями (асинхронно).
 
 Вызывает инструмент pg_delete (подробнее: 'evo tools describe pg_delete').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data. Mutation (async): requires confirmed=true after the user approves.
+Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). Mutation (async): requires confirmed=true after the user approves.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3192,7 +3192,7 @@ evo s3 bucket-create <bucket> [flags]
 
 ```
   -h, --help               Справка по bucket-create
-      --s3-region string   Region (optional; defaults to the configured S3 region, e.g. ru-central-1).
+      --s3-region string   Region: only ru-central-1 is accepted (the API answers 'unexpected region' otherwise). Optional; default: the configured S3 region.
 ```
 
 ### Options inherited from parent commands

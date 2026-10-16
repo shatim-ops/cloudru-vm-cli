@@ -45,8 +45,16 @@ Secret, тот же обмен), но для скриптов, CI и MCP-сер�
 
 - Cloud.ru публикует роли уровня платформы — `platform.project.admin`,
   `platform.project.user`, `platform.project.viewer` (в части документации —
-  `iam.project.admin`) и `iam.serviceaccount.*`. Сервисные роли вроде
-  `compute.*` и `vpc.*` в документации не опубликованы.
+  `iam.project.admin`) и `iam.serviceaccount.*`. Сервисные роли `compute.*` и
+  `vpc.*` в документации не опубликованы; опубликованы роли части сервисов,
+  в том числе:
+  - Managed Kubernetes — `k8s.admin` (создание и удаление кластеров и групп
+    узлов, установка плагинов; в кластере — `cluster-admin`) и `k8s.user`
+    (kubeconfig и чтение; в кластере — `view`, `kubectl apply` получит `403`).
+    Для дерева `evo k8s` нужна `k8s.admin`
+    ([документация](https://cloud.ru/docs/kubernetes-evolution/ug/topics/access));
+  - Object Storage — `s3e.viewer`, `s3e.editor`, `s3e.admin`, `s3e.auditor`
+    ([документация](https://cloud.ru/docs/s3e/ug/topics/security__role)).
 - **Проверено 14.10.2026** (облачная приёмка этапов 2, 5 и 8): полный сценарий
   `configure → whoami → init → deploy → verify → logs → destroy` и чтение
   зон/образов/ВМ работают на сервисном аккаунте **с правами на уровне
@@ -124,9 +132,19 @@ evo configure delete staging           # удалить профиль и его
 
 ### Ключи Object Storage (S3)
 
-Команды `s3` и инструменты `s3_*` ходят в Object Storage по протоколу S3 и
-используют **отдельные** ключи Object Storage (см. документацию Object Storage
-Cloud.ru), а не ключ IAM. `configure` их не спрашивает: задайте переменными
+Команды `s3` и инструменты `s3_*` ходят в Object Storage по протоколу S3.
+Отдельный ключ не нужен — подходит тот же ключ доступа (персональный или
+сервисного аккаунта), но в формате S3
+([документация](https://cloud.ru/docs/s3e/ug/topics/api__api-key)):
+
+- `access_key` — `<tenant_id>:<Key ID>` (или `<tenant_id>.<Key ID>`);
+  `tenant_id` — в консоли: «Хранение данных → Object Storage → Параметры
+  работы с API»;
+- `secret_key` — Key Secret того же ключа;
+- аккаунту нужна роль Object Storage: `s3e.viewer` для чтения, `s3e.editor`
+  для записи.
+
+`configure` их не спрашивает: задайте переменными
 `CLOUDRU_S3_*` (таблица ниже) или секцией `s3` профиля в `credentials.yaml`:
 
 ```yaml
@@ -136,8 +154,8 @@ profiles:
     secret: …
     s3:
       endpoint: https://s3.cloud.ru     # по умолчанию
-      access_key: …
-      secret_key: …
+      access_key: <tenant_id>:7b1e…     # tenant_id и Key ID
+      secret_key: …                     # Key Secret
       region: ru-central-1              # по умолчанию
 ```
 

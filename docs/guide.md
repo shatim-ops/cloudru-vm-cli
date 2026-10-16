@@ -310,12 +310,14 @@ KUBERNETES, например `>=1.26.0-0`) и сколько готовых ра
 ```sh
 evo k8s add-addon <id-кластера> cert-manager --dry-run     # превью: версия, требования, проверки кластера
 evo k8s add-addon <id-кластера> cert-manager               # спросит подтверждение
-evo k8s add-addon <id-кластера> cert-manager --version v1.14.0 --config settings.json
+evo k8s add-addon <id-кластера> cert-manager --version <версия из addon-versions> --config settings.json
 ```
 
 `--config` — файл JSON с настройками по схеме версии (`-` — из stdin); в
-значениях можно писать `{{clusterID}}` и `{{clusterName}}`, Cloud.ru
-подставит их сам. `--resolve-mode` решает, что делать с объектами плагина,
+значениях можно писать `{{clusterID}}`, `{{clusterName}}`,
+`{{productInstanceID}}`, `{{nodeCIDR}}` и `{{serviceCIDR}}` — Cloud.ru
+подставит их сам. Без `--config` API берёт последнюю конфигурацию плагина в
+кластере (при первой установке — настройки по умолчанию). `--resolve-mode` решает, что делать с объектами плагина,
 которые уже есть в кластере (поставлены вручную): `NONE` (по умолчанию) их не
 трогает — установка тогда может не пройти; `OVERWRITE` откатывает их к
 рекомендованным значениям.

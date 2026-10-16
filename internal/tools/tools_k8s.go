@@ -262,7 +262,7 @@ func (s *Registry) handleK8sPlan(ctx context.Context, args map[string]any) (stri
 		"cluster_sa_id":     req.IdentityConfiguration.ClusterSaID,
 		"kube_api_internet": req.NetworkConfiguration.KubeApiInternet,
 		"warnings":          warnings,
-		"note":              "Read-only plan. On the user's approval call k8s_create with the same args + confirmed=true. Cluster creation is async (~10-20 min); poll k8s_get. Add workers with k8s_add_nodepool (TODO) or via kubeconfig.",
+		"note":              "Read-only plan. On the user's approval call k8s_create with the same args + confirmed=true. Cluster creation is async (5-10 min per the docs, 7-12 seen live); poll k8s_get. Add workers with k8s_add_nodepool.",
 	}), false
 }
 
@@ -293,7 +293,7 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 		"cluster_id":   op.ResourceID,
 		"operation_id": op.ID,
 		"name":         req.Name,
-		"note":         "Cluster is provisioning (async, ~10-20 min). Poll k8s_get with this cluster_id until status is running, then k8s_kubeconfig.",
+		"note":         "Cluster is provisioning (async, about 10 min). Poll k8s_get with this cluster_id until status is running, then k8s_kubeconfig.",
 	}), false
 }
 

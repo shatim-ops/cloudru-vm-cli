@@ -428,7 +428,7 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("pg_delete PERMANENTLY deletes PostgreSQL cluster %s and its data. Confirm, then call again with confirmed=true.", id),
+			"message": fmt.Sprintf("pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups. Confirm, then call again with confirmed=true.", id),
 		}), true
 	}
 	cli, err := s.pgClient(ctx)
