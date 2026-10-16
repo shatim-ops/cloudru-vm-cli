@@ -146,7 +146,8 @@ var groupByName = map[string]string{
 	"list_zones":   "vm",
 	"list_flavors": "vm",
 
-	"list_images": "image",
+	"list_images":      "image",
+	"marketplace_list": "image",
 
 	"list_disk_types": "disk",
 

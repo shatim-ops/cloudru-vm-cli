@@ -461,3 +461,32 @@ func TestNotInProjectError(t *testing.T) {
 		t.Errorf("candidate line: %q", line)
 	}
 }
+
+// Shared — только общий каталог (витрина evo marketplace list): список
+// образов проекта не читается вовсе (его ошибка ни на что не влияет),
+// недоступные проекту по-прежнему помечаются.
+func TestSearch_SharedLeavesProjectImagesOut(t *testing.T) {
+	cloud := testCatalog()
+	cloud.ownErr = stderrors.New("must not be read")
+	cloud.hidden = map[string]bool{"00000000-0000-0000-0000-000000000001": true}
+	cat := Catalog{Cloud: cloud, ProjectID: "00000000-0000-0000-0000-0000000000f1"}
+	res, err := cat.Search(context.Background(), "astra", Filter{Shared: true, All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Warning != "" {
+		t.Errorf("warning: %s", res.Warning)
+	}
+	got := strings.Join(names(res.Images), ",")
+	if got != "alse-base-1-7-7,astra_1.8.1,AstraLinuxSmolensk1.8.3KES,astra-voronej" {
+		t.Errorf("images: %s", got)
+	}
+	for _, img := range res.Images {
+		if img.NotInProject != (img.Name == "AstraLinuxSmolensk1.8.3KES") {
+			t.Errorf("%s: NotInProject %v", img.Name, img.NotInProject)
+		}
+		if Visible(img) == (img.Name == "AstraLinuxSmolensk1.8.3KES" || img.Name == "astra-voronej") {
+			t.Errorf("%s: Visible %v", img.Name, Visible(img))
+		}
+	}
+}
