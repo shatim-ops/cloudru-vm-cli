@@ -73,3 +73,27 @@ func TestOrgProjects_List(t *testing.T) {
 		t.Errorf("projects: %s", text)
 	}
 }
+
+// Мягкий ответ — только 400/403/404 (ключ уровня проекта). Сбой
+// Organization API (500) или отказ в аутентификации (401) — ошибка со
+// своей причиной, а не «Not an error» (ревью Fable, A3).
+func TestOrgProjects_FailuresAreErrors(t *testing.T) {
+	for status, want := range map[int]string{
+		403: "",
+		404: "",
+		500: "API_ERROR",
+		401: "AUTH_FAILED",
+	} {
+		r := orgRegistry(t, fakeOrg{status, `{"message":"user not found"}`})
+		m, text, isErr := callNamed(t, r, "org_projects", nil)
+		if want == "" {
+			if isErr || m["note"] != orgProjectsNote {
+				t.Errorf("%d: %s", status, text)
+			}
+			continue
+		}
+		if !isErr || m["reason"] != want || m["note"] != nil {
+			t.Errorf("%d: isErr=%v %s", status, isErr, text)
+		}
+	}
+}
