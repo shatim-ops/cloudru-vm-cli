@@ -812,11 +812,14 @@ ID зоны передаётся в deploy флагом --region или пере
 
 // --- list-images ---
 
+// list-images is the old form of 'evo image list' (review r5 U6): hidden,
+// kept working, with a one-line hint.
 func newListImagesCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list-images",
-		Args:  cobra.NoArgs,
-		Short: i18n.T("List available VM boot images", "Список загрузочных образов ВМ"),
+		Use:    "list-images",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		Short:  i18n.T("List available VM boot images", "Список загрузочных образов ВМ"),
 		Long: i18n.T(`List boot images from the Cloud.ru API.
 
 Use the image ID as the --image-id flag or CLOUDRU_IMAGE_ID env var for deploy.
@@ -827,10 +830,13 @@ ID образа передаётся в deploy флагом --image-id или п
 deploy ставит Docker на образы Ubuntu и Debian (например, Ubuntu-24.04).
 Для машинного разбора — --json.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			eng, err := buildEngine(map[string]any{})
+			cmdPrinter(cmd).Warning(i18n.T("evo list-images is deprecated: use 'evo image list [query]'",
+				"evo list-images устарела: используйте 'evo image list [запрос]'"))
+			eng, err := toolEngine(map[string]any{})
 			if err != nil {
 				return err
 			}
+			eng.Printer = cmdPrinter(cmd)
 
 			if err := eng.ListImages(cmd.Context()); err != nil {
 				return err

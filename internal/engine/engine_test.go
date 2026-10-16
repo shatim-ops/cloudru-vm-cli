@@ -131,7 +131,7 @@ func (m *mockCloudAPI) ListAvailabilityZones(ctx context.Context) ([]*provision.
 	}, nil
 }
 
-func (m *mockCloudAPI) ListImages(ctx context.Context) ([]*provision.Image, error) {
+func (m *mockCloudAPI) ListImages(ctx context.Context, _ ...provision.ImageFilter) ([]*provision.Image, error) {
 	if m.listImagesFn != nil {
 		return m.listImagesFn(ctx)
 	}

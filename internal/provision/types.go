@@ -2,6 +2,8 @@ package provision
 
 import (
 	"encoding/json"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -226,15 +228,86 @@ type Flavor struct {
 	FreeTier bool   `json:"free_tier"`
 }
 
-// Image represents a Cloud.ru VM boot image.
+// Image types of the catalogue (GET /api/v1/images?type=…).
+const (
+	ImageTypePublic      = "public"
+	ImageTypeMarketplace = "marketplace"
+	ImageTypePrivate     = "private"
+)
+
+// Image represents a Cloud.ru VM boot image (PublicImageResponse of the
+// compute spec, without the icon, the cloud-init template and the fields:
+// those come from GetImage).
 type Image struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	OS     string `json:"os"`     // not in the spec; usually empty
-	Status string `json:"status"` // not in the spec; usually empty
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name,omitempty"`
+	Description string `json:"description,omitempty"`
+	// Type is public, marketplace or private (an image of a project).
+	Type      string `json:"type,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Public    bool   `json:"public,omitempty"`
+	// MinCPU is in vCPU, MinRAM and MinDisk in GB.
+	MinCPU      int    `json:"min_cpu,omitempty"`
+	MinRAM      int    `json:"min_ram,omitempty"`
+	MinDisk     int    `json:"min_disk,omitempty"`
+	CreatedTime string `json:"created_time,omitempty"`
+	OS          string `json:"os"`     // not in the spec; usually empty
+	Status      string `json:"status"` // not in the spec; usually empty
 	// AvailZones is the documented build state per zone
 	// (availability_zones[].state, .enabled; api-contract §4.6).
 	AvailZones []ImageAvailZone `json:"availability_zones,omitempty"`
+}
+
+// ImageFilter is the server-side query of GET /api/v1/images. Name and
+// DisplayName match a substring, case-insensitive (checked live 16.10.2026).
+// Zero fields are not sent.
+type ImageFilter struct {
+	Name        string
+	DisplayName string
+	// Type is public, marketplace or private.
+	Type               string
+	Enabled            *bool
+	NeedGPU            *bool
+	AvailabilityZoneID string
+}
+
+// Query is the filter as URL parameters.
+func (f ImageFilter) Query() url.Values {
+	q := url.Values{}
+	set := func(k, v string) {
+		if v != "" {
+			q.Set(k, v)
+		}
+	}
+	set("name", f.Name)
+	set("display_name", f.DisplayName)
+	set("type", f.Type)
+	set("availability_zone_id", f.AvailabilityZoneID)
+	if f.Enabled != nil {
+		q.Set("enabled", strconv.FormatBool(*f.Enabled))
+	}
+	if f.NeedGPU != nil {
+		q.Set("need_gpu", strconv.FormatBool(*f.NeedGPU))
+	}
+	return q
+}
+
+// ZoneReady reports whether a VM can be created from the image in this
+// zone: the zone is enabled (or says nothing) and the build is "created".
+func ZoneReady(az ImageAvailZone) bool {
+	return az.State == "created" && (az.Enabled == nil || *az.Enabled)
+}
+
+// ReadyZones are the zones the image can boot a VM in, in answer order.
+func (i *Image) ReadyZones() []ImageAvailZone {
+	var out []ImageAvailZone
+	for _, az := range i.AvailZones {
+		if ZoneReady(az) {
+			out = append(out, az)
+		}
+	}
+	return out
 }
 
 // Usable reports whether a VM can be created from the image: built and
@@ -242,12 +315,7 @@ type Image struct {
 // it, else by the legacy top-level status.
 func (i *Image) Usable() bool {
 	if len(i.AvailZones) > 0 {
-		for _, az := range i.AvailZones {
-			if az.State == "created" && (az.Enabled == nil || *az.Enabled) {
-				return true
-			}
-		}
-		return false
+		return len(i.ReadyZones()) > 0
 	}
 	switch strings.ToLower(i.Status) {
 	case "deleted", "error", "creating":
@@ -270,11 +338,18 @@ type ImageDetail struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
 	Description string `json:"description"`
+	Type        string `json:"type,omitempty"`
+	ProjectID   string `json:"project_id,omitempty"`
+	Public      bool   `json:"public,omitempty"`
+	CreatedTime string `json:"created_time,omitempty"`
 	OS          string `json:"os"`
 	Status      string `json:"status"`
 	MinCPU      int    `json:"min_cpu"`
 	MinRAM      int    `json:"min_ram"`
 	MinDisk     int    `json:"min_disk"`
+	// Icon is the catalogue's SVG: kilobytes nobody reads in a terminal or
+	// an agent's context; image_get gives it only with full=true.
+	Icon string `json:"icon,omitempty"`
 	// UserDataTemplate is the cloud-init template the platform renders when a
 	// VM is created from this image; MetadataFields declares the values it
 	// substitutes.

@@ -10,7 +10,9 @@ type CloudAPI interface {
 	DeleteVM(ctx context.Context, id string) error
 	ListFlavors(ctx context.Context) ([]*Flavor, error)
 	ListAvailabilityZones(ctx context.Context) ([]*AvailabilityZone, error)
-	ListImages(ctx context.Context) ([]*Image, error)
+	// ListImages lists the shared catalogue; an optional filter becomes the
+	// server-side query.
+	ListImages(ctx context.Context, filter ...ImageFilter) ([]*Image, error)
 	ListImagesInProject(ctx context.Context, projectID string) ([]*Image, error)
 	GetImage(ctx context.Context, id string) (*ImageDetail, error)
 	// CreateImage builds an image from a bootable disk; DeleteImage removes one.

@@ -180,7 +180,7 @@ profiles:
 |---|---|---|
 | `CLOUDRU_PROJECT_ID` | UUID проекта (обязателен для команд, создающих ресурсы) | `--project-id` / `project_id` |
 | `CLOUDRU_REGION` | UUID зоны доступности (`evo list-zones`) | `--region` / `region` |
-| `CLOUDRU_IMAGE_ID` | UUID загрузочного образа для `deploy` (`evo list-images`) | `deploy --image-id` / `image_id` |
+| `CLOUDRU_IMAGE_ID` | UUID загрузочного образа для `deploy` (`evo image list`, `evo image get <имя>`) | `deploy --image-id` / `image_id` |
 | `CLOUDRU_FLAVOR` | конфигурация ВМ, например `lowcost10-2-4`; `auto` — подобрать (по умолчанию) | `deploy --flavor` / `flavor` |
 | `CLOUDRU_DISK_SIZE` | размер загрузочного диска, ГБ (по умолчанию 10) | `deploy --disk-size` / `disk_size` |
 | `CLOUDRU_COMPOSE_FILE` | путь к compose-файлу (по умолчанию `docker-compose.yml`) | `deploy -f` / `compose_file` |

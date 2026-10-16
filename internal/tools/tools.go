@@ -33,7 +33,7 @@ func (s *Registry) registerTools() {
 				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),
 				"region":       strProp("Availability zone UUID (see list_zones)."),
 				"project_id":   strProp("Cloud.ru project UUID."),
-				"image_id":     strProp("Boot image UUID (see list_images)."),
+				"image_id":     strProp("Boot image UUID (see image_list, image_get)."),
 				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
 				"force":        boolProp("Redeploy even if the compose hash is unchanged."),
 				"confirmed":    confirmedProp(),
@@ -47,7 +47,7 @@ func (s *Registry) registerTools() {
 				"flavor":       strProp("VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier)."),
 				"region":       strProp("Availability zone UUID (see list_zones)."),
 				"project_id":   strProp("Cloud.ru project UUID."),
-				"image_id":     strProp("Boot image UUID (see list_images)."),
+				"image_id":     strProp("Boot image UUID (see image_list, image_get)."),
 				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
 				"subnet_id":    strProp("Subnet UUID for the interface (default: a subnet in the target zone)."),
 				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
@@ -101,8 +101,16 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(nil),
 		},
 		{
+			Name: "image_list",
+			Description: "Search the VM image catalogue: OS images (type public), Cloud.ru Marketplace products (marketplace) and the project's own images (private). " +
+				"query matches a substring of the name or display_name, case-insensitive. Images ready in no zone are hidden unless all=true. " +
+				"Compact rows {id, name, display_name, type, zones_ready, min_disk_gb}, public first; total counts the matches before hiding. " +
+				"Next: image_get for the fields a VM from the image needs; the id goes to provision or deploy as image_id.",
+			InputSchema: imageListSchema(),
+		},
+		{
 			Name:        "list_images",
-			Description: "List available Cloud.ru VM boot images (UUID + name). Use an image UUID as the 'image_id' argument for deploy or provision.",
+			Description: "List available Cloud.ru VM boot images (UUID + name). Use an image UUID as the 'image_id' argument for deploy or provision. Prefer image_list: it searches by name and answers compact rows.",
 			InputSchema: objSchema(nil),
 		},
 		{
@@ -110,7 +118,7 @@ func (s *Registry) registerTools() {
 			Description: "Create a reusable VM image FROM A BOOTABLE DISK — the final step of producing a distributable image (e.g. a Marketplace product): provision a VM, install the product, clean it up, stop the VM, then capture its boot disk here. " +
 				"The disk must be bootable AND detached — power the VM off, detach the boot disk with disk_detach, and wait until disk_list reports state 'available'. Stopping the VM is not enough: while the disk is attached the API answers invalid_disk_state_to_create_image. " +
 				"For a Marketplace image also pass user_data_template (cloud-init Jinja) plus image_metadata declaring every {{ var }} the template uses — that is how a buyer's SSH key or password reaches the guest. " +
-				"Building is asynchronous (~0.7 GB/min): poll list_images for state. Mutation (billable storage): requires confirmed=true.",
+				"Building is asynchronous (~0.7 GB/min): poll image_get until ready=true. Mutation (billable storage): requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"name":               strProp("Image name (technical, unique in the project)."),
 				"disk_id":            strProp("UUID of the bootable source disk (from disk_list)."),
@@ -141,17 +149,21 @@ func (s *Registry) registerTools() {
 			}, "fip", "vm"),
 		},
 		{
-			Name:        "image_get",
-			Description: "Get one VM image with its full spec — including the cloud-init user_data_template the platform renders when a VM is created from it, and the image_metadata fields a buyer fills in. Read-only. Use it to poll an image build until it reports state 'created', and to inspect how existing Marketplace images are structured.",
+			Name: "image_get",
+			Description: "Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with candidates[]). " +
+				"Returns the image, ready and zones_ready, and fields[]: each image_metadata field with filled_by — evo (SSH key, VM name, login, random password), default, user (mandatory, evo cannot fill it) or none — plus create{cli, tool, args}. " +
+				"The icon and the cloud-init user_data_template only with full=true. Read-only. Also the way to poll an image build until ready=true.",
 			InputSchema: objSchema(map[string]any{
-				"image_id": strProp("Image UUID (from list_images)."),
-			}, "image_id"),
+				"image":    strProp("Image name, display name or UUID (from image_list)."),
+				"image_id": strProp("Image UUID (from image_list); 'image' takes a name as well."),
+				"full":     boolProp("Also return the SVG icon and the cloud-init user_data_template (large)."),
+			}),
 		},
 		{
 			Name:        "image_delete",
 			Description: "Delete a VM image. Running VMs keep working, but no new VM can be created from it. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
-				"image_id":  strProp("Image UUID (from list_images)."),
+				"image_id":  strProp("Image UUID (from image_list)."),
 				"confirmed": confirmedProp(),
 			}, "image_id"),
 		},
@@ -171,7 +183,7 @@ func (s *Registry) registerTools() {
 				"external_ip":  boolProp("Attach a public floating IP (default: true)."),
 				"flavor":       strProp("manual: exact flavor name (see list_flavors)."),
 				"zone":         strProp("manual: availability zone name or UUID (see list_zones)."),
-				"image":        strProp("manual: image name or UUID (see list_images)."),
+				"image":        strProp("manual: image name or UUID (see image_list)."),
 				"disk_type":    strProp("manual: disk type name, e.g. 'SSD' (see list_disk_types)."),
 				"login":        strProp("Login user for the VM (default: user1)."),
 				"ssh_key":      strProp("Full SSH public key to inject (e.g. 'ssh-ed25519 AAAA... user'). If omitted, a password is generated."),
@@ -1224,6 +1236,7 @@ func (s *Registry) registerTools() {
 		"logs":                 s.handleLogs,
 		"destroy":              s.handleDestroy,
 		"list_zones":           s.handleListZones,
+		"image_list":           s.handleImageList,
 		"list_images":          s.handleListImages,
 		"image_create":         s.handleImageCreate,
 		"image_get":            s.handleImageGet,
@@ -2103,41 +2116,6 @@ func (s *Registry) handleListZones(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	return toJSON(map[string]any{"zones": zones}), false
-}
-
-func (s *Registry) handleListImages(ctx context.Context, args map[string]any) (string, bool) {
-	eng, err := s.newEngine(nil)
-	if err != nil {
-		return errResult(err), true
-	}
-	tok, err := eng.Auth.Token(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	eng.Cloud.SetToken(tok.Value)
-
-	images, err := eng.Cloud.ListImages(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	// The shared catalogue does not contain images built inside the project, so
-	// they are fetched separately and merged — otherwise a freshly built image
-	// is missing from the very list used to find it.
-	seen := make(map[string]bool, len(images))
-	for _, img := range images {
-		seen[img.ID] = true
-	}
-	own, ownErr := eng.Cloud.ListImagesInProject(ctx, eng.Config.ProjectID)
-	for _, img := range own {
-		if !seen[img.ID] {
-			images = append(images, img)
-		}
-	}
-	res := map[string]any{"images": images}
-	if ownErr != nil {
-		res["warning"] = "не удалось получить образы проекта: " + ownErr.Error()
-	}
-	return toJSON(res), false
 }
 
 // --- helpers ---
