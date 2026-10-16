@@ -88,9 +88,26 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		// No ID to delete by: DELETE /vms/ with an empty ID is not a VM.
 		e.Printer.Warning(i18n.T("No VM ID in state; nothing to delete in the cloud", "В state нет ID ВМ; удалять в облаке нечего"))
 	} else if err = e.deleteVMWhenDeletable(ctx, active.VMID); err != nil {
-		// If VM is already gone (VM_NOT_FOUND), that's fine.
+		// If VM is already gone (VM_NOT_FOUND), that's fine — unless the
+		// record is of another project than the active one: DELETE
+		// /vms/{id} carries no project, so a key that does not see that
+		// project gets a 404 for a VM that lives on, and "already deleted"
+		// would drop the record of a billed VM (ревью Fable, A2; status and
+		// the MCP destroy refuse the same way).
 		var cliErr *clerrors.CLIError
-		if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound {
+		otherProject := active.ProjectID != "" && e.Config.ProjectID != "" && active.ProjectID != e.Config.ProjectID
+		if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound && otherProject {
+			active.Status = prevStatus
+			stateFile.UpsertDeployment(*active)
+			_ = state.Write(statePath, stateFile)
+			return clerrors.Wrap(clerrors.CodeConfigInvalid,
+				i18n.Tf("VM %s is recorded for project %s, not the active one (%s), and the active key does not see it; nothing was deleted and its record is kept",
+					"ВМ %s записана для проекта %s, а активный — %s, и ключ активного проекта её не видит; ничего не удалено, запись сохранена",
+					active.VMID, active.ProjectID, e.Config.ProjectID),
+				i18n.Tf("Switch to the record's project ('evo project use %s' or CLOUDRU_PROJECT_ID) and run 'evo destroy' again.",
+					"Переключитесь на проект записи ('evo project use %s' или CLOUDRU_PROJECT_ID) и повторите 'evo destroy'.",
+					active.ProjectID), err)
+		} else if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound {
 			e.Printer.StepDone(i18n.T("VM already deleted", "ВМ уже удалена"))
 		} else {
 			// The VM is still there: the record keeps saying what it was.
