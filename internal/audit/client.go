@@ -4,7 +4,10 @@
 // request and returned "timestamps must end with 'Z' or a valid timezone
 // offset" for start/end, i.e. RFC3339 (protobuf Timestamp), NOT Unix ms.
 //
-//	GET /events/list/{projectId}?start=&end=&pageSize=&nextPageToken=
+//	GET /events/list/{projectId}?start=&end=&limit=&nextPageToken=
+//
+// The page size is "limit" (spec, at most 500): an unknown parameter such
+// as pageSize is answered 415 before the access check (register AUD-2).
 //
 // Recommended window: ≤30min for chatty projects, 1-3h for quiet ones.
 package audit
@@ -19,7 +22,9 @@ import (
 	"strings"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 const defaultBaseURL = "https://audit.api.cloud.ru"
@@ -63,7 +68,21 @@ func (c *Client) do(ctx context.Context, path string, q url.Values) ([]byte, int
 	return data, resp.StatusCode, nil
 }
 
+// MaxPageSize is the largest limit the API takes.
+const MaxPageSize = 500
+
 func apiError(status int, body []byte) error {
+	// Access to audit logs is opened by Cloud.ru support («Доступ к
+	// функциональности ограничен. Чтобы получать аудит-логи, обратитесь в
+	// техническую поддержку» — docs, «Получить аудит-логи»). The API then
+	// answers 401 to a valid token (register AUD-1): not a reason to log in
+	// again.
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("audit logging is not enabled for the project (audit API %d)", "аудит не включён для проекта (audit API %d)", status),
+			i18n.T("Access to audit logs is enabled by Cloud.ru support: contact it (the key itself is valid if other commands work).",
+				"Доступ к аудит-логам включает поддержка Cloud.ru — обратитесь в неё (сам ключ в порядке, если другие команды работают)."))
+	}
 	var e struct {
 		Message string `json:"message"`
 		Error   string `json:"error"`
@@ -113,7 +132,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) (*EventPage, error)
 		q.Set("end", opts.End.UTC().Format(time.RFC3339))
 	}
 	if opts.PageSize > 0 {
-		q.Set("pageSize", fmt.Sprintf("%d", opts.PageSize))
+		q.Set("limit", fmt.Sprintf("%d", min(opts.PageSize, MaxPageSize)))
 	}
 	if opts.PageToken != "" {
 		q.Set("nextPageToken", opts.PageToken)

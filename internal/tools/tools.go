@@ -1109,10 +1109,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "audit_events",
-			Description: "Audit Logging — who did what in the project (read-only): control-plane events (create/delete/modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource, time. Use to answer 'what happened on the stand / who deleted X / recent changes'. Paginated via next_page_token. NB: needs audit logging enabled on the project ('project not found' otherwise).",
+			Description: "Audit Logging — who did what in the project (read-only): control-plane events (create/delete/modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource, time. Use to answer 'what happened on the stand / who deleted X / recent changes'. Paginated via next_page_token. NB: access to audit logs is enabled by Cloud.ru support; until then the API answers 401 and the tool says audit is not enabled for the project.",
 			InputSchema: objSchema(map[string]any{
 				"since":      strProp("Look-back window: 30m, 1h, 3h… (default 1h; keep short — API recommends ≤30min for chatty projects)."),
-				"page_size":  intProp("Max events per page (default 100)."),
+				"page_size":  intProp("Max events per page (default 100, at most 500)."),
 				"page_token": strProp("Continuation token from a previous call's next_page_token (optional)."),
 			}),
 		},
