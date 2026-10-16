@@ -1,6 +1,7 @@
 package provision
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/url"
 	"strconv"
@@ -450,6 +451,17 @@ type FloatingIP struct {
 	// floating_ip_address_is_used_by_nat_gateway; docs, «Публичные
 	// IP-адреса», FAQ).
 	NATGateway json.RawMessage `json:"nat_gateway,omitempty"`
+}
+
+// BoundTo reports whether the answer names VM vmID as the address's: in
+// vm, or in the interface it is attached to. The shape of both is not
+// documented, so the ID is looked for as a JSON string in either.
+func (f FloatingIP) BoundTo(vmID string) bool {
+	if vmID == "" {
+		return false
+	}
+	q := []byte(strconv.Quote(vmID))
+	return bytes.Contains(f.VM, q) || bytes.Contains(f.Interface, q)
 }
 
 // OnNATGateway reports an address bound to a SNAT gateway.

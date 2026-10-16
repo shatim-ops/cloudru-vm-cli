@@ -49,3 +49,20 @@ func BootFIPName(vmName string, t time.Time) string {
 func BootFIPPrefix(vmName string) string {
 	return fitBase("fip-"+vmName, bootFIPStampLen+1) + "-"
 }
+
+// IsBootFIPOf reports whether name is a BootFIPName of vmName: the prefix
+// and only the base-36 time after it. A prefix alone also matches the FIP
+// of VM "<vmName>-2" ("fip-web-" starts "fip-web-2-…"), which left the FIP
+// of "web" unfound and billed when both existed (ревью Fable, A6).
+func IsBootFIPOf(name, vmName string) bool {
+	rest, ok := strings.CutPrefix(name, BootFIPPrefix(vmName))
+	if !ok || rest == "" || len(rest) > bootFIPStampLen {
+		return false
+	}
+	for _, c := range rest {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'z') {
+			return false
+		}
+	}
+	return true
+}

@@ -38,3 +38,27 @@ func TestFitNameAndBootFIPName(t *testing.T) {
 		t.Errorf("FIP name of a far date: %q (%d)", far, len(far))
 	}
 }
+
+// Имя FIP ВМ «web-2» — не имя FIP ВМ «web», хотя начинается с «fip-web-».
+func TestIsBootFIPOf(t *testing.T) {
+	now := time.Unix(1792000000, 0)
+	long := "evo-" + strings.Repeat("a", 59)
+	for _, tc := range []struct {
+		name, vm string
+		want     bool
+	}{
+		{BootFIPName("web", now), "web", true},
+		{BootFIPName("web-2", now), "web", false},
+		{BootFIPName("web", now), "web-2", false},
+		{BootFIPName(long, now), long, true},
+		{BootFIPName(long, time.Unix(1<<35, 0)), long, true},
+		{"fip-web-", "web", false},
+		{"fip-web-ABC", "web", false},
+		{"fip-web-12345678", "web", false},
+		{"fip-web", "web", false},
+	} {
+		if got := IsBootFIPOf(tc.name, tc.vm); got != tc.want {
+			t.Errorf("IsBootFIPOf(%q, %q) = %v", tc.name, tc.vm, got)
+		}
+	}
+}

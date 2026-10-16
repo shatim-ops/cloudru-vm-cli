@@ -2127,11 +2127,19 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	}
 	if releaseIP && fipRec.FloatingIPID == "" && fipRec.VMIP == "" && target.Name != "" {
 		if fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID); e == nil {
-			var named []*provision.FloatingIP
+			// Named exactly for this VM (not "web-2" for "web"); of several
+			// such, the one the answer binds to this VM.
+			var named, bound []*provision.FloatingIP
 			for _, f := range fips {
-				if strings.HasPrefix(f.Name, provision.BootFIPPrefix(target.Name)) {
+				if provision.IsBootFIPOf(f.Name, target.Name) {
 					named = append(named, f)
+					if f.BoundTo(target.ID) {
+						bound = append(bound, f)
+					}
 				}
+			}
+			if len(named) != 1 {
+				named = bound
 			}
 			if len(named) == 1 {
 				fipRec.FloatingIPID, fipRec.VMIP = named[0].ID, named[0].IPAddress
