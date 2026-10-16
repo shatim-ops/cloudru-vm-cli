@@ -175,3 +175,7 @@ func TestVMCreate_ImageNotInProjectRefused(t *testing.T) {
 		t.Errorf("доступный Astra Linux: exit %d, creates %d\n%s", code, len(cloud.creates), errOut)
 	}
 }
+
+// errNoPriceAPI — ответ подделок на PriceCalculation: расчёт цены не
+// получен, превью показывает оценку по карте, как раньше.
+var errNoPriceAPI = errors.New("price-calculation: not in this fake")

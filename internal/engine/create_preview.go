@@ -53,7 +53,8 @@ type CreatePreview struct {
 	// image_id, region): the call will fail without them.
 	Missing []string          `json:"missing,omitempty"`
 	Cost    *pricing.Estimate `json:"cost,omitempty"`
-	// CostNote says that Cost is an estimate, or why there is none.
+	// CostNote says where Cost comes from (the price-calculation API, or
+	// the rate card: an estimate), or why there is none.
 	CostNote string `json:"cost_note,omitempty"`
 }
 
@@ -117,6 +118,28 @@ func (p *CreatePreview) Price() {
 	p.CostNote = costNote
 }
 
+// priceFromAPI prices a VM preview that has talked to the cloud: the
+// price-calculation API's price (deployplan.QuoteVM) in place of the
+// rate-card estimate of Price, or, when the API gives none, the estimate
+// with the reason (PriceAPIError).
+func (p *CreatePreview) priceFromAPI(ctx context.Context, cloud provision.CloudAPI, marketplace bool) {
+	p.Price()
+	if p.Resource != ResourceVM || p.VM == nil {
+		return
+	}
+	cost, err := deployplan.QuoteVM(ctx, cloud, deployplan.PriceInput{ProjectID: p.ProjectID, VM: *p.VM,
+		PublicIP: p.PublicIP == nil || *p.PublicIP})
+	switch {
+	case err == nil:
+		p.Cost, p.CostNote = &cost, apiCostNote
+	case p.Cost != nil:
+		p.Cost.PriceAPIError = err.Error()
+	}
+	if marketplace && p.Cost != nil {
+		p.Cost.LicenseNote = deployplan.LicenseNote(*p.Cost)
+	}
+}
+
 // previewLookupTimeout bounds the lookups of CompletePreview: a slow API
 // must not hold the question back for long.
 const previewLookupTimeout = 20 * time.Second
@@ -124,9 +147,10 @@ const previewLookupTimeout = 20 * time.Second
 // CompletePreview fills what a tool leaves out of its preview so as not to
 // reach the cloud (the MCP preview of provision never does): the configured
 // project, zone names, the flavor auto picks with its size, the image name
-// and the boot disk it needs, then the price. Lookups are best effort: what
-// cannot be read stays as it is. The one error is a refusal: the VM's image
-// is in the catalogue but the project cannot use it
+// and the boot disk it needs, then the price — of a VM from the
+// price-calculation API when it answers, else the rate card. Lookups are
+// best effort: what cannot be read stays as it is. The one error is a
+// refusal: the VM's image is in the catalogue but the project cannot use it
 // (images.NotInProjectError) — the call would be refused after consent.
 func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 	if p.ProjectID == "" && p.Resource != ResourceS3Bucket && !contains(p.Missing, "project_id") {
@@ -135,7 +159,12 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 			p.Missing = append(p.Missing, "project_id")
 		}
 	}
-	defer p.Price()
+	priced := false
+	defer func() {
+		if !priced {
+			p.Price()
+		}
+	}()
 	zone := p.Zone
 	if p.VM != nil {
 		zone = &p.VM.Zone
@@ -176,7 +205,7 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 		}
 	}
 	cat := images.Catalog{Cloud: e.Cloud, ProjectID: p.ProjectID}
-	checked := false
+	checked, marketplace := false, false
 	if vm.Image.ID == "" && vm.Image.Name != "" {
 		// image by name: the call resolves it the same way.
 		if img, err := cat.Resolve(ctx, vm.Image.Name); err == nil {
@@ -184,6 +213,7 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 				return images.NotInProjectError(img.Name)
 			}
 			vm.Image.ID, vm.Image.Name, checked = img.ID, img.Name, true
+			marketplace = img.Type == provision.ImageTypeMarketplace
 		}
 	}
 	if vm.Image.ID != "" {
@@ -197,9 +227,14 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 			if img.Name != "" {
 				vm.Image.Name = img.Name
 			}
+			if img.Type != "" {
+				marketplace = img.Type == provision.ImageTypeMarketplace
+			}
 			vm.Disk.SizeGB, _ = provision.BootDiskGB(vm.Disk.SizeGB, img.MinDisk)
 		}
 	}
+	p.priceFromAPI(ctx, e.Cloud, marketplace)
+	priced = true
 	return nil
 }
 
@@ -367,7 +402,7 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 		lines = append(lines, previewLabel("not set", "не задано")+strings.Join(names, ", ")+
 			i18n.T(": the call will fail without it", ": без этого команда завершится ошибкой"))
 	}
-	lines = append(lines, createCostLine(p))
+	lines = append(lines, createCostLines(p)...)
 
 	return confirm.Preview{Action: action, Summary: createSummary(p, zoneName), Lines: lines}
 }
@@ -444,22 +479,22 @@ func createdLine(p CreatePreview) string {
 	return i18n.T("Will create: ", "Будет создано: ") + strings.Join(what, ", ")
 }
 
-// createCostLine is the price line: the estimate in the words of deploy,
-// or why there is none.
-func createCostLine(p CreatePreview) string {
+// createCostLines is the price: in the words of deploy (the API's price or
+// the estimate, with its source), or why there is none.
+func createCostLines(p CreatePreview) []string {
 	if p.Cost != nil {
 		if p.Resource == ResourceVM {
-			return vmCostLine(*p.Cost, true)
+			return vmCostLines(*p.Cost, true)
 		}
-		return previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (disk), %s", "~%.2f %s в месяц (диск), %s",
-			p.Cost.TotalMonthlyRub, p.Cost.Currency, costNoteText())
+		return []string{previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (disk), %s", "~%.2f %s в месяц (диск), %s",
+			p.Cost.TotalMonthlyRub, p.Cost.Currency, costNoteText())}
 	}
 	if p.Resource == ResourceVM {
-		return previewLabel("cost", "цена") + i18n.T("not estimated: the flavor size is unknown (see 'evo vm flavors')",
-			"не оценена: размер flavor неизвестен (см. 'evo vm flavors')")
+		return []string{previewLabel("cost", "цена") + i18n.T("not estimated: the flavor size is unknown (see 'evo vm flavors')",
+			"не оценена: размер flavor неизвестен (см. 'evo vm flavors')")}
 	}
-	return previewLabel("cost", "цена") + i18n.T("not estimated: evo has no rate card for this resource",
-		"не оценивается: у evo нет тарифа для этого ресурса")
+	return []string{previewLabel("cost", "цена") + i18n.T("not estimated: evo has no rate card for this resource",
+		"не оценивается: у evo нет тарифа для этого ресурса")}
 }
 
 func missingText(m string) string {

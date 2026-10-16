@@ -67,6 +67,45 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 в поле `reason` (`API_UNREACHABLE`, `AUTH_FAILED`), подсказка — в `hint`;
 у ошибок без кода этих полей нет.
 
+## Цена
+
+Цену ВМ возвращает `deploy_plan` в поле `cost`. Она берётся из API расчёта
+цены Cloud.ru (`POST /api/v1/projects/{project_id}/price-calculation`: только
+расчёт, ничего не создаёт) с тайм-аутом 5 с; если API не ответил, вернул
+ошибку или отказал (два образа Astra Linux отвечают `422 sku_identifier
+cannot be blank`), — оценка по встроенной таблице тарифов, как раньше.
+Превью `provision` и `deploy` без `confirmed` в облако не ходят: в
+`preview.cost` `provision` — по-прежнему оценка (или её нет, если размер
+flavor неизвестен), за ценой из API — `deploy_plan`.
+
+Поля `cost` (суммы в рублях):
+
+| Поле | Из API | Оценка |
+|---|---|---|
+| `source` | `price-calculation API (Cloud.ru); image license not included` | `estimate: rate-card (vCPU+RAM); not a billed price` или `… (flavor) …` |
+| `total_monthly_rub` | `total_price_month`: ВМ, диск и floating IP | ВМ и диск |
+| `compute_monthly_rub`, `disk_monthly_rub` | `flavor` и `disks` за месяц | по таблице |
+| `hourly_rub` | flavor за час | вычисления за час |
+| `total_hourly_rub` | `total_price_hour` | — |
+| `floating_ip_monthly_rub` | `floating_ips` за месяц | — |
+| `breakdown` | ответ API как есть: `flavor`, `disks`, `floating_ips`, `image`, `mkp_image`, `custom_image_size`, `nat_gateways` и `period` | — |
+| `price_api_error` | — | почему цены из API нет: `HTTP 422: …`, `no answer within 5s`, … |
+| `license_note` | у образа маркетплейса: лицензии в цене нет | то же |
+
+Прежние поля (`compute_monthly_rub`, `disk_monthly_rub`, `total_monthly_rub`,
+`hourly_rub`, `currency`, `source`) остались с теми же именами; новые
+добавлены рядом. `total_monthly_rub` из API включает floating IP, а оценка —
+нет: не складывайте его с `disk_monthly_rub`. Период составляющих API не
+называет: `breakdown.period` — `month` или `hour`, смотря с каким итогом они
+сходятся; `unknown` — не сошлись, тогда известны только итоги, а
+`compute_monthly_rub`, `disk_monthly_rub` и `floating_ip_monthly_rub` равны 0.
+
+**Лицензия образа в цену не входит** ни в одном источнике: API отвечает
+`image` = 0 и `mkp_image` = 0 за любой образ, в том числе Astra Linux KES
+(проба 16.10.2026). Как оплачивается лицензия продукта маркетплейса —
+открытый вопрос к Cloud.ru; покажите человеку `license_note` и условия из
+карточки продукта.
+
 ## Отмена вызовов
 
 Общего таймаута на вызов нет: `deploy` или создание кластера идут столько,

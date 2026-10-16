@@ -165,3 +165,8 @@ func TestDestroyTargeted_AlreadyGoneCleansState(t *testing.T) {
 		t.Errorf("unrecorded VM: answer %s, GET calls %d", text, cloud.getCalls)
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (*targetCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}

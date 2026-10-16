@@ -68,7 +68,12 @@
          "reads": ["items[].id", "items[].name", "items[].nat_type", "items[].state", "items[].status", "items[].availability_zone_id", "items[].availability_zone_name"]},
         {"method": "POST", "path": "/api/v1/nat-gateways", "code": "internal/provision/nat.go:65", "query": ["project_id"],
          "body": ["name", "nat_type", "project_id", "availability_zone_id", "availability_zone_name"], "reads": ["id", "state"], "enums": {"nat_type": ["Public sNAT"]}, "statuses": [422]},
-        {"method": "DELETE", "path": "/api/v1/nat-gateways/{nat_gateway_id}", "code": "internal/provision/nat.go:85", "query": ["project_id"], "statuses": [404]}
+        {"method": "DELETE", "path": "/api/v1/nat-gateways/{nat_gateway_id}", "code": "internal/provision/nat.go:85", "query": ["project_id"], "statuses": [404]},
+        {"method": "POST", "path": "/api/v1/projects/{project_id}/price-calculation", "code": "internal/provision/price.go:64",
+         "body": ["total_count", "flavor_id", "image_id", "disks[].disk_type_id", "disks[].size", "floating_ips[].floating_ip_action", "floating_ips[].count"],
+         "reads": ["flavor", "image", "mkp_image", "custom_image_size", "disks", "floating_ips", "nat_gateways", "total_price_hour", "total_price_month"],
+         "enums": {"floating_ips[].floating_ip_action": ["new"]}, "statuses": [422],
+         "accepted": {"read-unknown:mkp_image": "живой ответ (api-probe #4, 16.10.2026) шлёт ключ сверх спецификации; у всех образов 0", "read-unknown:custom_image_size": "см. mkp_image"}}
       ]
     },
     {

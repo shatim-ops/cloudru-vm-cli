@@ -172,3 +172,8 @@ func TestMarketplaceList_PartialFailure(t *testing.T) {
 		t.Errorf("both down: %s", text)
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (marketCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}

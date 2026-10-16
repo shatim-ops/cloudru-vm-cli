@@ -51,6 +51,10 @@ type treeCmd struct {
 	// Render shows the answer instead of the generic table (image list,
 	// image get); --json still prints the tool's answer as is.
 	Render func(p *output.Printer, w io.Writer, text string) error
+	// Raw prints the answer's "output" (what kubectl or helm printed) as
+	// is, not as a FIELD/VALUE table; on a tool error it goes to stderr
+	// before the error.
+	Raw bool
 }
 
 var treeGroups = []treeGroup{
@@ -107,9 +111,9 @@ var treeGroups = []treeGroup{
 		{Verb: "add-nodepool", Tool: "k8s_add_nodepool", Args: []string{"cluster_id"}},
 		{Verb: "addons", Tool: "k8s_addons", Args: []string{"query?"}, Render: renderAddonList},
 		{Verb: "addon-versions", Tool: "k8s_addon_versions", Args: []string{"name"}, Render: renderAddonVersions},
-		{Verb: "kubectl", Tool: "k8s_kubectl", Args: []string{"cluster_id", "args..."}},
-		{Verb: "apply", Tool: "k8s_apply", Args: []string{"cluster_id"}},
-		{Verb: "helm", Tool: "k8s_helm", Args: []string{"cluster_id", "action"}},
+		{Verb: "kubectl", Tool: "k8s_kubectl", Args: []string{"cluster_id", "args..."}, Raw: true},
+		{Verb: "apply", Tool: "k8s_apply", Args: []string{"cluster_id"}, Raw: true},
+		{Verb: "helm", Tool: "k8s_helm", Args: []string{"cluster_id", "action"}, Raw: true},
 	}},
 	{Name: "pg", Short: "Managed PostgreSQL clusters, databases, users, backups", Cmds: []treeCmd{
 		{Verb: "list", Tool: "pg_list"},
@@ -329,6 +333,9 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 			}
 			return err
 		}
+		if c.Raw && printRaw(cmd.OutOrStdout(), cmd.ErrOrStderr(), text, err) {
+			return err
+		}
 		if err != nil || text == "" {
 			return err
 		}
@@ -338,6 +345,26 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		return renderAnswer(cmdPrinter(cmd), cmd.OutOrStdout(), text, c.Columns)
 	}
 	return cmd
+}
+
+// printRaw prints the "output" of a kubectl, apply or helm answer as the
+// tool printed it: to stdout, or to stderr when the tool failed (kubectl's
+// own message, which the error alone does not carry). False when the answer
+// has no output (a refusal before kubectl ran): it is shown as usual.
+func printRaw(stdout, stderr io.Writer, text string, err error) bool {
+	out, ok := parseObject(text)["output"].(string)
+	if !ok {
+		return false
+	}
+	w := stdout
+	if err != nil {
+		w = stderr
+	}
+	fmt.Fprint(w, out)
+	if out != "" && !strings.HasSuffix(out, "\n") {
+		fmt.Fprintln(w)
+	}
+	return true
 }
 
 // evoFlagsKubectlLacks are evo's global flags that kubectl does not have.

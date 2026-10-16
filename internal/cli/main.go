@@ -488,16 +488,18 @@ func newDeployCmd() *cobra.Command {
 The first run creates a VM with a floating IP, opens the compose file's ports
 in the zone's security group, installs Docker, uploads the compose file and
 runs 'docker compose up -d'. Before the VM is created it shows a preview with
-a price estimate and asks for confirmation: a question on the terminal, --yes
-to agree in advance, --dry-run for the preview only. A repeated run updates
-the same VM if the compose file changed (with --force, even if it did not).`, `Развернуть docker-compose проект на ВМ Cloud.ru.
+the price (the Cloud.ru price calculation, else evo's estimate) and asks for
+confirmation: a question on the terminal, --yes to agree in advance,
+--dry-run for the preview only. A repeated run updates the same VM if the
+compose file changed (with --force, even if it did not).`, `Развернуть docker-compose проект на ВМ Cloud.ru.
 
 Первый запуск создаёт ВМ с floating IP, открывает порты из compose-файла в
 группе безопасности зоны, ставит Docker, загружает compose-файл и выполняет
-'docker compose up -d'. Перед созданием ВМ показывается превью с оценкой цены
-и запрашивается подтверждение: вопрос на терминале, --yes — согласие заранее,
---dry-run — только превью. Повторный запуск обновляет ту же ВМ, если
-compose-файл изменился (с --force — и без изменений).`),
+'docker compose up -d'. Перед созданием ВМ показывается превью с ценой
+(расчёт Cloud.ru, иначе оценка evo) и запрашивается подтверждение: вопрос на
+терминале, --yes — согласие заранее, --dry-run — только превью. Повторный
+запуск обновляет ту же ВМ, если compose-файл изменился (с --force — и без
+изменений).`),
 		Example: i18n.T(`  evo deploy --dry-run
   evo deploy --yes
   evo deploy -f compose.prod.yml --flavor lowcost10-2-4`, `  evo deploy --dry-run

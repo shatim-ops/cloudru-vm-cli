@@ -264,3 +264,12 @@ func TestProvisionVM_CancelledInteractive_DeletionUnconfirmedKeepsRecord(t *test
 		t.Errorf("no warning about the unconfirmed deletion: %q", stderr.String())
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (*interruptCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}
+
+// errNoPriceAPI — ответ подделок на PriceCalculation: расчёт цены не
+// получен, превью и план показывают оценку по карте, как раньше.
+var errNoPriceAPI = stderrors.New("price-calculation: not in this fake")

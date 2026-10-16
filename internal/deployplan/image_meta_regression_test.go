@@ -138,3 +138,8 @@ func TestApply_RedOSFqdnFilled(t *testing.T) {
 		t.Errorf("fqdn = %q, image_metadata = %v", req.ImageMetadata["fqdn"], req.ImageMetadata)
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (*metaCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}

@@ -312,3 +312,12 @@ func TestParsePorts(t *testing.T) {
 		}
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (*fakeCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}
+
+// errNoPriceAPI — ответ подделок на PriceCalculation: расчёт цены не
+// получен, превью и план показывают оценку по карте, как раньше.
+var errNoPriceAPI = stderrors.New("price-calculation: not in this fake")

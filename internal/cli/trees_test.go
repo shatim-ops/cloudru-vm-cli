@@ -243,6 +243,32 @@ func TestKubectlEvoFlagsAfterCluster(t *testing.T) {
 	}
 }
 
+// k8s kubectl/apply/helm print what kubectl printed, not a FIELD/VALUE
+// table with the output squeezed into one cell; a failure's output goes to
+// stderr (k8s-smoke read the table and never found .items).
+func TestPrintRaw(t *testing.T) {
+	for _, verb := range []string{"kubectl", "apply", "helm"} {
+		if _, c, _ := findLeaf(t, "k8s", verb); !c.Raw {
+			t.Errorf("k8s %s: not Raw", verb)
+		}
+	}
+	var out, errw bytes.Buffer
+	pods := "NAMESPACE     NAME        READY\nkube-system   coredns-1   1/1\n"
+	if !printRaw(&out, &errw, `{"status":"ok","output":"`+strings.ReplaceAll(pods, "\n", `\n`)+`"}`, nil) ||
+		out.String() != pods || errw.Len() != 0 {
+		t.Errorf("ok: stdout %q stderr %q", out.String(), errw.String())
+	}
+	out.Reset()
+	fail := errors.New("k8s_kubectl: exit status 1")
+	if !printRaw(&out, &errw, `{"status":"error","output":"Error from server (NotFound): pods \"x\" not found","error":"exit status 1"}`, fail) ||
+		out.Len() != 0 || errw.String() != "Error from server (NotFound): pods \"x\" not found\n" {
+		t.Errorf("error: stdout %q stderr %q", out.String(), errw.String())
+	}
+	if printRaw(&out, &errw, `{"error":"API_ERROR: no cluster"}`, fail) || printRaw(&out, &errw, "", nil) {
+		t.Error("an answer without output is printed raw")
+	}
+}
+
 // A list with a note (list_flavors) is a table with the note under it; a
 // composite answer without id/name (k8s_options) shows its lists of objects
 // as tables of their own (BACKLOG [audit-final]).

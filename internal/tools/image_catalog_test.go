@@ -162,3 +162,8 @@ func TestImageGet_ByNameCompactAndFull(t *testing.T) {
 		t.Errorf("no image: %v", m)
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (catalogCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}

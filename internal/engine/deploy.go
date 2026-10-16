@@ -472,7 +472,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 
 	// The VM is billed from this call on: show what will be created and what
 	// it costs, and get consent (or stop here on --dry-run).
-	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, network, project.Ports, project.UDPPorts), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, diskType.ID, network, project.Ports, project.UDPPorts), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}
