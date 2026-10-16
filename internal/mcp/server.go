@@ -59,6 +59,36 @@ type Tool struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
+	Annotations Annotations    `json:"annotations"`
+}
+
+// Annotations are the MCP tool hints (spec 2025-03-26+): clients read them
+// to approve reads without asking and to always ask before a destructive
+// call. They are hints, not the gate: mutating tools still need
+// confirmed=true. Clients of older revisions ignore the field.
+//
+// destructiveHint means something only for a mutation and defaults to true,
+// so a mutation always carries it (false for one that only adds or changes
+// in place) and a read leaves it out; idempotentHint defaults to false and
+// is written only when true. tools/list goes to every session: no bytes for
+// what the defaults already say.
+type Annotations struct {
+	ReadOnlyHint    bool  `json:"readOnlyHint"`
+	DestructiveHint *bool `json:"destructiveHint,omitempty"`
+	IdempotentHint  bool  `json:"idempotentHint,omitempty"`
+	OpenWorldHint   bool  `json:"openWorldHint"`
+}
+
+// annotations derives the hints from the registry: a read is idempotent, a
+// mutation is destructive by tools.IsDestructive; every tool talks to the
+// cloud or reads state outside the conversation (open world).
+func annotations(t tools.Tool) Annotations {
+	a := Annotations{ReadOnlyHint: !t.Mutating, IdempotentHint: !t.Mutating, OpenWorldHint: true}
+	if t.Mutating {
+		d := tools.IsDestructive(t)
+		a.DestructiveHint = &d
+	}
+	return a
 }
 
 // Server is an MCP server exposing evo operations over stdio.
@@ -82,7 +112,8 @@ func New(factory EngineFactory, version string) *Server {
 	// The tools live in internal/tools, shared with the CLI; this package is
 	// only the transport.
 	for _, t := range s.reg.Tools() {
-		s.tools = append(s.tools, Tool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema})
+		s.tools = append(s.tools, Tool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema,
+			Annotations: annotations(t)})
 		s.handlers[t.Name] = toolHandler(t.Handler)
 	}
 	return s
