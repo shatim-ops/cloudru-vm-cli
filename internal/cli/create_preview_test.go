@@ -160,7 +160,7 @@ func TestVMCreatePreview_NoCloudOmitsUnknown(t *testing.T) {
 	assertHas(t, errOut, []string{
 		"План: создать ВМ web\n",
 		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
-		"  не задано:  образ (--image-id или CLOUDRU_IMAGE_ID), зона (--region или CLOUDRU_REGION)",
+		"  не задано:  образ (--image, --image-id или CLOUDRU_IMAGE_ID), зона (--region или CLOUDRU_REGION)",
 		"  цена:       не оценена: размер flavor неизвестен",
 	})
 	assertNoJargon(t, errOut)

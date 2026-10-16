@@ -473,6 +473,7 @@ func newDeployCmd() *cobra.Command {
 		region         string
 		projectID      string
 		imageID        string
+		image          string
 		diskSize       int
 		force          bool
 		nonInteractive bool
@@ -516,8 +517,16 @@ compose-файл изменился (с --force — и без изменений
 			if cmd.Flags().Changed("project-id") {
 				flags["ProjectID"] = projectID
 			}
+			if cmd.Flags().Changed("image-id") && cmd.Flags().Changed("image") {
+				return clerrors.New(clerrors.CodeUsage,
+					i18n.T("--image and --image-id name the same thing", "--image и --image-id задают одно и то же"),
+					i18n.T("Keep one: --image takes a name or a UUID.", "Оставьте один: --image принимает имя или UUID."))
+			}
 			if cmd.Flags().Changed("image-id") {
 				flags["ImageID"] = imageID
+			}
+			if cmd.Flags().Changed("image") {
+				flags["Image"] = image
 			}
 			if cmd.Flags().Changed("disk-size") {
 				flags["DiskSize"] = diskSize
@@ -551,6 +560,8 @@ compose-файл изменился (с --force — и без изменений
 	cmd.Flags().StringVar(&region, "region", "", i18n.T("Availability zone UUID", "UUID зоны доступности"))
 	cmd.Flags().StringVar(&projectID, "project-id", "", i18n.T("Cloud.ru project UUID", "UUID проекта Cloud.ru"))
 	cmd.Flags().StringVar(&imageID, "image-id", "", i18n.T("Boot image UUID", "UUID загрузочного образа"))
+	cmd.Flags().StringVar(&image, "image", "", i18n.T("Boot image: a name from 'evo image list' or a UUID (Ubuntu or Debian)",
+		"Загрузочный образ: имя из 'evo image list' или UUID (Ubuntu или Debian)"))
 	cmd.Flags().IntVar(&diskSize, "disk-size", 0, i18n.T("Boot disk size in GB (default: 10)", "Размер загрузочного диска, ГБ (по умолчанию 10)"))
 	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Force redeploy even if compose hash unchanged",
 		"Развернуть заново, даже если compose-файл не изменился"))
@@ -708,7 +719,10 @@ protocol ("http", "https", "tcp" или "", если ничего не отве�
 // --- init ---
 
 func newInitCmd() *cobra.Command {
-	var nonInteractive bool
+	var (
+		nonInteractive bool
+		image          string
+	)
 
 	cmd := &cobra.Command{
 		Use:  "init",
@@ -722,14 +736,20 @@ The availability zone and the boot image are listed from the Cloud.ru API
 ru.AZ-2 is listed first and is the default (on 15.10.2026 ru.AZ-1 failed to
 create VMs); with --non-interactive or without a terminal ru.AZ-2 (else the
 first zone) and the newest plain Ubuntu (else Debian) image are taken, and
-the choice is printed.`, `Создать .evo.yaml для этого проекта.
+the choice is printed. --image takes the image by name (any case) or UUID
+instead: a name is written to .evo.yaml as the catalogue spells it (image:),
+a UUID as image_id:. deploy needs Ubuntu or Debian: Astra Linux, Alt and
+RED OS images are refused (create a plain VM from them: evo vm create).`, `Создать .evo.yaml для этого проекта.
 
 Зона доступности и загрузочный образ берутся из API Cloud.ru (нужен ключ
 доступа). На терминале их выбирают из нумерованного списка. ru.AZ-2 стоит
 первой и выбрана по умолчанию (15.10.2026 в ru.AZ-1 ВМ не создавались); с
 --non-interactive или без терминала берутся ru.AZ-2 (если её нет — первая
 зона) и самый новый обычный образ Ubuntu (если его нет — Debian), выбор
-печатается.`),
+печатается. --image задаёт образ по имени (регистр не важен) или UUID: имя
+пишется в .evo.yaml так, как в каталоге (image:), UUID — как image_id:.
+deploy нужен Ubuntu или Debian: образы Astra Linux, Альт и РЕД ОС
+отклоняются (ВМ из них создаёт evo vm create).`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
@@ -738,12 +758,15 @@ the choice is printed.`, `Создать .evo.yaml для этого проек�
 			return eng.Init(cmd.Context(), engine.InitOptions{
 				Path:           ".evo.yaml",
 				NonInteractive: nonInteractive,
+				Image:          image,
 			})
 		},
 	}
 
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Take ru.AZ-2 (else the first zone) and the preferred image without asking",
 		"Без вопросов взять ru.AZ-2 (если её нет — первую зону) и предпочтительный образ"))
+	cmd.Flags().StringVar(&image, "image", "", i18n.T("Boot image by name or UUID (evo image list) instead of the newest Ubuntu",
+		"Загрузочный образ по имени или UUID (evo image list) вместо самого нового Ubuntu"))
 
 	return cmd
 }

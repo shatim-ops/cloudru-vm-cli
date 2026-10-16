@@ -16,7 +16,8 @@ var commandExamples = map[string]string{
 	"evo doctor": `  evo doctor
   evo doctor --json`,
 	"evo init": `  evo init
-  evo init --non-interactive`,
+  evo init --non-interactive
+  evo init --image debian-12`,
 	"evo status": `  evo status
   evo status --json`,
 	"evo verify": `  evo verify
@@ -43,7 +44,9 @@ var commandExamples = map[string]string{
 	"evo vm get": `  evo vm get my-vm
   evo vm get <ID> --json`,
 	"evo vm create": `  evo vm create my-vm --dry-run
-  evo vm create my-vm --flavor lowcost10-2-4
+  evo vm create my-vm --image Ubuntu-24.04 --flavor lowcost10-2-4 --port 80 --port 443
+  evo vm create astra-1 --image 'Astra Linux SE 1.8'
+  evo vm create dash-1 --image OpensearchDashboards --meta opensearch_host=10.0.0.5
   evo vm create worker-1 --no-public-ip --yes`,
 	"evo vm delete": `  evo vm delete my-vm --dry-run
   evo vm delete my-vm`,

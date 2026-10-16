@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -36,6 +37,10 @@ type Params struct {
 	DiskType string
 	Login    string
 	SSHKey   string // explicit public key (full "ssh-ed25519 AAAA... comment")
+	// Meta are explicit values of the image's metadata fields
+	// (image_metadata): the mandatory ones evo cannot fill. They are kept
+	// in the plan file (0600, next to the deploy key) until apply.
+	Meta map[string]string `json:"meta,omitempty"`
 }
 
 // Resolve performs all read-only discovery and returns a costed plan. It never
@@ -140,9 +145,19 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	}
 
 	// --- Access: image metadata fields + SSH model ---
-	metaFields, metaStatic, login, keyName, sErr := resolveAccess(ctx, cloud, image.ID, name, p)
+	metaFields, metaStatic, login, keyName, sErr, refuse := resolveAccess(ctx, cloud, image.ID, name, p)
+	if refuse != nil {
+		// A value the image does not take, or a mandatory field nobody
+		// filled: no plan, so deploy_apply cannot create the VM.
+		return nil, refuse
+	}
 	if sErr != nil {
 		warnings = append(warnings, "could not read image metadata template: "+sErr.Error())
+	}
+	if p.ComposeFile != "" {
+		if family := images.NoDockerFamily(image.Name, image.DisplayName, image.OS); family != "" {
+			warnings = append(warnings, fmt.Sprintf("image %s is %s: Docker's install script (get.docker.com) does not support it — take an Ubuntu or Debian image for a compose deploy", image.Name, family))
+		}
 	}
 
 	vm := VMSpec{
@@ -307,9 +322,12 @@ func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want 
 //   - static:  every other field, sent verbatim (the key, the hostname, the
 //     login, the image's defaults — the API rejects the request with
 //     image_metadata_fields_missing if these are omitted);
-//   - login and a human label for the SSH model.
-func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostname string, p Params) ([]string, map[string]string, string, string, error) {
-	login := firstNonEmpty(p.Login, "user1")
+//   - login and a human label for the SSH model;
+//   - readErr: the image could not be read (a warning, defaults are used);
+//   - refuse: a value the image does not take, or mandatory fields no value
+//     was found for — no plan is made.
+func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostname string, p Params) (fields []string, static map[string]string, login, keyName string, readErr, refuse error) {
+	login = firstNonEmpty(p.Login, "user1")
 
 	detail, err := cloud.GetImage(ctx, imageID)
 	if err != nil {
@@ -320,25 +338,34 @@ func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostn
 			fields = append(fields, "public_key")
 			key = "user-key"
 		}
-		return fields, map[string]string{}, login, key, err
+		static := map[string]string{}
+		for k, v := range p.Meta {
+			static[k] = v
+		}
+		return fields, static, login, key, err, nil
 	}
 
 	static, filled, err := images.FillMetadata(detail.MetadataFields, images.Inputs{
 		PublicKey: p.SSHKey, // empty: no key field is sent (an empty public_key triggers a 500)
 		Hostname:  hostname,
 		Login:     login,
+		Values:    p.Meta,
 	})
 	if err != nil {
-		return nil, map[string]string{}, login, "generated-password", err
+		return nil, nil, login, "", nil, err
+	}
+	if len(filled.Missing) > 0 {
+		return nil, nil, login, "", nil, images.MissingError(clierrors.CodeUsage, filled.Missing,
+			`image_metadata {"%s": "<value>"} in deploy_plan`)
 	}
 
-	keyName := "generated-password"
+	keyName = "generated-password"
 	if p.SSHKey != "" {
 		keyName = "ssh-key (deploy)"
 	} else if len(filled.PasswordFields) == 0 {
 		keyName = "image-default"
 	}
-	return filled.PasswordFields, static, login, keyName, nil
+	return filled.PasswordFields, static, login, keyName, nil, nil
 }
 
 // pickSubnet matches by zone ID, then by a name containing the zone name

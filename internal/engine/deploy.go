@@ -371,24 +371,25 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				"Задайте переменную CLOUDRU_PROJECT_ID или project_id в файле настроек ('evo configure'). ID проекта — в https://console.cloud.ru"))
 	}
 
-	imageID := e.Config.ImageID
-	if imageID == "" {
-		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
-			i18n.T("CLOUDRU_IMAGE_ID is required", "не задан CLOUDRU_IMAGE_ID"),
-			i18n.T("Set CLOUDRU_IMAGE_ID environment variable or image_id in config file. Find available images in Cloud.ru console.",
-				"Задайте переменную CLOUDRU_IMAGE_ID или image_id в .evo.yaml ('evo init' выберет образ сам; список — 'evo list-images')."))
-	}
-
 	projectName := e.Config.ProjectName
 	if projectName == "" {
 		projectName = filepath.Base(e.StateDir)
 	}
 	vmName := vmNameFor(projectName)
 
-	// Fetch image details to discover required metadata field names.
-	imgDetail, err := e.Cloud.GetImage(ctx, imageID)
+	// The image with its metadata fields: image_id by UUID, image by name
+	// (images.Resolve). Not found or ambiguous stops here, before anything
+	// is created.
+	imgDetail, err := e.BootImage(ctx, projectID)
 	if err != nil {
-		return state.DeploymentRecord{}, fmt.Errorf(i18n.T("get image details: %w", "сведения об образе: %w"), err)
+		return state.DeploymentRecord{}, err
+	}
+	imageID := imgDetail.ID
+	// Docker goes on through get.docker.com, which knows no domestic
+	// distributions: refuse before the VM is billed, not after an SSH
+	// session fails on it.
+	if family := images.NoDockerFamily(imgDetail.Name, imgDetail.DisplayName, imgDetail.OS); family != "" {
+		return state.DeploymentRecord{}, images.NoDockerError(clerrors.CodeConfigInvalid, imgDetail.Name, family)
 	}
 	diskSize, diskNote := provision.BootDiskGB(e.Config.DiskSize, imgDetail.MinDisk)
 	if diskNote != "" {
@@ -397,17 +398,25 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 
 	// image_metadata by the image's declared fields (internal/images, the
 	// same rules as MCP provision and deploy_apply). The key is made only
-	// after consent, so its fields are filled again then. linux_password is
-	// set as well: without it the VM never leaves "creating" (seen live
-	// 2026-10-14). Login is by SSH key: the password is random and not kept.
+	// after consent, so its fields are filled again then (KeyLater). Values
+	// the image needs and evo cannot make come from image_metadata: in
+	// .evo.yaml. linux_password is set as well: without it the VM never
+	// leaves "creating" (seen live 2026-10-14). Login is by SSH key: the
+	// password is random and not kept.
 	imgMeta, filled, err := images.FillMetadata(imgDetail.MetadataFields, images.Inputs{
 		PublicKey:   e.SSHPubKey,
+		KeyLater:    true,
 		Hostname:    vmName,
 		Login:       "ubuntu",
 		GenPassword: func() string { return randomPassword(16) },
+		Values:      e.Config.ImageMetadata,
 	})
 	if err != nil {
-		return state.DeploymentRecord{}, err
+		return state.DeploymentRecord{}, inProjectFile(err)
+	}
+	if len(filled.Missing) > 0 {
+		return state.DeploymentRecord{}, images.MissingError(clerrors.CodeConfigInvalid, filled.Missing,
+			i18n.T("image_metadata: {%s: <value>} in .evo.yaml", "image_metadata: {%s: <значение>} в .evo.yaml"))
 	}
 	keyFields := filled.KeyFields // filled with the SSH public key after consent
 

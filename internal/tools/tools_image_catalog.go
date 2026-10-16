@@ -208,16 +208,25 @@ func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (str
 		"fields":          fields,
 		"fields_required": needs,
 		"create": map[string]any{
-			"cli":  "evo vm create <vm-name> --image-id " + img.ID,
+			"cli":  "evo vm create <vm-name> --image " + images.ShellQuote(img.Name) + metaFlags(needs),
 			"tool": "provision",
 			"args": map[string]any{"image_id": img.ID},
 		},
 	}
 	if len(needs) > 0 {
-		out["note"] = "The image has mandatory fields evo cannot fill yet (" + strings.Join(needs, ", ") +
-			"): provision does not pass custom metadata, so creating a VM from it will fail until it does."
+		out["note"] = "The image has mandatory fields evo cannot fill (" + strings.Join(needs, ", ") +
+			"): pass them to provision in image_metadata (CLI: --meta field=value), or the call is refused before anything is created."
 	}
 	return toJSON(out), false
+}
+
+// metaFlags are the --meta flags of the fields the person must fill.
+func metaFlags(fields []string) string {
+	out := ""
+	for _, f := range fields {
+		out += " --meta " + f + "=<value>"
+	}
+	return out
 }
 
 // handleListImages is list_images as it was before image_list: the full

@@ -300,3 +300,15 @@ func TestLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestParsePorts(t *testing.T) {
+	tcp, udp, err := ParsePorts([]string{"80", " 8080/TCP ", "53/udp", "80/tcp", ""})
+	if err != nil || fmt.Sprint(tcp) != "[80 8080]" || fmt.Sprint(udp) != "[53]" {
+		t.Errorf("tcp %v udp %v err %v", tcp, udp, err)
+	}
+	for _, bad := range []string{"http", "0", "65536", "80/sctp", "80/"} {
+		if _, _, err := ParsePorts([]string{bad}); err == nil {
+			t.Errorf("%q принят", bad)
+		}
+	}
+}

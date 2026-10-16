@@ -11,6 +11,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -172,6 +173,12 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) {
 			}
 		}
 	}
+	if vm.Image.ID == "" && vm.Image.Name != "" {
+		// image by name: the call resolves it the same way.
+		if img, err := (images.Catalog{Cloud: e.Cloud, ProjectID: p.ProjectID}).Resolve(ctx, vm.Image.Name); err == nil {
+			vm.Image.ID, vm.Image.Name = img.ID, img.Name
+		}
+	}
 	if vm.Image.ID != "" {
 		if img, err := e.Cloud.GetImage(ctx, vm.Image.ID); err == nil {
 			if img.Name != "" {
@@ -304,6 +311,19 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 		if p.PublicIP != nil {
 			lines = append(lines, publicIPLine(*p.PublicIP))
 		}
+		for _, prm := range p.Params {
+			v := paramValue(prm.Value)
+			switch {
+			case v == "":
+			case prm.Key == "ports":
+				lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to 0.0.0.0/0 in the VM's security group (shared by every VM in it); destroy closes them",
+					"%s открываются для 0.0.0.0/0 в группе безопасности ВМ (она общая для всех ВМ в ней); destroy их закроет", v))
+			case prm.Key == "image_metadata":
+				lines = append(lines, previewLabel("fields", "поля")+i18n.Tf("%s of the image, as given", "%s — поля образа с заданными значениями", v))
+			default:
+				lines = append(lines, paramLine(prm))
+			}
+		}
 	} else {
 		if zoneName != "" {
 			lines = append(lines, previewLabel("zone", "зона")+refText(*zone))
@@ -433,7 +453,7 @@ func missingText(m string) string {
 	case "project_id":
 		return i18n.T("project (--project-id or CLOUDRU_PROJECT_ID)", "проект (--project-id или CLOUDRU_PROJECT_ID)")
 	case "image_id":
-		return i18n.T("image (--image-id or CLOUDRU_IMAGE_ID)", "образ (--image-id или CLOUDRU_IMAGE_ID)")
+		return i18n.T("image (--image, --image-id or CLOUDRU_IMAGE_ID)", "образ (--image, --image-id или CLOUDRU_IMAGE_ID)")
 	case "region":
 		return i18n.T("zone (--region or CLOUDRU_REGION)", "зона (--region или CLOUDRU_REGION)")
 	}

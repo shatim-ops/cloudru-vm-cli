@@ -8,6 +8,8 @@ import (
 	stderrors "errors"
 	"fmt"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -34,20 +37,29 @@ func (s *Registry) registerTools() {
 				"region":       strProp("Availability zone UUID (see list_zones)."),
 				"project_id":   strProp("Cloud.ru project UUID."),
 				"image_id":     strProp("Boot image UUID (see image_list, image_get)."),
+				"image":        strProp("Boot image by exact name, display name or UUID (Ubuntu or Debian: Astra Linux, Alt and RED OS are refused, Docker cannot be installed there). Use it or image_id, not both."),
 				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
 				"force":        boolProp("Redeploy even if the compose hash is unchanged."),
 				"confirmed":    confirmedProp(),
 			}),
 		},
 		{
-			Name:        "provision",
-			Description: "Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only.",
+			Name: "provision",
+			Description: "Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). " +
+				"The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image works, Astra Linux, Alt and RED OS included. " +
+				"evo fills the image's metadata fields itself (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else the call is refused before anything is created. " +
+				"ports opens inbound rules in the VM's security group after boot (destroy closes them). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only.",
 			InputSchema: objSchema(map[string]any{
-				"name":         strProp("VM name (e.g. 'hermes-agent')."),
-				"flavor":       strProp("VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier)."),
-				"region":       strProp("Availability zone UUID (see list_zones)."),
-				"project_id":   strProp("Cloud.ru project UUID."),
-				"image_id":     strProp("Boot image UUID (see image_list, image_get)."),
+				"name":       strProp("VM name (e.g. 'hermes-agent')."),
+				"flavor":     strProp("VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier)."),
+				"region":     strProp("Availability zone UUID (see list_zones)."),
+				"project_id": strProp("Cloud.ru project UUID."),
+				"image":      strProp("Boot image by exact name, display name or UUID (see image_list, image_get), e.g. 'Ubuntu-24.04'. Use it or image_id, not both."),
+				"image_id":   strProp("Boot image UUID (see image_list, image_get)."),
+				"image_metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
+					"description": "Values of the image's metadata fields by name, e.g. {\"admin_password\": \"…\"} — the mandatory ones evo cannot fill (image_get: fields_required). They override what evo fills. A field the image does not declare is refused."},
+				"ports": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
+					"description": "Inbound ports to open in the VM's security group from 0.0.0.0/0, e.g. [\"80\", \"8080/tcp\", \"53/udp\"] (tcp by default). The group is shared by the zone's VMs; destroy deletes the rules evo created."},
 				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
 				"subnet_id":    strProp("Subnet UUID for the interface (default: a subnet in the target zone)."),
 				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
@@ -187,6 +199,8 @@ func (s *Registry) registerTools() {
 				"disk_type":    strProp("manual: disk type name, e.g. 'SSD' (see list_disk_types)."),
 				"login":        strProp("Login user for the VM (default: user1)."),
 				"ssh_key":      strProp("Full SSH public key to inject (e.g. 'ssh-ed25519 AAAA... user'). If omitted, a password is generated."),
+				"image_metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
+					"description": "Values of the image's metadata fields by name — the mandatory ones evo cannot fill (image_get: fields_required). Without them the plan is refused. Kept in the local plan file until deploy_apply."},
 			}),
 		},
 		{
@@ -1382,12 +1396,19 @@ func (s *Registry) registerTools() {
 
 func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (string, bool) {
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		will := withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
+			firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
+		if v := stringArg(args, "image"); v != "" {
+			will["image"] = v
+		}
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the user's approval, then call again with confirmed=true.",
-			"will_deploy": withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
-				firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx))),
+			"status":      "confirmation_required",
+			"message":     "deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the user's approval, then call again with confirmed=true.",
+			"will_deploy": will,
 		}), true
+	}
+	if stringArg(args, "image") != "" && stringArg(args, "image_id") != "" {
+		return usageResult(fmt.Errorf("pass image or image_id, not both")), true
 	}
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
@@ -1396,6 +1417,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 		"region":       "Region",
 		"project_id":   "ProjectID",
 		"image_id":     "ImageID",
+		"image":        "Image",
 		"disk_size":    "DiskSize",
 	} {
 		if v, ok := args[arg]; ok && v != nil && v != "" {
@@ -1444,11 +1466,25 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		"region":     "Region",
 		"project_id": "ProjectID",
 		"image_id":   "ImageID",
+		"image":      "Image",
 		"disk_size":  "DiskSize",
 	} {
 		if v, ok := args[arg]; ok && v != nil && v != "" {
 			overrides[field] = v
 		}
+	}
+	// The call's own mistakes are refused before anything, the preview
+	// included.
+	if stringArg(args, "image") != "" && stringArg(args, "image_id") != "" {
+		return usageResult(fmt.Errorf("pass image or image_id, not both")), true
+	}
+	metaValues, err := metadataArg(args, "image_metadata")
+	if err != nil {
+		return usageResult(err), true
+	}
+	tcpPorts, udpPorts, err := sgrules.ParsePorts(portSpecs(args["ports"]))
+	if err != nil {
+		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		noPublicIP, _ := args["no_public_ip"].(bool)
@@ -1458,6 +1494,16 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		preview := provisionPreview(eng, args)
 		will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
 			firstNonEmptyStr(stringArg(args, "project_id"), preview.ProjectID))
+		if v := stringArg(args, "image"); v != "" {
+			will["image"] = v
+		}
+		if len(tcpPorts)+len(udpPorts) > 0 {
+			will["ports"] = portLabels(tcpPorts, udpPorts)
+		}
+		if len(metaValues) > 0 {
+			// Names only: a value may be a password.
+			will["image_metadata_fields"] = sortedMetaKeys(metaValues)
+		}
 		will["public_ip"] = !noPublicIP
 		return toJSON(map[string]any{
 			"status":      "confirmation_required",
@@ -1484,9 +1530,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		return usageResult(fmt.Errorf("CLOUDRU_PROJECT_ID is required")), true
 	}
 
-	imageID := eng.Config.ImageID
-	if imageID == "" {
-		return usageResult(fmt.Errorf("CLOUDRU_IMAGE_ID is required")), true
+	if eng.ImageRef() == "" {
+		return usageResult(fmt.Errorf("image (name or UUID) or image_id is required (or CLOUDRU_IMAGE_ID)")), true
 	}
 
 	region := eng.Config.Region
@@ -1512,10 +1557,12 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		flavorID = picked
 	}
 
-	// Fetch image metadata
-	imgDetail, err := eng.Cloud.GetImage(ctx, imageID)
+	// The image with its metadata fields: image_id by UUID, image by name
+	// (images.Resolve: ambiguous is USAGE with the candidates, none is
+	// NOT_FOUND).
+	imgDetail, err := eng.BootImage(ctx, projectID)
 	if err != nil {
-		return errResult(fmt.Errorf("get image details: %w", err)), true
+		return errResult(err), true
 	}
 	diskSize, diskNote := provision.BootDiskGB(eng.Config.DiskSize, imgDetail.MinDisk)
 
@@ -1528,14 +1575,22 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// one): the key goes in trimmed. linux_password is mandatory for most
 	// images — without it the VM boots to error_creating. The read-only
 	// status flags vmm_enabled / guest_agent_ready are never sent.
+	// Explicit values (image_metadata, --meta) win; a mandatory field nobody
+	// filled refuses the call here, before the boot FIP and the VM.
 	imgMeta, filled, err := images.FillMetadata(imgDetail.MetadataFields, images.Inputs{
 		PublicKey:   strings.TrimSpace(eng.SSHPubKey),
 		Hostname:    vmName,
 		Login:       "user1",
 		GenPassword: func() string { return genPassword(16) },
+		Values:      metaValues,
 	})
 	if err != nil {
-		return usageResult(err), true
+		return errResult(err), true
+	}
+	if len(filled.Missing) > 0 {
+		return errResult(images.MissingError(clierrors.CodeUsage, filled.Missing,
+			i18n.T(`image_metadata {"%[1]s": "<value>"} (evo vm create: --meta %[1]s=<value>)`,
+				`image_metadata {"%[1]s": "<значение>"} (evo vm create: --meta %[1]s=<значение>)`))), true
 	}
 	sshUser := filled.Login
 	if sshUser == "" {
@@ -1656,20 +1711,26 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// see it (and release its FIP). Its error goes into the answer: a VM
 	// missing from the state is billed and destroy cannot find it.
 	statePath := state.DefaultPath(eng.StateDir)
+	// ports holds what sgrules.Open recorded (the group, the ports, the
+	// rules it created): destroy deletes those rules.
+	var ports state.DeploymentRecord
 	saveState := func(vmID, status, publicIP string) error {
 		return state.Update(statePath, stateLockWait, func(sf *state.File) error {
 			sf.UpsertDeployment(state.DeploymentRecord{
-				ID:           vmID,
-				VMID:         vmID,
-				VMIP:         publicIP,
-				ProjectID:    projectID,
-				VMFlavor:     flavorID,
-				Region:       region,
-				SSHUser:      sshUser,
-				Status:       status,
-				FloatingIPID: fipID,
-				CreatedAt:    time.Now(),
-				UpdatedAt:    time.Now(),
+				ID:                 vmID,
+				VMID:               vmID,
+				VMIP:               publicIP,
+				ProjectID:          projectID,
+				VMFlavor:           flavorID,
+				Region:             region,
+				SSHUser:            sshUser,
+				Status:             status,
+				FloatingIPID:       fipID,
+				SecurityGroupID:    ports.SecurityGroupID,
+				SecurityGroupPorts: ports.SecurityGroupPorts,
+				OpenedRules:        ports.OpenedRules,
+				CreatedAt:          time.Now(),
+				UpdatedAt:          time.Now(),
 			})
 			return nil
 		})
@@ -1761,6 +1822,20 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				if ctx.Err() != nil {
 					return interrupted(publicIP)
 				}
+				// The ports asked for, in the VM's group: the same code as
+				// deploy, the rules recorded for destroy.
+				var opened *sgrules.OpenResult
+				portsNote := ""
+				if len(tcpPorts)+len(udpPorts) > 0 {
+					if len(sgIDs) == 0 {
+						portsNote = "no security group was resolved for the VM, so ports " + strings.Join(portLabels(tcpPorts, udpPorts), ",") + " were not opened — open them with open_ports"
+					} else {
+						res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts,
+							func(label string) string { return "evo: port " + label }, &ports)
+						opened = &res
+						portsNote = res.Note()
+					}
+				}
 				if serr := saveState(vm.ID, "running", publicIP); serr != nil {
 					return toJSON(map[string]any{
 						"status": "error",
@@ -1784,6 +1859,12 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					"region":   region,
 					"disk_gb":  diskSize,
 					"message":  msg,
+				}
+				if opened != nil {
+					res["ports"] = opened
+				}
+				if portsNote != "" {
+					res["message"] = msg + " Ports: " + portsNote + "."
 				}
 				if diskNote != "" {
 					res["warning"] = diskNote
@@ -2218,6 +2299,76 @@ func stringSliceArg(args map[string]any, key string) []string {
 	return out
 }
 
+// metadataArg reads image_metadata: an object of field name → value. A
+// number or a boolean is taken as its text (an MCP client may send
+// {"port": 8080}); anything nested is refused.
+func metadataArg(args map[string]any, key string) (map[string]string, error) {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s must be an object of field name → value", key)
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		switch x := v.(type) {
+		case string:
+			out[k] = x
+		case float64, bool, json.Number:
+			out[k] = fmt.Sprint(x)
+		default:
+			return nil, fmt.Errorf("%s.%s must be a string", key, k)
+		}
+	}
+	return out, nil
+}
+
+func sortedMetaKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// portSpecs reads a ports argument: an array of "80", "8080/tcp", "53/udp"
+// or plain numbers, or one comma-separated string.
+func portSpecs(v any) []string {
+	switch x := v.(type) {
+	case []any:
+		out := make([]string, 0, len(x))
+		for _, e := range x {
+			switch p := e.(type) {
+			case string:
+				out = append(out, p)
+			case float64:
+				out = append(out, strconv.FormatFloat(p, 'f', -1, 64))
+			default:
+				out = append(out, fmt.Sprint(p))
+			}
+		}
+		return out
+	case nil:
+		return nil
+	}
+	return stringSliceArg(map[string]any{"v": v}, "v")
+}
+
+// portLabels names ports as the security group rules do: "80", "53/udp".
+func portLabels(tcp, udp []int) []string {
+	var out []string
+	for _, p := range tcp {
+		out = append(out, sgrules.Label(sgrules.PortKey("tcp", p)))
+	}
+	for _, p := range udp {
+		out = append(out, sgrules.Label(sgrules.PortKey("udp", p)))
+	}
+	return out
+}
+
 // intArg reads an integer argument. JSON numbers decode as float64.
 func intArg(args map[string]any, key string, def int) int {
 	switch v := args[key].(type) {
@@ -2337,6 +2488,15 @@ func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePrev
 		Zone:  deployplan.RefSpec{ID: cfg.Region},
 		Image: deployplan.RefSpec{ID: cfg.ImageID},
 		Disk:  deployplan.DiskSpec{Type: "SSD"}}
+	if ref := stringArg(args, "image"); ref != "" || (cfg.ImageID == "" && cfg.Image != "") {
+		// By name: the CLI resolves it for the preview, the call when it runs.
+		ref = firstNonEmptyStr(ref, cfg.Image)
+		if images.IsUUID(ref) {
+			vm.Image = deployplan.RefSpec{ID: ref}
+		} else {
+			vm.Image = deployplan.RefSpec{Name: ref}
+		}
+	}
 	if f := cfg.Flavor; f != "" && f != "auto" {
 		if isUUID(f) {
 			vm.Flavor.ID = f
@@ -2348,10 +2508,17 @@ func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePrev
 	// the image, as provision itself does.
 	vm.Disk.SizeGB, _ = provision.BootDiskGB(cfg.DiskSize, 0)
 	p.VM = &vm
-	for _, m := range []struct{ name, val string }{{"project_id", p.ProjectID}, {"image_id", cfg.ImageID}, {"region", cfg.Region}} {
+	image := firstNonEmptyStr(vm.Image.ID, vm.Image.Name)
+	for _, m := range []struct{ name, val string }{{"project_id", p.ProjectID}, {"image_id", image}, {"region", cfg.Region}} {
 		if m.val == "" {
 			p.Missing = append(p.Missing, m.name)
 		}
+	}
+	if tcp, udp, err := sgrules.ParsePorts(portSpecs(args["ports"])); err == nil && len(tcp)+len(udp) > 0 {
+		p.Add("ports", strings.Join(portLabels(tcp, udp), ","))
+	}
+	if meta, err := metadataArg(args, "image_metadata"); err == nil && len(meta) > 0 {
+		p.Add("image_metadata", strings.Join(sortedMetaKeys(meta), ","))
 	}
 	p.Price()
 	return p

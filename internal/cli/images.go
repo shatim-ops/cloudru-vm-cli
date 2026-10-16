@@ -209,14 +209,18 @@ func renderImageCard(p *output.Printer, w io.Writer, text string) error {
 		}
 		p.Table([]string{"  " + i18n.T("FIELD", "ПОЛЕ"), i18n.T("TYPE", "ТИП"), i18n.T("REQUIRED", "ОБЯЗАТЕЛЬНОЕ"), i18n.T("FILLED BY", "КТО ЗАПОЛНЯЕТ")}, rows)
 	}
+	meta := ""
 	if len(a.FieldsRequired) > 0 {
-		fmt.Fprintln(w, i18n.Tf("Needs values evo cannot pass yet: %s — a VM from this image will not be created by evo vm create for now.",
-			"Нужны значения, которые evo пока не умеет передать: %s — evo vm create такую ВМ пока не создаст.", strings.Join(a.FieldsRequired, ", ")))
+		fmt.Fprintln(w, i18n.Tf("Needs values evo cannot make itself: %s — pass them with --meta field=value.",
+			"Нужны значения, которых evo сам не знает: %s — передайте их: --meta поле=значение.", strings.Join(a.FieldsRequired, ", ")))
+		for _, f := range a.FieldsRequired {
+			meta += " --meta " + f + i18n.T("=<value>", "=<значение>")
+		}
 	}
 
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, i18n.T("Create a VM:", "Создать ВМ:"))
-	fmt.Fprintf(w, "  evo vm create %s --image-id %s\n", i18n.T("<vm-name>", "<имя-вм>"), img.ID)
+	fmt.Fprintf(w, "  evo vm create %s --image %s%s\n", i18n.T("<vm-name>", "<имя-вм>"), images.ShellQuote(img.Name), meta)
 	if img.MinCPU > 0 || img.MinRAM > 0 {
 		fmt.Fprintln(w, i18n.T("  the flavor must meet the minimum above: --flavor <name> (evo vm flavors)",
 			"  flavor — не меньше минимума выше: --flavor <имя> (evo vm flavors)"))

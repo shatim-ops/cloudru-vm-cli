@@ -77,6 +77,13 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	if _, ok := args["ports"]; ok {
 		params.Ports = parseInts(args["ports"])
 	}
+	if _, ok := args["image_metadata"]; ok {
+		meta, err := metadataArg(args, "image_metadata")
+		if err != nil {
+			return usageResult(err), true
+		}
+		params.Meta = meta
+	}
 
 	// Default to the AGENT's deploy key so the agent can SSH in to install
 	// software (the image is pubkey-only; password SSH is disabled). The

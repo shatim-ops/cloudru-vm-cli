@@ -225,7 +225,7 @@ func TestImageGet_RussianCard(t *testing.T) {
 		"  linux_password  linux_password  да            evo: случайный пароль\n",
 		"  hostname        hostname        да            evo: имя ВМ\n",
 		"  vmm_enabled     flag                          служебный флаг, не передаётся\n",
-		"Создать ВМ:\n  evo vm create <имя-вм> --image-id " + imgID(1) + "\n",
+		"Создать ВМ:\n  evo vm create <имя-вм> --image AstraLinuxSmolensk1.8.3KES\n",
 		"flavor — не меньше минимума выше",
 	})
 	for _, bad := range []string{"<svg", "cloud-config", "\x00", "probe"} {
@@ -242,7 +242,8 @@ func TestImageGet_RussianCard(t *testing.T) {
 	assertHas(t, out, []string{
 		"  opensearch_host      text            да            ВЫ: обязательное, evo его не заполнит\n",
 		"  opensearch_password  plain_password                значение образа по умолчанию\n",
-		"Нужны значения, которые evo пока не умеет передать: opensearch_host",
+		"Нужны значения, которых evo сам не знает: opensearch_host — передайте их: --meta поле=значение.\n",
+		"  evo vm create <имя-вм> --image OpensearchDashboards --meta opensearch_host=<значение>\n",
 	})
 	if strings.Contains(out, "not-shown-default") {
 		t.Errorf("a secret default is shown:\n%s", out)
@@ -270,7 +271,7 @@ func TestImageGet_JSONAndErrors(t *testing.T) {
 		t.Errorf("answer: %v", got)
 	}
 	create, _ := got["create"].(map[string]any)
-	if create["cli"] != "evo vm create <vm-name> --image-id "+imgID(1) || create["tool"] != "provision" {
+	if create["cli"] != "evo vm create <vm-name> --image AstraLinuxSmolensk1.8.3KES" || create["tool"] != "provision" {
 		t.Errorf("create: %v", create)
 	}
 	fields, _ := got["fields"].([]any)

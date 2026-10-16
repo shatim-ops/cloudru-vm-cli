@@ -38,11 +38,14 @@ type treeGroup struct {
 //	"args..."     the rest of the command line, joined with spaces
 //	"vm_id|name"  required; goes to vm_id when it is a UUID, to name otherwise
 type treeCmd struct {
-	Verb    string
-	Tool    string
-	Args    []string
-	Rename  map[string]string // tool argument → flag name, when the default clashes
-	Columns []string          // table columns for a list answer (default: picked from the rows)
+	Verb   string
+	Tool   string
+	Args   []string
+	Rename map[string]string // tool argument → flag name, when the default clashes or reads badly
+	// Pairs are object arguments given as a repeatable key=value flag
+	// (--meta admin_password=…) instead of one JSON object.
+	Pairs   map[string]bool
+	Columns []string // table columns for a list answer (default: picked from the rows)
 	// Render shows the answer instead of the generic table (image list,
 	// image get); --json still prints the tool's answer as is.
 	Render func(p *output.Printer, w io.Writer, text string) error
@@ -52,7 +55,9 @@ var treeGroups = []treeGroup{
 	{Name: "vm", Short: "Virtual machines", Cmds: []treeCmd{
 		{Verb: "list", Tool: "vm_list", Columns: []string{"id", "name", "state", "zone", "created_time"}},
 		{Verb: "get", Tool: "vm_get", Args: []string{"vm_id|name"}},
-		{Verb: "create", Tool: "provision", Args: []string{"name"}},
+		{Verb: "create", Tool: "provision", Args: []string{"name"},
+			Rename: map[string]string{"image_metadata": "meta", "ports": "port"},
+			Pairs:  map[string]bool{"image_metadata": true}},
 		{Verb: "delete", Tool: "destroy", Args: []string{"vm_id|name"}},
 		{Verb: "zones", Tool: "list_zones"},
 		{Verb: "flavors", Tool: "list_flavors"},
@@ -281,6 +286,10 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	flagArgs := c.flagArgs(t)
 	for _, p := range flagArgs {
 		name := c.flagName(p.Name)
+		if c.Pairs[p.Name] {
+			cmd.Flags().StringArray(name, nil, p.Description+" (key=value, repeatable)")
+			continue
+		}
 		switch p.Type {
 		case "integer":
 			cmd.Flags().Int(name, 0, p.Description)
@@ -385,6 +394,15 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 		if !cmd.Flags().Changed(name) {
 			continue
 		}
+		if c.Pairs[p.Name] {
+			vals, _ := cmd.Flags().GetStringArray(name)
+			m, err := pairsArg(name, vals)
+			if err != nil {
+				return nil, err
+			}
+			out[p.Name] = m
+			continue
+		}
 		var raw string
 		if p.Type == "array" {
 			vals, _ := cmd.Flags().GetStringArray(name)
@@ -408,6 +426,28 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 		return nil, clerrors.New(clerrors.CodeUsage,
 			i18n.Tf("%s: missing required flag(s): %s", "%s: не заданы обязательные флаги: %s", cmd.CommandPath(), strings.Join(missing, ", ")),
 			helpHint(cmd))
+	}
+	return out, nil
+}
+
+// pairsArg turns repeated key=value flags into an object. The value is
+// everything after the first "=", so it may contain "=" itself.
+func pairsArg(flag string, vals []string) (map[string]any, error) {
+	out := make(map[string]any, len(vals))
+	for _, v := range vals {
+		k, val, ok := strings.Cut(v, "=")
+		k = strings.TrimSpace(k)
+		if !ok || k == "" {
+			return nil, clerrors.New(clerrors.CodeUsage,
+				i18n.Tf("--%s %q: want key=value", "--%s %q: нужно поле=значение", flag, v),
+				i18n.Tf("Example: --%s admin_password=secret; the fields of an image: evo image get <image>.",
+					"Пример: --%s admin_password=secret; поля образа — evo image get <образ>.", flag))
+		}
+		if _, dup := out[k]; dup {
+			return nil, clerrors.New(clerrors.CodeUsage,
+				i18n.Tf("--%s %s is given twice", "--%s %s задан дважды", flag, k), "")
+		}
+		out[k] = val
 	}
 	return out, nil
 }

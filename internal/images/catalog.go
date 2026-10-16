@@ -276,6 +276,9 @@ func searchWord(ref string) string {
 	return ref
 }
 
+// ShellQuote quotes s for a command line shown to a person, when it needs it.
+func ShellQuote(s string) string { return shellQuote(s) }
+
 func shellQuote(s string) string {
 	if s != "" && !strings.ContainsAny(s, " \t'\"$`\\") {
 		return s
