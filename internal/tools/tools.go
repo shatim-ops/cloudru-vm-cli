@@ -187,7 +187,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_plan",
-			Description: "STEP 1 of the deploy wizard (read-only, creates nothing). Resolves a full VM configuration — flavor, image, zone, disk, network, SSH — and returns it together with a MONTHLY COST estimate and a plan_id. In 'auto' mode pass the product's requirements (cpu/ram_gb/disk_gb from its README) and defaults fill the rest; in 'manual' mode pass explicit choices (flavor/zone/image/disk_type). Show the returned plan + cost to the user for approval, then call deploy_apply with the plan_id.",
+			Description: "STEP 1 of the deploy wizard (read-only, creates nothing). Resolves a full VM configuration — flavor, image, zone, disk, network, SSH — and returns it together with its MONTHLY COST and a plan_id (cost.source: the Cloud.ru price-calculation API, or a rate-card estimate when the API gives no price; an image license is never included). In 'auto' mode pass the product's requirements (cpu/ram_gb/disk_gb from its README) and defaults fill the rest; in 'manual' mode pass explicit choices (flavor/zone/image/disk_type). Show the returned plan + cost to the user for approval, then call deploy_apply with the plan_id.",
 			InputSchema: objSchema(map[string]any{
 				"base_plan_id": strProp("Optional: a prior plan_id to PATCH. Starts from that plan's parameters and overlays only the fields you pass here (e.g. just disk_gb), returning a fresh plan_id. Lets the user tweak one value without restating everything."),
 				"product":      strProp("Product/app name being deployed (used for the VM name and reporting)."),

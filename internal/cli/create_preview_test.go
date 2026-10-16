@@ -63,6 +63,12 @@ func (previewCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskTyp
 // and gives the engines of the tools a fake cloud and a token.
 func withPreviewCloud(t *testing.T) {
 	t.Helper()
+	withCloud(t, previewCloud{})
+}
+
+// withCloud is withPreviewCloud with the given fake cloud.
+func withCloud(t *testing.T, cloud provision.CloudAPI) {
+	t.Helper()
 	t.Setenv("CLOUDRU_PROJECT_ID", pvProject)
 	t.Setenv("CLOUDRU_REGION", pvZone)
 	t.Setenv("CLOUDRU_IMAGE_ID", pvImage)
@@ -74,7 +80,7 @@ func withPreviewCloud(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		e.Auth, e.Cloud = previewToken{}, previewCloud{}
+		e.Auth, e.Cloud = previewToken{}, cloud
 		return e, nil
 	}
 	t.Cleanup(func() { toolEngine = old })
@@ -119,7 +125,8 @@ func TestVMCreatePreview_Russian(t *testing.T) {
 		"  образ:      Ubuntu 22.04 (" + pvImage + ")\n",
 		"  диск:       загрузочный, 20 ГБ (цена по тарифу SSD)\n", // raised to the image's min_disk
 		"  внешний IP: будет создан и привязан floating IP\n",
-		"  цена:       ~2184.00 RUB в месяц (вычисления 2044.00 + диск 140.00), оценка, а не счёт\n",
+		"  цена:       ~2184.00 RUB в месяц (вычисления 2044.00 + диск 140.00), оценка по тарифной карте evo, а не счёт\n",
+		"  цена API:   не получена (price-calculation: not in this fake), показана оценка\n",
 		"provision не выполняется: нужно подтверждение, а stdin — не терминал",
 	})
 	assertNoJargon(t, errOut)
@@ -143,7 +150,8 @@ func TestVMCreatePreview_English(t *testing.T) {
 		"  image:     Ubuntu 22.04 (" + pvImage + ")\n",
 		"  disk:      20 GB boot disk (priced at the SSD rate)\n",
 		"  public IP: none (private VM, no floating IP)\n",
-		"  cost:      ~2184.00 RUB/month (compute 2044.00 + disk 140.00), estimate, not a bill\n",
+		"  cost:      ~2184.00 RUB/month (compute 2044.00 + disk 140.00), evo rate-card estimate, not a bill\n",
+		"  API price: none (price-calculation: not in this fake), the estimate is shown\n",
 	})
 	assertNoJargon(t, out)
 }
@@ -220,7 +228,7 @@ func TestDiskCreatePreview_Russian(t *testing.T) {
 		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
 		"  зона:       ru.AZ-1 (" + pvZone + ")\n",
 		"  диск:       20 ГБ, тип SSD\n",
-		"  цена:       ~140.00 RUB в месяц (диск), оценка, а не счёт\n",
+		"  цена:       ~140.00 RUB в месяц (диск), оценка по тарифной карте evo, а не счёт\n",
 	})
 	assertNoJargon(t, errOut)
 	if strings.Contains(errOut, "disk_create makes") || strings.Contains(errOut, "zone_id") {

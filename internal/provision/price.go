@@ -39,7 +39,7 @@ type PriceFloatingIP struct {
 // PriceCalculation is the answer of price-calculation, in roubles. Keys
 // beyond these are ignored, missing ones stay 0. Seen live (api-probe,
 // 16.10.2026): image and mkp_image are 0 for every image, marketplace ones
-// included — the licence of an image is not in the price; two Astra
+// included — the license of an image is not in the price; two Astra
 // marketplace images answer 422 (sku_identifier cannot be blank).
 type PriceCalculation struct {
 	Flavor          float64 `json:"flavor"`

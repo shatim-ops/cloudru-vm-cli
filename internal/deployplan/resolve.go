@@ -188,7 +188,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		},
 		Ports:           p.Ports,
 		SSH:             SSHSpec{Login: login, KeyName: keyName},
-		Cost:            EstimateVM(vm),
+		Cost:            PriceVM(ctx, cloud, PriceInput{ProjectID: projectID, VM: vm, PublicIP: wantFIP, Marketplace: image.Type == provision.ImageTypeMarketplace}),
 		Warnings:        warnings,
 		ComposeRequired: p.ComposeFile != "",
 		ComposeFile:     p.ComposeFile,
@@ -200,8 +200,9 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	return plan, nil
 }
 
-// EstimateVM is the cost estimate for a resolved VM. deploy_plan and the
-// CLI deploy preview both use it, so they never disagree about the price.
+// EstimateVM is the rate-card estimate for a resolved VM: the price of
+// deploy_plan and of the CLI previews (PriceVM) when the price-calculation
+// API gives none, so they never disagree about the price.
 func EstimateVM(vm VMSpec) pricing.Estimate {
 	return pricing.EstimateFor(vm.Flavor.Name, vm.Flavor.VCPUs, vm.Flavor.RAMGB, vm.Disk.SizeGB, vm.Disk.Type)
 }

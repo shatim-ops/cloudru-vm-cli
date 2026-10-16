@@ -17,11 +17,25 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
-// costNote goes next to every price shown before an operation: Cloud.ru has
-// no public price API, internal/pricing is a rate card.
-const costNote = "estimate, not a bill"
+// costNote goes next to a rate-card price shown before an operation
+// (internal/pricing): the price-calculation API of Cloud.ru was not asked
+// or gave none.
+const costNote = "evo rate-card estimate, not a bill"
 
-func costNoteText() string { return i18n.T(costNote, "оценка, а не счёт") }
+// apiCostNote goes next to a price of the price-calculation API.
+const apiCostNote = "Cloud.ru price-calculation API, not a bill; image license not included"
+
+func costNoteText() string {
+	return i18n.T(costNote, "оценка по тарифной карте evo, а не счёт")
+}
+
+// costNoteFor is the note of a price, by its source.
+func costNoteFor(cost pricing.Estimate) string {
+	if cost.Source == pricing.SourceAPI {
+		return i18n.T(apiCostNote, "по API расчёта цены Cloud.ru, а не счёт; без лицензии образа")
+	}
+	return costNoteText()
+}
 
 // previewLabel is the name of a preview line, padded so the values line up;
 // a longer name ("пространство имён") keeps one space before its value.
@@ -53,10 +67,11 @@ func (e *Engine) confirmOptions(yes, dryRun, noPrompt bool) confirm.Options {
 	}
 }
 
-// deployPreview describes the VM about to be created, priced with the same
-// estimator as the MCP deploy_plan. Lookups of names are best effort: the
-// preview falls back to the IDs rather than failing the deploy.
-func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, network vmNetwork, ports, udpPorts []int) confirm.Preview {
+// deployPreview describes the VM about to be created, priced as the MCP
+// deploy_plan prices it (deployplan.PriceVM: the price-calculation API, else
+// the rate card). Lookups of names are best effort: the preview falls back
+// to the IDs rather than failing the deploy.
+func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, diskTypeID string, network vmNetwork, ports, udpPorts []int) confirm.Preview {
 	vm := deployplan.VMSpec{
 		Name:   req.Name,
 		Flavor: deployplan.FlavorSpec{Name: req.FlavorName},
@@ -86,9 +101,10 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		vm.Image.Name = img.Name
 	}
 	if len(req.Disks) > 0 {
-		vm.Disk = deployplan.DiskSpec{SizeGB: req.Disks[0].Size, Type: req.Disks[0].DiskTypeName}
+		vm.Disk = deployplan.DiskSpec{SizeGB: req.Disks[0].Size, Type: req.Disks[0].DiskTypeName, TypeID: diskTypeID}
 	}
-	cost := deployplan.EstimateVM(vm)
+	cost := deployplan.PriceVM(ctx, e.Cloud, deployplan.PriceInput{ProjectID: req.ProjectID, VM: vm, PublicIP: true,
+		Marketplace: img != nil && img.Type == provision.ImageTypeMarketplace})
 
 	lines := []string{
 		previewLabel("project", "проект") + projectText(req.ProjectID, e.projectFrom(nil)),
@@ -114,7 +130,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 				"destroy удалит правила, которые создаст этот deploy",
 			strings.Join(ps, ","), network.SecurityGroup))
 	}
-	lines = append(lines, vmCostLine(cost, vm.Flavor.VCPUs > 0))
+	lines = append(lines, vmCostLines(cost, vm.Flavor.VCPUs > 0)...)
 
 	return confirm.Preview{
 		Action:  "deploy",
@@ -130,7 +146,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 			"open_ports":     ports,
 			"open_udp_ports": udpPorts,
 			"cost":           cost,
-			"cost_note":      costNoteText(),
+			"cost_note":      costNoteFor(cost),
 		},
 	}
 }
@@ -158,17 +174,51 @@ func publicIPLine(public bool) string {
 	return previewLabel("public IP", "внешний IP") + i18n.T("a floating IP will be created and attached", "будет создан и привязан floating IP")
 }
 
-// vmCostLine is the price of a VM preview, marked as an estimate. Without
-// the flavor size the compute part may be missing from the total.
-func vmCostLine(cost pricing.Estimate, sizeKnown bool) string {
-	line := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (compute %.2f + disk %.2f), %s",
-		"~%.2f %s в месяц (вычисления %.2f + диск %.2f), %s",
-		cost.TotalMonthlyRub, cost.Currency, cost.ComputeMonthlyRub, cost.DiskMonthlyRub, costNoteText())
-	if !sizeKnown {
-		line += i18n.T("; flavor size unknown, compute may be missing from the total",
-			"; размер flavor неизвестен, вычисления могут не войти в итог")
+// vmCostLines is the price of a VM preview with its source: the
+// price-calculation API, or the rate card — then marked as an estimate,
+// with why the API gave no price when it was asked. Without the flavor size
+// the compute part of an estimate may be missing from the total. A
+// marketplace image gets a line that its license is not in the price.
+func vmCostLines(cost pricing.Estimate, sizeKnown bool) []string {
+	var lines []string
+	if cost.Source == pricing.SourceAPI {
+		lines = append(lines, apiCostLine(cost))
+	} else {
+		line := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (compute %.2f + disk %.2f), %s",
+			"~%.2f %s в месяц (вычисления %.2f + диск %.2f), %s",
+			cost.TotalMonthlyRub, cost.Currency, cost.ComputeMonthlyRub, cost.DiskMonthlyRub, costNoteText())
+		if !sizeKnown {
+			line += i18n.T("; flavor size unknown, compute may be missing from the total",
+				"; размер flavor неизвестен, вычисления могут не войти в итог")
+		}
+		lines = append(lines, line)
+		if cost.PriceAPIError != "" {
+			lines = append(lines, previewLabel("API price", "цена API")+i18n.Tf("none (%s), the estimate is shown",
+				"не получена (%s), показана оценка", cost.PriceAPIError))
+		}
 	}
-	return line
+	if cost.LicenseNote != "" {
+		lines = append(lines, previewLabel("license", "лицензия")+cost.LicenseNote)
+	}
+	return lines
+}
+
+// apiCostLine is a price of the price-calculation API: the totals and, when
+// the components add up to one of them, what makes the month.
+func apiCostLine(cost pricing.Estimate) string {
+	line := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month, %.2f/hour", "~%.2f %s в месяц, %.2f в час",
+		cost.TotalMonthlyRub, cost.Currency, cost.TotalHourlyRub)
+	if b := cost.Breakdown; b != nil && b.Period != "unknown" {
+		parts := []string{i18n.Tf("VM %.2f", "ВМ %.2f", cost.ComputeMonthlyRub), i18n.Tf("disk %.2f", "диск %.2f", cost.DiskMonthlyRub)}
+		if cost.FloatingIPMonthlyRub > 0 {
+			parts = append(parts, i18n.Tf("floating IP %.2f", "floating IP %.2f", cost.FloatingIPMonthlyRub))
+		}
+		if rest := cost.TotalMonthlyRub - cost.ComputeMonthlyRub - cost.DiskMonthlyRub - cost.FloatingIPMonthlyRub; rest > 0.02 { // beyond rounding
+			parts = append(parts, i18n.Tf("other %.2f", "прочее %.2f", rest))
+		}
+		line += " (" + strings.Join(parts, " + ") + ")"
+	}
+	return line + ", " + costNoteFor(cost)
 }
 
 // redeployPreview describes an update of an already running VM.

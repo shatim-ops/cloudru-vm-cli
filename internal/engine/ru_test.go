@@ -45,7 +45,8 @@ func TestRussian_DeployPreview(t *testing.T) {
 		"  внешний IP: будет создан и привязан floating IP\n",
 		"  цена:       ~",
 		" в месяц (вычисления ",
-		"оценка, а не счёт",
+		"оценка по тарифной карте evo, а не счёт",
+		"  цена API:   не получена (", // the fake has no price API
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("preview lacks %q:\n%s", want, out)

@@ -362,3 +362,8 @@ func TestListImages_DeprecatedStillWorks(t *testing.T) {
 func (imageCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
 	return nil, errNoPriceAPI
 }
+
+// ListDiskTypes: превью ВМ ищет UUID типа диска для расчёта цены.
+func (imageCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
+	return []*provision.DiskType{{ID: "00000000-0000-0000-0000-0000000000e6", Name: "SSD"}}, nil
+}
