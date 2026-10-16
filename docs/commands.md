@@ -1926,6 +1926,7 @@ evo mcp [flags]
       --auth string             Аутентификация HTTP: bearer (токен из $MCP_BEARER_TOKEN) или none (только адрес loopback) (по умолчанию "bearer")
   -h, --help                    Справка по mcp
       --http string             Обслуживать MCP по Streamable HTTP на этом адресе (например, :8080), а не по stdio
+      --toolsets strings        Показывать агенту только эти группы инструментов (через запятую, например deploy,vm,vpc; группы — в 'evo tools list'). По умолчанию все. Экономит контекст агента; это не ограничение прав
 ```
 
 ### Options inherited from parent commands

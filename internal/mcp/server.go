@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/tools"
@@ -98,6 +99,12 @@ type Server struct {
 	handlers map[string]toolHandler
 	reg      *tools.Registry
 	inflight inflight // running tool calls, for cancellation
+
+	// listed and enabled are the --toolsets view: tools/list advertises
+	// listed and tools/call accepts only enabled. nil enabled means every
+	// tool (the default).
+	listed  []Tool
+	enabled map[string]bool
 }
 
 // New creates an MCP server. factory builds engines per tool call (so each call
@@ -121,7 +128,54 @@ func New(factory EngineFactory, version string) *Server {
 
 // ListTools returns the advertised tool definitions.
 func (s *Server) ListTools() []Tool {
+	if s.enabled != nil {
+		return s.listed
+	}
 	return s.tools
+}
+
+// SetToolsets limits tools/list and tools/call to the tools of the named
+// groups (tools.Groups(): deploy, vm, vpc, k8s, …); "all" or no group keeps
+// every tool. The point is the agent's context: 147 tools are ~90 KB of
+// tools/list in every session, deploy+vm+vpc are 26 (review r5 M3, as
+// GitHub's MCP server --toolsets). It is not a permission boundary:
+// stack_apply still drives the tools of other groups in-process, and the
+// HTTP policy and --allow-project hold either way.
+func (s *Server) SetToolsets(groups []string) error {
+	known := map[string]bool{}
+	for _, g := range tools.Groups() {
+		known[g] = true
+	}
+	want := map[string]bool{}
+	for _, g := range groups {
+		g = strings.ToLower(strings.TrimSpace(g))
+		switch {
+		case g == "":
+		case g == "all":
+			s.listed, s.enabled = nil, nil
+			return nil
+		case !known[g]:
+			return fmt.Errorf("unknown toolset %q; known: all, %s", g, strings.Join(tools.Groups(), ", "))
+		default:
+			want[g] = true
+		}
+	}
+	if len(want) == 0 {
+		s.listed, s.enabled = nil, nil
+		return nil
+	}
+	s.listed, s.enabled = nil, map[string]bool{}
+	for _, t := range s.reg.Tools() {
+		if want[t.Group] {
+			s.enabled[t.Name] = true
+		}
+	}
+	for _, t := range s.tools {
+		if s.enabled[t.Name] {
+			s.listed = append(s.listed, t)
+		}
+	}
+	return nil
 }
 
 // --- JSON-RPC 2.0 wire types ---
@@ -442,7 +496,7 @@ func (s *Server) call(ctx context.Context, scope string, req *rpcRequest) *rpcRe
 		return s.ok(req, map[string]any{})
 
 	case "tools/list":
-		return s.ok(req, map[string]any{"tools": s.tools})
+		return s.ok(req, map[string]any{"tools": s.ListTools()})
 
 	case "tools/call":
 		return s.handleToolCall(ctx, req)
@@ -496,6 +550,11 @@ func (s *Server) handleToolCall(ctx context.Context, req *rpcRequest) *rpcRespon
 		p.Arguments = map[string]any{}
 	}
 
+	if s.enabled != nil && !s.enabled[p.Name] {
+		if _, exists := s.handlers[p.Name]; exists {
+			return s.toolResult(req, "tool "+p.Name+" is not in this server's --toolsets", true)
+		}
+	}
 	handler, ok := s.handlers[p.Name]
 	if !ok {
 		// Unknown tool is surfaced to the model as a tool error, not a
