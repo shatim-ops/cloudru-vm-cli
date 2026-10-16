@@ -57,6 +57,9 @@ type CreatePreview struct {
 	// CostNote says where Cost comes from (the price-calculation API, or
 	// the rate card: an estimate), or why there is none.
 	CostNote string `json:"cost_note,omitempty"`
+	// NetworkCheck: what the CLI found wrong with the VM's subnet and
+	// security group (CompletePreview); the MCP preview stays offline.
+	NetworkCheck *NetworkCheck `json:"network_check,omitempty"`
 }
 
 // PreviewParam is one key parameter of a CreatePreview.
@@ -195,6 +198,7 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 		return nil
 	}
 	vm := p.VM
+	p.NetworkCheck = e.checkNetwork(ctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
 		if id, err := PickVMFlavor(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name)); err == nil {
 			for _, f := range flavors {
@@ -404,6 +408,9 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 			i18n.T(": the call will fail without it", ": без этого команда завершится ошибкой"))
 	}
 	lines = append(lines, createCostLines(p)...)
+	for _, w := range p.NetworkCheck.lines() {
+		lines = append(lines, previewLabel("warning", "внимание")+w)
+	}
 
 	return confirm.Preview{Action: action, Summary: createSummary(p, zoneName), Lines: lines}
 }

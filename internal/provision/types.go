@@ -145,6 +145,9 @@ type Subnet struct {
 	// RoutedNetwork: a routed subnet; a floating IP binds only to an
 	// interface in one (docs, «Публичные IP-адреса», ограничения).
 	RoutedNetwork bool `json:"routed_network,omitempty"`
+	// DefaultGateway: DHCP answers from it (udp 67), so a closed egress
+	// must still allow it.
+	DefaultGateway string `json:"default_gateway,omitempty"`
 	// DNSServers is nil when the answer has no dns_servers field, empty
 	// when the subnet has none: then a VM resolves no names (docs,
 	// troubleshooting «Temporary failure in name resolution»).

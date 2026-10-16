@@ -90,6 +90,32 @@ func TestPickSubnet_ByZoneName(t *testing.T) {
 	}
 }
 
+// Правила группы попадают в warnings плана: без входящего TCP 22 и без
+// исходящего системного трафика ВМ не станет доступна по SSH (07.2026).
+func TestResolve_GroupRulesWarnings(t *testing.T) {
+	ctx := context.Background()
+	plan, err := Resolve(ctx, &metaCloud{fields: ubuntu2404Fields()}, "proj-1", Params{Name: "web", SSHKey: "ssh-ed25519 AAAA agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range plan.Warnings {
+		if strings.Contains(w, "security group") {
+			t.Errorf("default group, unexpected warning: %s", w)
+		}
+	}
+	closed := &metaCloud{fields: ubuntu2404Fields(), rules: []*provision.SGRule{
+		{Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0"},
+	}}
+	plan, err = Resolve(ctx, closed, "proj-1", Params{Name: "web", SSHKey: "ssh-ed25519 AAAA agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(plan.Warnings, "\n")
+	if !strings.Contains(all, "TCP 22") || !strings.Contains(all, "169.254.169.254") {
+		t.Errorf("warnings = %q", all)
+	}
+}
+
 // lostAnswerCloud creates the VM but loses the answer: the VM is listed only
 // after the create call.
 type lostAnswerCloud struct {

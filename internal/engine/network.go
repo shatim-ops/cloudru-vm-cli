@@ -46,8 +46,10 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 	if err != nil {
 		return n, fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
 	}
+	gateway := ""
 	if sn := provision.PickSubnet(subnets, zoneID, n.ZoneName); sn >= 0 {
 		n.SubnetID, n.SubnetName = subnets[sn].ID, subnets[sn].Name
+		gateway = subnets[sn].DefaultGateway
 		if subnets[sn].NoDNS() {
 			e.Printer.Warning(subnetNoDNSWarning(subnets[sn].Name))
 		}
@@ -77,6 +79,7 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 						"Укажите в security_group группу этой зоны или уберите ключ: тогда evo возьмёт группу зоны по умолчанию (SSH-access_<зона>)."))
 			}
 			n.SecurityGroupID, n.SecurityGroup = g.ID, g.Name
+			e.warnGroupRules(ctx, g, gateway)
 			return n, nil
 		}
 		return n, clerrors.New(clerrors.CodeConfigInvalid,
@@ -91,6 +94,7 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 				"в зоне %s несколько групп безопасности (%s), группы по умолчанию среди них нет: взята %s, в ней deploy откроет порты compose. Выбрать другую — security_group в .evo.yaml",
 				zoneText(n.ZoneName, zoneID), strings.Join(others, ", "), sgs[g].Name))
 		}
+		e.warnGroupRules(ctx, sgs[g], gateway)
 	} else {
 		return n, clerrors.New(clerrors.CodeConfigInvalid,
 			i18n.Tf("no security group for zone %s in the project", "в проекте нет группы безопасности для зоны %s", zoneText(n.ZoneName, zoneID)),
@@ -98,6 +102,115 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 				"Создайте в консоли Cloud.ru группу безопасности, в имени которой есть имя зоны (например, 'web_ru.AZ-1')."))
 	}
 	return n, nil
+}
+
+// warnGroupRules warns, before the preview, when the VM's group lacks what
+// a new VM needs (provision.CheckVMGroupRules): ingress tcp 22 — else SSH
+// never comes up and deploy waits for it in vain while the VM is billed —
+// and egress system traffic — else the VM gets no IP and cloud-init does
+// not run. The rules come from the list answer, else from the rules list;
+// when neither can be read, there is no warning. A warning, not a refusal:
+// the group may be meant for it (a bastion, a VPN).
+func (e *Engine) warnGroupRules(ctx context.Context, g *provision.SecurityGroup, gateway string) {
+	rules, err := provision.GroupRules(ctx, e.Cloud, g)
+	if err != nil {
+		return
+	}
+	gaps := provision.CheckVMGroupRules(rules, gateway)
+	if gaps.NoSSH {
+		e.Printer.Warning(groupNoSSHWarning(g.Name) + i18n.T(" (security_group in .evo.yaml); without SSH deploy cannot install Docker",
+			" (security_group в .evo.yaml); без SSH deploy не установит Docker"))
+	}
+	if gaps.NoSystemEgress {
+		e.Printer.Warning(groupNoEgressWarning(g.Name))
+	}
+}
+
+func groupNoSSHWarning(name string) string {
+	return i18n.Tf("security group %s has no ingress rule for TCP 22: SSH to the VM will not come up. Add an ingress TCP 22 rule in the Cloud.ru console or choose another group",
+		"в группе безопасности %s нет входящего правила для TCP 22: SSH к ВМ не поднимется. Добавьте входящее правило TCP 22 в консоли Cloud.ru или выберите другую группу", name)
+}
+
+func groupNoEgressWarning(name string) string {
+	return i18n.Tf("security group %s does not allow the VM's system egress (the metadata service 169.254.169.254/32 and UDP 67 to the subnet gateway): the VM gets no IP by DHCP and cloud-init does not run. Allow all egress, or these two rules (Cloud.ru docs, security groups, limitations)",
+		"группа безопасности %s не разрешает исходящий системный трафик ВМ (сервис метаданных 169.254.169.254/32 и UDP 67 до шлюза подсети): ВМ не получит IP по DHCP, cloud-init не запустится. Разрешите весь исходящий трафик или эти два правила (документация Cloud.ru, «Группы безопасности», ограничения)", name)
+}
+
+// NetworkCheck is what the preview of a VM found wrong with the network
+// the call will pick (the same choice as provision): a subnet without DNS
+// servers, a security group without ingress TCP 22 or system egress.
+// Warnings, not refusals.
+type NetworkCheck struct {
+	Subnet         string `json:"subnet,omitempty"`
+	SubnetNoDNS    bool   `json:"subnet_no_dns,omitempty"`
+	SecurityGroup  string `json:"security_group,omitempty"`
+	NoSSHIngress   bool   `json:"no_ssh_ingress,omitempty"`
+	NoSystemEgress bool   `json:"no_system_egress,omitempty"`
+}
+
+// checkNetwork resolves the subnet and the group as provision does (the
+// zone's main subnet or subnet_id; the zone's default group) and checks
+// them; nil when nothing is wrong or nothing could be read.
+func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, subnetID string) *NetworkCheck {
+	if projectID == "" || zoneID == "" {
+		return nil
+	}
+	var c NetworkCheck
+	gateway := ""
+	if subnets, err := e.Cloud.ListSubnets(ctx, projectID); err == nil && len(subnets) > 0 {
+		sn := subnets[0]
+		if i := provision.PickSubnet(subnets, zoneID, zoneName); i >= 0 {
+			sn = subnets[i]
+		}
+		if subnetID != "" {
+			sn = nil
+			for _, s := range subnets {
+				if s.ID == subnetID {
+					sn = s
+				}
+			}
+		}
+		if sn != nil {
+			gateway = sn.DefaultGateway
+			if sn.NoDNS() {
+				c.Subnet, c.SubnetNoDNS = sn.Name, true
+			}
+		}
+	}
+	if sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID); err == nil && len(sgs) > 0 {
+		g := sgs[0]
+		if i := provision.PickSecurityGroup(sgs, zoneID, zoneName); i >= 0 {
+			g = sgs[i]
+		}
+		if rules, err := provision.GroupRules(ctx, e.Cloud, g); err == nil {
+			gaps := provision.CheckVMGroupRules(rules, gateway)
+			if gaps.NoSSH || gaps.NoSystemEgress {
+				c.SecurityGroup, c.NoSSHIngress, c.NoSystemEgress = g.Name, gaps.NoSSH, gaps.NoSystemEgress
+			}
+		}
+	}
+	if c == (NetworkCheck{}) {
+		return nil
+	}
+	return &c
+}
+
+// lines words the check for the preview.
+func (c *NetworkCheck) lines() []string {
+	if c == nil {
+		return nil
+	}
+	var out []string
+	if c.SubnetNoDNS {
+		out = append(out, subnetNoDNSWarning(c.Subnet))
+	}
+	if c.NoSSHIngress {
+		out = append(out, groupNoSSHWarning(c.SecurityGroup))
+	}
+	if c.NoSystemEgress {
+		out = append(out, groupNoEgressWarning(c.SecurityGroup))
+	}
+	return out
 }
 
 // zoneGroups lists the names of the zone's groups, for the warning.

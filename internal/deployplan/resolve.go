@@ -136,7 +136,14 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	// --- Security group (the default group of the zone, then the first by name) ---
 	sgID := ""
 	if sgs, e := cloud.ListSecurityGroups(ctx, projectID); e == nil {
-		sgID = pickSecurityGroup(sgs, zone.ID, zone.Name)
+		if i := provision.PickSecurityGroup(sgs, zone.ID, zone.Name); i >= 0 {
+			sgID = sgs[i].ID
+			// The rules a new VM needs (ingress TCP 22, system egress):
+			// a warning in the plan, before anything is billed.
+			if rules, re := provision.GroupRules(ctx, cloud, sgs[i]); re == nil {
+				warnings = append(warnings, provision.CheckVMGroupRules(rules, subnet.DefaultGateway).Warnings(sgs[i].Name)...)
+			}
+		}
 	}
 	if sgID == "" {
 		warnings = append(warnings, "no security group resolved — VM will use the project default")
@@ -399,15 +406,6 @@ func pickSubnet(subnets []*provision.Subnet, zoneID, zoneName string) *provision
 		return subnets[i]
 	}
 	return nil
-}
-
-// pickSecurityGroup is the zone's default group, else the first by name
-// (provision.PickSecurityGroup, as deploy picks it).
-func pickSecurityGroup(sgs []*provision.SecurityGroup, zoneID, zoneName string) string {
-	if i := provision.PickSecurityGroup(sgs, zoneID, zoneName); i >= 0 {
-		return sgs[i].ID
-	}
-	return ""
 }
 
 func firstNonEmpty(vals ...string) string {

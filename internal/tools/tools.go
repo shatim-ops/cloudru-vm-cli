@@ -1686,11 +1686,16 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// else the first group of the project.
 	var sgIDs []string
 	if sgs, e := eng.Cloud.ListSecurityGroups(ctx, projectID); e == nil && len(sgs) > 0 {
-		chosen := sgs[0].ID
+		chosen := sgs[0]
 		if i := provision.PickSecurityGroup(sgs, region, zoneName); i >= 0 {
-			chosen = sgs[i].ID
+			chosen = sgs[i]
 		}
-		sgIDs = []string{chosen}
+		sgIDs = []string{chosen.ID}
+		// What a new VM needs from its group (ingress TCP 22, system
+		// egress): in the answer, the VM is created either way.
+		if rules, re := provision.GroupRules(ctx, eng.Cloud, chosen); re == nil {
+			netWarnings = append(netWarnings, provision.CheckVMGroupRules(rules, subnet.DefaultGateway).Warnings(chosen.Name)...)
+		}
 	}
 
 	// no_public_ip → a private VM: interface type "regular", no floating IP.

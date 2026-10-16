@@ -109,6 +109,54 @@ func TestResolveNetwork_SubnetDefaultAndDNSWarning(t *testing.T) {
 	}
 }
 
+// Правила группы проверяются до превью: без входящего TCP 22 SSH не
+// поднимется, без исходящего системного трафика ВМ не получит IP (с 07.2026).
+// Предупреждение, не отказ.
+func TestResolveNetwork_GroupRulesWarning(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		rules []provision.SGRule
+		want  []string
+	}{
+		{"группа по умолчанию", []provision.SGRule{
+			{Direction: "ingress", IPProtocol: "tcp", PortRange: "22:22", RemoteIPPrefix: "0.0.0.0/0"},
+			{Direction: "egress", IPProtocol: "any", RemoteIPPrefix: "0.0.0.0/0"},
+		}, nil},
+		{"только порт 80", []provision.SGRule{
+			{Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0"},
+		}, []string{"TCP 22", "169.254.169.254"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cloud := &mockCloudAPI{
+				listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
+					return []*provision.AvailabilityZone{{ID: "z2", Name: "ru.AZ-2"}}, nil
+				},
+				listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
+					return []*provision.Subnet{{ID: "sn", Name: "main", AvailabilityZoneID: "z2"}}, nil
+				},
+				listSecurityGroupsFn: func(context.Context, string) ([]*provision.SecurityGroup, error) {
+					return []*provision.SecurityGroup{{ID: "sg", Name: "SSH-access_ru.AZ-2", AvailabilityZoneID: "z2", Rules: tc.rules}}, nil
+				},
+			}
+			eng, _ := newTestEngine(t, cloud, newMockDeployer())
+			var buf bytes.Buffer
+			eng.Printer = output.NewWithWriter(&buf, output.ModePlain, false)
+			if _, err := eng.resolveNetwork(context.Background(), "p", "z2"); err != nil {
+				t.Fatal(err)
+			}
+			out := buf.String()
+			if tc.want == nil && out != "" {
+				t.Errorf("unexpected warning: %q", out)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("no %q in %q", w, out)
+				}
+			}
+		})
+	}
+}
+
 func TestRandomPassword_HasEveryClass(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		p := randomPassword(16)
