@@ -31,7 +31,7 @@ on:
         type: boolean
         default: false
       cleanup_only:
-        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs, evo: rules for ports 80/8080)"
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; evo: rules for e2e ports 80/8080/8081 when no evo-* VM is left)"
         type: boolean
         default: false
   push:
@@ -278,16 +278,22 @@ jobs:
           - image: AstraLinuxSmolensk1.8.3KES
             vm: evo-e2e-os-astra
             os_id: astra
+            port: "8080"
           # обязательное поле fqdn типа hostname (BACKLOG [images])
           - image: redos_7.3_image
             vm: evo-e2e-os-redos
             os_id: redos
+            port: "8081"
     env:
       ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
       FLAVOR: ${{ inputs.flavor || 'lowcost10-2-4' }}
       IMAGE: ${{ matrix.image }}
       VM: ${{ matrix.vm }}
       OS_ID: ${{ matrix.os_id }}
+      # Записи матрицы идут параллельно и открывают порт в одной общей
+      # группе зоны: у каждой свой порт, иначе вторая получит already_open,
+      # а проверка «правило удалено» одной увидит правило другой.
+      PORT: ${{ matrix.port }}
       CLOUDRU_TIMEOUT: ${{ inputs.timeout || '1200' }}
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     steps:
@@ -339,14 +345,14 @@ jobs:
 
       # vm create кладёт ключ SSH и state в .evo/ рабочего каталога: create,
       # SSH и delete идут из одного каталога.
-      - name: vm create --image по имени и --port 8080
+      - name: vm create --image по имени и --port
         run: |
           mkdir -p os-vm && cd os-vm
           zone_id=$(evo list-zones --json | jq -r --arg n "$ZONE" '.[] | select(.name==$n) | .id')
           [ -n "$zone_id" ] && [ "$zone_id" != null ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
           set +e
           evo --json --yes vm create "$VM" --image "$IMAGE" --flavor "$FLAVOR" --region "$zone_id" \
-            --port 8080 > "$RUNNER_TEMP/vm.json"
+            --port "$PORT" > "$RUNNER_TEMP/vm.json"
           rc=$?
           set -e
           id=$(jq -r '.vm_id // empty' "$RUNNER_TEMP/vm.json")
@@ -359,7 +365,7 @@ jobs:
           echo "SSH_USER=$(jq -r .ssh_user "$RUNNER_TEMP/vm.json")" >> "$GITHUB_ENV"
           jq -e '.ports.opened | length == 1' "$RUNNER_TEMP/vm.json" >/dev/null ||
             jq -e '.ports.already_open | length == 1' "$RUNNER_TEMP/vm.json" >/dev/null ||
-            { echo "::error::порт 8080 не открыт"; exit 1; }
+            { echo "::error::порт $PORT не открыт"; exit 1; }
 
       - name: SSH и os-release
         working-directory: os-vm
@@ -407,24 +413,29 @@ jobs:
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ $VM — удалите её в консоли Cloud.ru"; exit 1; }
 
-      - name: Правило порта 8080 удалено после delete
+      - name: Правило порта удалено после delete
         if: always() && env.VM_ID != ''
         run: |
-          rule='[.security_groups[] | .rules[]? | select(.direction=="ingress" and .port_range=="8080:8080" and ((.description // "") | startswith("evo:")))] | length'
-          had=$(jq "$rule" "$RUNNER_TEMP/sg-before.json")
-          if [ "$had" != 0 ]; then echo "правило для 8080 было до создания — проверка пропущена"; exit 0; fi
+          # $pr — переменная jq, не shell
+          # shellcheck disable=SC2016
+          rule='[.security_groups[] | .rules[]? | select(.direction=="ingress" and .port_range==$pr and ((.description // "") | startswith("evo:")))] | length'
+          had=$(jq --arg pr "$PORT:$PORT" "$rule" "$RUNNER_TEMP/sg-before.json")
+          if [ "$had" != 0 ]; then echo "правило для $PORT было до создания — проверка пропущена"; exit 0; fi
           for _ in 1 2 3 4 5 6; do
-            left=$(evo tools call list_security_groups --arg rules=true --json | jq "$rule")
-            [ "$left" = 0 ] && { echo "правило для 8080 удалено"; exit 0; }
+            left=$(evo tools call list_security_groups --arg rules=true --json | jq --arg pr "$PORT:$PORT" "$rule")
+            [ "$left" = 0 ] && { echo "правило для $PORT удалено"; exit 0; }
             sleep 10
           done
-          echo "::error::после vm delete осталось правило «evo:» для порта 8080"
+          echo "::error::после vm delete осталось правило «evo:» для порта $PORT"
           exit 1
 
   # Остатки прошлых прогонов (16.10.2026: отменённый прогон оставил ВМ
   # evo-e2e-app, её FIP и правило порта 80, следующий deploy упал на 409).
-  # Ничего не создаёт. Правила «evo:» для 80/8080 удаляются, только когда
-  # ВМ evo-e2e-* в проекте не осталось. ID и IP маскируются.
+  # Ничего не создаёт. Правила «evo:» для 80/8080/8081 (порты e2e)
+  # удаляются, только когда в проекте нет ни одной ВМ с именем evo-*:
+  # описание «evo: …» ставит любой evo deploy/vm create, и чужое правило
+  # иначе не отличить. Допущение: проект тестовый, evo в нём запускает только
+  # e2e. ID и IP маскируются.
   cleanup:
     if: ${{ inputs.cleanup_only }}
     runs-on: ubuntu-latest
@@ -488,17 +499,17 @@ jobs:
           [ "$left" = 0 ] || { echo "::error::остались FIP fip-evo-e2e-*"; exit 1; }
 
       # Правила удаляет API напрямую: в evo нет команды удаления правила.
-      - name: Правила «evo:» для 80 и 8080
+      - name: Правила «evo:» для 80, 8080 и 8081
         if: always()
         env:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
           SECRET: ${{ secrets.CLOUDRU_SECRET }}
         run: |
-          n=$(evo tools call vm_list --json | jq '[.vms[]? | select((.name // "") | startswith("evo-e2e-"))] | length')
-          [ "$n" = 0 ] || { echo "::error::ВМ evo-e2e-* ещё есть ($n) — правила не трогаю"; exit 1; }
+          n=$(evo tools call vm_list --json | jq '[.vms[]? | select((.name // "") | startswith("evo-"))] | length')
+          [ "$n" = 0 ] || { echo "::error::в проекте есть ВМ evo-* ($n) — правила «evo:» не трогаю"; exit 1; }
           evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg.json"
-          rules=$(jq -r '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and (.port_range == "80:80" or .port_range == "8080:8080") and ((.description // "") | startswith("evo:"))) | "\($g) \(.id) \(.port_range)"' "$RUNNER_TEMP/sg.json")
-          [ -n "$rules" ] || { echo "правил «evo:» для 80/8080 нет"; exit 0; }
+          rules=$(jq -r '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and (.port_range == "80:80" or .port_range == "8080:8080" or .port_range == "8081:8081") and ((.description // "") | startswith("evo:"))) | "\($g) \(.id) \(.port_range)"' "$RUNNER_TEMP/sg.json")
+          [ -n "$rules" ] || { echo "правил «evo:» для 80/8080/8081 нет"; exit 0; }
           TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
             curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
             jq -r '.access_token // .accessToken // empty')
