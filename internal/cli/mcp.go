@@ -36,6 +36,7 @@ func newMCPCmd() *cobra.Command {
 		authMode          string
 		allowSecretExport bool
 		allowProjects     []string
+		toolsets          []string
 	)
 	cmd := &cobra.Command{
 		Use: "mcp",
@@ -44,7 +45,7 @@ func newMCPCmd() *cobra.Command {
 		Long: i18n.T(mcpHelpEN, mcpHelpRU),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMCP(cmd, httpAddr, authMode, allowSecretExport, allowProjects)
+			return runMCP(cmd, httpAddr, authMode, allowSecretExport, allowProjects, toolsets)
 		},
 	}
 	cmd.Flags().StringVar(&httpAddr, "http", "", i18n.T("Serve MCP over Streamable HTTP on this address (e.g. :8080) instead of stdio",
@@ -55,6 +56,8 @@ func newMCPCmd() *cobra.Command {
 		"Разрешить вызовы инструментов только в этих проектах Cloud.ru (UUID; флаг повторяется или через запятую). По умолчанию — любой проект, который видит ключ"))
 	cmd.Flags().BoolVar(&allowSecretExport, "allow-secret-export", false, i18n.T("HTTP mode: allow k8s_kubeconfig with an embedded token, cert_private_key, secret_value and unmasked credentials in results",
 		"Режим HTTP: разрешить k8s_kubeconfig со встроенным токеном, cert_private_key, secret_value и немаскированные учётные данные в ответах"))
+	cmd.Flags().StringSliceVar(&toolsets, "toolsets", nil, i18n.T("Advertise only these tool groups (comma-separated, e.g. deploy,vm,vpc; see 'evo tools list'). Default: all. Saves the agent's context; not a permission boundary",
+		"Показывать агенту только эти группы инструментов (через запятую, например deploy,vm,vpc; группы — в 'evo tools list'). По умолчанию все. Экономит контекст агента; это не ограничение прав"))
 	cmd.AddCommand(newMCPHealthcheckCmd())
 	return cmd
 }
@@ -163,8 +166,12 @@ k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой, если kubectl
 // serves, the process speaks English: the engine's progress captured into
 // tool results (deploy's "log") and the server's log are read by agents
 // and operators, not by the person at the terminal.
-func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport bool, allowProjects []string) error {
+func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport bool, allowProjects, toolsets []string) error {
 	srv := mcp.New(mcpEngineFactory(allowProjects), version)
+	if err := srv.SetToolsets(toolsets); err != nil {
+		return clerrors.Wrap(clerrors.CodeUsage, i18n.Tf("--toolsets: %v", "--toolsets: %v", err),
+			i18n.T("Groups are listed by 'evo tools list'.", "Группы — в выводе 'evo tools list'."), err)
+	}
 
 	if httpAddr == "" {
 		if cmd.Flags().Changed("auth") || allowSecretExport {

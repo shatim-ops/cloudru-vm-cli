@@ -90,7 +90,7 @@ func TestHandleError_InterruptedKeepsHint(t *testing.T) {
 }
 
 func TestRun_UsageErrorsExitOne(t *testing.T) {
-	for _, args := range [][]string{{"nosuchcmd"}, {"deploy", "--nosuchflag"}} {
+	for _, args := range [][]string{{"nosuchcmd"}, {"deploy", "--nosuchflag"}, {"mcp", "--toolsets", "vm,nosuch"}} {
 		if got := run(args); got != clerrors.ExitGeneral {
 			t.Errorf("run(%v) = %d, want %d", args, got, clerrors.ExitGeneral)
 		}
