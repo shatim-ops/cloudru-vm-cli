@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -115,7 +116,11 @@ func TestBuiltBinaryReportsVCSCommit(t *testing.T) {
 	if err != nil {
 		t.Skip("no go in PATH")
 	}
-	bin := filepath.Join(t.TempDir(), "evo")
+	name := "evo"
+	if runtime.GOOS == "windows" {
+		name += ".exe" // exec does not find a binary without it there
+	}
+	bin := filepath.Join(t.TempDir(), name)
 	if out, err := exec.Command(goBin, "build", "-o", bin, "../../cmd/evo").CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
