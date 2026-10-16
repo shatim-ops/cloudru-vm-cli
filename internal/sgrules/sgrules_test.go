@@ -5,7 +5,6 @@ import (
 	stderrors "errors"
 	"fmt"
 	"reflect"
-	"sort"
 	"testing"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -294,10 +293,10 @@ func TestClose_EmptyIDsSendNothing(t *testing.T) {
 	}
 }
 
-func TestLabels(t *testing.T) {
-	got := Labels([]string{"80/tcp", "53/udp"})
-	sort.Strings(got)
-	if !reflect.DeepEqual(got, []string{"53/udp", "80"}) {
-		t.Errorf("%v", got)
+func TestLabel(t *testing.T) {
+	for key, want := range map[string]string{"80/tcp": "80", "53/udp": "53/udp"} {
+		if got := Label(key); got != want {
+			t.Errorf("Label(%q) = %q, want %q", key, got, want)
+		}
 	}
 }

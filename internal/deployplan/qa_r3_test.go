@@ -26,7 +26,7 @@ func (c *adoptFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloati
 // id for the state, instead of creating a second one.
 func TestQAr3_Apply_AdoptUsesAttachedFIP(t *testing.T) {
 	c := &adoptFIPCloud{}
-	res, err := Apply(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}})
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func (c *lostFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.Fl
 // the user is never taken.
 func TestQAr3_Apply_LostFIPCreateFoundByName(t *testing.T) {
 	c := &lostFIPCloud{}
-	res, err := Apply(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}})
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +81,11 @@ func (c *zoneCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, e
 
 func TestQAr3_Apply_AdoptChecksZoneAndState(t *testing.T) {
 	other := &zoneCloud{vm: &provision.VM{ID: "vm-old", Name: "x", Status: "running", Region: "zone-A"}}
-	if res, err := Apply(context.Background(), other, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}); err == nil {
+	if res, err := ApplyWithTimeout(context.Background(), other, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0); err == nil {
 		t.Fatalf("VM of another zone adopted: %+v", res)
 	}
 	stopped := &zoneCloud{vm: &provision.VM{ID: "vm-old", Name: "x", Status: "stopped", Region: "zone-B"}}
-	res, err := Apply(context.Background(), stopped, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}})
+	res, err := ApplyWithTimeout(context.Background(), stopped, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0)
 	if err != nil || res.Status != "stopped" {
 		t.Fatalf("stopped VM: %+v, %v; want status stopped", res, err)
 	}

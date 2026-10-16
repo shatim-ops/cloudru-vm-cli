@@ -108,13 +108,6 @@ func Defaults() Config {
 	}
 }
 
-// Resolve merges all configuration layers (the tests' entry point; the
-// commands use ResolveWithSources).
-func Resolve(opts Options) (Config, error) {
-	cfg, _, err := resolve(opts)
-	return cfg, err
-}
-
 // ResolveWithSources returns the config plus the origin of each value.
 func ResolveWithSources(opts Options) (Config, []Source, error) {
 	cfg, origins, err := resolve(opts)
