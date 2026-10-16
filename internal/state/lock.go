@@ -8,6 +8,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierr "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // errLocked is what lockFile returns when another holder has the lock.
@@ -22,23 +23,26 @@ var errLocked = errors.New("locked")
 func Lock(path string) (unlock func(), err error) {
 	dir := filepath.Dir(path)
 	if err := config.MkdirPrivate(dir); err != nil { // .evo/ also holds the SSH key
-		return nil, clierr.Wrap(clierr.CodeStateCorrupted, "failed to create state directory",
-			"Check write permissions for "+dir, err)
+		return nil, clierr.Wrap(clierr.CodeStateCorrupted, stateDirFailed(), checkWritable(dir), err)
 	}
 	lockPath := filepath.Join(dir, "state.lock")
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
-		return nil, clierr.Wrap(clierr.CodeStateCorrupted, "failed to open the state lock",
-			"Check write permissions for "+dir, err)
+		return nil, clierr.Wrap(clierr.CodeStateCorrupted,
+			i18n.T("failed to open the state lock", "не удалось открыть блокировку состояния"), checkWritable(dir), err)
 	}
 	if err := lockFile(f); err != nil {
 		_ = f.Close()
 		if errors.Is(err, errLocked) {
 			return nil, clierr.New(clierr.CodeStateLocked,
-				"another evo deploy or destroy is running in this directory",
-				"Wait for it to finish; the lock ("+lockPath+") is released when that process exits.")
+				i18n.T("another evo deploy or destroy is running in this directory",
+					"в этом каталоге уже идёт другой evo deploy или destroy"),
+				i18n.Tf("Wait for it to finish; the lock (%s) is released when that process exits.",
+					"Дождитесь его завершения: блокировка (%s) снимается, когда тот процесс закончит работу.", lockPath))
 		}
-		return nil, clierr.Wrap(clierr.CodeStateCorrupted, "failed to lock the state", "Check "+lockPath, err)
+		return nil, clierr.Wrap(clierr.CodeStateCorrupted,
+			i18n.T("failed to lock the state", "не удалось заблокировать состояние"),
+			i18n.T("Check ", "Проверьте ")+lockPath, err)
 	}
 	return func() {
 		_ = unlockFile(f)

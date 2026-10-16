@@ -130,9 +130,13 @@ func parseData(data []byte) (*Project, error) {
 		totalMem += svc.Resources.MemoryMB
 
 		svc.DependsOn = parseDependsOn(svcMap)
+		for _, w := range localOnly(svcMap) {
+			warnings = append(warnings, i18n.Tf("service %q: %s", "сервис %q: %s", name, w))
+		}
 
 		services = append(services, svc)
 	}
+	warnings = append(warnings, fileSources(root)...)
 
 	if len(services) == 0 {
 		return nil, clierr.New(
@@ -502,6 +506,100 @@ func parseMemory(v interface{}) (int, error) {
 		return 0, fmt.Errorf("out of range")
 	}
 	return int(math.Ceil(n / (1 << 20))), nil
+}
+
+// notUploaded ends the warnings about what the VM does not get.
+func notUploaded() string {
+	return i18n.T("deploy uploads only the compose file", "deploy загружает только compose-файл")
+}
+
+// localOnly warns about what a service takes from this machine and the VM
+// will not have (guide §5): a build context, env files, bind mounts of
+// relative or home paths. An absolute bind source names a path on the VM
+// (/var/run/docker.sock) and is left alone.
+func localOnly(svc map[string]interface{}) []string {
+	var warnings []string
+	if _, ok := svc["build"]; ok {
+		warnings = append(warnings, i18n.Tf(
+			"build: is not run on the VM: there is no build context (%s); push the image to a registry and set image:",
+			"build: на ВМ не выполняется: контекста сборки там нет (%s); опубликуйте образ в реестре и укажите его в image:",
+			notUploaded()))
+	}
+	var envFiles []string
+	switch v := svc["env_file"].(type) {
+	case string:
+		envFiles = append(envFiles, v)
+	case []interface{}:
+		for _, e := range v {
+			switch e := e.(type) {
+			case string:
+				envFiles = append(envFiles, e)
+			case map[string]interface{}: // {path: ..., required: false}
+				if p, ok := e["path"].(string); ok {
+					envFiles = append(envFiles, p)
+				}
+			}
+		}
+	}
+	if len(envFiles) > 0 {
+		warnings = append(warnings, i18n.Tf(
+			"env_file: %s is not on the VM (%s)",
+			"env_file: %s на ВМ нет (%s)",
+			strings.Join(envFiles, ", "), notUploaded()))
+	}
+	vols, _ := svc["volumes"].([]interface{})
+	for _, v := range vols {
+		var src, spec string
+		switch v := v.(type) {
+		case string: // SRC:DST[:MODE]; a lone DST is an anonymous volume
+			if k := strings.Index(v, ":"); k > 0 {
+				src, spec = v[:k], v
+			}
+		case map[string]interface{}:
+			if t, _ := v["type"].(string); t == "bind" {
+				src, _ = v["source"].(string)
+				spec = src
+			}
+		}
+		if localPath(src) {
+			warnings = append(warnings, i18n.Tf(
+				"volumes: %s mounts a local path, its files are not on the VM (%s)",
+				"volumes: %s монтирует локальный путь, его файлов на ВМ нет (%s)",
+				spec, notUploaded()))
+		}
+	}
+	return warnings
+}
+
+// localPath reports whether a bind source is relative to the compose file
+// or to the home directory, as opposed to a named volume ("data").
+func localPath(src string) bool {
+	return src == "." || src == ".." || src == "~" ||
+		strings.HasPrefix(src, "./") || strings.HasPrefix(src, "../") || strings.HasPrefix(src, "~/")
+}
+
+// fileSources warns about the top-level secrets and configs read from a
+// file: the file stays on this machine.
+func fileSources(root map[string]interface{}) []string {
+	var warnings []string
+	for _, kind := range []string{"configs", "secrets"} {
+		m, _ := root[kind].(map[string]interface{})
+		names := make([]string, 0, len(m))
+		for name := range m {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			def, _ := m[name].(map[string]interface{})
+			if file, ok := def["file"].(string); ok && file != "" {
+				warnings = append(warnings, i18n.Tf(
+					"%s.%s: file %s is not on the VM (%s)",
+					"%s.%s: файла %s на ВМ нет (%s)",
+					kind, name, file, notUploaded()))
+			}
+		}
+	}
+	return warnings
 }
 
 // parseDependsOn extracts the depends_on list from a service definition.

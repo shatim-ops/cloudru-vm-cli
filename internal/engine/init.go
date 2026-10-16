@@ -149,6 +149,10 @@ compose_file: docker-compose.yml
 # Сколько секунд deploy ждёт, пока новая ВМ станет активной
 timeout: 600
 
+# Группа безопасности (имя или UUID), в которой deploy откроет порты compose.
+# Без неё берётся группа Default зоны, иначе первая по имени — с предупреждением.
+# security_group: Default_ru.AZ-2
+
 # UUID проекта Cloud.ru (обязателен; console.cloud.ru или CLOUDRU_PROJECT_ID)
 %s
 `
@@ -173,6 +177,10 @@ compose_file: docker-compose.yml
 
 # Seconds deploy waits for a new VM to become active
 timeout: 600
+
+# Security group (name or UUID) deploy opens the compose ports in. Without it:
+# the zone's Default group, else the first by name, with a warning.
+# security_group: Default_ru.AZ-2
 
 # Cloud.ru project UUID (required; console.cloud.ru or CLOUDRU_PROJECT_ID)
 %s

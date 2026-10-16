@@ -2,12 +2,12 @@ package state
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierr "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // CurrentVersion is the state file format this build reads and writes.
@@ -33,8 +33,8 @@ func Read(path string) (*File, error) {
 		}
 		return nil, clierr.Wrap(
 			clierr.CodeStateCorrupted,
-			"failed to read state file",
-			"Check file permissions for "+path,
+			i18n.T("failed to read state file", "не удалось прочитать файл состояния"),
+			i18n.T("Check file permissions for ", "Проверьте права на файл ")+path,
 			err,
 		)
 	}
@@ -45,9 +45,11 @@ func Read(path string) (*File, error) {
 		// billed: say so before suggesting it.
 		return nil, clierr.Wrap(
 			clierr.CodeStateCorrupted,
-			"state file contains invalid JSON",
-			"Fix the JSON in "+path+". Before deleting it, note the VMs and floating IPs it lists "+
+			i18n.T("state file contains invalid JSON", "в файле состояния ошибка JSON"),
+			i18n.Tf("Fix the JSON in %s. Before deleting it, note the VMs and floating IPs it lists "+
 				"(they keep running and are billed) or check them in the Cloud.ru console.",
+				"Исправьте JSON в %s. Прежде чем удалять файл, выпишите ВМ и floating IP из него "+
+					"(они продолжают работать и оплачиваются) или найдите их в консоли Cloud.ru.", path),
 			err,
 		)
 	}
@@ -59,8 +61,9 @@ func Read(path string) (*File, error) {
 		// Rewriting it would drop what this version does not know.
 		return nil, clierr.New(
 			clierr.CodeStateCorrupted,
-			fmt.Sprintf("state file %s has version %d; this evo understands up to %d", path, f.Version, CurrentVersion),
-			"Upgrade evo; the newer version wrote this state.",
+			i18n.Tf("state file %s has version %d; this evo understands up to %d",
+				"файл состояния %s версии %d, а этот evo понимает версии до %d", path, f.Version, CurrentVersion),
+			i18n.T("Upgrade evo; the newer version wrote this state.", "Обновите evo: этот файл записала более новая версия."),
 		)
 	}
 
@@ -78,8 +81,8 @@ func Write(path string, f *File) error {
 	if err := config.MkdirPrivate(dir); err != nil { // .evo/ also holds the SSH key
 		return clierr.Wrap(
 			clierr.CodeStateCorrupted,
-			"failed to create state directory",
-			"Check write permissions for "+dir,
+			stateDirFailed(),
+			checkWritable(dir),
 			err,
 		)
 	}
@@ -88,8 +91,8 @@ func Write(path string, f *File) error {
 	if err != nil {
 		return clierr.Wrap(
 			clierr.CodeStateCorrupted,
-			"failed to marshal state",
-			"This is a bug; please report it",
+			i18n.T("failed to marshal state", "не удалось сериализовать состояние"),
+			i18n.T("This is a bug; please report it", "Это ошибка evo, сообщите о ней"),
 			err,
 		)
 	}
@@ -101,8 +104,8 @@ func Write(path string, f *File) error {
 	if err != nil {
 		return clierr.Wrap(
 			clierr.CodeStateCorrupted,
-			"failed to write temporary state file",
-			"Check disk space and permissions for "+dir,
+			tmpWriteFailed(),
+			checkSpace(dir),
 			err,
 		)
 	}
@@ -121,8 +124,8 @@ func Write(path string, f *File) error {
 		_ = os.Remove(tmp)
 		return clierr.Wrap(
 			clierr.CodeStateCorrupted,
-			"failed to write temporary state file",
-			"Check disk space and permissions for "+dir,
+			tmpWriteFailed(),
+			checkSpace(dir),
 			err,
 		)
 	}
@@ -132,13 +135,29 @@ func Write(path string, f *File) error {
 		_ = os.Remove(tmp)
 		return clierr.Wrap(
 			clierr.CodeStateCorrupted,
-			"failed to atomically replace state file",
-			"Check permissions for "+path,
+			i18n.T("failed to atomically replace state file", "не удалось атомарно заменить файл состояния"),
+			i18n.T("Check permissions for ", "Проверьте права на ")+path,
 			err,
 		)
 	}
 
 	return nil
+}
+
+func stateDirFailed() string {
+	return i18n.T("failed to create state directory", "не удалось создать каталог состояния")
+}
+
+func checkWritable(dir string) string {
+	return i18n.T("Check write permissions for ", "Проверьте права на запись в ") + dir
+}
+
+func tmpWriteFailed() string {
+	return i18n.T("failed to write temporary state file", "не удалось записать временный файл состояния")
+}
+
+func checkSpace(dir string) string {
+	return i18n.T("Check disk space and permissions for ", "Проверьте свободное место и права на ") + dir
 }
 
 // FindDeployment returns the first deployment with the given ID, or nil.

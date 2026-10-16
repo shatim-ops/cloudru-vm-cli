@@ -20,7 +20,8 @@ var commandExamples = map[string]string{
 	"evo status": `  evo status
   evo status --json`,
 	"evo verify": `  evo verify
-  evo deploy --yes && evo verify`,
+  evo deploy --yes && evo verify
+  evo verify --json | jq -r '.[] | select(.healthy | not) | .port'`,
 	"evo destroy": `  evo destroy --dry-run
   evo destroy
   evo destroy --yes`,

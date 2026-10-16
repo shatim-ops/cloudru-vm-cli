@@ -88,3 +88,57 @@ func TestRandomPassword_HasEveryClass(t *testing.T) {
 		}
 	}
 }
+
+// Группа безопасности для новой ВМ не зависит от порядка списка API: сперва
+// Default зоны, затем единственная, затем первая по имени. Раньше бралась
+// первая по порядку — в тестовом проекте это была группа другого сервиса,
+// и deploy открыл в ней порт 80 для 0.0.0.0/0 (QA r4 Q3).
+func TestResolveNetwork_SecurityGroupChoice(t *testing.T) {
+	zones := func(context.Context) ([]*provision.AvailabilityZone, error) {
+		return []*provision.AvailabilityZone{{ID: "z2", Name: "ru.AZ-2"}}, nil
+	}
+	subnets := func(context.Context, string) ([]*provision.Subnet, error) {
+		return []*provision.Subnet{{ID: "sn-2", Name: "Default_ru.AZ-2", AvailabilityZoneID: "z2"}}, nil
+	}
+	groups := []*provision.SecurityGroup{
+		{ID: "sg-other", Name: "inspector-fileserver-sg", AvailabilityZoneID: "z2"},
+		{ID: "sg-def", Name: "Default_ru.AZ-2", AvailabilityZoneID: "z2"},
+		{ID: "sg-ssh", Name: "SSH-access_ru.AZ-2", AvailabilityZoneID: "z2"},
+		{ID: "sg-az1", Name: "Default_ru.AZ-1", AvailabilityZoneID: "z1"},
+	}
+	for _, tc := range []struct {
+		name, configured string
+		groups           []*provision.SecurityGroup
+		want             string
+		wantErr          bool
+	}{
+		{"Default зоны, а не первая по порядку", "", groups, "sg-def", false},
+		{"без Default — первая по имени", "", []*provision.SecurityGroup{groups[2], groups[0]}, "sg-other", false},
+		{"security_group по имени", "SSH-access_ru.AZ-2", groups, "sg-ssh", false},
+		{"security_group по UUID", "sg-other", groups, "sg-other", false},
+		{"security_group, которой нет", "nope", groups, "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sgs := tc.groups
+			cloud := &mockCloudAPI{
+				listAvailabilityZonesFn: zones,
+				listSubnetsFn:           subnets,
+				listSecurityGroupsFn: func(context.Context, string) ([]*provision.SecurityGroup, error) {
+					return sgs, nil
+				},
+			}
+			eng, _ := newTestEngine(t, cloud, newMockDeployer())
+			eng.Config.SecurityGroup = tc.configured
+			n, err := eng.resolveNetwork(context.Background(), "p", "z2")
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("want an error, got group %s", n.SecurityGroupID)
+				}
+				return
+			}
+			if err != nil || n.SecurityGroupID != tc.want {
+				t.Fatalf("group = %q, %v; want %s", n.SecurityGroupID, err, tc.want)
+			}
+		})
+	}
+}

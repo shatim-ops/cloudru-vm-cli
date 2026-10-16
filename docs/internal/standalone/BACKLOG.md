@@ -152,3 +152,7 @@
   - `org_projects` — NOT_FOUND (код 4) для ключа уровня проекта, `project list` в той же ситуации отвечает пояснением (C3).
 
   Ожидаемо: `billing_*` (хост не подтверждён, [audit]), `audit_events` (401 у тестового ключа), `s3_buckets` (нет ключей S3), `vm_get`/`pg_get` (USAGE без ID). С следующего прогона в строках warn печатается HTTP-статус.
+- [qa-r4] Остатки отчёта QA r4 (PR #66, `docs/internal/qa-r4.md` в ветке `claude/qa-fable-r4`) после #67:
+  - **Q11 (low):** `evo configure` без терминала и без `--key-id`/`--secret-stdin` при существующем профиле отвечает rc 0 «Профиль сохранён», хотя ключ не менялся. В CI это маскирует ошибку. Нужно отвечать ошибкой «нужны Key ID и секрет», как без профиля.
+  - **Q12 (info):** частичное окружение (`CLOUDRU_SECRET` без `CLOUDRU_KEY_ID`) заменяет профиль целиком и даёт AUTH_REQUIRED. Так задумано (`internal/config/config.go:233`); описать в `docs/troubleshooting.md` рядом с AUTH_FAILED.
+  - **Подтверждены остатки r3:** R14, C4, C5, C6, C7, C12, I2 — см. [qa-r3].

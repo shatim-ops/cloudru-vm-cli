@@ -46,8 +46,19 @@ jobs:
             exit 0
           fi
           body=$(jq -cn --arg repo "$REPO" --argjson pr "$PR" --arg by "$BY" '{repo: $repo, pr: $pr, by: $by}')
-          curl -sf -o /dev/null --max-time 20 --retry 2 -X POST "$URL" \
+          # Только HTTP-код (или код ошибки curl): ни адреса, ни тела ответа.
+          set +e
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 --retry 2 -X POST "$URL" \
             -H "Authorization: Bearer $KEY" \
             -H "Content-Type: application/json" \
-            -d "$body" || { echo "::error::вебхук Grok не принял сигнал"; exit 1; }
-          echo "сигнал Grok отправлен: PR #$PR"
+            -d "$body")
+          rc=$?
+          set -e
+          if [ "$rc" != 0 ]; then
+            echo "::error::вебхук Grok недоступен: ошибка curl $rc (6 — имя не разрешается, 7 — отказ соединения, 28 — тайм-аут, 35/60 — TLS)"
+            exit 1
+          fi
+          case "$code" in
+            2??) echo "сигнал Grok отправлен: PR #$PR, HTTP $code" ;;
+            *) echo "::error::вебхук Grok ответил HTTP $code (401/403 — ключ, 404 — адрес, 400/422 — формат тела)"; exit 1 ;;
+          esac
