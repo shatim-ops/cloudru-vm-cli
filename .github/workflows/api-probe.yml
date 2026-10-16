@@ -3,11 +3,14 @@ name: api-probe
 # Только чтение: проверяет на живом API Cloud.ru то, что сверка со
 # спецификациями (docs/internal/api-contract.md) не смогла решить по
 # документации, — форму ответов IAM и аудита, поведение limit=200, имена
-# параметров camelCase/snake_case, вложенные поля зоны и IP. Ничего не
-# создаёт и не удаляет.
+# параметров camelCase/snake_case, вложенные поля зоны и IP, каталог образов
+# и расчёт цены. Ничего не создаёт и не удаляет: всё — GET, кроме POST
+# price-calculation, который только считает стоимость.
 #
 # Репозиторий публичный, лог виден всем: печатаются только коды HTTP, имена
-# полей и количества — никаких значений, ID, адресов и токенов.
+# полей и количества — никаких значений, ID, адресов и токенов. Исключение —
+# имена образов общего каталога Cloud.ru: они публичны (видны любому
+# клиенту); образы проекта — только счётчики.
 #
 # Секреты — те же, что у cloud-e2e: CLOUDRU_KEY_ID, CLOUDRU_SECRET,
 # CLOUDRU_PROJECT_ID.
@@ -99,3 +102,61 @@ jobs:
           echo "== IAM и Organization"
           probe iam_service_accounts  "https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId=$PROJECT" "$shape"
           probe org_projects          "https://organization.api.cloud.ru/v3/projects" "$shape"
+
+          # Каталог образов (docs/internal/design-images.md §7): типы, отечественные
+          # ОС, поиск по name/display_name, поля продуктов, расчёт цены. Имена
+          # образов общего каталога (без project_id) публичны — их печатаем;
+          # образы проекта — только счётчики. ID образов, флейворов и типов
+          # дисков идут только в URL и тело запроса, в лог — нет.
+          echo "== образы: каталог"
+          ru='astra|астра|alt[- _]?(linux|server|workstation)|альт|red[- _]?os|ред[- _]?ос|rosa|роса'
+          probe images_types          "$C/images?limit=100" '{total, n: (.items|length), types: ([.items[].type] | group_by(.) | map({(.[0]): length}) | add), shared: ([.items[] | select(.project_id == null)] | length)}'
+          probe images_ru_os          "$C/images?limit=100" "[.items[] | select(.project_id == null) | select(((.name // \"\") + \" \" + (.display_name // \"\")) | test(\"$ru\"; \"i\")) | {name, display_name, type, min_disk, need_gpu: (.min_gpu // 0 > 0), zones: [.availability_zones[]? | select(.enabled) | .availability_zone_name], fields: [.image_metadata[]?.field_type]}]"
+          probe images_marketplace    "$C/images?type=marketplace&limit=100" '{total, items: [.items[] | select(.project_id == null) | {name, display_name}]}'
+          probe images_public         "$C/images?type=public&limit=100" '{total, names: [.items[] | select(.project_id == null) | .name]}'
+          probe images_private_proj   "$C/images?$P&type=private&limit=100" "{total, ru_os: ([.items[] | select(((.name // \"\") + \" \" + (.display_name // \"\")) | test(\"$ru\"; \"i\"))] | length)}"
+          probe images_project_types  "$C/images?$P&limit=100" '{total, types: ([.items[].type] | group_by(.) | map({(.[0]): length}) | add)}'
+
+          echo "== образы: фильтры name/display_name (точное совпадение или подстрока, регистр)"
+          probe name_exact            "$C/images?name=Ubuntu-24.04&limit=100" '{total, names: [.items[].name]}'
+          probe name_lower            "$C/images?name=ubuntu-24.04&limit=100" '{total, names: [.items[].name]}'
+          probe name_substr           "$C/images?name=ubuntu&limit=100" '{total, names: [.items[].name]}'
+          probe name_astra            "$C/images?name=astra&limit=100" '{total, names: [.items[].name]}'
+          probe display_substr        "$C/images?display_name=Ubuntu&limit=100" '{total, names: [.items[].name]}'
+          probe display_astra         "$C/images?display_name=Astra&limit=100" '{total, names: [.items[].name]}'
+          probe filter_enabled        "$C/images?enabled=true&limit=100" '{total}'
+          probe filter_gpu            "$C/images?need_gpu=true&limit=100" '{total}'
+          probe filter_free_tier      "$C/images?free_tier_enabled=true&limit=100" '{total}'
+
+          echo "== образы: поля продуктов (marketplace и отечественные ОС)"
+          ids=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/images?limit=100" |
+            jq -r --arg ru "$ru" '.items[] | select(.project_id == null) | select(.type == "marketplace" or (((.name // "") + " " + (.display_name // "")) | test($ru; "i"))) | .id' || true)
+          for id in $ids; do echo "::add-mask::$id"; done
+          for id in $ids; do
+            probe image_fields "$C/images/$id" '{name, type, fields: [.image_metadata[]? | {name, field_type, sensitive, mandatory_group, has_default: ((.default_value // "") != "")}], template: ((.user_data_template // "") | length)}'
+          done
+
+          echo "== расчёт цены (POST без побочных эффектов; в лог — код, ключи и признак платы за образ)"
+          flavor=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/flavors?limit=100" | jq -r '[.items[] | select((.gpu // 0) == 0)] | sort_by(.cpu, .ram) | .[0].id // empty' || true)
+          disk=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/disk-types?$P&limit=100" | jq -r '.items[0].id // empty' || true)
+          price() {
+            local name=$1 image=$2 r c b
+            r=$(jq -n --arg f "$flavor" --arg i "$image" --arg d "$disk" '{total_count: 1, flavor_id: $f, disks: [{disk_type_id: $d, size: 20}], floating_ips: [{floating_ip_action: "new", count: 1}]} + (if $i == "" then {} else {image_id: $i} end)' |
+              curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- -w '\n%{http_code}' "$C/projects/$PROJECT/price-calculation" || true)
+            c=${r##*$'\n'}; b=${r%$'\n'*}
+            printf '%-28s http=%s %s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c '{keys: keys, image_charged: ((.image // 0) > 0), total_positive: ((.total_price_month // 0) > 0), detail: (.detail | if type == "array" then [.[] | .msg? // .] elif . == null then null else (tostring | .[0:120]) end)}' 2>/dev/null || echo 'не JSON')"
+          }
+          [ -z "$flavor" ] || echo "::add-mask::$flavor"
+          [ -z "$disk" ] || echo "::add-mask::$disk"
+          if [ -n "$flavor" ] && [ -n "$disk" ]; then
+            price price_no_image ""
+            ubuntu=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/images?name=Ubuntu-24.04&limit=100" | jq -r '.items[0].id // empty' || true)
+            [ -z "$ubuntu" ] || echo "::add-mask::$ubuntu"
+            [ -z "$ubuntu" ] || price price_ubuntu "$ubuntu"
+            for id in $ids; do
+              n=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/images/$id" | jq -r '.name // "?"' || true)
+              price "price_$n" "$id"
+            done
+          else
+            echo "price: нет флейвора или типа диска — расчёт пропущен"
+          fi
