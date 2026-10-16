@@ -47,6 +47,11 @@ var commandExamples = map[string]string{
   evo vm create worker-1 --no-public-ip --yes`,
 	"evo vm delete": `  evo vm delete my-vm --dry-run
   evo vm delete my-vm`,
+	"evo image list": `  evo image list astra
+  evo image list --type public
+  evo image list ubuntu --zone ru.AZ-2 --json | jq -r '.images[] | "\(.id)\t\(.name)"'`,
+	"evo image get": `  evo image get AstraLinuxSmolensk1.8.3KES
+  evo image get <UUID> --json`,
 	"evo disk list": `  evo disk list
   evo disk list --json`,
 	"evo k8s list": `  evo k8s list`,

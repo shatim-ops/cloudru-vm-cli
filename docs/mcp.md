@@ -106,7 +106,7 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 
 ## Только нужные группы инструментов
 
-По умолчанию сервер предлагает агенту все 147 инструментов. Это около 90 КБ
+По умолчанию сервер предлагает агенту все 148 инструментов. Это около 90 КБ
 `tools/list`, и агент читает их в каждой сессии. Если нужен только deploy и
 работа с ВМ и сетью, оставьте эти группы:
 
@@ -123,6 +123,26 @@ disk, image, vpc, k8s, pg, s3, secret, stack и другие. `--toolsets all` �
 группа `stack`, `stack_apply` сам вызывает инструменты других групп (без
 `stack` в `--toolsets` он агенту недоступен). Права ограничивают
 `--allow-project`, ограничения HTTP-режима и роли сервисного аккаунта.
+
+## Образы ВМ
+
+Агент находит образ по имени, а не по UUID:
+
+- `image_list` (`query`, `type` = `public` | `marketplace` | `private`,
+  `zone`, `all`) — поиск по подстроке имени или отображаемого имени без учёта
+  регистра; компактные строки `{id, name, display_name, type, zones_ready,
+  min_disk_gb}` без иконки, шаблона cloud-init и объектов зон, плюс `shown`,
+  `total`, `hidden`. Образы, не готовые ни в одной зоне, скрыты без
+  `all=true`. `list_images` — прежнее имя того же инструмента, с тем же
+  ответом.
+- `image_get` (`image` — имя, отображаемое имя или UUID; `image_id` — как
+  раньше; `full`) — карточка: `ready`, `zones_ready`, `fields[]` с
+  `filled_by` (`evo`, `default`, `user`, `none`, `status`), `fields_required`
+  и `create{cli, tool, args}`. Иконка и `user_data_template` — только с
+  `full=true`. Несколько совпадений — ошибка `USAGE` с `candidates[]`, ни
+  одного — `NOT_FOUND`.
+
+UUID из ответа передаётся в `provision` и `deploy` как `image_id`.
 
 ## stdio
 

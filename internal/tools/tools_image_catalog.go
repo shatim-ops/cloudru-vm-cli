@@ -1,0 +1,227 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	stderrors "errors"
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/images"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+)
+
+// imageListSchema is the schema of image_list and of its alias list_images.
+func imageListSchema() map[string]any {
+	typ := strProp("Only this type: public (OS images), marketplace (products of the Cloud.ru Marketplace) or private (images of the project). Default: all three.")
+	typ["enum"] = images.Types
+	return objSchema(map[string]any{
+		"query": strProp("Substring of the image name or display name, case-insensitive (e.g. 'astra', 'ubuntu'). Default: the whole catalogue."),
+		"type":  typ,
+		"zone":  strProp("Only images ready in this availability zone: name ('ru.AZ-1', 'AZ-1') or UUID."),
+		"all":   boolProp("Also show catalogue images ready in no zone (hidden by default: the shared catalogue carries test and broken images)."),
+	})
+}
+
+// imageRow is one compact row of image_list: what an agent needs to pick an
+// image, without the icon, the cloud-init template or the zone objects.
+type imageRow struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	DisplayName string   `json:"display_name,omitempty"`
+	Type        string   `json:"type,omitempty"`
+	ZonesReady  []string `json:"zones_ready"`
+	MinDiskGB   int      `json:"min_disk_gb,omitempty"`
+}
+
+// zoneNamer names zones for a row: the image's own zone name when it has
+// one, else the name from the zone list, read once and only when needed.
+type zoneNamer struct {
+	ctx    context.Context
+	eng    *engine.Engine
+	byID   map[string]string
+	loaded bool
+	zones  []*provision.AvailabilityZone
+	err    error
+}
+
+func (z *zoneNamer) load() {
+	if z.loaded {
+		return
+	}
+	z.loaded = true
+	z.zones, z.err = z.eng.Cloud.ListAvailabilityZones(z.ctx)
+	z.byID = map[string]string{}
+	for _, zone := range z.zones {
+		z.byID[zone.ID] = zone.Name
+	}
+}
+
+func (z *zoneNamer) short(az provision.ImageAvailZone) string {
+	name := az.AvailabilityZoneName
+	if name == "" && az.AvailabilityZoneID != "" {
+		z.load()
+		name = z.byID[az.AvailabilityZoneID]
+	}
+	if name == "" {
+		return az.AvailabilityZoneID
+	}
+	return images.ZoneShort(name)
+}
+
+func (z *zoneNamer) readyShort(zones []provision.ImageAvailZone) []string {
+	out := []string{}
+	for _, az := range zones {
+		if provision.ZoneReady(az) {
+			out = append(out, z.short(az))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// zoneID resolves a zone given by name ("ru.AZ-1"), short name ("AZ-1") or
+// UUID.
+func (z *zoneNamer) zoneID(ref string) (string, error) {
+	if looksUUID(ref) {
+		return ref, nil
+	}
+	z.load()
+	if z.err != nil {
+		return "", z.err
+	}
+	var known []string
+	for _, zone := range z.zones {
+		if strings.EqualFold(zone.Name, ref) || strings.EqualFold(images.ZoneShort(zone.Name), ref) {
+			return zone.ID, nil
+		}
+		known = append(known, zone.Name)
+	}
+	return "", clierrors.New(clierrors.CodeNotFound,
+		i18n.Tf("zone %q not found", "зона %q не найдена", ref),
+		i18n.Tf("Zones: %s (evo vm zones).", "Зоны: %s (evo vm zones).", strings.Join(known, ", ")))
+}
+
+// handleImageList searches the image catalogue (list_images is the same
+// handler). Read-only.
+func (s *Registry) handleImageList(ctx context.Context, args map[string]any) (string, bool) {
+	f := images.Filter{Type: strings.ToLower(strings.TrimSpace(stringArg(args, "type"))), All: boolArg(args, "all", false)}
+	if !images.ValidType(f.Type) {
+		return usageResult(fmt.Errorf("'type' must be one of %s, got %q", strings.Join(images.Types, ", "), f.Type)), true
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	zn := &zoneNamer{ctx: ctx, eng: eng}
+	if ref := strings.TrimSpace(stringArg(args, "zone")); ref != "" {
+		if f.ZoneID, err = zn.zoneID(ref); err != nil {
+			return errResult(err), true
+		}
+	}
+	cat := images.Catalog{Cloud: eng.Cloud, ProjectID: eng.Config.ProjectID}
+	res, err := cat.Search(ctx, stringArg(args, "query"), f)
+	if err != nil {
+		return errResult(err), true
+	}
+	rows := make([]imageRow, 0, len(res.Images))
+	for _, img := range res.Images {
+		rows = append(rows, imageRow{
+			ID: img.ID, Name: img.Name, DisplayName: img.DisplayName, Type: img.Type,
+			ZonesReady: zn.readyShort(img.AvailZones), MinDiskGB: img.MinDisk,
+		})
+	}
+	out := map[string]any{"images": rows, "shown": len(rows), "total": res.Total, "hidden": res.Hidden}
+	if res.Warning != "" {
+		out["warning"] = res.Warning
+	}
+	return toJSON(out), false
+}
+
+// imageErrResult is errResult plus the candidates of an ambiguous
+// reference, for an agent to pick one or ask.
+func imageErrResult(err error) string {
+	var amb *images.AmbiguousError
+	if !stderrors.As(err, &amb) {
+		return errResult(err)
+	}
+	var m map[string]any
+	_ = json.Unmarshal([]byte(errResult(err)), &m)
+	cands := make([]map[string]any, 0, len(amb.Candidates))
+	for _, c := range amb.Candidates {
+		cands = append(cands, map[string]any{"id": c.ID, "name": c.Name, "display_name": c.DisplayName, "type": c.Type})
+	}
+	m["candidates"] = cands
+	return toJSON(m)
+}
+
+// handleImageGet returns one image by name or UUID: a card with what evo
+// fills in its metadata fields and what the person must, and the command
+// that creates a VM from it. The icon and the cloud-init template only with
+// full=true: they are kilobytes of an agent's context.
+func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (string, bool) {
+	ref := strings.TrimSpace(stringArg(args, "image"))
+	if ref == "" {
+		ref = strings.TrimSpace(stringArg(args, "image_id"))
+	}
+	if ref == "" {
+		return usageResult(fmt.Errorf("'image' (name or UUID) or 'image_id' is required")), true
+	}
+	full := boolArg(args, "full", false)
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	cat := images.Catalog{Cloud: eng.Cloud, ProjectID: eng.Config.ProjectID}
+	img, err := cat.Get(ctx, ref)
+	if err != nil {
+		return imageErrResult(err), true
+	}
+
+	var card map[string]any
+	b, _ := json.Marshal(img)
+	_ = json.Unmarshal(b, &card)
+	if !full {
+		delete(card, "icon")
+		delete(card, "user_data_template")
+		// A catalogue default of a secret field is still a secret.
+		if fields, ok := card["image_metadata"].([]any); ok {
+			for _, x := range fields {
+				f, _ := x.(map[string]any)
+				ft, _ := f["field_type"].(string)
+				if sens, _ := f["sensitive"].(bool); sens || ft == images.TypeLinuxPassword || ft == images.TypePlainPassword {
+					delete(f, "default_value")
+				}
+			}
+		}
+	}
+
+	zn := &zoneNamer{ctx: ctx, eng: eng}
+	fields := images.Fields(img.MetadataFields)
+	needs := images.NeedsUser(fields)
+	if needs == nil {
+		needs = []string{}
+	}
+	out := map[string]any{
+		"image":           card,
+		"ready":           img.Ready(),
+		"zone_states":     zoneStates(img),
+		"zones_ready":     zn.readyShort(img.AvailZones),
+		"fields":          fields,
+		"fields_required": needs,
+		"create": map[string]any{
+			"cli":  "evo vm create <vm-name> --image-id " + img.ID,
+			"tool": "provision",
+			"args": map[string]any{"image_id": img.ID},
+		},
+	}
+	if len(needs) > 0 {
+		out["note"] = "The image has mandatory fields evo cannot fill yet (" + strings.Join(needs, ", ") +
+			"): provision does not pass custom metadata, so creating a VM from it will fail until it does."
+	}
+	return toJSON(out), false
+}

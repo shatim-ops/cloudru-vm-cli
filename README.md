@@ -72,6 +72,7 @@ evo destroy            # удалить ВМ и освободить IP
 | Команда | Что делает |
 |---|---|
 | `vm`, `disk`, `vpc` | ВМ, диски, сети, подсети, группы безопасности, floating IP |
+| `image` | образы ВМ: ОС и продукты маркетплейса — поиск по имени, карточка с UUID |
 | `k8s` | кластеры Managed Kubernetes, node pool'ы, kubeconfig, `kubectl`/`helm` |
 | `pg` | кластеры PostgreSQL, базы, пользователи, бэкапы |
 | `s3` | бакеты и объекты Object Storage |

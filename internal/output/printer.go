@@ -175,6 +175,10 @@ func sanitizeRow(row []string) []string {
 	return out
 }
 
+// SanitizeCell is sanitizeCell for text printed outside a table (a card
+// line with a name from the cloud).
+func SanitizeCell(s string) string { return sanitizeCell(s) }
+
 // sanitizeCell makes a table cell safe for a terminal. Cells carry names
 // and descriptions from the cloud: an escape sequence could repaint or
 // clear the screen, a tab or a line break would break the columns.

@@ -141,7 +141,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 		"status": "building",
 		"image":  img,
 		"note": "Image build is queued, not finished: it runs at roughly 0.7 GB per minute. " +
-			"Poll list_images until the image reports state 'created'/'active' before booting from it.",
+			"Poll image_get until it reports ready=true before booting from it.",
 	}), false
 }
 
@@ -219,35 +219,6 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 		return errResult(fmt.Errorf("attach floating ip: %w", err)), true
 	}
 	return toJSON(map[string]any{"status": "attached", "floating_ip": res, "vm_id": vmID, "interface_id": ifaceID}), false
-}
-
-// handleImageGet returns one image with its full spec: the cloud-init template
-// the platform renders on VM creation and the metadata fields a buyer fills in.
-// Read-only — also the way to watch an image build finish, and to study how
-// existing Marketplace images are put together.
-func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (string, bool) {
-	imageID := stringArg(args, "image_id")
-	if imageID == "" {
-		return usageResult(fmt.Errorf("'image_id' is required")), true
-	}
-	eng, err := s.authedEngine(ctx, nil)
-	if err != nil {
-		return errResult(err), true
-	}
-	img, err := eng.Cloud.GetImage(ctx, imageID)
-	if err != nil {
-		return errResult(fmt.Errorf("get image: %w", err)), true
-	}
-	// The platform leaves the top-level status empty and keeps the real build
-	// state per zone, so a caller reading "status" sees "" on a perfectly ready
-	// image. Answer the question directly instead of making every caller learn
-	// that quirk.
-	out := map[string]any{
-		"image":       img,
-		"ready":       img.Ready(),
-		"zone_states": zoneStates(img),
-	}
-	return toJSON(out), false
 }
 
 // zoneStates maps each zone name to the image's build state there.

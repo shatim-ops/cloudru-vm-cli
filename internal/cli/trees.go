@@ -16,7 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
-// The command trees (vm, disk, vpc, k8s, pg, s3, secret) are data: each
+// The command trees (vm, image, disk, vpc, k8s, pg, s3, secret) are data: each
 // command names a registry tool, which of its arguments are positional, and
 // how the answer is shown. Every other argument of the tool becomes a flag
 // with the type from its schema. The cobra layer only parses flags into
@@ -43,6 +43,9 @@ type treeCmd struct {
 	Args    []string
 	Rename  map[string]string // tool argument → flag name, when the default clashes
 	Columns []string          // table columns for a list answer (default: picked from the rows)
+	// Render shows the answer instead of the generic table (image list,
+	// image get); --json still prints the tool's answer as is.
+	Render func(p *output.Printer, w io.Writer, text string) error
 }
 
 var treeGroups = []treeGroup{
@@ -53,6 +56,10 @@ var treeGroups = []treeGroup{
 		{Verb: "delete", Tool: "destroy", Args: []string{"vm_id|name"}},
 		{Verb: "zones", Tool: "list_zones"},
 		{Verb: "flavors", Tool: "list_flavors"},
+	}},
+	{Name: "image", Short: "VM images: operating systems and Marketplace products", Cmds: []treeCmd{
+		{Verb: "list", Tool: "image_list", Args: []string{"query?"}, Render: renderImageList},
+		{Verb: "get", Tool: "image_get", Args: []string{"image_id|image"}, Render: renderImageCard},
 	}},
 	{Name: "disk", Short: "Disks", Cmds: []treeCmd{
 		{Verb: "list", Tool: "disk_list", Columns: []string{"id", "name", "size_gb", "state", "disk_type", "zone", "attached_to"}},
@@ -306,6 +313,9 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		}
 		if err != nil || text == "" {
 			return err
+		}
+		if c.Render != nil {
+			return c.Render(cmdPrinter(cmd), cmd.OutOrStdout(), text)
 		}
 		return renderAnswer(cmdPrinter(cmd), cmd.OutOrStdout(), text, c.Columns)
 	}

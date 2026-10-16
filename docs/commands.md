@@ -32,6 +32,9 @@
     - [evo disk resize](#evo-disk-resize)
     - [evo disk types](#evo-disk-types)
   - [evo doctor](#evo-doctor)
+  - [evo image](#evo-image)
+    - [evo image get](#evo-image-get)
+    - [evo image list](#evo-image-list)
   - [evo init](#evo-init)
   - [evo k8s](#evo-k8s)
     - [evo k8s add-nodepool](#evo-k8s-add-nodepool)
@@ -46,7 +49,6 @@
     - [evo k8s nodepools](#evo-k8s-nodepools)
     - [evo k8s options](#evo-k8s-options)
     - [evo k8s plan](#evo-k8s-plan)
-  - [evo list-images](#evo-list-images)
   - [evo list-zones](#evo-list-zones)
   - [evo logs](#evo-logs)
   - [evo mcp](#evo-mcp)
@@ -150,9 +152,9 @@ Object Storage, секреты.
 * [evo destroy](#evo-destroy)	 - Удалить развёрнутую ВМ и связанные ресурсы
 * [evo disk](#evo-disk)	 - Диски
 * [evo doctor](#evo-doctor)	 - Проверить настройки, ключ доступа и связь с API
+* [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
 * [evo init](#evo-init)	 - Создать .evo.yaml с зоной и образом из API Cloud.ru
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
-* [evo list-images](#evo-list-images)	 - Список загрузочных образов ВМ
 * [evo list-zones](#evo-list-zones)	 - Список зон доступности
 * [evo logs](#evo-logs)	 - Журналы контейнеров на развёрнутой ВМ
 * [evo mcp](#evo-mcp)	 - MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)
@@ -1050,6 +1052,142 @@ evo doctor [flags]
 
 * [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
+## evo image
+
+Образы ВМ: операционные системы и продукты маркетплейса
+
+```
+evo image [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по image
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
+* [evo image get](#evo-image-get)	 - Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ
+* [evo image list](#evo-image-list)	 - Поиск образов: ОС (public), маркетплейс (marketplace), образы проекта (private)
+
+## evo image get
+
+Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ
+
+### Synopsis
+
+```text
+Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ.
+
+Вызывает инструмент image_get (подробнее: 'evo tools describe image_get').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with candidates[]). Returns the image, ready and zones_ready, and fields[]: each image_metadata field with filled_by — evo (SSH key, VM name, login, random password), default, user (mandatory, evo cannot fill it) or none — plus create{cli, tool, args}. The icon and the cloud-init user_data_template only with full=true. Read-only. Also the way to poll an image build until ready=true.
+```
+
+```
+evo image get <image-id|image> [flags]
+```
+
+### Examples
+
+```
+  evo image get AstraLinuxSmolensk1.8.3KES
+  evo image get <UUID> --json
+```
+
+### Options
+
+```
+      --full   Also return the SVG icon and the cloud-init user_data_template (large).
+  -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
+
+## evo image list
+
+Поиск образов: ОС (public), маркетплейс (marketplace), образы проекта (private)
+
+### Synopsis
+
+```text
+Поиск образов: ОС (public), маркетплейс (marketplace), образы проекта (private).
+
+Вызывает инструмент image_list (подробнее: 'evo tools describe image_list').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Search the VM image catalogue: OS images (type public), Cloud.ru Marketplace products (marketplace) and the project's own images (private). query matches a substring of the name or display_name, case-insensitive. Images ready in no zone are hidden unless all=true. Compact rows {id, name, display_name, type, zones_ready, min_disk_gb}, public first; total counts the matches before hiding. Next: image_get for the fields a VM from the image needs; the id goes to provision or deploy as image_id.
+```
+
+```
+evo image list [query] [flags]
+```
+
+### Examples
+
+```
+  evo image list astra
+  evo image list --type public
+  evo image list ubuntu --zone ru.AZ-2 --json | jq -r '.images[] | "\(.id)\t\(.name)"'
+```
+
+### Options
+
+```
+      --all           Also show catalogue images ready in no zone (hidden by default: the shared catalogue carries test and broken images).
+  -h, --help          Справка по list
+      --type string   Only this type: public (OS images), marketplace (products of the Cloud.ru Marketplace) or private (images of the project). Default: all three.
+      --zone string   Only images ready in this availability zone: name ('ru.AZ-1', 'AZ-1') or UUID.
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
+
 ## evo init
 
 Создать .evo.yaml с зоной и образом из API Cloud.ru
@@ -1716,47 +1854,6 @@ evo k8s plan [flags]
 ### SEE ALSO
 
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
-
-## evo list-images
-
-Список загрузочных образов ВМ
-
-### Synopsis
-
-```text
-Список загрузочных образов из API Cloud.ru.
-
-ID образа передаётся в deploy флагом --image-id или переменной CLOUDRU_IMAGE_ID.
-deploy ставит Docker на образы Ubuntu и Debian (например, Ubuntu-24.04).
-Для машинного разбора — --json.
-```
-
-```
-evo list-images [flags]
-```
-
-### Options
-
-```
-  -h, --help   Справка по list-images
-```
-
-### Options inherited from parent commands
-
-```
-      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
-      --json                Вывод в формате JSON
-      --no-color            Без цвета
-      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
-      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
-      --verbose             Подробный журнал
-  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
-```
-
-### SEE ALSO
-
-* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo list-zones
 
@@ -3834,7 +3931,7 @@ evo vm create <name> [flags]
       --disk-size int      Boot disk size in GB (default: 10, raised to the image's min_disk).
       --flavor string      VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier).
   -h, --help               Справка по create
-      --image-id string    Boot image UUID (see list_images).
+      --image-id string    Boot image UUID (see image_list, image_get).
       --no-public-ip       Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes.
       --subnet-id string   Subnet UUID for the interface (default: a subnet in the target zone).
 ```
