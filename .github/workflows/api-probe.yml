@@ -145,7 +145,7 @@ jobs:
             r=$(jq -n --arg f "$flavor" --arg i "$image" --arg d "$disk" '{total_count: 1, flavor_id: $f, disks: [{disk_type_id: $d, size: 20}], floating_ips: [{floating_ip_action: "new", count: 1}]} + (if $i == "" then {} else {image_id: $i} end)' |
               curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- -w '\n%{http_code}' "$C/projects/$PROJECT/price-calculation" || true)
             c=${r##*$'\n'}; b=${r%$'\n'*}
-            printf '%-28s http=%s %s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c '{keys: keys, image_charged: ((.image // 0) > 0), total_positive: ((.total_price_month // 0) > 0), detail: (.detail | if type == "array" then [.[] | .msg? // .] elif . == null then null else (tostring | .[0:120]) end)}' 2>/dev/null || echo 'не JSON')"
+            printf '%-28s http=%s %s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c 'if type == "object" then {keys: keys, image_charged: ((.image // 0) > 0), mkp_image_charged: ((.mkp_image // 0) > 0), custom_image_charged: ((.custom_image_size // 0) > 0), total_positive: ((.total_price_month // 0) > 0), detail: (.detail | if type == "array" then [.[] | .msg? // .] elif . == null then null else (tostring | .[0:160]) end), message: ((.message // null) | if . == null then null else tostring | .[0:160] end)} else {raw: (tostring | .[0:160])} end' 2>/dev/null || printf 'не JSON: %.160s' "$b")"
           }
           [ -z "$flavor" ] || echo "::add-mask::$flavor"
           [ -z "$disk" ] || echo "::add-mask::$disk"
