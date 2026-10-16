@@ -235,8 +235,8 @@ running, ssh_timeout, docker_failed, destroying, destroyed`. В коде пиш�
 | `vpc list`, `get`, `operation`, `routes`, `subnets`, `security-groups`, `fips` | `vpc_list`, `vpc_get`, `vpc_operation`, `vpc_routes`, `list_subnets`, `list_security_groups`, `list_floating_ips` | нет | нет |
 | `vpc create`, `delete`, `route-create`, `route-delete` | `vpc_create`, `vpc_delete`, `vpc_route_create`, `vpc_route_delete` | да | нет |
 | `vpc fip-attach`, `fip-release` | `fip_attach`, `release_floating_ip` | да | нет |
-| `k8s list`, `get`, `options`, `plan`, `kubeconfig`, `nodepools` | `k8s_list`, `k8s_get`, `k8s_options`, `k8s_plan`, `k8s_kubeconfig`, `k8s_nodepools` | нет | нет |
-| `k8s create`, `delete`, `add-nodepool`, `kubectl`, `apply`, `helm` | `k8s_create`, `k8s_delete`, `k8s_add_nodepool`, `k8s_kubectl`, `k8s_apply`, `k8s_helm` | да | нет |
+| `k8s list`, `get`, `options`, `plan`, `kubeconfig`, `nodepools`, `addons`, `addon-versions` | `k8s_list`, `k8s_get`, `k8s_options`, `k8s_plan`, `k8s_kubeconfig`, `k8s_nodepools`, `k8s_addons`, `k8s_addon_versions` | нет | нет |
+| `k8s create`, `delete`, `add-nodepool`, `add-addon`, `kubectl`, `apply`, `helm` | `k8s_create`, `k8s_delete`, `k8s_add_nodepool`, `k8s_add_addon`, `k8s_kubectl`, `k8s_apply`, `k8s_helm` | да | нет |
 | `pg list`, `get`, `versions`, `specs`, `operation`, `databases`, `users`, `backups` | `pg_list`, `pg_get`, `pg_versions`, `pg_specs`, `pg_operation`, `pg_databases`, `pg_users`, `pg_backups` | нет | нет |
 | `pg create`, `delete`, `db-create`, `db-delete`, `user-create`, `user-delete`, `backup-create` | `pg_create`, `pg_delete`, `pg_db_create`, `pg_db_delete`, `pg_user_create`, `pg_user_delete`, `pg_backup_create` | да | нет |
 | `s3 buckets`, `ls`, `get` | `s3_buckets`, `s3_ls`, `s3_get` | нет | нет |
@@ -278,6 +278,7 @@ deploy/vm/stack не пишет ни state, ни job.
 | snat | `snat_create`/`snat_delete` | шлюз SNAT | нет (job стека) | нет | `snat_delete`, `stack_destroy` |
 | disk | `disk_create` (с `attach_to`), `disk_attach`, `disk_detach`, `disk_resize`, `disk_delete` | диск, привязка | нет | нет | `disk_delete`; `destroy` диски, кроме загрузочного, не трогает |
 | k8s | `k8s_create`/`k8s_delete`, `k8s_add_nodepool` | кластер, группа узлов | нет (кластер — job стека) | только в стеке | `k8s_delete`, `stack_destroy`; удаления группы узлов нет |
+| k8s | `k8s_add_addon` | плагин кластера (`POST /v3/clusterAddons`, вживую не проверено) | нет | нет | удаления нет (в спецификации — `DELETE /v3/clusterAddons/{id}`); по-видимому, уходит с кластером |
 | k8s | `k8s_kubectl`, `k8s_apply`, `k8s_helm` | объекты внутри кластера | нет | — | пользователь (kubectl/helm) |
 | pg | `pg_create`/`pg_delete` | кластер PostgreSQL | нет (job стека) | только в стеке | `pg_delete`, `stack_destroy` |
 | pg | `pg_db_*`, `pg_user_*`, `pg_backup_create` | база, пользователь, резервная копия | нет | нет | `pg_db_delete`, `pg_user_delete`; удаления копии нет |
@@ -417,7 +418,7 @@ deploy/vm/stack не пишет ни state, ни job.
 | ресурсы стека (VPC, PG, Kafka, Redis, k8s, реестр, SNAT, TG, LB, запись DNS, секреты, объекты S3) | `stack_apply` | `stack_destroy` в обратном порядке (`tools/tools_stack.go:709-752`) | 404 и «not found» в ошибке считаются удалёнными (`tools/tools_stack.go:699-701`). Перед удалением ID берутся из шагов, а для начатых шагов — поиском по имени (`:676-690`). |
 | ВМ из неудачных попыток шага `vm` | `provision` при ответе-ошибке с `vm_id` (`error`, `timeout`) | `stack_destroy` их не видит: при неотменённой ошибке `ResourceID` не сохраняется, у шага нет `FindTool`, шаг повторяется до 4 раз (`tools/tools_stack.go:261-283`, `stack/store.go:565-567`). Каждая такая ВМ записана `provision` в `state.json`; убирает `evo destroy` по одной (первая активная) или `destroy vm_id`. Подтверждено временным тестом на поддельном `provision` (4 вызова, шаг `error`, `ResourceID` пуст). | — |
 | k8s, pg, kafka, redis, LB, TG, VPC, DNS, реестр, CA, сертификаты, диски, образы, бакеты, секреты вне стека | соответствующие `*_create` | только соответствующие `*_delete`; учёта в evo нет | `*_delete` возвращает ошибку 404 от API; evo ничего не помнит, кроме job стека. |
-| группа узлов k8s, резервная копия pg, версия секрета, привязка FIP (`fip_attach`) | `k8s_add_nodepool`, `pg_backup_create`, `secret_add_version`, `fip_attach` | парного инструмента нет; группа узлов, по-видимому, уходит с кластером (не проверено) | — |
+| группа узлов и плагин k8s, резервная копия pg, версия секрета, привязка FIP (`fip_attach`) | `k8s_add_nodepool`, `k8s_add_addon`, `pg_backup_create`, `secret_add_version`, `fip_attach` | парного инструмента нет; группа узлов, по-видимому, уходит с кластером (не проверено) | — |
 | загрузочный диск ВМ | вместе с ВМ | вместе с ВМ (по API; не проверено); дополнительные диски мешают удалению ВМ (HTTP 405, `engine/destroy.go:350-363`) | — |
 
 Ещё два факта про `destroy` по `vm_id`:

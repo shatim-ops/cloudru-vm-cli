@@ -52,7 +52,8 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 аннотациям MCP: `readOnlyHint: true` у чтений, `destructiveHint: true` у
 удалений (`*_delete`, `destroy`, `stack_destroy`, `s3_rm`,
 `release_floating_ip`) и у инструментов, которые могут удалить или
-перезаписать данные (`k8s_kubectl`, `k8s_apply`, `k8s_helm`, `s3_put`) —
+перезаписать данные (`k8s_kubectl`, `k8s_apply`, `k8s_helm`, `s3_put`,
+`k8s_add_addon` — с `resolve_mode=OVERWRITE` он заменяет объекты в кластере) —
 клиент может по ним одобрять чтения без вопроса и всегда спрашивать перед
 разрушительным вызовом. Аннотации — подсказка, гейт `confirmed=true` от них
 не зависит. CLI ведёт себя так же (`--yes`, `--dry-run`, код выхода `3`, см.
@@ -106,7 +107,7 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 
 ## Только нужные группы инструментов
 
-По умолчанию сервер предлагает агенту все 148 инструментов. Это около 90 КБ
+По умолчанию сервер предлагает агенту все 151 инструмент. Это около 95 КБ
 `tools/list`, и агент читает их в каждой сессии. Если нужен только deploy и
 работа с ВМ и сетью, оставьте эти группы:
 
@@ -189,6 +190,37 @@ not available to the project») до резервирования floating IP и
 строит (`USAGE`), без `compose_file` — строит обычную ВМ. `deploy_plan` тоже
 принимает `image_metadata` и без обязательных полей не строит план; значения хранятся
 в локальном файле плана (`.evo/plans`, права `0600`) до `deploy_apply`.
+
+## Плагины Kubernetes
+
+Плагины (addons) Managed Kubernetes — в группе `k8s` (`--toolsets k8s`):
+
+- `k8s_addons` (`query`, `category`, `billable`) — поиск по каталогу Cloud.ru:
+  подстрока имени, отображаемого имени или описания без учёта регистра,
+  категория (слова консоли по-русски: «Сети», «Безопасность», «Мониторинг»…;
+  все категории — в поле `categories` ответа), платный или нет. Строки
+  `{name, display_name, categories, billable, deploy_with}`, где
+  `deploy_with` = `{tool: "k8s_add_addon", args: {name}}`, плюс `shown` и
+  `total`. Только чтение.
+- `k8s_addon_versions` (`name`, `full`) — версии плагина, новые первыми:
+  `version` (её принимает `k8s_add_addon`), `addon_version`, `mode`
+  (`ACTIVE`, `EXPERIMENTAL`, `END_OF_SUPPORT`, `END_OF_LIFE`, `INACTIVE`),
+  `kube_versions` (диапазон версий Kubernetes кластера), `ready_workers`,
+  `namespace`, `has_schema`, `schema_bytes`, `latest`. Схема настроек
+  (`configuration_schema`, до ~94 КБ) — только с `full=true`. Только чтение.
+- `k8s_add_addon` (`cluster_id`, `name`, `version`, `config`, `resolve_mode`)
+  — установка, с гейтом `confirmed=true`. Без него инструмент только читает
+  и возвращает превью: какая версия выбрана (`version_from`: `latest` —
+  новейшая `ACTIVE`, `requested`), namespace, требования версии, версия
+  Kubernetes кластера, узлы его групп, установлен ли плагин уже. Что
+  определить не удалось, перечислено в `not_checked`; требование, которое
+  точно не выполнено, — отказ `USAGE` до подтверждения. `config` — объект
+  JSON по схеме версии (строка с объектом JSON тоже принимается; Cloud.ru
+  подставляет `{{clusterID}}` и `{{clusterName}}`). Ответ —
+  `operation_id` и/или `cluster_addon_id`, установка асинхронная.
+
+Неизвестный плагин или версия — `NOT_FOUND` с подсказкой и похожими
+именами в `hint`.
 
 ## stdio
 
