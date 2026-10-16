@@ -1,0 +1,260 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+)
+
+// Превью платных команд деревьев (ревью r5 U2): проект с источником, зона
+// по имени, образ, flavor с размером, диск и цена с пометкой «оценка» — как
+// у deploy, без английского текста инструмента и без MCP-жаргона.
+
+// All IDs below are fake.
+const (
+	pvProject = "00000000-0000-0000-0000-0000000000a1"
+	pvZone    = "00000000-0000-0000-0000-0000000000b2"
+	pvImage   = "00000000-0000-0000-0000-0000000000c3"
+	pvFlavor  = "00000000-0000-0000-0000-0000000000d4"
+)
+
+type previewToken struct{}
+
+func (previewToken) Token(context.Context) (auth.Token, error) {
+	return auth.Token{Value: "fake-token", ExpiresAt: time.Now().Add(time.Hour)}, nil
+}
+
+// previewCloud answers the reads of the previews; any other call (a create)
+// hits the nil interface and fails the test.
+type previewCloud struct {
+	provision.CloudAPI
+}
+
+func (previewCloud) SetToken(string) {}
+func (previewCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
+	return []*provision.Flavor{
+		{ID: "00000000-0000-0000-0000-0000000000f0", Name: "free-tier1", VCPUs: 1, RAMGB: 1, FreeTier: true},
+		{ID: "00000000-0000-0000-0000-0000000000e5", Name: "lowcost10-4-8", VCPUs: 4, RAMGB: 8},
+		{ID: pvFlavor, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4},
+	}, nil
+}
+func (previewCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
+	return []*provision.AvailabilityZone{{ID: pvZone, Name: "ru.AZ-1"}}, nil
+}
+func (previewCloud) GetImage(_ context.Context, id string) (*provision.ImageDetail, error) {
+	return &provision.ImageDetail{ID: id, Name: "Ubuntu 22.04", MinDisk: 20}, nil
+}
+func (previewCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
+	return []*provision.DiskType{{ID: "00000000-0000-0000-0000-0000000000e6", Name: "SSD"}}, nil
+}
+
+// withPreviewCloud configures project, zone and image in the environment
+// and gives the engines of the tools a fake cloud and a token.
+func withPreviewCloud(t *testing.T) {
+	t.Helper()
+	t.Setenv("CLOUDRU_PROJECT_ID", pvProject)
+	t.Setenv("CLOUDRU_REGION", pvZone)
+	t.Setenv("CLOUDRU_IMAGE_ID", pvImage)
+	t.Setenv("CLOUDRU_FLAVOR", "")
+	t.Setenv("CLOUDRU_DISK_SIZE", "")
+	old := toolEngine
+	toolEngine = func(o map[string]any) (*engine.Engine, error) {
+		e, err := buildEngine(o)
+		if err != nil {
+			return nil, err
+		}
+		e.Auth, e.Cloud = previewToken{}, previewCloud{}
+		return e, nil
+	}
+	t.Cleanup(func() { toolEngine = old })
+}
+
+// jargon is what the preview used to show: the tool's English text for an
+// agent and its placeholders.
+var jargon = []string{"confirmed=true", "deploy_plan", "default (env/config or auto)", "will_create", "call provision", "вызвать provision"}
+
+func assertNoJargon(t *testing.T, out string) {
+	t.Helper()
+	for _, j := range jargon {
+		if strings.Contains(out, j) {
+			t.Errorf("preview still shows %q:\n%s", j, out)
+		}
+	}
+}
+
+func assertHas(t *testing.T, out string, want []string) {
+	t.Helper()
+	for _, w := range want {
+		if !strings.Contains(out, w) {
+			t.Errorf("preview lacks %q:\n%s", w, out)
+		}
+	}
+}
+
+func TestVMCreatePreview_Russian(t *testing.T) {
+	russian(t)
+	withPreviewCloud(t)
+	_, errOut, code := execCLI(t, "vm", "create", "web")
+	if code != clerrors.ExitConfirmationRequired {
+		t.Fatalf("exit %d, want 3:\n%s", code, errOut)
+	}
+	t.Logf("\n%s", errOut)
+	assertHas(t, errOut, []string{
+		"План: создать ВМ web (lowcost10-2-4) в зоне ru.AZ-1\n",
+		"  Будет создано: ВМ web, загрузочный диск 20 ГБ, floating IP\n",
+		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
+		"  flavor:     lowcost10-2-4 (2 vCPU, 4 ГБ RAM)\n",
+		"  зона:       ru.AZ-1 (" + pvZone + ")\n",
+		"  образ:      Ubuntu 22.04 (" + pvImage + ")\n",
+		"  диск:       загрузочный, 20 ГБ (цена по тарифу SSD)\n", // raised to the image's min_disk
+		"  внешний IP: будет создан и привязан floating IP\n",
+		"  цена:       ~2184.00 RUB в месяц (вычисления 2044.00 + диск 140.00), оценка, а не счёт\n",
+		"provision не выполняется: нужно подтверждение, а stdin — не терминал",
+	})
+	assertNoJargon(t, errOut)
+	if strings.Contains(errOut, "project:") || strings.Contains(errOut, "billable") {
+		t.Errorf("English left in the preview:\n%s", errOut)
+	}
+}
+
+func TestVMCreatePreview_English(t *testing.T) {
+	withPreviewCloud(t)
+	out, _, code := execCLI(t, "vm", "create", "web", "--no-public-ip", "--dry-run")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	assertHas(t, out, []string{
+		"Dry run: would create VM web (lowcost10-2-4) in ru.AZ-1:\n",
+		"  Will create: VM web, a 20 GB boot disk\n",
+		"  project:   " + pvProject + " (from CLOUDRU_PROJECT_ID)\n",
+		"  flavor:    lowcost10-2-4 (2 vCPU, 4 GB RAM)\n",
+		"  zone:      ru.AZ-1 (" + pvZone + ")\n",
+		"  image:     Ubuntu 22.04 (" + pvImage + ")\n",
+		"  disk:      20 GB boot disk (priced at the SSD rate)\n",
+		"  public IP: none (private VM, no floating IP)\n",
+		"  cost:      ~2184.00 RUB/month (compute 2044.00 + disk 140.00), estimate, not a bill\n",
+	})
+	assertNoJargon(t, out)
+}
+
+// Without credentials the preview still names what the configuration says
+// and leaves out what only the cloud can tell (no placeholders); the exit
+// code stays 3.
+func TestVMCreatePreview_NoCloudOmitsUnknown(t *testing.T) {
+	russian(t)
+	t.Setenv("CLOUDRU_PROJECT_ID", pvProject)
+	t.Setenv("CLOUDRU_REGION", "")
+	t.Setenv("CLOUDRU_IMAGE_ID", "")
+	_, errOut, code := execCLI(t, "vm", "create", "web")
+	if code != clerrors.ExitConfirmationRequired {
+		t.Fatalf("exit %d, want 3:\n%s", code, errOut)
+	}
+	assertHas(t, errOut, []string{
+		"План: создать ВМ web\n",
+		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
+		"  не задано:  образ (--image-id или CLOUDRU_IMAGE_ID), зона (--region или CLOUDRU_REGION)",
+		"  цена:       не оценена: размер flavor неизвестен",
+	})
+	assertNoJargon(t, errOut)
+	if strings.Contains(errOut, "flavor:") || strings.Contains(errOut, "образ:") {
+		t.Errorf("unknown values shown:\n%s", errOut)
+	}
+}
+
+// --json keeps the tool's answer under details (will_create, message) and
+// adds the completed preview with the estimate.
+func TestVMCreatePreview_JSONIsAdditive(t *testing.T) {
+	withPreviewCloud(t)
+	out, _, code := execCLI(t, "vm", "create", "web", "--dry-run", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	var env struct {
+		Status  string `json:"status"`
+		Preview struct {
+			Action  string `json:"action"`
+			Details struct {
+				Status     string               `json:"status"`
+				Message    string               `json:"message"`
+				WillCreate map[string]any       `json:"will_create"`
+				Preview    engine.CreatePreview `json:"preview"`
+			} `json:"details"`
+		} `json:"preview"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	d := env.Preview.Details
+	if env.Status != "dry_run" || env.Preview.Action != "provision" || d.Status != "confirmation_required" ||
+		d.Message == "" || d.WillCreate["name"] != "web" {
+		t.Fatalf("existing keys changed: %s", out)
+	}
+	p := d.Preview
+	if p.VM == nil || p.VM.Flavor.VCPUs != 2 || p.VM.Zone.Name != "ru.AZ-1" || p.Cost == nil || p.Cost.TotalMonthlyRub != 2184 ||
+		p.ProjectID != pvProject || p.ProjectFrom != "env" {
+		t.Fatalf("preview not completed: %s", out)
+	}
+}
+
+func TestDiskCreatePreview_Russian(t *testing.T) {
+	russian(t)
+	withPreviewCloud(t)
+	_, errOut, code := execCLI(t, "disk", "create", "data", "--size-gb", "20")
+	if code != clerrors.ExitConfirmationRequired {
+		t.Fatalf("exit %d, want 3:\n%s", code, errOut)
+	}
+	assertHas(t, errOut, []string{
+		"План: создать диск data (20 ГБ) в зоне ru.AZ-1\n",
+		"  Будет создано: диск data\n",
+		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
+		"  зона:       ru.AZ-1 (" + pvZone + ")\n",
+		"  диск:       20 ГБ, тип SSD\n",
+		"  цена:       ~140.00 RUB в месяц (диск), оценка, а не счёт\n",
+	})
+	assertNoJargon(t, errOut)
+	if strings.Contains(errOut, "disk_create makes") || strings.Contains(errOut, "zone_id") {
+		t.Errorf("the tool's text left in the preview:\n%s", errOut)
+	}
+}
+
+// A billable command without a rate card: header, project, zone and the
+// key parameters, and a word that there is no price.
+func TestK8sCreatePreview_NoPrice(t *testing.T) {
+	russian(t)
+	withPreviewCloud(t)
+	_, errOut, code := execCLI(t, "k8s", "create", "--name", "k1", "--zone", "ru.AZ-1", "--master-count", "3", "--kube-api-internet=false")
+	if code != clerrors.ExitConfirmationRequired {
+		t.Fatalf("exit %d, want 3:\n%s", code, errOut)
+	}
+	assertHas(t, errOut, []string{
+		"План: создать кластер Kubernetes k1 в зоне ru.AZ-1\n",
+		"  Будет создано: кластер Managed Kubernetes k1\n",
+		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
+		"  зона:       ru.AZ-1\n",
+		"  мастеров:   3\n",
+		"  API извне:  нет\n",
+		"  цена:       не оценивается: у evo нет тарифа для этого ресурса\n",
+	})
+	assertNoJargon(t, errOut)
+	if strings.Contains(errOut, "k8s_plan") || strings.Contains(errOut, "billable") {
+		t.Errorf("the tool's text left in the preview:\n%s", errOut)
+	}
+}
+
+// 'evo tools call' keeps the tool's answer as is (English, as in MCP).
+func TestToolsCall_PreviewStaysRaw(t *testing.T) {
+	i18n.SetLang(i18n.EN)
+	withPreviewCloud(t)
+	_, errOut, code := execCLI(t, "tools", "call", "provision", "--arg", "name=web")
+	if code != clerrors.ExitConfirmationRequired || !strings.Contains(errOut, "provision creates a billable VM") {
+		t.Errorf("exit %d:\n%s", code, errOut)
+	}
+}

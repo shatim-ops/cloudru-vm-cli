@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -138,6 +140,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 				"name": name, "size_gb": sizeGB, "disk_type": firstNonEmptyStr(req.DiskTypeName, req.DiskTypeID),
 				"zone_id": zoneID, "attach_to": attachTo,
 			},
+			"preview": diskCreatePreview(eng, req, attachTo, stringArg(args, "zone")),
 		}), true
 	}
 
@@ -224,6 +227,8 @@ func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (s
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
 			"message": fmt.Sprintf("disk_resize grows disk %s to %d GB (grow only; billable). Approve, then confirmed=true. NB: after resize you must grow the partition+filesystem on the VM (e.g. growpart + resize2fs). Free-tier disks are rejected by the API.", diskID, sizeGB),
+			"preview": engine.CreatePreview{Resource: engine.ResourceDiskResize, Name: diskID,
+				Disk: &deployplan.DiskSpec{SizeGB: sizeGB}, CostNote: "not estimated: evo has no rate card for this resource"},
 		}), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
@@ -257,4 +262,19 @@ func (s *Registry) handleDiskDelete(ctx context.Context, args map[string]any) (s
 		return errResult(fmt.Errorf("delete disk: %w", err)), true
 	}
 	return toJSON(map[string]any{"status": "deleted", "disk_id": diskID}), false
+}
+
+// diskCreatePreview is the preview of disk_create: the disk as resolved,
+// the zone (by name when the call gave one) and its price.
+func diskCreatePreview(eng *engine.Engine, req provision.CreateDiskReq, attachTo, zoneArg string) engine.CreatePreview {
+	zone := &deployplan.RefSpec{ID: req.AvailabilityZoneID}
+	if zoneArg != "" && !looksUUID(zoneArg) {
+		zone.Name = zoneArg
+	}
+	p := engine.CreatePreview{Resource: engine.ResourceDisk, Name: req.Name,
+		ProjectID: req.ProjectID, ProjectFrom: eng.Config.ProjectOrigin, Zone: zone,
+		Disk: &deployplan.DiskSpec{SizeGB: req.Size, Type: firstNonEmptyStr(req.DiskTypeName, req.DiskTypeID)}}
+	p.Add("attach_to", attachTo)
+	p.Price()
+	return p
 }

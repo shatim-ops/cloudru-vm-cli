@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/postgresql"
 )
@@ -384,6 +385,7 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 			"status":      "confirmation_required",
 			"message":     "pg_create provisions a BILLABLE Managed PostgreSQL cluster (~minutes). Get the user's approval, then call again with confirmed=true.",
 			"will_create": willCreate,
+			"preview":     pgCreatePreview(eng.Config, willCreate),
 		}), true
 	}
 
@@ -601,4 +603,18 @@ func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any
 		return errResult(fmt.Errorf("create backup: %w", err)), true
 	}
 	return toJSON(map[string]any{"status": "backing_up", "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id)."}), false
+}
+
+// pgCreatePreview is the preview of pg_create: the cluster as resolved.
+// evo has no rate card for Managed PostgreSQL, so there is no price.
+func pgCreatePreview(cfg config.Config, will map[string]any) engine.CreatePreview {
+	name, _ := will["name"].(string)
+	p := engine.CreatePreview{Resource: engine.ResourcePGCluster, Name: name,
+		ProjectID: cfg.ProjectID, ProjectFrom: cfg.ProjectOrigin}
+	for _, k := range []string{"version", "cpu", "memory_gb", "storage_gb", "instances", "deployment_mode",
+		"subnet_id", "initial_database", "backup_enabled"} {
+		p.Add(k, will[k])
+	}
+	p.Price()
+	return p
 }

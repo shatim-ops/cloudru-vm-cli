@@ -1,0 +1,516 @@
+package engine
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/confirm"
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pricing"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+)
+
+// Resources of a CreatePreview.
+const (
+	ResourceVM          = "vm"
+	ResourceDisk        = "disk"
+	ResourceDiskResize  = "disk_resize"
+	ResourcePGCluster   = "pg_cluster"
+	ResourceK8sCluster  = "k8s_cluster"
+	ResourceK8sNodePool = "k8s_nodepool"
+	ResourceS3Bucket    = "s3_bucket"
+)
+
+// CreatePreview is what a tool that creates a billable resource is about to
+// do, as resolved values. The tool puts it into its confirmation_required
+// answer as "preview" (English, for agents as well); the CLI completes it
+// with lookups (CompletePreview) and shows it (ShowCreatePreview) in the
+// lines of the deploy preview. Values that are not known are left out
+// rather than filled with a placeholder.
+type CreatePreview struct {
+	// Resource is what is created: vm, disk, disk_resize, pg_cluster,
+	// k8s_cluster, k8s_nodepool or s3_bucket.
+	Resource string `json:"resource"`
+	Name     string `json:"name,omitempty"`
+	// ProjectFrom is where the project comes from: profile, project, env,
+	// flag (the configuration's origins) or argument (the call's own).
+	ProjectID   string               `json:"project_id,omitempty"`
+	ProjectFrom string               `json:"project_from,omitempty"`
+	Zone        *deployplan.RefSpec  `json:"zone,omitempty"` // of a resource other than a VM
+	VM          *deployplan.VMSpec   `json:"vm,omitempty"`
+	PublicIP    *bool                `json:"public_ip,omitempty"`
+	SubnetID    string               `json:"subnet_id,omitempty"`
+	Disk        *deployplan.DiskSpec `json:"disk,omitempty"` // of disk and disk_resize
+	// Params are the other key parameters, in the order they are shown.
+	Params []PreviewParam `json:"params,omitempty"`
+	// Missing names the required values that are not set (project_id,
+	// image_id, region): the call will fail without them.
+	Missing []string          `json:"missing,omitempty"`
+	Cost    *pricing.Estimate `json:"cost,omitempty"`
+	// CostNote says that Cost is an estimate, or why there is none.
+	CostNote string `json:"cost_note,omitempty"`
+}
+
+// PreviewParam is one key parameter of a CreatePreview.
+type PreviewParam struct {
+	Key   string `json:"key"`
+	Value any    `json:"value"`
+}
+
+// Add appends a parameter unless its value is empty.
+func (p *CreatePreview) Add(key string, v any) {
+	switch x := v.(type) {
+	case nil:
+		return
+	case string:
+		if x == "" {
+			return
+		}
+	}
+	p.Params = append(p.Params, PreviewParam{Key: key, Value: v})
+}
+
+// AddArgs appends the call's arguments not shown elsewhere, by name.
+func (p *CreatePreview) AddArgs(args map[string]any, skip ...string) {
+	skipped := map[string]bool{"confirmed": true, "project_id": true}
+	for _, k := range skip {
+		skipped[k] = true
+	}
+	keys := make([]string, 0, len(args))
+	for k := range args {
+		if !skipped[k] {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		p.Add(k, args[k])
+	}
+}
+
+const noRateCard = "not estimated: evo has no rate card for this resource"
+
+// Price sets the cost estimate where evo can make one: a VM of a known
+// size (the estimator of deploy and deploy_plan) and a disk.
+func (p *CreatePreview) Price() {
+	p.Cost, p.CostNote = nil, noRateCard
+	switch {
+	case p.Resource == ResourceVM && p.VM != nil:
+		if p.VM.Flavor.VCPUs == 0 {
+			p.CostNote = "not estimated: flavor size unknown"
+			return
+		}
+		cost := deployplan.EstimateVM(*p.VM)
+		p.Cost = &cost
+	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0:
+		cost := pricing.EstimateFor("", 0, 0, p.Disk.SizeGB, p.Disk.Type)
+		p.Cost = &cost
+	default:
+		return
+	}
+	p.CostNote = costNote
+}
+
+// previewLookupTimeout bounds the lookups of CompletePreview: a slow API
+// must not hold the question back for long.
+const previewLookupTimeout = 20 * time.Second
+
+// CompletePreview fills what a tool leaves out of its preview so as not to
+// reach the cloud (the MCP preview of provision never does): the configured
+// project, zone names, the flavor auto picks with its size, the image name
+// and the boot disk it needs, then the price. Lookups are best effort: what
+// cannot be read stays as it is.
+func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) {
+	if p.ProjectID == "" && p.Resource != ResourceS3Bucket && !contains(p.Missing, "project_id") {
+		p.ProjectID, p.ProjectFrom = e.Config.ProjectID, e.Config.ProjectOrigin
+		if p.ProjectID == "" {
+			p.Missing = append(p.Missing, "project_id")
+		}
+	}
+	defer p.Price()
+	zone := p.Zone
+	if p.VM != nil {
+		zone = &p.VM.Zone
+	}
+	needZone := zone != nil && zone.ID != "" && (zone.Name == "" || zone.Name == zone.ID)
+	if (!needZone && p.VM == nil) || e.Auth == nil || e.Cloud == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, previewLookupTimeout)
+	defer cancel()
+	tok, err := e.Auth.Token(ctx)
+	if err != nil {
+		return
+	}
+	e.Cloud.SetToken(tok.Value)
+	if needZone {
+		if zones, err := e.Cloud.ListAvailabilityZones(ctx); err == nil {
+			for _, z := range zones {
+				if z.ID == zone.ID {
+					zone.Name = z.Name
+					break
+				}
+			}
+		}
+	}
+	if p.VM == nil {
+		return
+	}
+	vm := p.VM
+	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
+		if id, err := PickVMFlavor(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name)); err == nil {
+			for _, f := range flavors {
+				if f.ID == id {
+					vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB}
+					break
+				}
+			}
+		}
+	}
+	if vm.Image.ID != "" {
+		if img, err := e.Cloud.GetImage(ctx, vm.Image.ID); err == nil {
+			if img.Name != "" {
+				vm.Image.Name = img.Name
+			}
+			vm.Disk.SizeGB, _ = provision.BootDiskGB(vm.Disk.SizeGB, img.MinDisk)
+		}
+	}
+}
+
+// PickVMFlavor is the flavor provision creates a VM with: a name or UUID
+// as given, or for "" and "auto" the smallest lowcost flavor (free tier is
+// limited to one VM, usually in use, so it is skipped). It returns the
+// flavor's UUID.
+func PickVMFlavor(flavors []*provision.Flavor, want string) (string, error) {
+	if want != "" && want != "auto" {
+		for _, f := range flavors {
+			if f.Name == want || f.ID == want {
+				return f.ID, nil
+			}
+		}
+		if isUUID(want) {
+			return want, nil
+		}
+		names := make([]string, len(flavors))
+		for i, f := range flavors {
+			names[i] = f.Name + " (" + f.ID + ")"
+		}
+		return "", fmt.Errorf("flavor %q not found. Available: %s", want, strings.Join(names, ", "))
+	}
+	var best *provision.Flavor
+	for _, f := range flavors {
+		name := strings.ToLower(f.Name)
+		if f.FreeTier || strings.Contains(name, "free") || !strings.Contains(name, "low") {
+			continue
+		}
+		if best == nil || f.VCPUs < best.VCPUs || (f.VCPUs == best.VCPUs && f.RAMGB < best.RAMGB) {
+			best = f
+		}
+	}
+	if best != nil {
+		return best.ID, nil
+	}
+	for _, f := range flavors {
+		if !f.FreeTier {
+			return f.ID, nil
+		}
+	}
+	if len(flavors) > 0 {
+		return flavors[0].ID, nil
+	}
+	return "", nil
+}
+
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func contains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// ShowCreatePreview is the human form of a CreatePreview, in the lines of
+// the deploy preview: what is created, the project and where it comes from,
+// the zone by name, the key parameters and the price marked as an estimate
+// (or a note that there is none). action names the operation in the
+// refusal message.
+func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
+	zone := p.Zone
+	if p.VM != nil {
+		zone = &p.VM.Zone
+	}
+	zoneName := ""
+	if zone != nil {
+		zoneName = firstNonEmpty(zone.Name, zone.ID)
+	}
+
+	var lines []string
+	lines = append(lines, createdLine(p))
+	if p.ProjectID != "" {
+		lines = append(lines, previewLabel("project", "проект")+projectText(p.ProjectID, p.ProjectFrom))
+	}
+	if vm := p.VM; vm != nil {
+		if vm.Flavor.Name != "" || vm.Flavor.ID != "" {
+			f := vm.Flavor
+			f.Name = firstNonEmpty(f.Name, f.ID)
+			lines = append(lines, previewLabel("flavor", "flavor")+flavorText(f))
+		}
+		if zoneName != "" {
+			lines = append(lines, previewLabel("zone", "зона")+refText(*zone))
+		}
+		if vm.Image.ID != "" || vm.Image.Name != "" {
+			lines = append(lines, previewLabel("image", "образ")+refText(vm.Image))
+		}
+		if vm.Disk.SizeGB > 0 {
+			lines = append(lines, bootDiskLine(vm.Disk.SizeGB))
+		}
+		if p.SubnetID != "" {
+			lines = append(lines, previewLabel("network", "сеть")+i18n.Tf("subnet %s", "подсеть %s", p.SubnetID))
+		}
+		if p.PublicIP != nil {
+			lines = append(lines, publicIPLine(*p.PublicIP))
+		}
+	} else {
+		if zoneName != "" {
+			lines = append(lines, previewLabel("zone", "зона")+refText(*zone))
+		}
+		if d := p.Disk; d != nil && p.Resource == ResourceDisk {
+			size := i18n.Tf("%d GB", "%d ГБ", d.SizeGB)
+			if d.Type != "" {
+				size += i18n.Tf(", type %s", ", тип %s", d.Type)
+			}
+			lines = append(lines, previewLabel("disk", "диск")+size)
+		}
+		for _, prm := range p.Params {
+			if l := paramLine(prm); l != "" {
+				lines = append(lines, l)
+			}
+		}
+		if p.Resource == ResourceDiskResize {
+			lines = append(lines, i18n.T("then grow the partition and the file system on the VM (growpart, resize2fs)",
+				"после этого расширьте раздел и файловую систему на ВМ (growpart, resize2fs)"))
+		}
+	}
+	if len(p.Missing) > 0 {
+		names := make([]string, len(p.Missing))
+		for i, m := range p.Missing {
+			names[i] = missingText(m)
+		}
+		lines = append(lines, previewLabel("not set", "не задано")+strings.Join(names, ", ")+
+			i18n.T(": the call will fail without it", ": без этого команда завершится ошибкой"))
+	}
+	lines = append(lines, createCostLine(p))
+
+	return confirm.Preview{Action: action, Summary: createSummary(p, zoneName), Lines: lines}
+}
+
+// createSummary is the heading of the preview, phrased as for deploy.
+func createSummary(p CreatePreview, zone string) string {
+	inZone := ""
+	if zone != "" {
+		inZone = i18n.Tf(" in %s", " в зоне %s", zone)
+	}
+	switch p.Resource {
+	case ResourceVM:
+		s := i18n.Tf("create VM %s", "создать ВМ %s", p.Name)
+		if p.VM != nil && p.VM.Flavor.Name != "" {
+			s += " (" + p.VM.Flavor.Name + ")"
+		}
+		return s + inZone
+	case ResourceDisk:
+		s := i18n.Tf("create disk %s", "создать диск %s", p.Name)
+		if p.Disk != nil {
+			s += i18n.Tf(" (%d GB)", " (%d ГБ)", p.Disk.SizeGB)
+		}
+		return s + inZone
+	case ResourceDiskResize:
+		size := 0
+		if p.Disk != nil {
+			size = p.Disk.SizeGB
+		}
+		return i18n.Tf("grow disk %s to %d GB", "увеличить диск %s до %d ГБ", p.Name, size)
+	case ResourcePGCluster:
+		return i18n.Tf("create PostgreSQL cluster %s", "создать кластер PostgreSQL %s", p.Name) + inZone
+	case ResourceK8sCluster:
+		return i18n.Tf("create Kubernetes cluster %s", "создать кластер Kubernetes %s", p.Name) + inZone
+	case ResourceK8sNodePool:
+		return i18n.Tf("add node pool %s to a Kubernetes cluster", "добавить группу узлов %s в кластер Kubernetes", p.Name) + inZone
+	case ResourceS3Bucket:
+		return i18n.Tf("create bucket %s", "создать бакет %s", p.Name)
+	}
+	return i18n.Tf("create %s %s", "создать %s %s", p.Resource, p.Name)
+}
+
+// createdLine is the first line: what will be created (and billed).
+func createdLine(p CreatePreview) string {
+	var what []string
+	switch p.Resource {
+	case ResourceVM:
+		what = append(what, i18n.Tf("VM %s", "ВМ %s", p.Name))
+		if p.VM != nil && p.VM.Disk.SizeGB > 0 {
+			what = append(what, i18n.Tf("a %d GB boot disk", "загрузочный диск %d ГБ", p.VM.Disk.SizeGB))
+		}
+		if p.PublicIP == nil || *p.PublicIP {
+			what = append(what, i18n.T("a floating IP", "floating IP"))
+		}
+	case ResourceDisk:
+		what = append(what, i18n.Tf("disk %s", "диск %s", p.Name))
+	case ResourceDiskResize:
+		size := 0
+		if p.Disk != nil {
+			size = p.Disk.SizeGB
+		}
+		return i18n.Tf("Will change: disk %s grows to %d GB (it cannot shrink back)",
+			"Будет изменено: диск %s увеличится до %d ГБ (уменьшить обратно нельзя)", p.Name, size)
+	case ResourcePGCluster:
+		what = append(what, i18n.Tf("Managed PostgreSQL cluster %s", "кластер Managed PostgreSQL %s", p.Name))
+	case ResourceK8sCluster:
+		what = append(what, i18n.Tf("Managed Kubernetes cluster %s", "кластер Managed Kubernetes %s", p.Name))
+	case ResourceK8sNodePool:
+		what = append(what, i18n.Tf("worker node pool %s", "группа рабочих узлов %s", p.Name))
+	case ResourceS3Bucket:
+		what = append(what, i18n.Tf("Object Storage bucket %s", "бакет Object Storage %s", p.Name))
+	default:
+		what = append(what, p.Resource+" "+p.Name)
+	}
+	return i18n.T("Will create: ", "Будет создано: ") + strings.Join(what, ", ")
+}
+
+// createCostLine is the price line: the estimate in the words of deploy,
+// or why there is none.
+func createCostLine(p CreatePreview) string {
+	if p.Cost != nil {
+		if p.Resource == ResourceVM {
+			return vmCostLine(*p.Cost, true)
+		}
+		return previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (disk), %s", "~%.2f %s в месяц (диск), %s",
+			p.Cost.TotalMonthlyRub, p.Cost.Currency, costNoteText())
+	}
+	if p.Resource == ResourceVM {
+		return previewLabel("cost", "цена") + i18n.T("not estimated: the flavor size is unknown (see 'evo vm flavors')",
+			"не оценена: размер flavor неизвестен (см. 'evo vm flavors')")
+	}
+	return previewLabel("cost", "цена") + i18n.T("not estimated: evo has no rate card for this resource",
+		"не оценивается: у evo нет тарифа для этого ресурса")
+}
+
+func missingText(m string) string {
+	switch m {
+	case "project_id":
+		return i18n.T("project (--project-id or CLOUDRU_PROJECT_ID)", "проект (--project-id или CLOUDRU_PROJECT_ID)")
+	case "image_id":
+		return i18n.T("image (--image-id or CLOUDRU_IMAGE_ID)", "образ (--image-id или CLOUDRU_IMAGE_ID)")
+	case "region":
+		return i18n.T("zone (--region or CLOUDRU_REGION)", "зона (--region или CLOUDRU_REGION)")
+	}
+	return m
+}
+
+// paramLabels name the key parameters in both languages; gb marks a size
+// in gigabytes.
+var paramLabels = map[string]struct {
+	en, ru string
+	gb     bool
+}{
+	"version":           {"version", "версия", false},
+	"cpu":               {"vCPU", "vCPU", false},
+	"memory_gb":         {"RAM", "RAM", true},
+	"ram":               {"RAM", "RAM", true},
+	"ram_gb":            {"RAM", "RAM", true},
+	"storage_gb":        {"storage", "хранилище", true},
+	"disk_gb":           {"node disk", "диск узла", true},
+	"instances":         {"nodes", "узлов", false},
+	"count":             {"nodes", "узлов", false},
+	"master_count":      {"masters", "мастеров", false},
+	"deployment_mode":   {"mode", "режим", false},
+	"subnet_id":         {"subnet", "подсеть", false},
+	"nodes_subnet_id":   {"subnet", "подсеть", false},
+	"security_group_id": {"SG", "группа SG", false},
+	"initial_database":  {"database", "база", false},
+	"backup_enabled":    {"backups", "бэкапы", false},
+	"flavor":            {"flavor", "flavor", false},
+	"kube_api_internet": {"public API", "API извне", false},
+	"cluster_sa_id":     {"account", "аккаунт", false},
+	"cluster_id":        {"cluster", "кластер", false},
+	"product":           {"product", "продукт", false},
+	"region":            {"region", "регион", false},
+	"attach_to":         {"attach to", "к ВМ", false},
+	"disk_id":           {"disk", "диск", false},
+	"description":       {"about", "описание", false},
+}
+
+// paramLine is one parameter as "label: value"; "" for an empty value.
+func paramLine(prm PreviewParam) string {
+	v := paramValue(prm.Value)
+	if v == "" {
+		return ""
+	}
+	l, ok := paramLabels[prm.Key]
+	if !ok {
+		return previewLabel(strings.ReplaceAll(prm.Key, "_", "-"), strings.ReplaceAll(prm.Key, "_", "-")) + v
+	}
+	if l.gb {
+		v += i18n.T(" GB", " ГБ")
+	}
+	return previewLabel(l.en, l.ru) + v
+}
+
+func paramValue(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return x
+	case bool:
+		if x {
+			return i18n.T("yes", "да")
+		}
+		return i18n.T("no", "нет")
+	case float64:
+		if x == math.Trunc(x) && math.Abs(x) < 1e15 {
+			return fmt.Sprintf("%d", int64(x))
+		}
+		return fmt.Sprintf("%g", x)
+	case []any:
+		parts := make([]string, 0, len(x))
+		for _, e := range x {
+			parts = append(parts, paramValue(e))
+		}
+		return strings.Join(parts, ",")
+	}
+	return fmt.Sprint(v)
+}

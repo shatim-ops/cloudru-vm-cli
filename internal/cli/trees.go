@@ -293,7 +293,7 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		text, err := invokeTool(cmd.Context(), cmd, t, callArgs)
+		text, err := invokeTool(cmd.Context(), cmd, t, callArgs, true)
 		if flagJSON {
 			// On a tool error the text is the tool's error body: the error
 			// itself goes to stderr as {"error":…}, so stdout stays empty
