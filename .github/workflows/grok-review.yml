@@ -1,0 +1,53 @@
+name: grok-review
+
+# Сигнал Grok начать ревью PR сразу, не дожидаясь его часового обхода, по
+# команде `/grok review` в комментарии к PR. Grok работает через
+# GitHub-приложение Cursor и оставляет ревью сам; этот workflow только
+# посылает POST на его вебхук. Запустить может только владелец репозитория
+# (репозиторий публичный: иначе будить Grok мог бы любой комментатор).
+#
+# Тело — {"repo","pr","by"}; кода, diff и токенов GitHub нет. Значения из
+# события идут через env и jq, а не подстановкой в shell. Адрес вебхука и
+# ответ в лог не печатаются.
+#
+# Секреты (Settings → Secrets and variables → Actions):
+#   GROK_WEBHOOK_URL — адрес вебхука; GROK_WEBHOOK_KEY — Bearer-токен.
+#   Без них — notice, job не падает.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: grok-review-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.author_association == 'OWNER' &&
+      startsWith(github.event.comment.body, '/grok review')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Сигнал Grok
+        env:
+          URL: ${{ secrets.GROK_WEBHOOK_URL }}
+          KEY: ${{ secrets.GROK_WEBHOOK_KEY }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          BY: ${{ github.event.comment.user.login }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::notice::нет секретов GROK_WEBHOOK_URL/GROK_WEBHOOK_KEY — сигнал не отправлен; Grok посмотрит PR при часовом обходе"
+            exit 0
+          fi
+          body=$(jq -cn --arg repo "$REPO" --argjson pr "$PR" --arg by "$BY" '{repo: $repo, pr: $pr, by: $by}')
+          curl -sf -o /dev/null --max-time 20 --retry 2 -X POST "$URL" \
+            -H "Authorization: Bearer $KEY" \
+            -H "Content-Type: application/json" \
+            -d "$body" || { echo "::error::вебхук Grok не принял сигнал"; exit 1; }
+          echo "сигнал Grok отправлен: PR #$PR"

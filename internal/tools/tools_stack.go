@@ -96,6 +96,67 @@ func (s *Registry) findIDByName(ctx context.Context, tool, field, name string, e
 	return ""
 }
 
+// vmClockSkew is how much earlier than the step's start a VM's creation time
+// may read and still be the step's own (cloud and local clocks differ).
+const vmClockSkew = 2 * time.Minute
+
+// findStepResource looks up what a step may have created when its create
+// answer is unknown. A VM (provision) is the step's own only when its name
+// matches AND it was created after the step started: the name alone could
+// be a user's VM, which stack_destroy would then delete (QA R3/R8 class).
+// state is the VM's state ("" for other kinds). Steps that never started,
+// or VMs without a creation time, are not adopted.
+func (s *Registry) findStepResource(ctx context.Context, st *stack.Step) (id, state string) {
+	if st.FindTool == "" || st.FindName == "" {
+		return "", ""
+	}
+	if st.Tool != "provision" {
+		return s.findIDByName(ctx, st.FindTool, st.FindField, st.FindName, st.FindArgs), ""
+	}
+	if st.StartedAt.IsZero() {
+		return "", ""
+	}
+	res, err := s.callTool(ctx, st.FindTool, st.FindArgs)
+	if err != nil {
+		return "", ""
+	}
+	arr, _ := res[st.FindField].([]any)
+	for _, it := range arr {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		if n, _ := m["name"].(string); n != st.FindName {
+			continue
+		}
+		created, _ := m["created_time"].(string)
+		t, err := time.Parse(time.RFC3339, created)
+		if err != nil || t.Before(st.StartedAt.Add(-vmClockSkew)) {
+			continue
+		}
+		vid, _ := m["id"].(string)
+		vstate, _ := m["state"].(string)
+		return vid, vstate
+	}
+	return "", ""
+}
+
+// adoptVM finishes a provision step with a VM found by findStepResource: an
+// active VM completes the step; any other state (creating, error_creating)
+// is recorded for stack_destroy and stops the job — it is billed, and
+// marking it done would hand a broken VM to the steps after it.
+func (s *Registry) adoptVM(ctx context.Context, job *stack.Job, st *stack.Step, id, state string) {
+	switch strings.ToLower(state) {
+	case "running", "active":
+		s.finalizeStep(ctx, job, st, id)
+	default:
+		st.ResourceID = id
+		st.Status = "error"
+		job.Error = fmt.Sprintf("%s: VM %s found in state %q (kept for stack_destroy)", st.Key, id, state)
+		job.Status = "error"
+	}
+}
+
 // maxStepAttempts bounds create retries per step (transient-error tolerance).
 const maxStepAttempts = 4
 
@@ -230,20 +291,30 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				if st.Interrupted {
 					// The previous create was cut off and may have reached the
 					// cloud: adopt what it made instead of creating it twice.
-					id := st.ResourceID
-					if id == "" && st.FindTool != "" {
-						id = s.findIDByName(ctx, st.FindTool, st.FindField, st.FindName, st.FindArgs)
+					id, state := st.ResourceID, ""
+					if id == "" {
+						id, state = s.findStepResource(ctx, st)
 					}
 					if ctx.Err() != nil {
 						return
 					}
 					st.Interrupted = false
 					if id != "" {
-						s.finalizeStep(ctx, job, st, id)
+						if st.Tool == "provision" && state != "" {
+							s.adoptVM(ctx, job, st, id, state)
+							if job.Status == "error" {
+								return
+							}
+						} else {
+							s.finalizeStep(ctx, job, st, id)
+						}
 						st.Detail = "adopted after an interrupted create"
 						progress = true
 						continue
 					}
+				}
+				if st.StartedAt.IsZero() {
+					st.StartedAt = time.Now()
 				}
 				args := substituteRefs(st.Args, job.Outputs)
 				// stack_apply was confirmed for the whole stack. Jobs planned
@@ -261,16 +332,32 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				if err != nil {
 					st.Attempts++
 					st.Detail = err.Error()
+					// The tool named what it made although the call failed
+					// (provision: a VM in error_creating or not active in
+					// time). It exists and is billed: record it for
+					// stack_destroy and stop — a retry would create another.
+					if id := firstStr(res, "vm_id", "cluster_id"); id != "" {
+						st.ResourceID = id
+						st.Status = "error"
+						job.Error = fmt.Sprintf("%s: %s (resource %s kept for stack_destroy)", st.Key, err.Error(), id)
+						job.Status = "error"
+						return
+					}
 					// Reconcile before retrying: a create can fail the RESPONSE yet
 					// succeed server-side (e.g. 504 gateway timeout after the backend
 					// applied it). If the resource now exists by name, ADOPT it — never
 					// blindly retry a create (that would double-provision).
-					if st.FindTool != "" {
-						if id := s.findIDByName(ctx, st.FindTool, st.FindField, st.FindName, st.FindArgs); id != "" {
+					if id, state := s.findStepResource(ctx, st); id != "" {
+						if st.Tool == "provision" {
+							s.adoptVM(ctx, job, st, id, state)
+							if job.Status == "error" {
+								return
+							}
+						} else {
 							s.finalizeStep(ctx, job, st, id)
-							progress = true
-							continue
 						}
+						progress = true
+						continue
 					}
 					// Genuinely not created → retry on a later crank, bounded.
 					if st.Attempts >= maxStepAttempts {
@@ -683,8 +770,8 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		}
 		if st.ResourceID != "" {
 			job.Outputs[st.Key] = st.ResourceID
-		} else if st.FindTool != "" && st.FindName != "" && stepMayHaveCreated(st) {
-			if id := s.findIDByName(ctx, st.FindTool, st.FindField, st.FindName, st.FindArgs); id != "" {
+		} else if stepMayHaveCreated(st) {
+			if id, _ := s.findStepResource(ctx, st); id != "" {
 				job.Outputs[st.Key] = id
 			}
 		}

@@ -185,6 +185,10 @@ type Step struct {
 	// reached the cloud, so the next crank looks for the resource before
 	// creating it again.
 	Interrupted bool `json:"interrupted,omitempty"`
+	// StartedAt is when the step first called its create tool. A VM found by
+	// name counts as the step's own only if it was created after it, so a
+	// user's VM with the same name is never adopted (and never destroyed).
+	StartedAt time.Time `json:"started_at,omitempty"`
 }
 
 type Job struct {
@@ -554,16 +558,25 @@ func Plan(m Manifest) *Job {
 	}
 
 	if vm := m.VM; vm != nil {
-		args := map[string]any{"name": vm.Name, "confirmed": true}
+		// A fixed name: provision names an unnamed VM "evo-<time>" on each
+		// call, and a retry after a lost answer could not find it by name.
+		name := vm.Name
+		if name == "" {
+			name = m.Name + "-vm"
+		}
+		args := map[string]any{"name": name, "confirmed": true}
 		if vm.Private {
 			args["no_public_ip"] = true
 		}
 		if vm.Flavor != "" {
 			args["flavor"] = vm.Flavor
 		}
-		// provision is synchronous (waits for active), returns vm_id.
+		// provision is synchronous (waits for active), returns vm_id. A
+		// failed answer may still have created the VM: it is looked up by
+		// name before any retry, as for the other steps.
 		j.Steps = append(j.Steps, &Step{
 			Key: "vm", Tool: "provision", Args: args, ReadyKind: "", Status: "pending",
+			FindTool: "vm_list", FindField: "vms", FindName: name,
 		})
 	}
 
