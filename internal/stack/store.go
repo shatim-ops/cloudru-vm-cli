@@ -554,7 +554,13 @@ func Plan(m Manifest) *Job {
 	}
 
 	if vm := m.VM; vm != nil {
-		args := map[string]any{"name": vm.Name, "confirmed": true}
+		// A fixed name: provision names an unnamed VM "evo-<time>" on each
+		// call, and a retry after a lost answer could not find it by name.
+		name := vm.Name
+		if name == "" {
+			name = m.Name + "-vm"
+		}
+		args := map[string]any{"name": name, "confirmed": true}
 		if vm.Private {
 			args["no_public_ip"] = true
 		}
@@ -566,7 +572,7 @@ func Plan(m Manifest) *Job {
 		// name before any retry, as for the other steps.
 		j.Steps = append(j.Steps, &Step{
 			Key: "vm", Tool: "provision", Args: args, ReadyKind: "", Status: "pending",
-			FindTool: "vm_list", FindField: "vms", FindName: vm.Name,
+			FindTool: "vm_list", FindField: "vms", FindName: name,
 		})
 	}
 

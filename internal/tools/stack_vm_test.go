@@ -14,18 +14,22 @@ import (
 // платных ВМ, которых stack_destroy не видит (матрица команд, 16.10.2026).
 func TestStackVMStep_FailedProvisionIsNotRepeated(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		answer map[string]any // ответ-ошибка provision
-		listed []any          // что видит vm_list
-		wantID string
+		name     string
+		manifest string
+		answer   map[string]any // ответ-ошибка provision
+		listed   []any          // что видит vm_list
+		wantID   string
 	}{
-		{"ответ называет ВМ", map[string]any{"status": "error", "vm_id": "vm-1", "error": "VM vm-1 entered state error_creating"}, []any{}, "vm-1"},
-		{"ответ потерян, ВМ видна по имени", map[string]any{"status": "error", "error": "API_UNREACHABLE: connection reset"}, []any{map[string]any{"id": "vm-9", "name": "web"}}, "vm-9"},
+		{"ответ называет ВМ", `{"name":"s","vm":{"name":"web"}}`, map[string]any{"status": "error", "vm_id": "vm-1", "error": "VM vm-1 entered state error_creating"}, []any{}, "vm-1"},
+		{"ответ потерян, ВМ видна по имени", `{"name":"s","vm":{"name":"web"}}`, map[string]any{"status": "error", "error": "API_UNREACHABLE: connection reset"}, []any{map[string]any{"id": "vm-9", "name": "web"}}, "vm-9"},
+		// Без имени в манифесте ВМ называется "<стек>-vm", а не "evo-<время>"
+		// на каждый вызов — иначе после потерянного ответа её не найти.
+		{"ВМ без имени, ответ потерян", `{"name":"s","vm":{}}`, map[string]any{"status": "error", "error": "API_UNREACHABLE: connection reset"}, []any{map[string]any{"id": "vm-7", "name": "s-vm"}}, "vm-7"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stackHome(t)
 			r := newTestServer()
-			j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
+			j := planJob(t, tc.manifest)
 			var creates atomic.Int32
 			r.handlers["provision"] = func(context.Context, map[string]any) (string, bool) {
 				creates.Add(1)
