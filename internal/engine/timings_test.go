@@ -22,14 +22,15 @@ import (
 func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 	got := Timings{}.withDefaults()
 	want := Timings{
-		VMPollInterval:    5 * time.Second,
-		VMPollTimeout:     10 * time.Minute,
-		IfacePollInterval: 5 * time.Second,
-		FIPRetryInterval:  10 * time.Second,
-		FIPPollInterval:   5 * time.Second,
-		SSHRetryInterval:  5 * time.Second,
-		SettleDelay:       2 * time.Second,
-		VerifyTimeout:     10 * time.Second,
+		VMPollInterval:     5 * time.Second,
+		VMPollTimeout:      10 * time.Minute,
+		VMProgressInterval: 30 * time.Second,
+		IfacePollInterval:  5 * time.Second,
+		FIPRetryInterval:   10 * time.Second,
+		FIPPollInterval:    5 * time.Second,
+		SSHRetryInterval:   5 * time.Second,
+		SettleDelay:        2 * time.Second,
+		VerifyTimeout:      10 * time.Second,
 
 		DockerPollInterval:  10 * time.Second,
 		DockerWaitTimeout:   10 * time.Minute,

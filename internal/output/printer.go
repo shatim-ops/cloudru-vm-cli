@@ -30,6 +30,9 @@ type Printer struct {
 	// errColor is decided by errOut: "2>err.log" on a terminal must not
 	// write escape codes into the file.
 	errColor bool
+	// progressLen is the width of the progress line on the terminal
+	// (Progress), 0 when there is none.
+	progressLen int
 }
 
 // New creates a Printer. Detects mode from flags and TTY state.
@@ -74,6 +77,7 @@ func NewWithWriters(out, errOut io.Writer, mode Mode, color bool) *Printer {
 
 // Step prints a step indicator: "==> [1/5] Message..."
 func (p *Printer) Step(n, total int, msg string) {
+	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
@@ -87,6 +91,7 @@ func (p *Printer) Step(n, total int, msg string) {
 
 // StepDone prints step completion: "    detail"
 func (p *Printer) StepDone(detail string) {
+	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
@@ -99,6 +104,7 @@ func (p *Printer) StepDone(detail string) {
 
 // Success prints a success message in green.
 func (p *Printer) Success(msg string) {
+	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
@@ -113,6 +119,7 @@ func (p *Printer) Success(msg string) {
 // mode as a {"warning": "..."} line, so that it is neither lost nor breaks
 // a parser reading stderr.
 func (p *Printer) Warning(msg string) {
+	p.ProgressDone()
 	if p.mode == ModeJSON {
 		_ = json.NewEncoder(p.errOut).Encode(map[string]string{"warning": msg})
 		return
@@ -126,6 +133,7 @@ func (p *Printer) Warning(msg string) {
 
 // Errorf prints an error message in red.
 func (p *Printer) Errorf(msg string, args ...any) {
+	p.ProgressDone()
 	formatted := fmt.Sprintf(msg, args...)
 	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%s%s%s%s\n", colorBold, colorRed, errorPrefix(), formatted, colorReset)
@@ -136,6 +144,7 @@ func (p *Printer) Errorf(msg string, args ...any) {
 
 // Hint prints a hint/suggestion in dim text.
 func (p *Printer) Hint(msg string) {
+	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
@@ -148,6 +157,7 @@ func (p *Printer) Hint(msg string) {
 
 // Table prints data as an aligned table.
 func (p *Printer) Table(headers []string, rows [][]string) {
+	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
