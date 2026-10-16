@@ -52,7 +52,8 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 аннотациям MCP: `readOnlyHint: true` у чтений, `destructiveHint: true` у
 удалений (`*_delete`, `destroy`, `stack_destroy`, `s3_rm`,
 `release_floating_ip`) и у инструментов, которые могут удалить или
-перезаписать данные (`k8s_kubectl`, `k8s_apply`, `k8s_helm`, `s3_put`) —
+перезаписать данные (`k8s_kubectl`, `k8s_apply`, `k8s_helm`, `s3_put`,
+`k8s_add_addon` — с `resolve_mode=OVERWRITE` он заменяет объекты в кластере) —
 клиент может по ним одобрять чтения без вопроса и всегда спрашивать перед
 разрушительным вызовом. Аннотации — подсказка, гейт `confirmed=true` от них
 не зависит. CLI ведёт себя так же (`--yes`, `--dry-run`, код выхода `3`, см.
@@ -185,7 +186,7 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 
 ## Только нужные группы инструментов
 
-По умолчанию сервер предлагает агенту все 151 инструмент. Это около 100 КБ
+По умолчанию сервер предлагает агенту все 152 инструмента. Это около 100 КБ
 `tools/list`, и агент читает их в каждой сессии. Если нужен только deploy и
 работа с ВМ и сетью, оставьте эти группы:
 
@@ -277,28 +278,44 @@ not available to the project») до резервирования floating IP и
   подстрока имени, отображаемого имени или описания без учёта регистра,
   категория (слова консоли по-русски: «Сети», «Безопасность», «Мониторинг»…;
   все категории — в поле `categories` ответа), платный или нет. Строки
-  `{name, display_name, categories, billable}`, плюс `shown` и `total`.
-  Только чтение.
+  `{name, display_name, categories, billable, deploy_with}`, где
+  `deploy_with` = `{tool: "k8s_add_addon", args: {name}}`, плюс `shown` и
+  `total`. Только чтение.
 - `k8s_addon_versions` (`name`, `full`) — версии плагина, новые первыми:
-  `version` (версия приложения), `addon_version`, `mode`
+  `version` (её принимает `k8s_add_addon`), `addon_version`, `mode`
   (`ACTIVE`, `EXPERIMENTAL`, `END_OF_SUPPORT`, `END_OF_LIFE`, `INACTIVE`),
   `kube_versions` (диапазон версий Kubernetes кластера), `ready_workers`,
-  `namespace`, `has_schema`, `schema_bytes`, `latest` (рекомендуемая —
-  новейшая `ACTIVE`). Схема настроек (`configuration_schema`, до ~94 КБ) —
-  только с `full=true`. Только чтение.
+  `namespace`, `has_schema`, `schema_bytes`, `latest`. Схема настроек
+  (`configuration_schema`, до ~94 КБ) — только с `full=true`. Только чтение.
+- `k8s_add_addon` (`cluster_id`, `name`, `version`, `config`, `resolve_mode`)
+  — установка, с гейтом `confirmed=true`. Без него инструмент только читает
+  и возвращает превью: какая версия выбрана (`version_from`: `latest` —
+  новейшая `ACTIVE`, `requested`), namespace (если API дал годный),
+  требования версии, версия Kubernetes кластера, узлы его групп, установлен
+  ли плагин уже. Что
+  определить не удалось, перечислено в `not_checked`; требование, которое
+  точно не выполнено, — отказ `USAGE` до подтверждения. `config` — объект
+  JSON по схеме версии (строка с объектом JSON тоже принимается; Cloud.ru
+  подставляет `{{clusterID}}` и `{{clusterName}}`). Ответ —
+  `status: "installing"`, `operation_id` и/или `cluster_addon_id`;
+  установка асинхронная, `note` называет следующий шаг: `k8s_kubectl`
+  `get pods -n <namespace>` (или `-A`, если API не дал годного namespace)
+  до `Ready=True` у подов плагина (поды Job, например
+  `cert-manager-startupapicheck`, заканчиваются `Completed`). Если поды
+  остаются в `ImagePullBackOff`, у кластера, вероятно, нет выхода в
+  интернет: по документации Cloud.ru нужен публичный SNAT-шлюз в зоне
+  узлов.
 
-Инструмента установки плагина в v1.0 нет: плагины ставят в консоли
-Cloud.ru.
-
-Неизвестный плагин — `NOT_FOUND` с подсказкой и похожими именами в `hint`.
+Неизвестный плагин или версия — `NOT_FOUND` с подсказкой и похожими
+именами в `hint`.
 
 ## Витрина
 
 `marketplace_list` (`query`, `kind` = `vm-os` | `vm-app` | `k8s-addon`,
 `all`) — в группе `image`: образы общего каталога (ОС и продукты
 маркетплейса, без образов проекта) и плагины Managed Kubernetes одним
-списком. Только чтение; ВМ создаёт `provision`, плагины evo пока не ставит
-(установка — в консоли Cloud.ru), единого инструмента установки нет.
+списком. Только чтение; ВМ создаёт `provision`, плагин — `k8s_add_addon`,
+единого инструмента установки нет.
 
 - `query` — подстрока имени или отображаемого имени без учёта регистра (у
   плагинов — и описания). `kind` читает только нужный каталог: `vm-*` не
@@ -320,9 +337,9 @@ Cloud.ru.
   одной зоне скрыты без `all=true`; с ним первые идут с
   `available_in_project: false` и без `deploy`, вторые — с `ready: false`.
 - `deploy` — `{tool: "provision", args: {image}}` (имя образа, а если имя в
-  каталоге повторяется — UUID); у плагина — `{tool: "k8s_addon_versions",
-  args: {name}, note}`: evo плагины пока не ставит, установка — в консоли
-  Cloud.ru. `cli` — та же команда для человека.
+  каталоге повторяется — UUID); у плагина — `{tool: "k8s_add_addon",
+  args: {name}}` (плюс `cluster_id`; версии — `k8s_addon_versions`). `cli` —
+  та же команда для человека.
 - Если один каталог не прочитан, ответ — второй с `warnings[]` и без
   ошибки; ошибка — только когда не прочитан ни один.
 

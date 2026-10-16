@@ -55,6 +55,10 @@ type treeCmd struct {
 	// is, not as a FIELD/VALUE table; on a tool error it goes to stderr
 	// before the error.
 	Raw bool
+	// Files are tool arguments whose flag names a file holding the value
+	// ("-": stdin), read and checked against the argument's type:
+	// k8s add-addon --config settings.json.
+	Files map[string]bool
 }
 
 var treeGroups = []treeGroup{
@@ -111,6 +115,7 @@ var treeGroups = []treeGroup{
 		{Verb: "add-nodepool", Tool: "k8s_add_nodepool", Args: []string{"cluster_id"}},
 		{Verb: "addons", Tool: "k8s_addons", Args: []string{"query?"}, Render: renderAddonList},
 		{Verb: "addon-versions", Tool: "k8s_addon_versions", Args: []string{"name"}, Render: renderAddonVersions},
+		{Verb: "add-addon", Tool: "k8s_add_addon", Args: []string{"cluster_id", "name"}, Files: map[string]bool{"config": true}},
 		{Verb: "kubectl", Tool: "k8s_kubectl", Args: []string{"cluster_id", "args..."}, Raw: true},
 		{Verb: "apply", Tool: "k8s_apply", Args: []string{"cluster_id"}, Raw: true},
 		{Verb: "helm", Tool: "k8s_helm", Args: []string{"cluster_id", "action"}, Raw: true},
@@ -319,6 +324,10 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 					"так пароль не попадает в командную строку и историю оболочки)"))
 			continue
 		}
+		if c.Files[p.Name] {
+			cmd.Flags().String(name, "", note("A file with the value ('-' reads stdin until EOF: Ctrl-D on a terminal). ", "Файл со значением ('-' — из stdin до EOF: на терминале — Ctrl-D). ")+desc)
+			continue
+		}
 		switch p.Type {
 		case "integer":
 			cmd.Flags().Int(name, 0, desc)
@@ -480,6 +489,19 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 			continue
 		}
 		var raw string
+		if c.Files[p.Name] {
+			path := cmd.Flags().Lookup(name).Value.String()
+			data, err := readArgFile(cmd, path)
+			if err != nil {
+				return nil, clerrors.Wrap(clerrors.CodeUsage, fmt.Sprintf("--%s %s: %v", name, path, err), "", err)
+			}
+			v, err := coerceArg(p, string(data))
+			if err != nil {
+				return nil, clerrors.New(clerrors.CodeUsage, fmt.Sprintf("--%s %s: %v", name, path, err), "")
+			}
+			out[p.Name] = v
+			continue
+		}
 		if p.Type == "array" {
 			vals, _ := cmd.Flags().GetStringArray(name)
 			raw = strings.Join(vals, ",")
@@ -580,6 +602,14 @@ func trimNewline(s string) string {
 		return t
 	}
 	return strings.TrimSuffix(s, "\n")
+}
+
+// readArgFile reads the file of a Files flag; "-" is stdin.
+func readArgFile(cmd *cobra.Command, path string) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(cmd.InOrStdin())
+	}
+	return os.ReadFile(path)
 }
 
 func helpHint(cmd *cobra.Command) string {

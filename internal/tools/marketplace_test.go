@@ -123,7 +123,7 @@ func TestMarketplaceList_Answer(t *testing.T) {
 	if gpu["kind"] != "k8s-addon" || gpu["billable"] != true || gpu["available_in_project"] != nil || gpu["id"] != nil {
 		t.Errorf("addon row: %v", gpu)
 	}
-	if d := gpu["deploy"].(map[string]any); d["tool"] != "k8s_addon_versions" || d["args"].(map[string]any)["name"] != "gpu-operator" || d["cli"] != "evo k8s addon-versions gpu-operator" || d["note"] == nil {
+	if d := gpu["deploy"].(map[string]any); d["tool"] != "k8s_add_addon" || d["args"].(map[string]any)["name"] != "gpu-operator" || d["cli"] != "evo k8s add-addon <cluster-id> gpu-operator" {
 		t.Errorf("addon deploy: %v", d)
 	}
 	if items["cert-manager"]["billable"] != false {

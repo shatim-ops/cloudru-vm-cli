@@ -155,7 +155,7 @@ func TestToolsList_Annotations(t *testing.T) {
 		mutating[tl.Name] = tl.Mutating
 	}
 	destructive := map[string]bool{"destroy": true, "stack_destroy": true, "release_floating_ip": true,
-		"s3_rm": true, "s3_put": true, "k8s_kubectl": true, "k8s_apply": true, "k8s_helm": true}
+		"s3_rm": true, "s3_put": true, "k8s_kubectl": true, "k8s_apply": true, "k8s_helm": true, "k8s_add_addon": true}
 	seen := map[string]bool{}
 	for _, raw := range listed {
 		tl := raw.(map[string]any)

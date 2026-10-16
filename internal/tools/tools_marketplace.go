@@ -12,14 +12,13 @@ import (
 
 // marketplace_list: the read-only showcase of the VM images of the shared
 // catalogue and the Managed Kubernetes addons, in one list. Deploying stays
-// in the trees (provision with image; addons — in the Cloud.ru console for
-// now): no unified install
-// tool (PR #65).
+// in the trees (provision with image, k8s_add_addon with name): no unified
+// install tool (PR #65).
 
 const marketplaceListDescription = "Read-only showcase of what Cloud.ru offers to deploy, in one list: VM images of the shared catalogue (OS images and Cloud.ru Marketplace products; the project's own images are not included) and Managed Kubernetes addons. Changes nothing. " +
 	"kind: vm-os (type public, or a marketplace image whose name or display name starts with an OS family word: Ubuntu, Debian, CentOS, Rocky, Alma, Fedora, openSUSE, Astra, Alt/Альт, RED OS/РЕД ОС, SberLinux, ROSA/РОСА, Windows — a heuristic, the catalogue has no such field), vm-app (any other marketplace image, e.g. nginx-ubuntu-22.04), k8s-addon. " +
 	"query matches a substring of the name or display_name (addons: the description too), case-insensitive. Images the project cannot use and images ready in no zone are hidden unless all=true (counted in hidden_not_in_project, hidden_not_ready). " +
-	"Rows {kind, name, display_name, id (images), billable (addons only: whether an image or its licence is paid is not known — the price calculation gives 0 for every image), available_in_project (images, when checked against the catalogue as the project sees it), ready=false (an image ready in no zone, with all=true), deploy{cli, tool, args}}: deploy is provision with args.image (the name, or the UUID when names repeat) or, for an addon, k8s_addon_versions with args.name (evo does not install addons yet: the install is in the Cloud.ru console); an image not available to the project has no deploy. " +
+	"Rows {kind, name, display_name, id (images), billable (addons only: whether an image or its licence is paid is not known — the price calculation gives 0 for every image), available_in_project (images, when checked against the catalogue as the project sees it), ready=false (an image ready in no zone, with all=true), deploy{cli, tool, args}}: deploy is provision with args.image (the name, or the UUID when names repeat) or, for an addon, k8s_add_addon with args.name (plus cluster_id; k8s_addon_versions shows its versions); an image not available to the project has no deploy. " +
 	"Sorted by kind, then display name; counts{vm-os, vm-app, k8s-addon} are the rows shown per kind, total the matches before hiding. " +
 	"If one catalogue cannot be read, the other is still answered, with warnings[]; an error only when none is read."
 
@@ -54,14 +53,10 @@ func marketRowOf(it marketplace.Item, checked bool) marketRow {
 	if a := it.Addon; a != nil {
 		billable := a.IsBillable
 		row.Billable = &billable
-		// evo does not install addons yet (removed from v1.0, #78): the
-		// versions are shown by k8s_addon_versions, the install is in the
-		// Cloud.ru console.
 		row.Deploy = map[string]any{
-			"cli":  "evo k8s addon-versions " + images.ShellQuote(a.Name),
-			"tool": "k8s_addon_versions",
+			"cli":  "evo k8s add-addon <cluster-id> " + images.ShellQuote(a.Name),
+			"tool": "k8s_add_addon",
 			"args": map[string]any{"name": a.Name},
-			"note": "evo does not install addons yet: install it in the Cloud.ru console",
 		}
 		return row
 	}

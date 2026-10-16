@@ -3,8 +3,8 @@
 // Marketplace products) and the Managed Kubernetes addons, in one list.
 //
 // It installs nothing. Each row names the command of its own tree that
-// deploys it (evo vm create --image; addons — the Cloud.ru console for now): one unified
-// install command was decided against (PR #65).
+// deploys it (evo vm create --image, evo k8s add-addon): one unified install
+// command was decided against (PR #65).
 package marketplace
 
 import (
