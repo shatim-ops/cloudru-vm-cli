@@ -76,8 +76,15 @@ func apiError(status int, body []byte) error {
 	// функциональности ограничен. Чтобы получать аудит-логи, обратитесь в
 	// техническую поддержку» — docs, «Получить аудит-логи»). The API then
 	// answers 401 to a valid token (register AUD-1): not a reason to log in
-	// again.
-	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+	// again. A 403 may as well be a role without access to the logs.
+	if status == http.StatusForbidden {
+		return clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("no access to audit logs: the key's role lacks it, or audit logging is not enabled for the project (audit API %d)",
+				"нет доступа к аудит-логам: у роли ключа нет прав на них или аудит не включён для проекта (audit API %d)", status),
+			i18n.T("Check the role of the service account in the Cloud.ru console; if it has access, audit logs are enabled by Cloud.ru support.",
+				"Проверьте роль сервисного аккаунта в консоли Cloud.ru; если права есть — доступ к аудит-логам включает поддержка Cloud.ru."))
+	}
+	if status == http.StatusUnauthorized {
 		return clierrors.New(clierrors.CodeAPIError,
 			i18n.Tf("audit logging is not enabled for the project (audit API %d)", "аудит не включён для проекта (audit API %d)", status),
 			i18n.T("Access to audit logs is enabled by Cloud.ru support: contact it (the key itself is valid if other commands work).",

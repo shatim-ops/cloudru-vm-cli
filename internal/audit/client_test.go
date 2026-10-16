@@ -61,3 +61,17 @@ func TestList_401IsAuditNotEnabled(t *testing.T) {
 		t.Errorf("error = %#v", err)
 	}
 }
+
+// 403 — не только «аудит не включён»: может не хватать роли (ревью Fable, A5).
+func TestList_403NamesTheRole(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	_, err := New("tok", "p", srv.URL).List(context.Background(), ListOptions{})
+	var ce *clierrors.CLIError
+	if !errors.As(err, &ce) || ce.Code != clierrors.CodeAPIError || !strings.Contains(err.Error(), "403") ||
+		!(strings.Contains(err.Error(), "role") || strings.Contains(err.Error(), "роли")) {
+		t.Errorf("error = %#v", err)
+	}
+}
