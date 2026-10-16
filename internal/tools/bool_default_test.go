@@ -21,6 +21,7 @@ var boolDefaultsTrue = map[string][]string{
 	"force":             {"secret_delete"},
 	"public":            {"ca_deploy"},
 	"external":          {"lb_create"},
+	"refresh":           {"status"},
 }
 
 // handlerTrueRE finds a boolean argument read with a default of true:

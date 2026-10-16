@@ -72,7 +72,7 @@ func (s *Registry) registerTools() {
 				"Read-only. By default it also asks the cloud for the VM's live state (one GET, at most 8 s) and adds cloud_checked, cloud_state, " +
 				"not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record) and cloud_error (why the cloud was not checked; the local state is still returned).",
 			InputSchema: objSchema(map[string]any{
-				"refresh": boolProp("Ask the cloud for the VM's live state (default: true). false: local state only, no API call."),
+				"refresh": boolPropTrue("Ask the cloud for the VM's live state (default: true). false: local state only, no API call."),
 			}),
 		},
 		{
