@@ -458,7 +458,9 @@ func (p *addonPlan) preview(clusterID, resolveMode string, configKeys []string) 
 		cp.Add("installed", *p.installed)
 	}
 	cp.Add("billable", p.addon.IsBillable)
-	cp.Add("resolve_mode", resolveMode)
+	// As a person writes it (NONE, OVERWRITE): the request carries the API
+	// value RESOLVE_CONFLICTS_MODE_*.
+	cp.Add("resolve_mode", strings.TrimPrefix(resolveMode, "RESOLVE_CONFLICTS_MODE_"))
 	if len(configKeys) > 0 {
 		cp.Add("config_keys", strings.Join(configKeys, ","))
 	}

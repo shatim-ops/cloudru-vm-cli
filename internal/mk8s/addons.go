@@ -125,8 +125,11 @@ func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRele
 			// an agent would run "get pods -n 1.21.1-sbc.0" literally.
 			// A value equal to a version is left out too ("1" passes the
 			// pattern).
+			// Versions compare without a leading "v" ("1" and "v1"), as in
+			// parseSemver.
+			ns := strings.TrimPrefix(rel.AddonNamespace, "v")
 			if !namespaceRE.MatchString(rel.AddonNamespace) ||
-				rel.AddonNamespace == rel.AddonVersion || rel.AddonNamespace == rel.AppVersion {
+				ns == strings.TrimPrefix(rel.AddonVersion, "v") || ns == strings.TrimPrefix(rel.AppVersion, "v") {
 				rel.AddonNamespace = ""
 			}
 			out = append(out, rel)

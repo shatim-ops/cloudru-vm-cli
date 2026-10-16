@@ -1323,7 +1323,7 @@ evo k8s add-addon <cluster-id> <name> [flags]
 ### Options
 
 ```
-      --config string         A file with the value ('-' reads stdin). Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}} and {{clusterName}} in it. Default: the addon's defaults.
+      --config string         A file with the value ('-' reads stdin until EOF: Ctrl-D on a terminal). Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}} and {{clusterName}} in it. Default: the addon's defaults.
   -h, --help                  Справка по add-addon
       --resolve-mode string   What to do with objects of the addon already in the cluster (installed by hand): NONE keeps them, the install may then fail; OVERWRITE resets them to the recommended values. Default NONE.
       --version string        Release version: the app version from k8s_addon_versions. The API installs by app version and picks the addon_version itself, so an addon_version is accepted only when it is the newest of its app version. Default: newest ACTIVE.

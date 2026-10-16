@@ -325,7 +325,7 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 			continue
 		}
 		if c.Files[p.Name] {
-			cmd.Flags().String(name, "", note("A file with the value ('-' reads stdin). ", "Файл со значением ('-' — из stdin). ")+desc)
+			cmd.Flags().String(name, "", note("A file with the value ('-' reads stdin until EOF: Ctrl-D on a terminal). ", "Файл со значением ('-' — из stdin до EOF: на терминале — Ctrl-D). ")+desc)
 			continue
 		}
 		switch p.Type {

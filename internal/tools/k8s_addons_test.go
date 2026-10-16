@@ -261,6 +261,10 @@ func TestK8sAddAddon_InstallsWithConfig(t *testing.T) {
 		strings.Contains(text, "not_checked") || !strings.Contains(text, "clusterName,replicas") {
 		t.Fatalf("preview: %s", text)
 	}
+	// В превью — режим, как его пишет человек; в запросе — значение API.
+	if !strings.Contains(text, `"OVERWRITE"`) || strings.Contains(text, "RESOLVE_CONFLICTS_MODE_") {
+		t.Errorf("preview resolve_mode: %s", text)
+	}
 	args["confirmed"] = true
 	m, text, isErr := callNamed(t, r, "k8s_add_addon", args)
 	if isErr || m["status"] != "installing" || m["operation_id"] != "op-1" || m["cluster_addon_id"] != "ca-1" || m["namespace"] != "cert-manager" {

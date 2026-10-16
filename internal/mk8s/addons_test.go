@@ -110,13 +110,15 @@ func TestGetAddonReleases(t *testing.T) {
 		}
 		// Живой API 16.10: addonNamespace повторяет addonVersion.
 		_, _ = io.WriteString(w, `{"releases":[{"addonVersion":"0.9.0-sbc.0","addonNamespace":"0.9.0-sbc.0","appVersion":"v1.13.0","mode":"SUPPORT_MODE_END_OF_LIFE","requirements":{"readyWorkers":"2"}},`+
-			`{"addonVersion":"1","addonNamespace":"1","appVersion":"v1.12.0"}]}`)
+			`{"addonVersion":"1","addonNamespace":"1","appVersion":"v1.12.0"},`+
+			// Версия с «v» и без неё — одна и та же (как в parseSemver).
+			`{"addonVersion":"2-sbc.0","addonNamespace":"2","appVersion":"v2"}]}`)
 	})
 	got, err := cli.GetAddonReleases(context.Background(), "cert-manager")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 {
+	if len(got) != 4 {
 		t.Fatalf("releases: %+v", got)
 	}
 	r := got[0]
@@ -124,8 +126,8 @@ func TestGetAddonReleases(t *testing.T) {
 		r.Requirements.KubeVersions != ">=1.26.0-0" || r.Requirements.ReadyWorkers != 1 || NormalizeMode(r.Mode) != ModeActive {
 		t.Errorf("release 0: %+v", r)
 	}
-	if got[1].AddonNamespace != "" || got[2].AddonNamespace != "" {
-		t.Errorf("a version-shaped addonNamespace kept: %q, %q", got[1].AddonNamespace, got[2].AddonNamespace)
+	if got[1].AddonNamespace != "" || got[2].AddonNamespace != "" || got[3].AddonNamespace != "" {
+		t.Errorf("a version-shaped addonNamespace kept: %q, %q, %q", got[1].AddonNamespace, got[2].AddonNamespace, got[3].AddonNamespace)
 	}
 	if got[1].Requirements.ReadyWorkers != 2 {
 		t.Errorf("readyWorkers as a string: %+v", got[1].Requirements)
