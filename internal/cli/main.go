@@ -478,7 +478,14 @@ func newDeployCmd() *cobra.Command {
 		Use:   "deploy",
 		Args:  cobra.NoArgs,
 		Short: i18n.T("Deploy a docker-compose project to a Cloud.ru VM", "Развернуть docker-compose проект на ВМ Cloud.ru"),
-		Long: i18n.T("", `Развернуть docker-compose проект на ВМ Cloud.ru.
+		Long: i18n.T(`Deploy a docker-compose project to a Cloud.ru VM.
+
+The first run creates a VM with a floating IP, opens the compose file's ports
+in the zone's security group, installs Docker, uploads the compose file and
+runs 'docker compose up -d'. Before the VM is created it shows a preview with
+a price estimate and asks for confirmation: a question on the terminal, --yes
+to agree in advance, --dry-run for the preview only. A repeated run updates
+the same VM if the compose file changed (with --force, even if it did not).`, `Развернуть docker-compose проект на ВМ Cloud.ru.
 
 Первый запуск создаёт ВМ с floating IP, открывает порты из compose-файла в
 группе безопасности зоны, ставит Docker, загружает compose-файл и выполняет
@@ -486,7 +493,9 @@ func newDeployCmd() *cobra.Command {
 и запрашивается подтверждение: вопрос на терминале, --yes — согласие заранее,
 --dry-run — только превью. Повторный запуск обновляет ту же ВМ, если
 compose-файл изменился (с --force — и без изменений).`),
-		Example: i18n.T("", `  evo deploy --dry-run
+		Example: i18n.T(`  evo deploy --dry-run
+  evo deploy --yes
+  evo deploy -f compose.prod.yml --flavor lowcost10-2-4`, `  evo deploy --dry-run
   evo deploy --yes
   evo deploy -f compose.prod.yml --flavor lowcost10-2-4`),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -580,7 +589,9 @@ func newLogsCmd() *cobra.Command {
 		Use:   "logs",
 		Args:  cobra.NoArgs,
 		Short: i18n.T("View container logs from the deployed VM", "Журналы контейнеров на развёрнутой ВМ"),
-		Example: i18n.T("", `  evo logs
+		Example: i18n.T(`  evo logs
+  evo logs -s web -n 50
+  evo logs -f`, `  evo logs
   evo logs -s web -n 50
   evo logs -f`),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -618,7 +629,12 @@ func newDestroyCmd() *cobra.Command {
 		Use:   "destroy",
 		Args:  cobra.NoArgs,
 		Short: i18n.T("Delete the deployed VM and clean up resources", "Удалить развёрнутую ВМ и связанные ресурсы"),
-		Long: i18n.T("", `Удалить ВМ развёртывания из этого каталога, освободить её floating IP и
+		Long: i18n.T(`Delete this directory's deployment VM, release its floating IP and
+remove the security group rules deploy created.
+
+Before deleting it shows a preview and asks for confirmation: a question on
+the terminal, --yes (or --force) to agree in advance, --dry-run for the
+preview only. Data on the VM's disks is lost.`, `Удалить ВМ развёртывания из этого каталога, освободить её floating IP и
 удалить правила группы безопасности, которые создал deploy.
 
 Перед удалением показывается превью и запрашивается подтверждение: вопрос на
