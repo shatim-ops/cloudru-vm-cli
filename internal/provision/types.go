@@ -308,15 +308,22 @@ func (i *ImageDetail) Ready() bool {
 	return false
 }
 
-// ImageMetadataField describes a metadata field required by an image.
+// ImageMetadataField describes a metadata field declared by an image. A
+// field is required through its mandatory group: at least one field of each
+// group must be filled. The catalogue's groups are dirty (a leading space,
+// Russian, null), so compare them with images.NormGroup.
 type ImageMetadataField struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Required       bool   `json:"is_required"`
-	MandatoryGroup string `json:"mandatory_group"`
-	DefaultValue   string `json:"default_value"`
-	FieldType      string `json:"field_type"`
-	Sensitive      bool   `json:"sensitive"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	DisplayName     string `json:"display_name"`
+	DisplayPosition int    `json:"display_position"`
+	DisplayGroup    string `json:"display_group"`
+	MandatoryGroup  string `json:"mandatory_group"`
+	// MandatoryGroupDisplayName is the group's label in the console form.
+	MandatoryGroupDisplayName string `json:"mandatory_group_display_name"`
+	DefaultValue              string `json:"default_value"`
+	FieldType                 string `json:"field_type"`
+	Sensitive                 bool   `json:"sensitive"`
 }
 
 // FloatingIP represents a Cloud.ru floating (public) IP address.

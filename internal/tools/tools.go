@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
@@ -1508,67 +1509,24 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	if err := eng.EnsureSSHKey(); err != nil {
 		return errResult(err), true
 	}
-	imgMeta := map[string]string{}
-	satisfiedGroups := map[string]bool{}
-	for _, mf := range imgDetail.MetadataFields {
-		switch mf.Name {
-		case "ssh_key", "public_key", "ssh_public_key":
-			// An EMPTY public_key triggers a 500; a trailing newline (the keygen
-			// appends one) makes a malformed key value → also 500. Trim it.
-			if key := strings.TrimSpace(eng.SSHPubKey); key != "" {
-				imgMeta[mf.Name] = key
-				if mf.MandatoryGroup != "" {
-					satisfiedGroups[mf.MandatoryGroup] = true
-				}
-			}
-		case "hostname", "instance_name":
-			imgMeta[mf.Name] = vmName
-			if mf.MandatoryGroup != "" {
-				satisfiedGroups[mf.MandatoryGroup] = true
-			}
-		case "linux_password":
-			// Mandatory for most images — deploy_apply generates one; without it
-			// the VM boots to error_creating. Guaranteed to satisfy complexity.
-			imgMeta[mf.Name] = genPassword(16)
-			if mf.MandatoryGroup != "" {
-				satisfiedGroups[mf.MandatoryGroup] = true
-			}
-		case "name", "user", "username", "default_user":
-			val := mf.DefaultValue
-			if val == "" {
-				val = "user1"
-			}
-			imgMeta[mf.Name] = val
-			if mf.MandatoryGroup != "" {
-				satisfiedGroups[mf.MandatoryGroup] = true
-			}
-		}
+	// image_metadata by the image's declared fields (internal/images, the
+	// same rules as the CLI deploy and deploy_apply). An EMPTY public_key
+	// triggers a 500, and so does a trailing newline (the keygen appends
+	// one): the key goes in trimmed. linux_password is mandatory for most
+	// images — without it the VM boots to error_creating. The read-only
+	// status flags vmm_enabled / guest_agent_ready are never sent.
+	imgMeta, filled, err := images.FillMetadata(imgDetail.MetadataFields, images.Inputs{
+		PublicKey:   strings.TrimSpace(eng.SSHPubKey),
+		Hostname:    vmName,
+		Login:       "user1",
+		GenPassword: func() string { return genPassword(16) },
+	})
+	if err != nil {
+		return usageResult(err), true
 	}
-	for _, mf := range imgDetail.MetadataFields {
-		if _, exists := imgMeta[mf.Name]; exists {
-			continue
-		}
-		if mf.MandatoryGroup != "" && satisfiedGroups[mf.MandatoryGroup] {
-			continue
-		}
-		// vmm_enabled / guest_agent_ready are READ-ONLY status fields — sending
-		// them (or any empty-valued field) 500s the backend. Mirror deploy_apply
-		// (deployplan/resolve.go): only send optional fields that have a real
-		// default value, and never these two.
-		if mf.Name == "vmm_enabled" || mf.Name == "guest_agent_ready" {
-			continue
-		}
-		if mf.DefaultValue != "" {
-			imgMeta[mf.Name] = mf.DefaultValue
-		}
-	}
-
-	sshUser := "user1"
-	for _, key := range []string{"name", "user", "username", "default_user"} {
-		if v, ok := imgMeta[key]; ok && v != "" {
-			sshUser = v
-			break
-		}
+	sshUser := filled.Login
+	if sshUser == "" {
+		sshUser = "user1"
 	}
 
 	// Resolve a subnet + security group for the network interface. Omitting the

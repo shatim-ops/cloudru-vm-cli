@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -132,16 +133,16 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	wantFIP := p.ExternalIP
 	attachFIPID := ""
 
-	// --- Access: image metadata fields + SSH model ---
-	metaFields, metaStatic, login, keyName, sErr := resolveAccess(ctx, cloud, image.ID, p)
-	if sErr != nil {
-		warnings = append(warnings, "could not read image metadata template: "+sErr.Error())
-	}
-
 	name := p.Name
 	if name == "" {
 		base := firstNonEmpty(p.Product, "vm")
 		name = sanitizeName(base) + "-" + time.Now().Format("20060102-1504")
+	}
+
+	// --- Access: image metadata fields + SSH model ---
+	metaFields, metaStatic, login, keyName, sErr := resolveAccess(ctx, cloud, image.ID, name, p)
+	if sErr != nil {
+		warnings = append(warnings, "could not read image metadata template: "+sErr.Error())
 	}
 
 	vm := VMSpec{
@@ -298,15 +299,17 @@ func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want 
 	return provision.Image{}, fmt.Errorf("no images available")
 }
 
-// resolveAccess inspects the image's metadata template (mirroring the proven
-// Python reference) and returns:
-//   - dynamic: fields we fill at apply time (name/hostname/linux_password/public_key)
-//   - static:  fields copied verbatim from the image's defaults (the API rejects
-//     the request with image_metadata_fields_missing if these are omitted)
+// resolveAccess fills the image's metadata by its declared fields
+// (internal/images, the same rules as the CLI deploy and MCP provision) and
+// returns:
+//   - dynamic: the password fields generated at apply time — the plan is
+//     saved to disk and must not hold the password;
+//   - static:  every other field, sent verbatim (the key, the hostname, the
+//     login, the image's defaults — the API rejects the request with
+//     image_metadata_fields_missing if these are omitted);
 //   - login and a human label for the SSH model.
-func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID string, p Params) ([]string, map[string]string, string, string, error) {
+func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostname string, p Params) ([]string, map[string]string, string, string, error) {
 	login := firstNonEmpty(p.Login, "user1")
-	static := map[string]string{}
 
 	detail, err := cloud.GetImage(ctx, imageID)
 	if err != nil {
@@ -317,39 +320,25 @@ func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID string
 			fields = append(fields, "public_key")
 			key = "user-key"
 		}
-		return fields, static, login, key, err
+		return fields, map[string]string{}, login, key, err
 	}
 
-	var dynamic []string
-	hasPasswordField := false
-	for _, mf := range detail.MetadataFields {
-		if mf.MandatoryGroup != "" && mf.DefaultValue == "" {
-			// Mandatory field we must supply a value for.
-			switch mf.Name {
-			case "name", "hostname", "linux_password":
-				dynamic = append(dynamic, mf.Name)
-				if mf.Name == "linux_password" {
-					hasPasswordField = true
-				}
-			case "public_key":
-				if p.SSHKey != "" {
-					dynamic = append(dynamic, "public_key")
-				}
-				// else: skip — an empty public_key triggers a 500.
-			}
-		} else if mf.DefaultValue != "" && mf.Name != "vmm_enabled" && mf.Name != "guest_agent_ready" {
-			// Optional field with a default — the API still wants it sent.
-			static[mf.Name] = mf.DefaultValue
-		}
+	static, filled, err := images.FillMetadata(detail.MetadataFields, images.Inputs{
+		PublicKey: p.SSHKey, // empty: no key field is sent (an empty public_key triggers a 500)
+		Hostname:  hostname,
+		Login:     login,
+	})
+	if err != nil {
+		return nil, map[string]string{}, login, "generated-password", err
 	}
 
 	keyName := "generated-password"
 	if p.SSHKey != "" {
 		keyName = "ssh-key (deploy)"
-	} else if !hasPasswordField {
+	} else if len(filled.PasswordFields) == 0 {
 		keyName = "image-default"
 	}
-	return dynamic, static, login, keyName, nil
+	return filled.PasswordFields, static, login, keyName, nil
 }
 
 // pickSubnet matches by zone ID, then by a name containing the zone name

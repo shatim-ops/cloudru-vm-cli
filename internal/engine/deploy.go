@@ -20,6 +20,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sizer"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -394,77 +395,25 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		e.Printer.Warning(diskNote)
 	}
 
-	// Build image_metadata dict: keys are field names from the image definition.
-	// Track which mandatory groups are already satisfied so we don't send
-	// empty/invalid values for alternative fields in the same group
-	// (e.g. public_key vs linux_password in "authentication" group).
-	imgMeta := map[string]string{}
-	satisfiedGroups := map[string]bool{}
-	var keyFields []string // filled with the SSH public key after consent
-
-	// First pass: populate fields we know how to fill.
-	for _, mf := range imgDetail.MetadataFields {
-		switch mf.Name {
-		case "ssh_key", "public_key", "ssh_public_key":
-			imgMeta[mf.Name] = e.SSHPubKey // set again after consent: the key is made then
-			keyFields = append(keyFields, mf.Name)
-			if mf.MandatoryGroup != "" {
-				satisfiedGroups[mf.MandatoryGroup] = true
-			}
-		case "hostname", "instance_name":
-			imgMeta[mf.Name] = vmName
-			if mf.MandatoryGroup != "" {
-				satisfiedGroups[mf.MandatoryGroup] = true
-			}
-		case "linux_password":
-			// Without it the VM never leaves "creating" (seen live
-			// 2026-10-14; MCP vm_create sets it for the same reason). Login
-			// is by SSH key: the password is random and not kept.
-			imgMeta[mf.Name] = randomPassword(16)
-			if mf.MandatoryGroup != "" {
-				satisfiedGroups[mf.MandatoryGroup] = true
-			}
-		case "name", "user", "username", "default_user":
-			val := mf.DefaultValue
-			if val == "" {
-				val = "ubuntu"
-			}
-			imgMeta[mf.Name] = val
-			if mf.MandatoryGroup != "" {
-				satisfiedGroups[mf.MandatoryGroup] = true
-			}
-		}
+	// image_metadata by the image's declared fields (internal/images, the
+	// same rules as MCP provision and deploy_apply). The key is made only
+	// after consent, so its fields are filled again then. linux_password is
+	// set as well: without it the VM never leaves "creating" (seen live
+	// 2026-10-14). Login is by SSH key: the password is random and not kept.
+	imgMeta, filled, err := images.FillMetadata(imgDetail.MetadataFields, images.Inputs{
+		PublicKey:   e.SSHPubKey,
+		Hostname:    vmName,
+		Login:       "ubuntu",
+		GenPassword: func() string { return randomPassword(16) },
+	})
+	if err != nil {
+		return state.DeploymentRecord{}, err
 	}
+	keyFields := filled.KeyFields // filled with the SSH public key after consent
 
-	// Second pass: fill remaining fields that aren't in an already-satisfied
-	// mandatory group (avoids sending empty passwords, etc.).
-	for _, mf := range imgDetail.MetadataFields {
-		if _, exists := imgMeta[mf.Name]; exists {
-			continue
-		}
-		// Skip fields whose mandatory group is already satisfied by another field.
-		if mf.MandatoryGroup != "" && satisfiedGroups[mf.MandatoryGroup] {
-			continue
-		}
-		// Only fields with a real default: empty values and these two flags
-		// make the create API answer 500 (same rule as MCP vm_create).
-		if mf.Name == "vmm_enabled" || mf.Name == "guest_agent_ready" {
-			continue
-		}
-		if mf.DefaultValue != "" {
-			imgMeta[mf.Name] = mf.DefaultValue
-		}
-	}
-
-	// Determine SSH user from metadata (the "name" field is the login user;
-	// Cloud.ru images default it to user1).
-	sshUser := ""
-	for _, key := range []string{"name", "user", "username", "default_user"} {
-		if v, ok := imgMeta[key]; ok && v != "" {
-			sshUser = v
-			break
-		}
-	}
+	// The SSH user is the login field the metadata filled (Cloud.ru images
+	// default it to user1).
+	sshUser := filled.Login
 	if sshUser == "" {
 		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
 			i18n.Tf("image %s declares no login user", "в образе %s не задан пользователь для входа", imageID),
