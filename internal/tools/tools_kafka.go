@@ -8,6 +8,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/dbaas"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 const kafkaHost = "https://kafka.api.cloud.ru"
@@ -63,6 +64,41 @@ func findDbaasSpec(specs []map[string]any, specID string, cpu, ram int) map[stri
 		return sorted[0]
 	}
 	return nil
+}
+
+// dbaasZone is the availability zone of a Kafka/Redis specifications
+// request. The API requires availability_zone_id although the specification
+// marks it optional, and the configured region is often empty (evo
+// configure without --region: cloud-e2e readonly #23 got API_ERROR from
+// kafka_specs and redis_specs). Order: the 'zone' argument (name or UUID),
+// the configured region, else the default zone of evo init (ru.AZ-2, else
+// the first listed). Returns the zone UUID and what to show for it: the
+// name when known.
+func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown string, err error) {
+	if ref == "" && eng.Config.Region != "" {
+		ref = eng.Config.Region
+	}
+	if ref != "" && looksUUID(ref) {
+		return ref, ref, nil
+	}
+	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
+	if err != nil {
+		return "", "", fmt.Errorf("list availability zones: %w", err)
+	}
+	if ref != "" {
+		for _, z := range zones {
+			if z.Name == ref {
+				return z.ID, z.Name, nil
+			}
+		}
+		return "", "", clierrors.New(clierrors.CodeUsage, fmt.Sprintf("availability zone %q not found", ref),
+			"See list_zones (evo list-zones) for the zone names.")
+	}
+	zones = engine.PreferredZoneFirst(zones)
+	if len(zones) == 0 || zones[0].ID == "" {
+		return "", "", fmt.Errorf("no availability zones listed: pass 'zone'")
+	}
+	return zones[0].ID, zones[0].Name, nil
 }
 
 func (s *Registry) kafkaClientEng(ctx context.Context) (*dbaas.Client, *engine.Engine, error) {
@@ -141,12 +177,16 @@ func (s *Registry) handleKafkaSpecs(ctx context.Context, args map[string]any) (s
 			versionID, _ = vers[len(vers)-1]["id"].(string)
 		}
 	}
-	items, err := cli.ListSpecifications(ctx, versionID, eng.Config.Region)
+	zoneID, zone, err := dbaasZone(ctx, eng, stringArg(args, "zone"))
+	if err != nil {
+		return errResult(err), true
+	}
+	items, err := cli.ListSpecifications(ctx, versionID, zoneID)
 	if err != nil {
 		return errResult(err), true
 	}
 	out, trunc := compactSpecs(items, specMenuCap)
-	res := map[string]any{"resolved_version_id": versionID, "specifications": out}
+	res := map[string]any{"resolved_version_id": versionID, "availability_zone": zone, "specifications": out}
 	if trunc > 0 {
 		res["specifications_truncated"] = trunc
 	}

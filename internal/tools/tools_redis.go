@@ -81,12 +81,16 @@ func (s *Registry) handleRedisSpecs(ctx context.Context, args map[string]any) (s
 			versionID, _ = vers[len(vers)-1]["id"].(string)
 		}
 	}
-	items, err := cli.ListSpecifications(ctx, versionID, eng.Config.Region)
+	zoneID, zone, err := dbaasZone(ctx, eng, stringArg(args, "zone"))
+	if err != nil {
+		return errResult(err), true
+	}
+	items, err := cli.ListSpecifications(ctx, versionID, zoneID)
 	if err != nil {
 		return errResult(err), true
 	}
 	out, trunc := compactSpecs(items, specMenuCap)
-	res := map[string]any{"resolved_version_id": versionID, "specifications": out}
+	res := map[string]any{"resolved_version_id": versionID, "availability_zone": zone, "specifications": out}
 	if trunc > 0 {
 		res["specifications_truncated"] = trunc
 	}

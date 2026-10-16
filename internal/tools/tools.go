@@ -633,7 +633,10 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "kafka_specs",
 			Description: "List Managed Kafka flavor specifications (id, cpu, memory_gb, min_storage_gb, min/max_brokers) for a version. Read-only. Use to choose specification_id for kafka_create.",
-			InputSchema: objSchema(map[string]any{"version_id": strProp("Version UUID (from kafka_versions); optional — defaults to latest.")}),
+			InputSchema: objSchema(map[string]any{
+				"version_id": strProp("Version UUID (from kafka_versions); optional — defaults to latest."),
+				"zone":       strProp("Availability zone, name (ru.AZ-2) or UUID; optional — defaults to the configured region, else ru.AZ-2. The API needs a zone."),
+			}),
 		},
 		{
 			Name:        "kafka_create",
@@ -682,7 +685,10 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "redis_specs",
 			Description: "List Managed Redis flavor specifications (id, cpu, memory_gb, deployment_mode, min_storage_gb) for a version. Read-only. Use to choose specification_id for redis_create.",
-			InputSchema: objSchema(map[string]any{"version_id": strProp("Version UUID (from redis_versions); optional — defaults to latest.")}),
+			InputSchema: objSchema(map[string]any{
+				"version_id": strProp("Version UUID (from redis_versions); optional — defaults to latest."),
+				"zone":       strProp("Availability zone, name (ru.AZ-2) or UUID; optional — defaults to the configured region, else ru.AZ-2. The API needs a zone."),
+			}),
 		},
 		{
 			Name:        "redis_create",

@@ -43,7 +43,7 @@ run() {
 	[ -n "$reason" ] || reason=$(j -r '.reason? // empty' "$tmp/out" | head -1)
 	[ -n "$reason" ] || reason=-
 	# HTTP-статус из сообщения — без тела ответа и URL (в нём бывает проект).
-	httpst=$(j -r '.error.message? // .error? // empty' "$tmp/err" "$tmp/out" | grep -oE '(статус|status|\()[ ]?[45][0-9]{2}' | grep -oE '[45][0-9]{2}' | head -1 || true)
+	httpst=$(j -r '.error.message? // .error? // empty' "$tmp/err" "$tmp/out" | grep -oE '(статус|status|API|\()[ ]?[45][0-9]{2}' | grep -oE '[45][0-9]{2}' | head -1 || true)
 	[ -z "$httpst" ] || reason="$reason, HTTP $httpst"
 }
 

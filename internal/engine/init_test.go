@@ -176,14 +176,14 @@ func TestPreferredZoneFirst(t *testing.T) {
 		return strings.Join(n, ",")
 	}
 	in := []*provision.AvailabilityZone{{Name: "ru.AZ-1"}, {Name: "ru.AZ-3"}, {Name: "ru.AZ-2"}}
-	if got := names(preferredZoneFirst(in)); got != "ru.AZ-2,ru.AZ-1,ru.AZ-3" {
+	if got := names(PreferredZoneFirst(in)); got != "ru.AZ-2,ru.AZ-1,ru.AZ-3" {
 		t.Errorf("order = %s", got)
 	}
 	if got := names(in); got != "ru.AZ-1,ru.AZ-3,ru.AZ-2" {
 		t.Errorf("input changed: %s", got)
 	}
 	other := []*provision.AvailabilityZone{{Name: "kz.AZ-1"}, {Name: "kz.AZ-2"}}
-	if got := names(preferredZoneFirst(other)); got != "kz.AZ-1,kz.AZ-2" {
+	if got := names(PreferredZoneFirst(other)); got != "kz.AZ-1,kz.AZ-2" {
 		t.Errorf("order without ru.AZ-2 = %s", got)
 	}
 }

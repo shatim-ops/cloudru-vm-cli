@@ -87,7 +87,7 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 
 	interactive := !opts.NonInteractive && confirm.StdinIsTTY()
 
-	zones = preferredZoneFirst(zones)
+	zones = PreferredZoneFirst(zones)
 	zoneNames := make([]string, len(zones))
 	for i, z := range zones {
 		zoneNames[i] = z.Name
@@ -140,9 +140,9 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 // ru.AZ-2 passed every one; the API lists ru.AZ-1 first.
 const preferredZone = "ru.AZ-2"
 
-// preferredZoneFirst moves preferredZone to the front, keeping the order of
+// PreferredZoneFirst moves preferredZone to the front, keeping the order of
 // the rest; zones without it are returned as they are.
-func preferredZoneFirst(zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
+func PreferredZoneFirst(zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
 	for i, z := range zones {
 		if z.Name == preferredZone {
 			out := make([]*provision.AvailabilityZone, 0, len(zones))
