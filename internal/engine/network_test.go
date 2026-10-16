@@ -1,10 +1,12 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -73,6 +75,37 @@ func TestResolveNetwork_NoSubnetInZone(t *testing.T) {
 	eng, _ := newTestEngine(t, cloud, newMockDeployer())
 	if _, err := eng.resolveNetwork(context.Background(), "p", "z3"); err == nil {
 		t.Fatal("want an error when no subnet matches the zone, a VM in another zone's subnet does not boot")
+	}
+}
+
+// Основная подсеть зоны (признак default из API) — раньше первой по порядку;
+// подсеть без DNS-серверов берётся, но с предупреждением: ВМ не разрешит
+// имена (документация, «Temporary failure in name resolution»).
+func TestResolveNetwork_SubnetDefaultAndDNSWarning(t *testing.T) {
+	empty := []any{}
+	cloud := &mockCloudAPI{
+		listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
+			return []*provision.AvailabilityZone{{ID: "z2", Name: "ru.AZ-2"}}, nil
+		},
+		listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
+			return []*provision.Subnet{
+				{ID: "sn-a", Name: "app", AvailabilityZoneID: "z2"},
+				{ID: "sn-main", Name: "main", AvailabilityZoneID: "z2", Default: true, DNSServers: &empty},
+			}, nil
+		},
+		listSecurityGroupsFn: func(context.Context, string) ([]*provision.SecurityGroup, error) {
+			return []*provision.SecurityGroup{{ID: "sg", Name: "SSH-access_ru.AZ-2", AvailabilityZoneID: "z2"}}, nil
+		},
+	}
+	eng, _ := newTestEngine(t, cloud, newMockDeployer())
+	var buf bytes.Buffer
+	eng.Printer = output.NewWithWriter(&buf, output.ModePlain, false)
+	n, err := eng.resolveNetwork(context.Background(), "p", "z2")
+	if err != nil || n.SubnetID != "sn-main" {
+		t.Fatalf("subnet = %q, %v; want the zone's main subnet", n.SubnetID, err)
+	}
+	if !strings.Contains(buf.String(), "DNS") {
+		t.Errorf("no DNS warning: %q", buf.String())
 	}
 }
 

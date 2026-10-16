@@ -24,7 +24,8 @@ type vmNetwork struct {
 	SecurityGroup   string
 }
 
-// resolveNetwork picks a subnet and a security group for the zone: by the
+// resolveNetwork picks a subnet (provision.PickSubnet: the zone's main
+// subnet, then a routed one) and a security group for the zone: by the
 // zone id the list returns nested (availability_zone.id), else by a name
 // that contains the zone name ("Default_ru.AZ-1", "SSH-access_ru.AZ-1"),
 // the same rule as the MCP vm_create path. A security group from another
@@ -45,8 +46,11 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 	if err != nil {
 		return n, fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
 	}
-	if sn := pickInZone(len(subnets), func(i int) (string, string) { return subnets[i].AvailabilityZoneID, subnets[i].Name }, zoneID, n.ZoneName); sn >= 0 {
+	if sn := provision.PickSubnet(subnets, zoneID, n.ZoneName); sn >= 0 {
 		n.SubnetID, n.SubnetName = subnets[sn].ID, subnets[sn].Name
+		if subnets[sn].NoDNS() {
+			e.Printer.Warning(subnetNoDNSWarning(subnets[sn].Name))
+		}
 	} else {
 		return n, clerrors.New(clerrors.CodeConfigInvalid,
 			i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(n.ZoneName, zoneID)),
@@ -113,26 +117,13 @@ func inZone(itemZoneID, name, zoneID, zoneName string) bool {
 	return (itemZoneID != "" && itemZoneID == zoneID) || (zoneName != "" && strings.Contains(name, zoneName))
 }
 
-// pickInZone returns the index of the item in the zone: by zone ID, then by
-// a name containing the zone name, then the only item if there is exactly
-// one. -1 when nothing fits.
-func pickInZone(count int, at func(int) (zoneID, name string), zoneID, zoneName string) int {
-	for i := 0; i < count; i++ {
-		if id, _ := at(i); id != "" && id == zoneID {
-			return i
-		}
-	}
-	if zoneName != "" {
-		for i := 0; i < count; i++ {
-			if _, name := at(i); strings.Contains(name, zoneName) {
-				return i
-			}
-		}
-	}
-	if count == 1 {
-		return 0
-	}
-	return -1
+// subnetNoDNSWarning: a subnet without DNS servers leaves the VM unable to
+// resolve names (docs, troubleshooting «Temporary failure in name
+// resolution»): apt, Docker and image pulls fail. A warning, not a refusal:
+// the user may resolve names otherwise.
+func subnetNoDNSWarning(name string) string {
+	return i18n.Tf("subnet %s has no DNS servers: the VM will not resolve names — Docker and images will not download. Add a DNS server to the subnet in the Cloud.ru console",
+		"в подсети %s не указаны DNS-серверы: ВМ не будет разрешать имена — Docker и образы не скачаются. Добавьте DNS-сервер в настройках подсети в консоли Cloud.ru", name)
 }
 
 func zoneText(name, id string) string {

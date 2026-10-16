@@ -73,13 +73,19 @@ func TestApply_CancelledAfterCreate_NamesTheVM(t *testing.T) {
 // and never take another zone's subnet when several exist.
 func TestPickSubnet_ByZoneName(t *testing.T) {
 	subnets := []*provision.Subnet{{ID: "sn-1", Name: "Default_ru.AZ-1"}, {ID: "sn-2", Name: "Default_ru.AZ-2"}}
-	if got := pickSubnet(subnets, "z2", "ru.AZ-2"); got != "sn-2" {
+	id := func(s *provision.Subnet) string {
+		if s == nil {
+			return ""
+		}
+		return s.ID
+	}
+	if got := id(pickSubnet(subnets, "z2", "ru.AZ-2")); got != "sn-2" {
 		t.Errorf("pickSubnet = %q, want sn-2", got)
 	}
-	if got := pickSubnet(subnets, "z3", "ru.AZ-3"); got != "" {
+	if got := id(pickSubnet(subnets, "z3", "ru.AZ-3")); got != "" {
 		t.Errorf("pickSubnet for a zone without a subnet = %q, want none", got)
 	}
-	if got := pickSubnet(subnets[:1], "z3", "ru.AZ-3"); got != "sn-1" {
+	if got := id(pickSubnet(subnets[:1], "z3", "ru.AZ-3")); got != "sn-1" {
 		t.Errorf("single subnet = %q, want sn-1", got)
 	}
 }

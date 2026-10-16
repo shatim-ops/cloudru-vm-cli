@@ -140,6 +140,22 @@ type Subnet struct {
 	AvailabilityZoneID string `json:"availability_zone_id"`
 	SubnetAddress      string `json:"subnet_address,omitempty"`
 	VPCID              string `json:"vpc_id,omitempty"`
+	// Default: the zone's main subnet (PublicSubnetListItemResponse.default).
+	Default bool `json:"default,omitempty"`
+	// RoutedNetwork: a routed subnet; a floating IP binds only to an
+	// interface in one (docs, «Публичные IP-адреса», ограничения).
+	RoutedNetwork bool `json:"routed_network,omitempty"`
+	// DNSServers is nil when the answer has no dns_servers field, empty
+	// when the subnet has none: then a VM resolves no names (docs,
+	// troubleshooting «Temporary failure in name resolution»).
+	DNSServers *[]any `json:"dns_servers,omitempty"`
+	State      string `json:"state,omitempty"` // created, error, creating…
+	Type       string `json:"type,omitempty"`  // regular, vpc, technical, zone_technical
+}
+
+// NoDNS reports a subnet the API lists with an empty dns_servers.
+func (s *Subnet) NoDNS() bool {
+	return s != nil && s.DNSServers != nil && len(*s.DNSServers) == 0
 }
 
 // UnmarshalJSON reads the zone from the documented nested

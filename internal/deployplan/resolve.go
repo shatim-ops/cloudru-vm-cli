@@ -124,9 +124,13 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if err != nil {
 		return nil, fmt.Errorf("list subnets: %w", err)
 	}
-	subnetID := pickSubnet(subnets, zone.ID, zone.Name)
-	if subnetID == "" {
+	subnet := pickSubnet(subnets, zone.ID, zone.Name)
+	if subnet == nil {
 		return nil, fmt.Errorf("no subnet found for project/zone %s — create a network+subnet in the Cloud.ru console first", zone.Name)
+	}
+	subnetID := subnet.ID
+	if subnet.NoDNS() {
+		warnings = append(warnings, fmt.Sprintf("subnet %s has no DNS servers: the VM will not resolve names — Docker and images will not download; add a DNS server to the subnet in the Cloud.ru console", subnet.Name))
 	}
 
 	// --- Security group (the default group of the zone, then the first by name) ---
@@ -388,26 +392,13 @@ func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostn
 	return filled.PasswordFields, static, login, keyName, nil, nil
 }
 
-// pickSubnet matches by zone ID, then by a name containing the zone name
-// (the API leaves availability_zone_id empty), then takes the only subnet.
-// A subnet of another zone does not boot the VM, so no blind "first one".
-func pickSubnet(subnets []*provision.Subnet, zoneID, zoneName string) string {
-	for _, s := range subnets {
-		if s.AvailabilityZoneID != "" && s.AvailabilityZoneID == zoneID {
-			return s.ID
-		}
+// pickSubnet is the subnet deploy takes (provision.PickSubnet: the zone's
+// main subnet, then a routed one, then the API order); nil when none fits.
+func pickSubnet(subnets []*provision.Subnet, zoneID, zoneName string) *provision.Subnet {
+	if i := provision.PickSubnet(subnets, zoneID, zoneName); i >= 0 {
+		return subnets[i]
 	}
-	if zoneName != "" {
-		for _, s := range subnets {
-			if strings.Contains(s.Name, zoneName) {
-				return s.ID
-			}
-		}
-	}
-	if len(subnets) == 1 {
-		return subnets[0].ID
-	}
-	return ""
+	return nil
 }
 
 // pickSecurityGroup is the zone's default group, else the first by name

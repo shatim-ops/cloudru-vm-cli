@@ -1669,28 +1669,26 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	if len(subnets) == 0 {
 		return errResult(fmt.Errorf("no subnets in project — cannot attach a network interface")), true
 	}
-	subnetID := subnets[0].ID
-	if zoneName != "" {
-		for _, sn := range subnets {
-			if strings.Contains(sn.Name, zoneName) {
-				subnetID = sn.ID
-				break
-			}
-		}
+	// The zone's main subnet, then a routed one (provision.PickSubnet, as
+	// deploy); the first of the project only when none is in the zone.
+	subnet := subnets[0]
+	if i := provision.PickSubnet(subnets, region, zoneName); i >= 0 {
+		subnet = subnets[i]
 	}
+	subnetID := subnet.ID
+	var netWarnings []string
 	if v := stringArg(args, "subnet_id"); v != "" {
 		subnetID = v
+	} else if subnet.NoDNS() {
+		netWarnings = append(netWarnings, "subnet "+subnet.Name+" has no DNS servers: the VM will not resolve names — Docker and images will not download; add a DNS server to the subnet in the Cloud.ru console")
 	}
+	// The zone's default group (provision.PickSecurityGroup, as deploy),
+	// else the first group of the project.
 	var sgIDs []string
 	if sgs, e := eng.Cloud.ListSecurityGroups(ctx, projectID); e == nil && len(sgs) > 0 {
 		chosen := sgs[0].ID
-		if zoneName != "" {
-			for _, g := range sgs {
-				if strings.Contains(g.Name, zoneName) {
-					chosen = g.ID
-					break
-				}
-			}
+		if i := provision.PickSecurityGroup(sgs, region, zoneName); i >= 0 {
+			chosen = sgs[i].ID
 		}
 		sgIDs = []string{chosen}
 	}
@@ -1895,6 +1893,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					"region":   region,
 					"disk_gb":  diskSize,
 					"message":  msg,
+				}
+				if len(netWarnings) > 0 {
+					res["warnings"] = netWarnings
 				}
 				if opened != nil {
 					res["ports"] = opened
