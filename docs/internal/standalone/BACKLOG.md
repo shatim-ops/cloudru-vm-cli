@@ -137,7 +137,7 @@
     - правила `open_ports` нигде не учитываются;
     - `deploy` подхватывает запись `provision`/`vm create` и ставит туда Docker;
     - ~~`destroy vm_id` на удалённую в консоли ВМ отвечает «no VM matching», запись остаётся~~ — **сделано (ревью r5 U12, #71)**: ВМ из state, которой нет в списке, проверяется `GET /vms/{id}`; на 404 запись чистится (FIP, правила портов), ответ `already_deleted`; другая ошибка GET — отказ «record is kept», не «no VM matching». Остаётся: `stack_destroy` — `destroy_failed` (это же R11);
-    - ~~нет сверки state с облаком~~ — **сделано для `status` (ревью r5 U12)**: `evo status` и MCP `status` делают один `GET /vms/{id}` (до 8 с) и показывают живое состояние, 404 — «не найдена (удалена вне evo) → evo destroy», ошибку — «не проверено: причина»; `--no-refresh` / `refresh: false` — без запроса; в `--json`/MCP — поля `cloud_checked`, `cloud_state`, `not_found_in_cloud`, `cloud_error`; state не меняется. `list` и `deploy` по-прежнему верят state.
+    - ~~нет сверки state с облаком~~ — **сделано для `status` (ревью r5 U12)**: `evo status` и MCP `status` делают один `GET /vms/{id}` (до 8 с) и показывают живое состояние, 404 — «не найдена (удалена вне evo) → evo destroy», ошибку — «не проверено: причина»; `--no-refresh` / `refresh: false` — без запроса; в `--json`/MCP — поля `cloud_checked`, `cloud_state`, `not_found_in_cloud`, `cloud_error` (фраза) и `cloud_reason` (код); state не меняется. `list` и `deploy` по-прежнему верят state.
   - **low:**
     - три схемы имени FIP при поиске «своего»;
     - разные статусы записи при ошибке и таймауте, их нет в списке `state/types.go`;

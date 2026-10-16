@@ -70,7 +70,7 @@ func (s *Registry) registerTools() {
 			Name: "status",
 			Description: "Show the current deployment status, including VM ID, public IP, flavor, region, health state and exposed ports, from the local state. " +
 				"Read-only. By default it also asks the cloud for the VM's live state (one GET, at most 8 s) and adds cloud_checked, cloud_state, " +
-				"not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record) and cloud_error (why the cloud was not checked; the local state is still returned).",
+				"not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record) and cloud_error with cloud_reason (why the cloud was not checked, as a phrase and an error code; the local state is still returned).",
 			InputSchema: objSchema(map[string]any{
 				"refresh": boolPropTrue("Ask the cloud for the VM's live state (default: true). false: local state only, no API call."),
 			}),

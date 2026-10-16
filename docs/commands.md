@@ -3747,7 +3747,8 @@ status всё равно показывает локальное состоян�
 проверено. state команда не меняет.
 
 --no-refresh — только локальный state, без запроса. С --json в ответе
-добавляются cloud_checked, cloud_state, not_found_in_cloud и cloud_error.
+добавляются cloud_checked, cloud_state, not_found_in_cloud, cloud_error и
+cloud_reason.
 ```
 
 ```

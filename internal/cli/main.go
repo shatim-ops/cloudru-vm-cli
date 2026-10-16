@@ -589,7 +589,7 @@ still shows the local state and says why the cloud was not checked. status
 never changes the state.
 
 --no-refresh: the local state only, no request. With --json the answer adds
-cloud_checked, cloud_state, not_found_in_cloud and cloud_error.`,
+cloud_checked, cloud_state, not_found_in_cloud, cloud_error and cloud_reason.`,
 			`Показать развёртывание этого каталога по локальному state и живое состояние
 ВМ — одним запросом к Cloud.ru (не дольше 8 с). ВМ, удалённая вне evo (в
 консоли), показывается как не найденная в облаке: 'evo destroy' уберёт её
@@ -598,7 +598,8 @@ status всё равно показывает локальное состоян�
 проверено. state команда не меняет.
 
 --no-refresh — только локальный state, без запроса. С --json в ответе
-добавляются cloud_checked, cloud_state, not_found_in_cloud и cloud_error.`),
+добавляются cloud_checked, cloud_state, not_found_in_cloud, cloud_error и
+cloud_reason.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {

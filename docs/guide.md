@@ -159,8 +159,8 @@ evo destroy         # удалить ВМ, освободить IP, закрыт
   спросить не удалось — нет ключа, сети, ошибка API, — `status` не падает:
   показывает state и пишет «не проверено: причина». `evo status --no-refresh`
   читает только state, без запроса. С `--json` к записи добавляются поля
-  `cloud_checked`, `cloud_state`, `not_found_in_cloud` и `cloud_error`.
-  `status` state не меняет.
+  `cloud_checked`, `cloud_state`, `not_found_in_cloud`, `cloud_error` и
+  `cloud_reason`. `status` state не меняет.
 - На ВМ попадает **только compose-файл**. Образы должны быть в реестре
   (`image:`); `build:`, файл `.env` и локальные файлы, примонтированные через
   `volumes:`, на ВМ не переносятся. Про `build:`, `env_file:`, такие

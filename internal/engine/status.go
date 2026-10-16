@@ -26,11 +26,13 @@ type CloudCheck struct {
 	// NotFound: Cloud.ru answered 404 — the VM was deleted outside evo;
 	// 'evo destroy' cleans up the record.
 	NotFound bool `json:"not_found_in_cloud,omitempty"`
-	// Error says why the cloud was not checked (no key, network, 5xx);
-	// empty when Checked or when the check was skipped.
+	// Error says why the cloud was not checked (no key, network, 5xx),
+	// as a phrase without the error code; empty when Checked or when the
+	// check was skipped.
 	Error string `json:"cloud_error,omitempty"`
-	// message is Error for people: the CLIError's message without its code.
-	message string
+	// Reason is the error code of Error (API_UNREACHABLE, AUTH_REQUIRED,
+	// …), as reason of a tool error (ревью r5 M5).
+	Reason string `json:"cloud_reason,omitempty"`
 }
 
 // DeploymentStatus is the status answer: the local record plus what the
@@ -46,10 +48,15 @@ type DeploymentStatus struct {
 // Read-only — the state file is not touched.
 func (e *Engine) CheckCloud(ctx context.Context, rec *state.DeploymentRecord) CloudCheck {
 	notChecked := func(err error) CloudCheck {
-		c := CloudCheck{Error: err.Error(), message: err.Error()}
+		c := CloudCheck{Error: err.Error(), Reason: clerrors.CodeAPIError}
 		var ce *clerrors.CLIError
-		if stderrors.As(err, &ce) && ce.Message != "" {
-			c.message = ce.Message
+		if stderrors.As(err, &ce) {
+			if ce.Message != "" {
+				c.Error = ce.Message
+			}
+			if clerrors.IsCode(ce.Code) {
+				c.Reason = ce.Code
+			}
 		}
 		return c
 	}
@@ -158,7 +165,7 @@ func cloudCell(c CloudCheck) string {
 	case c.Checked:
 		return c.State
 	default:
-		return i18n.T("not checked: ", "не проверено: ") + c.message
+		return i18n.T("not checked: ", "не проверено: ") + c.Error
 	}
 }
 

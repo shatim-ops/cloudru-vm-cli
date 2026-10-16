@@ -47,7 +47,7 @@ func TestStatusTool_Refresh(t *testing.T) {
 		}, 1,
 			func(m map[string]any) bool {
 				e, _ := m["cloud_error"].(string)
-				return m["cloud_checked"] == false && strings.Contains(e, "status 500")
+				return m["cloud_checked"] == false && m["cloud_reason"] == clerrors.CodeAPIError && strings.Contains(e, "status 500")
 			}},
 		{"refresh=false", map[string]any{"refresh": false}, func() (*provision.VM, error) { panic("no GET with refresh=false") }, 0,
 			func(m map[string]any) bool { return m["cloud_checked"] == false && m["cloud_error"] == nil }},

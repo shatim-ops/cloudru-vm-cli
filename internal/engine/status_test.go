@@ -179,7 +179,8 @@ func TestStatus_JSONCloudFields(t *testing.T) {
 		{"error", func(context.Context, string) (*provision.VM, error) {
 			return nil, clerrors.New(clerrors.CodeAPIUnreachable, "cannot reach Cloud.ru API", "")
 		}, StatusOptions{}, func(t *testing.T, got map[string]any) {
-			if got["cloud_checked"] != false || !strings.Contains(got["cloud_error"].(string), "API_UNREACHABLE") {
+			if got["cloud_checked"] != false || got["cloud_reason"] != clerrors.CodeAPIUnreachable ||
+				got["cloud_error"] != "cannot reach Cloud.ru API" {
 				t.Errorf("%v", got)
 			}
 		}},
