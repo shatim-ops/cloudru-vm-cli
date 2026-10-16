@@ -99,7 +99,11 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 	if !isNewDeploy && opts.DryRun {
 		// Updating an existing VM creates nothing billable, so it is not
-		// gated; --dry-run still must not touch it.
+		// gated; --dry-run still must not touch it. It stops before step 2,
+		// which prints the compose warnings: print them here.
+		for _, w := range project.Warnings {
+			e.Printer.Warning(w)
+		}
 		_, err := confirm.Ask(ctx, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing)), e.confirmOptions(false, true, false))
 		return err
 	}
