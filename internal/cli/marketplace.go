@@ -110,7 +110,7 @@ func deployCell(kind string, available, ready *bool, deploy *marketDeploy) strin
 	}
 	if kind == marketplace.KindAddon {
 		name, _ := deploy.Args["name"].(string)
-		return i18n.T("Cloud.ru console (versions: evo k8s addon-versions ", "консоль Cloud.ru (версии: evo k8s addon-versions ") + images.ShellQuote(name) + ")"
+		return "evo k8s add-addon " + i18n.T("<cluster-id>", "<id-кластера>") + " " + images.ShellQuote(name)
 	}
 	ref, _ := deploy.Args["image"].(string)
 	return "evo vm create " + i18n.T("<vm-name>", "<имя-вм>") + " --image " + images.ShellQuote(ref)

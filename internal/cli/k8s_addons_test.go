@@ -5,21 +5,31 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
-// Дерево k8s: addons и addon-versions на поддельном mk8s (формы каталога —
-// как у живого API, api-probe #5).
+// Дерево k8s: addons, addon-versions, add-addon на поддельном mk8s (формы
+// каталога — как у живого API, api-probe #5). Все UUID выдуманы.
 
-// addonAPI отвечает вместо mk8s.api.cloud.ru.
-type addonAPI struct{}
+const addonClusterID = "00000000-0000-0000-0000-0000000000e1"
 
-func (addonAPI) RoundTrip(r *http.Request) (*http.Response, error) {
+// addonAPI отвечает вместо mk8s.api.cloud.ru и запоминает тела POST.
+type addonAPI struct {
+	mu    sync.Mutex
+	posts []string
+}
+
+func (a *addonAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	w := httptest.NewRecorder()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	switch {
 	case r.URL.Host != "mk8s.api.cloud.ru" || r.URL.Query().Get("projectId") == "" && r.URL.Query().Get("project_id") == "":
 		http.Error(w, `{"message":"unexpected"}`, 400)
@@ -32,17 +42,28 @@ func (addonAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		_, _ = io.WriteString(w, `{"releases":[
 			{"addonVersion":"1.0.0","appVersion":"v1.13.0","addonNamespace":"cert-manager","mode":"SUPPORT_MODE_END_OF_SUPPORT","requirements":{"kubeVersions":">=1.25.0-0"}},
 			{"addonVersion":"1.1.0","appVersion":"v1.14.0","addonNamespace":"cert-manager","configurationSchema":"{\"type\":\"object\",\"properties\":{\"replicas\":{\"type\":\"integer\"}}}","mode":"SUPPORT_MODE_ACTIVE","requirements":{"kubeVersions":">=1.26.0-0","readyWorkers":1}}]}`)
+	case r.URL.Path == "/v3/clusters/"+addonClusterID:
+		_, _ = io.WriteString(w, `{"id":"`+addonClusterID+`","name":"k8s-dev","version":"v1.31.4"}`)
+	case r.URL.Path == "/v3/nodePools":
+		_, _ = io.WriteString(w, `{"nodePools":[{"scalePolicy":{"fixedScale":{"count":2}}}]}`)
+	case r.URL.Path == "/v3/clusterAddons" && r.Method == http.MethodGet:
+		http.Error(w, `{"message":"bad request"}`, 400)
+	case r.URL.Path == "/v3/clusterAddons" && r.Method == http.MethodPost:
+		b, _ := io.ReadAll(r.Body)
+		a.posts = append(a.posts, string(b))
+		_, _ = io.WriteString(w, `{"id":"op-7","resourceId":"ca-7","done":false}`)
 	default:
 		http.Error(w, `{"message":"not found"}`, 404)
 	}
 	return w.Result(), nil
 }
 
-func withAddonAPI(t *testing.T) {
+func withAddonAPI(t *testing.T) *addonAPI {
 	t.Helper()
 	t.Setenv("CLOUDRU_PROJECT_ID", pvProject)
+	api := &addonAPI{}
 	oldRT := http.DefaultTransport
-	http.DefaultTransport = addonAPI{}
+	http.DefaultTransport = api
 	old := toolEngine
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
 		e, err := buildEngine(o)
@@ -53,6 +74,7 @@ func withAddonAPI(t *testing.T) {
 		return e, nil
 	}
 	t.Cleanup(func() { toolEngine, http.DefaultTransport = old, oldRT })
+	return api
 }
 
 func TestK8sAddons_RussianTable(t *testing.T) {
@@ -67,7 +89,7 @@ func TestK8sAddons_RussianTable(t *testing.T) {
 		"ИМЯ           ОТОБРАЖАЕМОЕ ИМЯ  КАТЕГОРИИ       ПЛАТНЫЙ\n",
 		"cert-manager  Cert Manager      Безопасность    нет\n",
 		"gpu-operator  GPU Operator      AI, Мониторинг  да\n",
-		"Показаны 3 из 3. Версии: evo k8s addon-versions <имя>. Установка плагинов через evo пока недоступна: устанавливайте в консоли Cloud.ru.\n",
+		"Показаны 3 из 3. Версии: evo k8s addon-versions <имя>; установка: evo k8s add-addon <id-кластера> <имя>.\n",
 	})
 
 	out, _, _ = execCLI(t, "k8s", "addons", "tls")
@@ -97,7 +119,7 @@ func TestK8sAddons_JSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil || got.Total != 3 || len(got.Addons) != 1 {
 		t.Fatalf("%v: %s", err, out)
 	}
-	if _, ok := got.Addons[0]["deploy_with"]; ok || got.Addons[0]["name"] != "cert-manager" {
+	if dw := got.Addons[0]["deploy_with"].(map[string]any); dw["tool"] != "k8s_add_addon" {
 		t.Errorf("row: %v", got.Addons[0])
 	}
 }
@@ -115,7 +137,7 @@ func TestK8sAddonVersions_RussianTable(t *testing.T) {
 		"ВЕРСИЯ     ВЕРСИЯ ПЛАГИНА  ПОДДЕРЖКА              KUBERNETES  УЗЛОВ  NAMESPACE     СХЕМА НАСТРОЕК\n",
 		"v1.14.0 *  1.1.0           активная               >=1.26.0-0  1      cert-manager  62 Б\n",
 		"v1.13.0    1.0.0           поддержка завершается  >=1.25.0-0  —      cert-manager  —\n",
-		"* рекомендуемая версия (новейшая активная). Установка — пока в консоли Cloud.ru.\n",
+		"* версия, которую add-addon ставит без --version",
 	})
 	if strings.Contains(out, "Схема настроек v1.14.0") {
 		t.Errorf("schema without --full:\n%s", out)
@@ -132,16 +154,67 @@ func TestK8sAddonVersions_RussianTable(t *testing.T) {
 	assertHas(t, errOut, []string{`плагин "cert-manger" не найден`, "evo k8s addons <подстрока>", "Похожие: cert-manager."})
 }
 
-// Установки плагинов в v1.0 нет (BACKLOG [k8s-addons]): ни команды, ни
-// инструмента.
-func TestK8sAddAddon_Removed(t *testing.T) {
-	_, _, code := execCLI(t, "k8s", "add-addon", "00000000-0000-0000-0000-0000000000e1", "cert-manager")
-	if code == 0 {
-		t.Error("evo k8s add-addon exists")
+func TestK8sAddAddon_ConfirmationAndConfigFile(t *testing.T) {
+	russian(t)
+	api := withAddonAPI(t)
+
+	_, errOut, code := execCLI(t, "k8s", "add-addon", addonClusterID, "cert-manager")
+	if code != clerrors.ExitConfirmationRequired {
+		t.Fatalf("exit %d, want 3: %s", code, errOut)
 	}
-	out, _, _ := execCLI(t, "k8s", "--help")
-	if strings.Contains(out, "add-addon") {
-		t.Errorf("k8s --help names add-addon:\n%s", out)
+	t.Logf("\n%s", errOut)
+	assertHas(t, errOut, []string{
+		"Будет установлено: плагин cert-manager в кластер",
+		"имя кластера: k8s-dev",
+		"версия:     v1.14.0",
+		"пространство имён: cert-manager",
+		"нужен Kubernetes: >=1.26.0-0",
+		"Kubernetes кластера: v1.31.4",
+		"узлов в группах: 2",
+		"платный плагин: нет",
+		"не проверено: установлен ли плагин уже",
+	})
+	assertNoJargon(t, errOut)
+
+	if out, errOut, code := execCLI(t, "k8s", "add-addon", addonClusterID, "cert-manager", "--dry-run"); code != 0 || !strings.Contains(out+errOut, "версия:     v1.14.0") {
+		t.Errorf("--dry-run: exit %d %s%s", code, out, errOut)
+	}
+	if len(api.posts) != 0 {
+		t.Fatalf("installed without consent: %v", api.posts)
+	}
+
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(cfg, []byte(`{"replicas": 2}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := execCLI(t, "--yes", "k8s", "add-addon", addonClusterID, "cert-manager", "--version", "v1.13.0", "--config", cfg)
+	if code != 0 {
+		t.Fatalf("--yes: exit %d: %s", code, errOut)
+	}
+	if len(api.posts) != 1 || !strings.Contains(api.posts[0], `"addonConfiguration":"{\"replicas\":2}"`) || !strings.Contains(api.posts[0], `"appVersion":"v1.13.0"`) {
+		t.Errorf("posted: %v", api.posts)
+	}
+	assertHas(t, out, []string{"installing", "op-7"})
+
+	// "-" — настройки из stdin.
+	isolateHome(t)
+	if code, _, errOut := runCLI(t, `{"replicas": 3}`, "--yes", "k8s", "add-addon", addonClusterID, "cert-manager", "--config", "-"); code != 0 {
+		t.Fatalf("--config -: exit %d: %s", code, errOut)
+	}
+	if len(api.posts) != 2 || !strings.Contains(api.posts[1], `"addonConfiguration":"{\"replicas\":3}"`) {
+		t.Errorf("--config -: %v", api.posts)
+	}
+
+	bad := filepath.Join(dir, "bad.json")
+	_ = os.WriteFile(bad, []byte(`[1, 2]`), 0o600)
+	for _, f := range []string{bad, filepath.Join(dir, "missing.json")} {
+		if _, errOut, code := execCLI(t, "--yes", "k8s", "add-addon", addonClusterID, "cert-manager", "--config", f); code != clerrors.ExitGeneral || !strings.Contains(errOut, "--config") {
+			t.Errorf("--config %s: exit %d %s", f, code, errOut)
+		}
+	}
+	if len(api.posts) != 2 {
+		t.Errorf("a bad --config reached the API: %v", api.posts)
 	}
 }
 

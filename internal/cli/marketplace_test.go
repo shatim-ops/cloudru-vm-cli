@@ -57,7 +57,7 @@ func TestMarketplaceList_RussianTable(t *testing.T) {
 		"vm-os      alse-base-1-7-7       Astra Linux SE «Базовый» 1.7.7  evo vm create <имя-вм> --image alse-base-1-7-7\n",
 		"vm-os      Ubuntu-24.04          Ubuntu 24.04                    evo vm create <имя-вм> --image Ubuntu-24.04\n",
 		"vm-app     OpensearchDashboards  OpenSearch Dashboards           evo vm create <имя-вм> --image OpensearchDashboards\n",
-		"k8s-addon  cert-manager          Cert Manager                    консоль Cloud.ru (версии: evo k8s addon-versions cert-manager)\n",
+		"k8s-addon  cert-manager          Cert Manager                    evo k8s add-addon <id-кластера> cert-manager\n",
 		"Показаны 6 из 8: vm-os — 2, vm-app — 1, k8s-addon — 3.\n",
 		"Скрыты образы: недоступны проекту: 1; не готовы ни в одной зоне: 1; показать — --all.\n",
 		"Недоступные проекту образы есть в каталоге Cloud.ru",

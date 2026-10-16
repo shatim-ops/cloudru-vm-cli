@@ -74,7 +74,7 @@ evo destroy            # удалить ВМ и освободить IP
 | `vm`, `disk`, `vpc` | ВМ, диски, сети, подсети, группы безопасности, floating IP |
 | `image` | образы ВМ: ОС и продукты маркетплейса — поиск по имени, карточка с UUID |
 | `marketplace` | витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания каждого (только чтение) |
-| `k8s` | кластеры Managed Kubernetes, node pool'ы, каталог плагинов, kubeconfig, `kubectl`/`helm` |
+| `k8s` | кластеры Managed Kubernetes, node pool'ы, плагины (каталог, версии, установка), kubeconfig, `kubectl`/`helm` |
 | `pg` | кластеры PostgreSQL, базы, пользователи, бэкапы |
 | `s3` | бакеты и объекты Object Storage |
 | `secret` | Secret Manager |

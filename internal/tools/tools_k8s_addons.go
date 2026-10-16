@@ -5,25 +5,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/mk8s"
 )
 
-// Addons of Managed Kubernetes: k8s_addons (the catalogue) and
-// k8s_addon_versions (the releases of one addon), both read-only. evo does
-// not install addons in v1.0: the install tool was taken out until the
-// mk8s team explains why an accepted install brings up no pods
-// (docs/internal/standalone/BACKLOG.md [k8s-addons]).
+// Addons of Managed Kubernetes: k8s_addons (the catalogue), k8s_addon_versions
+// (the releases of one addon) and k8s_add_addon (install one into a
+// cluster). The catalogue is read-only and public; installing was
+// live-verified with cert-manager (docs/internal/standalone/BACKLOG.md
+// [k8s-addons]).
 
 // addonRow is one compact row of k8s_addons.
 type addonRow struct {
-	Name        string   `json:"name"`
-	DisplayName string   `json:"display_name,omitempty"`
-	Categories  []string `json:"categories"`
-	Billable    bool     `json:"billable"`
+	Name        string         `json:"name"`
+	DisplayName string         `json:"display_name,omitempty"`
+	Categories  []string       `json:"categories"`
+	Billable    bool           `json:"billable"`
+	DeployWith  map[string]any `json:"deploy_with"`
 }
 
 // handleK8sAddons searches the addon catalogue. Read-only.
@@ -61,6 +64,7 @@ func (s *Registry) handleK8sAddons(ctx context.Context, args map[string]any) (st
 		}
 		rows = append(rows, addonRow{
 			Name: a.Name, DisplayName: a.DisplayName, Categories: categories, Billable: a.IsBillable,
+			DeployWith: map[string]any{"tool": "k8s_add_addon", "args": map[string]any{"name": a.Name}},
 		})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
@@ -182,8 +186,405 @@ func (s *Registry) handleK8sAddonVersions(ctx context.Context, args map[string]a
 	}
 	if hasLatest {
 		out["latest"] = latest.AppVersion
+		out["deploy_with"] = map[string]any{"tool": "k8s_add_addon",
+			"args": map[string]any{"name": addon.Name, "version": latest.AppVersion}}
 	} else {
-		out["note"] = "No supported release (all END_OF_LIFE or INACTIVE)."
+		out["note"] = "No installable release (all END_OF_LIFE or INACTIVE)."
 	}
 	return toJSON(out), false
+}
+
+// addonConfig reads the config argument: a JSON object, or a string that
+// holds one. It returns the JSON text sent as addonConfiguration and the
+// top-level keys for the preview.
+func addonConfig(v any) (string, []string, error) {
+	var obj map[string]any
+	switch x := v.(type) {
+	case nil:
+		return "", nil, nil
+	case map[string]any:
+		obj = x
+	case string:
+		if strings.TrimSpace(x) == "" {
+			return "", nil, nil
+		}
+		if err := json.Unmarshal([]byte(x), &obj); err != nil || obj == nil {
+			return "", nil, fmt.Errorf("config must be a JSON object (or a string holding one): %v", firstErr(err, "not an object"))
+		}
+	default:
+		return "", nil, fmt.Errorf("config must be a JSON object (or a string holding one), got %T", v)
+	}
+	b, err := json.Marshal(obj)
+	if err != nil {
+		return "", nil, fmt.Errorf("config: %w", err)
+	}
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return string(b), keys, nil
+}
+
+func firstErr(err error, def string) string {
+	if err != nil {
+		return err.Error()
+	}
+	return def
+}
+
+// addonPlan is what k8s_add_addon is about to install and what it found
+// out about the cluster.
+type addonPlan struct {
+	addon       mk8s.Addon
+	release     mk8s.AddonRelease
+	requested   bool // the version was given, not picked
+	clusterName string
+	kubeVersion string // "" when the cluster answer has none
+	workersMin  int    // node pools' desired nodes (autoscale: min)
+	workersMax  int    // autoscale: max
+	workersRead bool
+	installed   *bool
+	notChecked  []string
+	warnings    []string
+	blockers    []string // requirements that certainly fail
+}
+
+// clusterKubeVersion finds the Kubernetes version in a cluster answer. The
+// live shape of GET /v3/clusters/{id} is not recorded, so the likely places
+// are tried; a value that is not a version is skipped.
+func clusterKubeVersion(m map[string]any) string {
+	keys := []string{"version", "kubernetesVersion", "kubeVersion", "currentVersion"}
+	pick := func(obj map[string]any) string {
+		for _, k := range keys {
+			// A string that is not a version compares below 0.0.0.
+			if s, ok := obj[k].(string); ok && mk8s.CompareVersions(s, "0.0.0") >= 0 {
+				return s
+			}
+		}
+		return ""
+	}
+	if v := pick(m); v != "" {
+		return v
+	}
+	for _, nest := range []string{"controlPlane", "controlPlaneConfiguration", "spec", "status"} {
+		if obj, ok := m[nest].(map[string]any); ok {
+			if v := pick(obj); v != "" {
+				return v
+			}
+		}
+	}
+	return ""
+}
+
+// numAny reads a count that protojson may write as a string.
+func numAny(v any) (int, bool) {
+	switch x := v.(type) {
+	case float64:
+		return int(x), true
+	case string:
+		if n, err := strconv.Atoi(x); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
+}
+
+// poolNodes is the node count a pool asks for: fixed, or autoscale min-max.
+func poolNodes(np map[string]any) (minN, maxN int, ok bool) {
+	sp, _ := np["scalePolicy"].(map[string]any)
+	if fs, isFixed := sp["fixedScale"].(map[string]any); isFixed {
+		n, ok := numAny(fs["count"])
+		return n, n, ok
+	}
+	if as, isAuto := sp["autoScale"].(map[string]any); isAuto {
+		lo, ok1 := numAny(as["minCount"])
+		hi, ok2 := numAny(as["maxCount"])
+		return lo, hi, ok1 && ok2
+	}
+	return 0, 0, false
+}
+
+// planAddon resolves the release and checks the cluster: only reads.
+func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version string) (*addonPlan, error) {
+	addon, err := findAddon(ctx, cli, name)
+	if err != nil {
+		return nil, err
+	}
+	rels, err := cli.GetAddonReleases(ctx, addon.Name)
+	if err != nil {
+		return nil, err
+	}
+	// Newest first: with several releases of one appVersion FindRelease
+	// takes the newest addonVersion, not whichever the API listed first.
+	mk8s.SortReleases(rels)
+	p := &addonPlan{addon: addon}
+	if version != "" {
+		rel, ok := mk8s.FindRelease(rels, version)
+		if !ok {
+			return nil, clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("addon %s has no version %q", "у плагина %s нет версии %q", addon.Name, version),
+				i18n.Tf("Versions: evo k8s addon-versions %s (MCP: k8s_addon_versions).", "Версии: evo k8s addon-versions %s (MCP: k8s_addon_versions).", addon.Name))
+		}
+		// POST /v3/clusterAddons takes appVersion only (openapi-v3,
+		// CreateClusterAddonRequest): the server picks the addonVersion. A
+		// release asked for by an addonVersion other than the one the
+		// server is expected to pick for its appVersion (the newest — an
+		// assumption) cannot be pinned.
+		if same := releasesOf(rels, rel.AppVersion); len(same) > 1 {
+			if rel.AddonVersion != same[0].AddonVersion {
+				return nil, clierrors.New(clierrors.CodeUsage,
+					i18n.Tf("addon version %s cannot be pinned: the API installs by app version (%s) and picks the addon version itself",
+						"версию плагина %s закрепить нельзя: API ставит по версии приложения (%s) и сам выбирает версию плагина", rel.AddonVersion, rel.AppVersion),
+					i18n.Tf("Give the app version: --version %s.", "Укажите версию приложения: --version %s.", rel.AppVersion))
+			}
+			p.warnings = append(p.warnings, fmt.Sprintf("app version %s has %d addon versions; the server picks one (expected %s)", rel.AppVersion, len(same), same[0].AddonVersion))
+		}
+		p.release, p.requested = rel, true
+		switch m := mk8s.NormalizeMode(rel.Mode); m {
+		case mk8s.ModeEndOfLife, mk8s.ModeInactive, mk8s.ModeEndOfSupport:
+			p.warnings = append(p.warnings, fmt.Sprintf("version %s is %s", rel.AppVersion, m))
+		}
+	} else {
+		rel, ok := mk8s.LatestRelease(rels)
+		if !ok {
+			return nil, clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("addon %s has no installable version", "у плагина %s нет версии для установки", addon.Name),
+				i18n.Tf("Versions: evo k8s addon-versions %s.", "Версии: evo k8s addon-versions %s.", addon.Name))
+		}
+		p.release = rel
+		if m := mk8s.NormalizeMode(rel.Mode); m != mk8s.ModeActive {
+			p.warnings = append(p.warnings, fmt.Sprintf("no ACTIVE release; picked %s (%s)", rel.AppVersion, firstNonEmptyStr(m, "no mode")))
+		}
+	}
+
+	// The cluster must exist: its error is the call's error.
+	cl, err := cli.GetCluster(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	p.clusterName, _ = cl["name"].(string)
+	p.kubeVersion = clusterKubeVersion(cl)
+	req := p.release.Requirements
+	if req.KubeVersions != "" {
+		ok, known := mk8s.CheckKubeVersion(req.KubeVersions, p.kubeVersion)
+		switch {
+		case !known:
+			p.notChecked = append(p.notChecked, "kube_version")
+		case !ok:
+			p.blockers = append(p.blockers, i18n.Tf("the cluster runs Kubernetes %s, %s %s needs %s",
+				"в кластере Kubernetes %s, а %s %s нужен %s", p.kubeVersion, addon.Name, p.release.AppVersion, req.KubeVersions))
+		}
+	}
+
+	// Ready workers: the node pools' desired counts are an upper bound of
+	// the ready nodes, so only a shortfall is certain.
+	if pools, err := cli.ListNodePools(ctx, clusterID); err == nil {
+		p.workersRead = true
+		for _, np := range pools {
+			if cid, ok := np["clusterId"].(string); ok && cid != "" && cid != clusterID {
+				continue
+			}
+			lo, hi, ok := poolNodes(np)
+			if !ok {
+				p.workersRead = false
+				continue
+			}
+			p.workersMin += lo
+			p.workersMax += hi
+		}
+	}
+	if need := int(req.ReadyWorkers); need > 0 {
+		switch {
+		case !p.workersRead:
+			p.notChecked = append(p.notChecked, "ready_workers")
+		case p.workersMax < need:
+			p.blockers = append(p.blockers, i18n.Tf("%s %s needs %d ready worker node(s), the cluster's node pools have %d",
+				"%s %s нужно готовых рабочих узлов: %d, а в группах узлов кластера их %d", addon.Name, p.release.AppVersion, need, p.workersMax))
+		case p.workersMin < need:
+			p.notChecked = append(p.notChecked, "ready_workers")
+		default:
+			p.warnings = append(p.warnings, fmt.Sprintf("node pools ask for %d node(s); whether %d are ready is not checked", p.workersMin, need))
+		}
+	}
+
+	// Already installed: informational, and the list call is not
+	// live-verified, so an error is "unknown".
+	if list, err := cli.ListClusterAddons(ctx, clusterID); err == nil {
+		inst := false
+		for _, ca := range list {
+			for _, k := range []string{"name", "addonName"} {
+				if n, _ := ca[k].(string); strings.EqualFold(n, addon.Name) {
+					inst = true
+				}
+			}
+		}
+		p.installed = &inst
+		if inst {
+			p.warnings = append(p.warnings, addon.Name+" is already installed in this cluster: the API may refuse, or resolve_mode decides what happens to it")
+		}
+	} else {
+		p.notChecked = append(p.notChecked, "installed")
+	}
+	return p, nil
+}
+
+// preview is the CreatePreview of the plan, in the lines of the other
+// k8s previews.
+func (p *addonPlan) preview(clusterID, resolveMode string, configKeys []string) engine.CreatePreview {
+	cp := engine.CreatePreview{Resource: engine.ResourceK8sAddon, Name: p.addon.Name}
+	r := p.release
+	cp.Add("cluster_id", clusterID)
+	cp.Add("cluster_name", p.clusterName)
+	cp.Add("version", r.AppVersion)
+	cp.Add("addon_version", r.AddonVersion)
+	if m := mk8s.NormalizeMode(r.Mode); m != mk8s.ModeActive {
+		cp.Add("support", m)
+	}
+	cp.Add("namespace", r.AddonNamespace)
+	cp.Add("requires_kube", r.Requirements.KubeVersions)
+	cp.Add("cluster_version", p.kubeVersion)
+	if n := int(r.Requirements.ReadyWorkers); n > 0 {
+		cp.Add("requires_workers", n)
+	}
+	if p.workersRead {
+		if p.workersMin == p.workersMax {
+			cp.Add("worker_nodes", p.workersMin)
+		} else {
+			cp.Add("worker_nodes", fmt.Sprintf("%d-%d", p.workersMin, p.workersMax))
+		}
+	}
+	if p.installed != nil {
+		cp.Add("installed", *p.installed)
+	}
+	cp.Add("billable", p.addon.IsBillable)
+	cp.Add("resolve_mode", resolveMode)
+	if len(configKeys) > 0 {
+		cp.Add("config_keys", strings.Join(configKeys, ","))
+	}
+	if len(p.notChecked) > 0 {
+		cp.Add("not_checked", p.notChecked)
+	}
+	cp.Price()
+	return cp
+}
+
+// handleK8sAddAddon installs an addon release into a cluster (gated).
+// Without confirmed it only reads: the catalogue, the cluster, its node
+// pools and addons, to show the version it picked and the requirements.
+func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (string, bool) {
+	clusterID := strings.TrimSpace(stringArg(args, "cluster_id"))
+	name := strings.TrimSpace(stringArg(args, "name"))
+	if clusterID == "" || name == "" {
+		return usageResult(fmt.Errorf("cluster_id and name are required")), true
+	}
+	config, configKeys, err := addonConfig(args["config"])
+	if err != nil {
+		return usageResult(err), true
+	}
+	// Always sent: the API requires it (default NONE).
+	resolveMode, err := mk8s.ResolveModeValue(stringArg(args, "resolve_mode"))
+	if err != nil {
+		return usageResult(err), true
+	}
+	cli, _, _, err := s.k8sClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	plan, err := planAddon(ctx, cli, clusterID, name, strings.TrimSpace(stringArg(args, "version")))
+	if err != nil {
+		return errResult(err), true
+	}
+	r := plan.release
+	if len(plan.blockers) > 0 {
+		return errResult(clierrors.New(clierrors.CodeUsage, strings.Join(plan.blockers, "; "),
+			i18n.Tf("Versions and their requirements: evo k8s addon-versions %s; worker nodes: evo k8s add-nodepool.",
+				"Версии и их требования: evo k8s addon-versions %s; рабочие узлы: evo k8s add-nodepool.", plan.addon.Name))), true
+	}
+	requirements := map[string]any{"kube_versions": r.Requirements.KubeVersions, "ready_workers": int(r.Requirements.ReadyWorkers)}
+	versionFrom := "latest"
+	if plan.requested {
+		versionFrom = "requested"
+	}
+
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		out := map[string]any{
+			"status": "confirmation_required",
+			"message": fmt.Sprintf("k8s_add_addon installs %s %s into cluster %s (%s). Show the preview to the user; call again with the same args + confirmed=true after approval.",
+				plan.addon.Name, r.AppVersion, clusterID, addonNamespaceText(r.AddonNamespace)),
+			"preview":      plan.preview(clusterID, resolveMode, configKeys),
+			"version_from": versionFrom,
+			"requirements": requirements,
+		}
+		if len(plan.notChecked) > 0 {
+			out["not_checked"] = plan.notChecked
+		}
+		if len(plan.warnings) > 0 {
+			out["warnings"] = plan.warnings
+		}
+		return toJSON(out), true
+	}
+
+	res, err := cli.CreateClusterAddon(ctx, mk8s.CreateClusterAddonReq{
+		ClusterID: clusterID, Name: plan.addon.Name, AppVersion: r.AppVersion,
+		AddonConfiguration: config, ResolveMode: resolveMode,
+	})
+	if err != nil {
+		return errResult(err), true
+	}
+	check := "get pods -A"
+	if r.AddonNamespace != "" {
+		check = "get pods -n " + r.AddonNamespace
+	}
+	out := map[string]any{
+		"status": "installing", "cluster_id": clusterID, "addon": plan.addon.Name,
+		"version": r.AppVersion, "requirements": requirements,
+		"note": "Installation is async. Next: check the addon's pods with k8s_kubectl args=\"" + check + "\" (CLI: evo k8s kubectl " + clusterID + " " + check + ") " +
+			"until they are Running and Ready=True; pods of a Job (e.g. cert-manager-startupapicheck) end Completed. " +
+			"Pods stuck in ImagePullBackOff may mean the cluster has no internet egress: Cloud.ru needs a public SNAT gateway in the nodes' zone (" + snatDocURL + ").",
+	}
+	if r.AddonNamespace != "" {
+		out["namespace"] = r.AddonNamespace
+	}
+	if res.OperationID != "" {
+		out["operation_id"] = res.OperationID
+	}
+	if res.ID != "" {
+		out["cluster_addon_id"] = res.ID
+	}
+	if res.Status != "" {
+		out["addon_status"] = res.Status
+	}
+	if len(plan.warnings) > 0 {
+		out["warnings"] = plan.warnings
+	}
+	return toJSON(out), false
+}
+
+// snatDocURL is the Cloud.ru page on Managed Kubernetes limitations: a
+// cluster and its pods reach the internet through a public SNAT gateway in
+// the nodes' zone.
+const snatDocURL = "https://cloud.ru/docs/kubernetes-evolution/ug/topics/overview__limitations"
+
+// addonNamespaceText names the namespace an addon installs into. The
+// release's addonNamespace is not reliable (the live API repeats the addon
+// version in it, see mk8s.GetAddonReleases): without a usable one it is
+// "the addon's default namespace", not a guess.
+func addonNamespaceText(ns string) string {
+	if ns == "" {
+		return "the addon's default namespace"
+	}
+	return "namespace " + ns
+}
+
+// releasesOf is the releases of one appVersion, in the order of rels
+// (newest addonVersion first after SortReleases).
+func releasesOf(rels []mk8s.AddonRelease, appVersion string) []mk8s.AddonRelease {
+	var out []mk8s.AddonRelease
+	for _, r := range rels {
+		if r.AppVersion == appVersion {
+			out = append(out, r)
+		}
+	}
+	return out
 }
