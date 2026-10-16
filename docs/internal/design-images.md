@@ -16,7 +16,8 @@
 > выбрать продукт. Как это будет реализовано через CLI?»
 
 Содержание: 1 резюме · 2 что исправлено против версии 1 · 3 что есть сейчас
-и что даёт API · 4 эталоны · 5 модель «продукт» · 6 сессии пользователя ·
+и что даёт API · 4 эталоны (4.3 — CLI против консоли) · 5 модель «продукт»
+(5.1 — сравнение позиций) · 6 сессии пользователя ·
 7 превью, доступ и `deploy` для продукта · 8 варианты · 9 изменения по
 слоям · 10 план и риски · 11 read-only проверки · 12 вопросы.
 
@@ -219,6 +220,30 @@ AWS EKS add-ons, GCP Marketplace CLI. Остальное — по памяти, 
 автоматически с ресурсом (GCP, YC). Cloud.ru сейчас ближе ко второму, но без
 признака лицензии в API.
 
+
+### 4.3 Что из этого есть именно в CLI, а что только в консоли
+
+Запрос соседней сессии и владельца: отделить CLI от консоли и пометить
+уверенность. «Проверено» — по официальной документации 16.10.2026.
+
+| Эталон | В CLI есть | Только консоль / не CLI | Уверенность |
+|---|---|---|---|
+| Azure `az vm image` | `list/show`, `terms show/accept/cancel` для платных образов Marketplace; `az vm create --image <URN\|алиас>` | карточка продукта, цена плана | проверено ([terms](https://learn.microsoft.com/en-us/cli/azure/vm/image/terms)) |
+| Azure AKS | `az aks enable-addons --addons …` (фиксированный список управляемых); `az k8s-extension create … --plan-name/--plan-product/--plan-publisher` для приложений Marketplace | витрина Marketplace как каталог | проверено ([k8s-extension](https://learn.microsoft.com/en-us/azure/aks/deploy-extensions-az-cli)) |
+| GCP | `gcloud compute images list`, `--image-family`; для части VM-продуктов Marketplace — Terraform-модуль «Deploy via CLI» | каталог Marketplace, Click-to-Deploy, принятие условий — консоль; `gcloud marketplace …` нет | проверено ([deploy-through-CLI](https://docs.cloud.google.com/marketplace/docs/deploy-through-CLI)) |
+| Yandex Cloud | `yc compute image list --folder-id standard-images`, `get-latest-from-family`; `yc managed-kubernetes marketplace helm-release install/list/get/uninstall/update` (алиас `mkt`) — продукты Marketplace для кластера | витрина Marketplace для ВМ (ID продукта — в карточке); верхнеуровневого `yc marketplace` в справочнике не видно | проверено для k8s ([mkt](https://yandex.cloud/en/docs/managed-kubernetes/cli-ref/marketplace/)); отсутствие `yc marketplace` — вероятно, полный список команд не просмотрен |
+| DigitalOcean | `doctl compute image list-distribution/list-application`, `doctl 1-click list --type droplet\|kubernetes`, `doctl compute droplet create --image <slug>`, `doctl kubernetes 1-click install <cluster> --1-clicks a,b` | описание и цена приложения | проверено ([1-click](https://docs.digitalocean.com/reference/doctl/reference/kubernetes/1-click/list/)) |
+| AWS | `aws ec2 describe-images`, SSM-алиасы AMI; `aws eks describe-addon-versions`, `aws eks create-addon` (аддоны Marketplace — с `ProductUrl`) | подписка на продукт Marketplace (есть и API `aws marketplace-*`, но подписка через CLI — не уверен) | EKS проверено ([AWS blog](https://aws.amazon.com/blogs/awsmarketplace/deploy-third-party-software-add-ons-aws-marketplace-amazon-eks-clusters/)); EC2 — по памяти |
+| Helm / Artifact Hub | `helm search hub <keyword>` (Artifact Hub или свой Monocular), затем `helm repo add` + `helm install` | карточка пакета, values в UI | проверено ([helm.sh](https://helm.sh/docs/helm/helm_search_hub)) |
+| Linode | `linode-cli images list`, `stackscripts list --label …`, `linodes create --image … --stackscript_id … --stackscript_data '{…}'` | карточка Marketplace App с описанием полей | проверено ([Akamai](https://techdocs.akamai.com/quick-deploy-apps/docs/get-started)) |
+
+Итог для evo: везде поиск и запуск по имени/слагу есть в CLI; каталог
+продуктов для ВМ и для кластера — **разные команды** у всех, кто имеет оба
+(Azure, AWS, DO, YC); единая витрина в CLI — только у DO, и только чтение;
+платность — либо отдельный шаг (Azure `terms`, AWS подписка), либо
+автоматически с ресурсом (GCP, YC); у GCP CLI-пути для Marketplace по сути нет.
+
+
 ## 5. Модель «продукт»
 
 **Решение (мнение):** существительные остаются по каталогам — `image`
@@ -262,6 +287,42 @@ S-работа после образов и плагинов, потому чт�
 непроверено). Эвристики по имени (`test`, `error`) не вводим: слишком легко
 спрятать чужой рабочий образ; `--all` показывает всё. Вопрос компании —
 почему тестовые образы видны всем клиентам.
+
+
+### 5.1 Сравнение позиций
+
+Владелец просит решение втроём: соседняя сессия (её позиция — комментарий в
+PR #65 от 16.10 08:07), Grok (на момент этой версии ответа в PR нет) и
+эта. По каждому расхождению — аргументы и рекомендация.
+
+| Вопрос | Соседняя сессия | Эта сессия | Grok | Рекомендация |
+|---|---|---|---|---|
+| Одна точка поиска поверх каталогов | да: `evo marketplace search astra` → продукт / тип / зоны / команда развёртывания | да, то же; вид (`vm-image` / `k8s-addon`), признак платности, команда | — | **согласие**; имя глагола — см. ниже |
+| Развёртывание | в своих деревьях: `vm create --image "<название>"`, `k8s addon install <кластер> <плагин>` | в своих деревьях: `vm create --image <имя\|UUID>`, `k8s add-addon <кластер> <плагин>` | — | **согласие** по сути |
+| Единый `marketplace install` | не делать: разные параметры, цена, удаление | не делать: плюс четвёртый путь ВМ и отсутствие признака вида в API | — | **согласие** |
+| Главный риск | нет контракта «что продукт сообщает после запуска» (URL, пароль, готовность) | тот же; плюс лицензия и цена, которых API не показывает | — | **согласие**; предложение по контракту — ниже |
+| Глагол поиска: `search` или `list` | `search` | `list <подстрока>`, как `image list astra` | — | **`list`**: в evo нет глагола `search`, списки везде `list` (`command-model.md` §7); витрина — это тоже список с фильтром. Если владелец хочет `search` как слово витрины — алиас не вводим, а переименовываем, но тогда и `image search`. Расхождение косметическое |
+| Форма команды плагина: `k8s addon install` или `k8s add-addon` | `k8s addon install` | `k8s add-addon` | — | **`add-addon`** в v1.1: деревья `trees.go` — группа → глагол, без третьего уровня (`treeGroup.Cmds` плоский, `cli/trees.go:26-45`); `add-nodepool` уже задаёт этот стиль. Вложенная группа `k8s addon <verb>` читается лучше, но требует изменения механизма деревьев — отдельное решение, не в этой функции |
+| `--image` принимает `display_name` («название») | да: `--image "<название>"` | да, после точного `name`; плюс подстрока с единственным совпадением | — | **согласие** по `display_name`; подстрочное авто-совпадение — вопрос владельцу (§12, п. 3): удобно для `--image alse-base`, но это выбор без подтверждения в платном действии (превью его называет) |
+| Порядок работ | не оговорён | образы → плагины → витрина; витрина без двух каталогов пуста | — | витрина последней |
+| Чего не хватает в позиции соседа (дополнения) | — | `--port` у `vm create` (иначе GitLab снаружи недоступен — `provision` портов не открывает); заполнение метаданных по `field_type` (`fqdn` у РЕД ОС 7.3); отказ `deploy` до создания ВМ на ОС без Docker; образ `Docker` как умолчание; цена из `price-calculation` с оговоркой про лицензию | — | включить в v1.1 |
+
+**Контракт «что продукт сообщает после запуска»** — расхождения нет, есть
+предложение, как его закрыть без нового API. В enum `field_type` при
+создании образа есть тип `info` (`api-contract.md:117`) — поле без ввода,
+только для показа. Если маркетплейс договорится с вендорами заполнять в
+образе два-три `info`-поля с фиксированными именами (например,
+`product_url_template` = `http://{{ip}}:8080`, `product_login_hint` =
+«пароль в /etc/gitlab/initial_root_password», `product_ready_hint` =
+«веб-интерфейс через ~3 мин»), evo покажет их после создания ВМ без
+единой строчки специального кода: `image get` и итог `vm create` уже
+печатают поля. Это вопрос к маркетплейсу (§12), а не к evo; до ответа —
+`description` образа и честное «см. документацию продукта».
+
+Когда Grok ответит в PR #65, колонка заполняется, и расхождения с ним
+разбираются тем же способом; документ — источник правды, комментарии PR —
+обсуждение.
+
 
 ## 6. Сессии пользователя
 
