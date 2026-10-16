@@ -358,3 +358,21 @@ func TestFillMetadata_RejectsBadValues(t *testing.T) {
 		t.Errorf("явный флаг: meta=%v err=%v", meta, err)
 	}
 }
+
+// Ревью Qwen на #75: у образа с двумя полями пароля оба получают один и тот
+// же пароль — человеку возвращается один, и он должен открывать ВМ.
+func TestFillMetadata_OnePasswordForAllPasswordFields(t *testing.T) {
+	fields := []provision.ImageMetadataField{
+		{Name: "name", FieldType: "linux_login", DefaultValue: "admin"},
+		{Name: "linux_password", FieldType: "linux_password", MandatoryGroup: "authentication"},
+		{Name: "root_password", FieldType: "linux_password", MandatoryGroup: "authentication"},
+	}
+	n := 0
+	meta, _, err := FillMetadata(fields, Inputs{GenPassword: func() string { n++; return fmt.Sprintf("pw-%d", n) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta["linux_password"] == "" || meta["linux_password"] != meta["root_password"] {
+		t.Fatalf("passwords differ or empty: %q vs %q", meta["linux_password"], meta["root_password"])
+	}
+}

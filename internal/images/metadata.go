@@ -186,6 +186,7 @@ func hasDefault(f provision.ImageMetadataField) bool {
 // values appear only in meta.
 func FillMetadata(fields []provision.ImageMetadataField, in Inputs) (map[string]string, Result, error) {
 	var res Result
+	var password string // generated once, shared by every password field
 	declared := make(map[string]bool, len(fields))
 	for _, f := range fields {
 		declared[f.Name] = true
@@ -251,9 +252,15 @@ func FillMetadata(fields []provision.ImageMetadataField, in Inputs) (map[string]
 		case kindPassword:
 			// Set even when the key already satisfies the group: without it
 			// the VM never leaves "creating" (seen live 2026-10-14).
+			// One password for every password field: the person gets one
+			// password back, and it must open the VM whichever field the
+			// image reads.
 			res.PasswordFields = append(res.PasswordFields, f.Name)
 			if in.GenPassword != nil {
-				meta[f.Name] = in.GenPassword()
+				if password == "" {
+					password = in.GenPassword()
+				}
+				meta[f.Name] = password
 			} else {
 				pending[f.Name] = true
 			}

@@ -109,11 +109,11 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 				meta["public_key"] = plan.PublicKey
 			}
 		default:
-			pw := generatePassword(16)
+			// One password for every password field (see images.FillMetadata).
 			if password == "" {
-				password = pw
+				password = generatePassword(16)
 			}
-			meta[f] = pw
+			meta[f] = password
 		}
 	}
 
