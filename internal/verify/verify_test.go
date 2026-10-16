@@ -37,8 +37,9 @@ func TestCheck_Healthy(t *testing.T) {
 	if r.Port != port {
 		t.Errorf("expected Port=%d, got %d", port, r.Port)
 	}
-	if r.Latency <= 0 {
-		t.Errorf("expected positive Latency, got %v", r.Latency)
+	// Zero is fine: on Windows the clock is coarser than a loopback probe.
+	if r.Latency < 0 {
+		t.Errorf("expected non-negative Latency, got %v", r.Latency)
 	}
 	if r.Error != "" {
 		t.Errorf("expected empty Error, got %q", r.Error)
