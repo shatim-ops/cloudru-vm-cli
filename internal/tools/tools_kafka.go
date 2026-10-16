@@ -80,6 +80,14 @@ func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown s
 		ref = eng.Config.Region
 	}
 	if ref != "" && looksUUID(ref) {
+		// A UUID as given; its name, when the list has it, to show.
+		if zones, err := eng.Cloud.ListAvailabilityZones(ctx); err == nil {
+			for _, z := range zones {
+				if z.ID == ref && z.Name != "" {
+					return ref, z.Name, nil
+				}
+			}
+		}
 		return ref, ref, nil
 	}
 	zones, err := eng.Cloud.ListAvailabilityZones(ctx)

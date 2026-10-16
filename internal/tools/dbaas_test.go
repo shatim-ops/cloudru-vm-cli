@@ -133,14 +133,15 @@ func TestDbaasList_PagesWithProjectAndProductType(t *testing.T) {
 // Без настроенного региона kafka_specs и redis_specs шли без
 // availability_zone_id, и API отвечал ошибкой (cloud-e2e readonly #23).
 // Теперь зона: аргумент zone (имя или UUID) → регион профиля → ru.AZ-2.
+// Зона по UUID показывается именем (ревью Fable, A8).
 func TestDbaasSpecs_ZoneResolution(t *testing.T) {
 	cases := []struct {
 		name, region, zone, wantZone, wantShown string
 	}{
 		{"default", "", "", zoneAZ2, "ru.AZ-2"},
-		{"region", zoneAZ1, "", zoneAZ1, zoneAZ1},
+		{"region", zoneAZ1, "", zoneAZ1, "ru.AZ-1"},
 		{"zone name", zoneAZ2, "ru.AZ-1", zoneAZ1, "ru.AZ-1"},
-		{"zone uuid", "", zoneAZ1, zoneAZ1, zoneAZ1},
+		{"zone uuid", "", zoneAZ1, zoneAZ1, "ru.AZ-1"},
 	}
 	for _, tool := range []string{"kafka_specs", "redis_specs"} {
 		for _, c := range cases {
@@ -213,8 +214,8 @@ func TestDbaasCreate_ZoneFromSubnet(t *testing.T) {
 
 		r = dbaasRegistry(t, &fakeDbaas{}, zoneAZ2)
 		m, text, isErr := callNamed(t, r, tool, map[string]any{"name": "c1", "cpu": 2, "ram": 4})
-		if !isErr || m["reason"] != "USAGE" {
-			t.Errorf("%s in a zone without a subnet: %s", tool, text)
+		if !isErr || m["reason"] != "USAGE" || !strings.Contains(text, "zone ru.AZ-2") || strings.Contains(text, zoneAZ2) {
+			t.Errorf("%s in a zone without a subnet (the zone by name, not UUID): %s", tool, text)
 		}
 	}
 }
