@@ -166,10 +166,12 @@ func (s *Subnet) UnmarshalJSON(b []byte) error {
 // The documented list response has no rules, only their counts: read them
 // with ListSecurityGroupRules.
 type SecurityGroup struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	AvailabilityZoneID string   `json:"availability_zone_id,omitempty"`
-	Rules              []SGRule `json:"rules,omitempty"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	AvailabilityZoneID string `json:"availability_zone_id,omitempty"`
+	// Default: the zone's default group (API field "default").
+	Default bool     `json:"default,omitempty"`
+	Rules   []SGRule `json:"rules,omitempty"`
 }
 
 // UnmarshalJSON reads the zone from the nested availability_zone{id}, as

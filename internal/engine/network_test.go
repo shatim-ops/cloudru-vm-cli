@@ -113,7 +113,17 @@ func TestResolveNetwork_SecurityGroupChoice(t *testing.T) {
 		wantErr          bool
 	}{
 		{"Default зоны, а не первая по порядку", "", groups, "sg-def", false},
-		{"без Default — первая по имени", "", []*provision.SecurityGroup{groups[2], groups[0]}, "sg-other", false},
+		// Группа зоны по умолчанию у Cloud.ru — SSH-access_<зона> (документация
+		// «Группы безопасности»), а не чужая группа, первая по алфавиту:
+		// 16.10.2026 deploy открывал порты в inspector-fileserver-sg.
+		{"SSH-access_<зона> — группа по умолчанию", "", []*provision.SecurityGroup{groups[2], groups[0]}, "sg-ssh", false},
+		// Признак default из API сильнее имён.
+		{"признак default из API", "", []*provision.SecurityGroup{
+			groups[0], groups[1], {ID: "sg-flag", Name: "web", AvailabilityZoneID: "z2", Default: true},
+		}, "sg-flag", false},
+		{"без группы по умолчанию — первая по имени", "", []*provision.SecurityGroup{
+			{ID: "sg-web", Name: "web", AvailabilityZoneID: "z2"}, groups[0],
+		}, "sg-other", false},
 		{"security_group по имени", "SSH-access_ru.AZ-2", groups, "sg-ssh", false},
 		{"security_group по UUID", "sg-other", groups, "sg-other", false},
 		{"security_group, которой нет", "nope", groups, "", true},

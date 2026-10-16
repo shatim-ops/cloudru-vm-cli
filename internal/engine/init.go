@@ -180,8 +180,8 @@ compose_file: docker-compose.yml
 timeout: 600
 
 # Группа безопасности (имя или UUID), в которой deploy откроет порты compose.
-# Без неё берётся группа Default зоны, иначе первая по имени — с предупреждением.
-# security_group: Default_ru.AZ-2
+# Без неё берётся группа зоны по умолчанию (SSH-access_<зона>), иначе первая по имени — с предупреждением.
+# security_group: SSH-access_ru.AZ-2
 
 # UUID проекта Cloud.ru (обязателен; console.cloud.ru или CLOUDRU_PROJECT_ID)
 %s
@@ -210,8 +210,8 @@ compose_file: docker-compose.yml
 timeout: 600
 
 # Security group (name or UUID) deploy opens the compose ports in. Without it:
-# the zone's Default group, else the first by name, with a warning.
-# security_group: Default_ru.AZ-2
+# the zone's default group (SSH-access_<zone>), else the first by name, with a warning.
+# security_group: SSH-access_ru.AZ-2
 
 # Cloud.ru project UUID (required; console.cloud.ru or CLOUDRU_PROJECT_ID)
 %s

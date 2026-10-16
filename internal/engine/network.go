@@ -69,8 +69,8 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 			if g.AvailabilityZoneID != "" && g.AvailabilityZoneID != zoneID {
 				return n, clerrors.New(clerrors.CodeConfigInvalid,
 					i18n.Tf("security group %q from security_group is not in zone %s", "группа безопасности %q из security_group не в зоне %s", want, zoneText(n.ZoneName, zoneID)),
-					i18n.T("Name a group of this zone in security_group, or remove the key: evo then takes the zone's Default group.",
-						"Укажите в security_group группу этой зоны или уберите ключ: тогда evo возьмёт группу Default зоны."))
+					i18n.T("Name a group of this zone in security_group, or remove the key: evo then takes the zone's default group (SSH-access_<zone>).",
+						"Укажите в security_group группу этой зоны или уберите ключ: тогда evo возьмёт группу зоны по умолчанию (SSH-access_<зона>)."))
 			}
 			n.SecurityGroupID, n.SecurityGroup = g.ID, g.Name
 			return n, nil
@@ -80,11 +80,11 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 			i18n.T("Check the name with 'evo tools call list_security_groups', or remove security_group from .evo.yaml.",
 				"Проверьте имя ('evo tools call list_security_groups') или уберите security_group из .evo.yaml."))
 	}
-	if g := pickGroup(sgs, zoneID, n.ZoneName); g >= 0 {
+	if g := provision.PickSecurityGroup(sgs, zoneID, n.ZoneName); g >= 0 {
 		n.SecurityGroupID, n.SecurityGroup = sgs[g].ID, sgs[g].Name
-		if others := zoneGroups(sgs, zoneID, n.ZoneName); len(others) > 1 && !isDefaultGroup(sgs[g].Name, n.ZoneName) {
-			e.Printer.Warning(i18n.Tf("several security groups in zone %s (%s), none is Default: took %s; deploy opens the compose ports in it. Set security_group in .evo.yaml to choose",
-				"в зоне %s несколько групп безопасности (%s), группы Default нет: взята %s, в ней deploy откроет порты compose. Выбрать другую — security_group в .evo.yaml",
+		if others := zoneGroups(sgs, zoneID, n.ZoneName); len(others) > 1 && !provision.IsDefaultGroup(sgs[g], n.ZoneName) {
+			e.Printer.Warning(i18n.Tf("several security groups in zone %s (%s), none is the zone's default group: took %s; deploy opens the compose ports in it. Set security_group in .evo.yaml to choose",
+				"в зоне %s несколько групп безопасности (%s), группы по умолчанию среди них нет: взята %s, в ней deploy откроет порты compose. Выбрать другую — security_group в .evo.yaml",
 				zoneText(n.ZoneName, zoneID), strings.Join(others, ", "), sgs[g].Name))
 		}
 	} else {
@@ -94,32 +94,6 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 				"Создайте в консоли Cloud.ru группу безопасности, в имени которой есть имя зоны (например, 'web_ru.AZ-1')."))
 	}
 	return n, nil
-}
-
-// pickGroup picks the security group for a new VM among the zone's groups:
-// the zone's default group ("Default_ru.AZ-2", "default") first, then the
-// only one, then the first by name (case-insensitive). The API order is not a choice: it put
-// port 80 for 0.0.0.0/0 into another service's group (QA r4 Q3), and a
-// re-deploy after a reordering would take a different group.
-func pickGroup(sgs []*provision.SecurityGroup, zoneID, zoneName string) int {
-	best := -1
-	for i, g := range sgs {
-		if !inZone(g.AvailabilityZoneID, g.Name, zoneID, zoneName) {
-			continue
-		}
-		switch {
-		case best < 0:
-			best = i
-		case isDefaultGroup(g.Name, zoneName) && !isDefaultGroup(sgs[best].Name, zoneName):
-			best = i
-		case isDefaultGroup(g.Name, zoneName) == isDefaultGroup(sgs[best].Name, zoneName) && strings.ToLower(g.Name) < strings.ToLower(sgs[best].Name):
-			best = i
-		}
-	}
-	if best < 0 && len(sgs) == 1 {
-		return 0
-	}
-	return best
 }
 
 // zoneGroups lists the names of the zone's groups, for the warning.
@@ -137,21 +111,6 @@ func zoneGroups(sgs []*provision.SecurityGroup, zoneID, zoneName string) []strin
 // inZone: the zone by ID, else by a name containing the zone name.
 func inZone(itemZoneID, name, zoneID, zoneName string) bool {
 	return (itemZoneID != "" && itemZoneID == zoneID) || (zoneName != "" && strings.Contains(name, zoneName))
-}
-
-// isDefaultGroup reports a zone's default group: "Default_ru.AZ-2" (the
-// console's name for it) or "default". Not any "default…" prefix:
-// "DefaultWeb" or "default-ssh" are someone's groups. Without the zone name
-// any "default_<zone>" counts.
-func isDefaultGroup(name, zoneName string) bool {
-	n, z := strings.ToLower(name), strings.ToLower(zoneName)
-	if n == "default" {
-		return true
-	}
-	if z == "" {
-		return strings.HasPrefix(n, "default_")
-	}
-	return n == "default_"+z
 }
 
 // pickInZone returns the index of the item in the zone: by zone ID, then by

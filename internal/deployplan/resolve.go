@@ -129,10 +129,10 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		return nil, fmt.Errorf("no subnet found for project/zone %s — create a network+subnet in the Cloud.ru console first", zone.Name)
 	}
 
-	// --- Security group (zone-name-matched, then default, then first) ---
+	// --- Security group (the default group of the zone, then the first by name) ---
 	sgID := ""
 	if sgs, e := cloud.ListSecurityGroups(ctx, projectID); e == nil {
-		sgID = pickSecurityGroup(sgs, zone.Name)
+		sgID = pickSecurityGroup(sgs, zone.ID, zone.Name)
 	}
 	if sgID == "" {
 		warnings = append(warnings, "no security group resolved — VM will use the project default")
@@ -410,21 +410,11 @@ func pickSubnet(subnets []*provision.Subnet, zoneID, zoneName string) string {
 	return ""
 }
 
-func pickSecurityGroup(sgs []*provision.SecurityGroup, zoneName string) string {
-	if zoneName != "" {
-		for _, sg := range sgs {
-			if strings.Contains(sg.Name, zoneName) {
-				return sg.ID
-			}
-		}
-	}
-	for _, sg := range sgs {
-		if strings.EqualFold(sg.Name, "default") {
-			return sg.ID
-		}
-	}
-	if len(sgs) > 0 {
-		return sgs[0].ID
+// pickSecurityGroup is the zone's default group, else the first by name
+// (provision.PickSecurityGroup, as deploy picks it).
+func pickSecurityGroup(sgs []*provision.SecurityGroup, zoneID, zoneName string) string {
+	if i := provision.PickSecurityGroup(sgs, zoneID, zoneName); i >= 0 {
+		return sgs[i].ID
 	}
 	return ""
 }
