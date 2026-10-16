@@ -225,6 +225,12 @@ func TestK8sAddAddon_PreviewOnlyReads(t *testing.T) {
 	if len(f.posts) != 0 {
 		t.Fatalf("preview posted: %v", f.posts)
 	}
+	// До подтверждения — только чтения (ревью Fable на #82).
+	for _, req := range f.reqs {
+		if !strings.HasPrefix(req, "GET ") {
+			t.Errorf("preview sent %s", req)
+		}
+	}
 	b, _ := json.Marshal(m["preview"])
 	var p engine.CreatePreview
 	if err := json.Unmarshal(b, &p); err != nil {
@@ -354,6 +360,9 @@ func TestK8sAddAddon_BadArguments(t *testing.T) {
 		base("config", "[1,2]"),
 		base("config", []any{"a"}),
 		base("resolve_mode", "merge"),
+		// PRESERVE есть в enum спецификации, но к добавлению неприменим.
+		base("resolve_mode", "PRESERVE"),
+		base("resolve_mode", "RESOLVE_CONFLICTS_MODE_PRESERVE"),
 	} {
 		m, text, isErr := callNamed(t, r, "k8s_add_addon", args)
 		if !isErr || m["reason"] != clierrors.CodeUsage {

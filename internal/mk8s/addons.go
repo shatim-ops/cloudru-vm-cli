@@ -224,11 +224,18 @@ func (c *Client) CreateClusterAddon(ctx context.Context, req CreateClusterAddonR
 		Done       *bool           `json:"done"`
 		Status     string          `json:"status"`
 		Error      json.RawMessage `json:"error"`
+		ClusterID  string          `json:"clusterId"`
+		AppVersion string          `json:"appVersion"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
 		return nil, err
 	}
-	if r.Done != nil || r.ResourceID != "" {
+	// The spec answers an Operation: with done or resourceId (the live
+	// answer, 16.10.2026), and also bare — protojson leaves out done:false
+	// and resourceId may be empty until the operation ends, so {"id":"op-1"}
+	// is an operation too. Only an answer without these and with the fields
+	// of a ClusterAddon (status, clusterId, appVersion) is the addon itself.
+	if r.Done != nil || r.ResourceID != "" || (r.Status == "" && r.ClusterID == "" && r.AppVersion == "") {
 		res := &ClusterAddonResult{OperationID: r.ID, ID: r.ResourceID, Done: r.Done != nil && *r.Done}
 		if len(r.Error) > 0 && string(r.Error) != "null" {
 			return res, fmt.Errorf("mk8s operation %s failed: %s", r.ID, r.Error)

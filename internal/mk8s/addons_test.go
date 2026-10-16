@@ -183,6 +183,15 @@ func TestCreateClusterAddon(t *testing.T) {
 		t.Errorf("no projectId: %s", rec.last().URL.RawQuery)
 	}
 
+	// Операция без done и resourceId (protojson опускает done:false) —
+	// всё равно операция, а не плагин (ревью Fable на #82).
+	answer = `{"id":"op-2"}`
+	res, err = cli.CreateClusterAddon(context.Background(), req)
+	if err != nil || res.OperationID != "op-2" || res.ID != "" {
+		t.Errorf("bare operation answer: %+v, %v", res, err)
+	}
+	rec.body = rec.body[:1]
+
 	answer = `{"id":"ca-2","status":"CLUSTER_ADDON_STATUS_INSTALLING"}`
 	res, err = cli.CreateClusterAddon(context.Background(), CreateClusterAddonReq{ClusterID: fakeCluster, Name: "x", AppVersion: "1"})
 	if err != nil || res.ID != "ca-2" || res.OperationID != "" || res.Status != "CLUSTER_ADDON_STATUS_INSTALLING" {

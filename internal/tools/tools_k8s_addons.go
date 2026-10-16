@@ -532,6 +532,10 @@ func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (
 		AddonConfiguration: config, ResolveMode: resolveMode,
 	})
 	if err != nil {
+		// A failed operation still names itself: the agent can look it up.
+		if res != nil && res.OperationID != "" {
+			return errAnswer(err, map[string]any{"operation_id": res.OperationID}), true
+		}
 		return errResult(err), true
 	}
 	check := "get pods -A"
