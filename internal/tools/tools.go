@@ -67,9 +67,13 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
-			Name:        "status",
-			Description: "Show the current deployment status, including VM ID, public IP, flavor, region, health state and exposed ports. Reads local state; no API call.",
-			InputSchema: objSchema(nil),
+			Name: "status",
+			Description: "Show the current deployment status, including VM ID, public IP, flavor, region, health state and exposed ports, from the local state. " +
+				"Read-only. By default it also asks the cloud for the VM's live state (one GET, at most 8 s) and adds cloud_checked, cloud_state, " +
+				"not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record) and cloud_error with cloud_reason (why the cloud was not checked, as a phrase and an error code; the local state is still returned).",
+			InputSchema: objSchema(map[string]any{
+				"refresh": boolPropTrue("Ask the cloud for the VM's live state (default: true). false: local state only, no API call."),
+			}),
 		},
 		{
 			Name:        "list",
@@ -104,7 +108,7 @@ func (s *Registry) registerTools() {
 				"vm_id":      strProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
 				"name":       strProp("Delete a specific VM by name (alternative to vm_id). Requires confirmed=true."),
 				"confirmed":  confirmedProp(),
-				"release_ip": boolProp("Also release the VM's floating IP (default: true)."),
+				"release_ip": boolPropTrue("Also release the VM's floating IP (default: true)."),
 			}),
 		},
 		{
@@ -284,7 +288,7 @@ func (s *Registry) registerTools() {
 				"zone":              strProp("Availability zone name, e.g. ru.AZ-2 (default from productConfiguration)."),
 				"subnet_id":         strProp("Subnet UUID for the control-plane private VIP (default: auto zone-matched)."),
 				"cluster_sa_id":     strProp("Cluster service-account UUID (default: the agent's own service account)."),
-				"kube_api_internet": boolProp("Publish kube-apiserver to the internet (default true)."),
+				"kube_api_internet": boolPropTrue("Publish kube-apiserver to the internet (default true)."),
 			}),
 		},
 		{
@@ -296,7 +300,7 @@ func (s *Registry) registerTools() {
 				"cpu": intProp("Control-plane vCPUs."), "ram_gb": intProp("Control-plane RAM GB."),
 				"master_count": intProp("1, 3 or 5."), "zone": strProp("Zone name."),
 				"subnet_id": strProp("Control-plane VIP subnet UUID."), "cluster_sa_id": strProp("Cluster service-account UUID."),
-				"kube_api_internet": boolProp("Publish kube-apiserver to internet."),
+				"kube_api_internet": boolPropTrue("Publish kube-apiserver to the internet (default true)."),
 				"confirmed":         confirmedProp(),
 			}),
 		},
@@ -306,7 +310,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id":  strProp("Cluster UUID."),
 				"network":     strProp("NETWORK_TYPE_PUBLIC or NETWORK_TYPE_PRIVATE (default: cluster default)."),
-				"embed_token": boolProp("Embed a static bearer token so kubectl works without the cloudlogin plugin (default true)."),
+				"embed_token": boolPropTrue("Embed a static bearer token so kubectl works without the cloudlogin plugin (default true)."),
 			}, "cluster_id"),
 		},
 		{
@@ -462,7 +466,7 @@ func (s *Registry) registerTools() {
 				"cpu":           strProp("CPU request, e.g. '0.1', '1' (default 0.1)."),
 				"memory":        strProp("Memory request, e.g. '256Mi', '1Gi' (default 256Mi)."),
 				"port":          intProp("Container port the app listens on (default 8080)."),
-				"public":        boolProp("Expose a public URL (default true)."),
+				"public":        boolPropTrue("Expose a public URL (default true)."),
 				"min_instances": intProp("Minimum instances (default 0 = scale to zero)."),
 				"max_instances": intProp("Maximum instances (default 1)."),
 				"env":           map[string]any{"type": "object", "description": "Environment variables as a name→value object.", "additionalProperties": map[string]any{"type": "string"}},
@@ -818,7 +822,7 @@ func (s *Registry) registerTools() {
 				"port":            intProp("Listener port the balancer accepts traffic on. Required."),
 				"target_port":     intProp("Port on the targets to forward to. Default = port."),
 				"hc_port":         intProp("Health-check port. Default = target_port."),
-				"external":        boolProp("Allocate a public IP (default true). Set false for an internal-only balancer."),
+				"external":        boolPropTrue("Allocate a public IP (default true). Set false for an internal-only balancer."),
 				"vpc_id":          strProp("VPC UUID. Optional; default = the target group's VPC."),
 				"subnet_id":       strProp("Subnet UUID for the balancer's AZ. Optional; default = first project subnet."),
 				"confirmed":       confirmedProp(),
@@ -1006,10 +1010,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_delete",
-			Description: "Delete a secret by path AND all its versions. Set force=true to delete one that is in use. Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a secret by path AND all its versions. force defaults to true (a secret with active versions is deleted too); force=false lets the API refuse such a secret. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
-				"force":     boolProp("Delete even if the secret is in use by other resources."),
+				"force":     boolPropTrue("Delete the secret even if it has active versions (default true)."),
 				"confirmed": confirmedProp(),
 			}, "path"),
 		},
@@ -1776,12 +1780,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		// lost answer): then it is billed and holds the FIP — record it.
 		if found := provision.FindCreatedVM(eng.Cloud, projectID, vmName, createStart); found != nil {
 			serr := saveState(found.ID, "creating", "")
-			return toJSON(map[string]any{
-				"status": "error",
-				"vm_id":  found.ID,
-				"error": fmt.Sprintf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
-					"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
-			}), true
+			return errAnswer(fmt.Errorf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
+				"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
+				map[string]any{"vm_id": found.ID}), true
 		}
 		eng.ReleaseBootFIP(bootFIP, projectID)
 		return errResult(fmt.Errorf("create VM: %w", err)), true
@@ -1796,12 +1797,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// answer names it, and the state has it.
 	interrupted := func(publicIP string) (string, bool) {
 		serr := saveState(vm.ID, "creating", publicIP)
-		return toJSON(map[string]any{
-			"status": "error",
-			"vm_id":  vm.ID,
-			"error": fmt.Sprintf("VM %s was created, but provision was interrupted (%v); it is still running and recorded in the state — "+
-				"check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, ctx.Err(), vm.ID, notInState(vm.ID, serr)),
-		}), true
+		return errAnswer(fmt.Errorf("VM %s was created, but provision was interrupted (%v); it is still running and recorded in the state — "+
+			"check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, ctx.Err(), vm.ID, notInState(vm.ID, serr)),
+			map[string]any{"vm_id": vm.ID}), true
 	}
 
 	// Poll until active: 10 minutes, as the CLI deploy (a new VM took ~5 in
@@ -1823,11 +1821,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		case <-deadline:
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
-			return toJSON(map[string]any{
-				"status":  "timeout",
-				"vm_id":   vm.ID,
-				"message": fmt.Sprintf("VM %s created but did not become active within %s; it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
-			}), true
+			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
+				map[string]any{"status": "timeout", "vm_id": vm.ID}), true
 		case <-ticker.C:
 			updated, err := eng.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
@@ -1863,12 +1858,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					}
 				}
 				if serr := saveState(vm.ID, "running", publicIP); serr != nil {
-					return toJSON(map[string]any{
-						"status": "error",
-						"vm_id":  vm.ID,
-						"vm_ip":  publicIP,
-						"error":  fmt.Sprintf("VM %s is active at %s and billed.%s", vm.ID, publicIP, notInState(vm.ID, serr)),
-					}), true
+					return errAnswer(fmt.Errorf("VM %s is active at %s and billed.%s", vm.ID, publicIP, notInState(vm.ID, serr)),
+						map[string]any{"vm_id": vm.ID, "vm_ip": publicIP}), true
 				}
 
 				msg := fmt.Sprintf("VM %s is active at %s. SSH: ssh %s@%s", vm.ID, publicIP, sshUser, publicIP)
@@ -1916,13 +1907,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				if fipID != "" {
 					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; destroy releases it.", ip)
 				}
-				return toJSON(map[string]any{
-					"status":         "error",
-					"vm_id":          vm.ID,
-					"floating_ip_id": fipID,
-					"error": fmt.Sprintf("VM %s entered state %s. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
-						vm.ID, updated.Status, vm.ID, fipNote, notInState(vm.ID, serr)),
-				}), true
+				return errAnswer(fmt.Errorf("VM %s entered state %s. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
+					vm.ID, updated.Status, vm.ID, fipNote, notInState(vm.ID, serr)),
+					map[string]any{"vm_id": vm.ID, "floating_ip_id": fipID}), true
 			}
 		case <-ctx.Done():
 			return interrupted("")
@@ -1943,7 +1930,11 @@ func (s *Registry) handleStatus(ctx context.Context, args map[string]any) (strin
 	if active == nil {
 		return toJSON(map[string]any{"status": "none", "message": "No active deployment."}), false
 	}
-	return toJSON(active), false
+	var check engine.CloudCheck
+	if boolArg(args, "refresh", true) {
+		check = eng.CheckCloud(ctx, active)
+	}
+	return toJSON(engine.DeploymentStatus{DeploymentRecord: *active, CloudCheck: check}), false
 }
 
 func (s *Registry) handleList(ctx context.Context, args map[string]any) (string, bool) {
@@ -2045,8 +2036,13 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		if vmID != "" && recordedVM(statePath, vmID) {
 			_, gerr := eng.Cloud.GetVM(ctx, vmID)
 			var ce *clierrors.CLIError
-			if stderrors.As(gerr, &ce) && ce.Code == clierrors.CodeVMNotFound {
+			switch {
+			case stderrors.As(gerr, &ce) && ce.Code == clierrors.CodeVMNotFound:
 				target, alreadyGone = &provision.VM{ID: vmID}, true
+			case gerr != nil:
+				// Not "no VM matching": the cloud did not say the VM is gone.
+				return errResult(fmt.Errorf("VM %s is not in this project's VM list, and asking for it by ID failed (%w); "+
+					"nothing was deleted and its local record is kept — call destroy again", vmID, gerr)), true
 			}
 		}
 		if target == nil {
@@ -2291,6 +2287,14 @@ func boolProp(desc string) map[string]any {
 	return map[string]any{"type": "boolean", "description": desc}
 }
 
+// boolPropTrue is a boolean argument whose handler treats an absent value
+// as true. The schema says so with "default": true, so the CLI flag of the
+// command trees defaults to true too (TestBoolDefaultsTrue keeps the two in
+// step).
+func boolPropTrue(desc string) map[string]any {
+	return map[string]any{"type": "boolean", "description": desc, "default": true}
+}
+
 func stringArg(args map[string]any, key string) string {
 	if v, ok := args[key].(string); ok {
 		return v
@@ -2461,28 +2465,61 @@ func toJSON(v any) string {
 }
 
 // usageResult is errResult for a call the tool refuses before touching the
-// cloud: a missing or malformed argument. The USAGE prefix lets the CLI exit
+// cloud: a missing or malformed argument. The USAGE reason lets the CLI exit
 // with 1 (bad input) instead of 5 (API error), and tells an agent the call
 // itself is wrong, not the cloud.
 func usageResult(err error) string {
-	return errResult(fmt.Errorf("%s: %w", clierrors.CodeUsage, err))
+	return errResult(clierrors.Wrap(clierrors.CodeUsage, err.Error(), "", err))
 }
 
-// errResult formats an error as a JSON tool result. A CLIError in the chain
-// adds its code as "reason" and its hint as "hint": the CLI keeps the exit
-// code and the hint of the error (evo vm list fails like evo whoami), an
-// agent learns what to do next.
-func errResult(err error) string {
-	res := map[string]any{"status": "error", "error": err.Error()}
+// errResult formats an error as a JSON tool result (see errAnswer).
+func errResult(err error) string { return errAnswer(err, nil) }
+
+// errAnswer is the error answer of a tool: fields (vm_id, output, …) plus
+// "status": "error" (unless fields set another status), "reason", "error"
+// and, when one is known, "hint". Every error answer has a reason, a code
+// from internal/errors:
+//   - the code of the CLIError in the chain (its hint goes to "hint");
+//   - else the "CODE: " prefix of the message ("USAGE: …");
+//   - else NOT_FOUND when the answer says something was not found, and
+//     API_ERROR otherwise.
+//
+// "error" is the message without the leading "CODE: ": the code is in
+// "reason". Context added before the code stays as it is ("create VM:
+// API_ERROR: …"), as in the CLI's own messages. This is the rule the CLI
+// applies to a tool's answer (toolError in internal/cli), so the CLI keeps
+// the exit code, the message and the hint, and an agent learns what to do
+// next.
+func errAnswer(err error, fields map[string]any) string {
+	res := make(map[string]any, len(fields)+4)
+	for k, v := range fields {
+		res[k] = v
+	}
+	if _, ok := res["status"]; !ok {
+		res["status"] = "error"
+	}
+	msg := err.Error()
+	reason := ""
 	var ce *clierrors.CLIError
 	if stderrors.As(err, &ce) {
-		if ce.Code != "" {
-			res["reason"] = ce.Code
+		if clierrors.IsCode(ce.Code) {
+			reason = ce.Code
 		}
 		if ce.Hint != "" {
 			res["hint"] = ce.Hint
 		}
 	}
+	if code, rest, ok := strings.Cut(msg, ": "); ok && clierrors.IsCode(code) && (reason == "" || reason == code) {
+		reason, msg = code, rest
+	}
+	res["error"] = msg
+	if reason == "" {
+		reason = clierrors.CodeAPIError
+		if strings.Contains(strings.ToLower(toJSON(res)), "not found") {
+			reason = clierrors.CodeNotFound
+		}
+	}
+	res["reason"] = reason
 	return toJSON(res)
 }
 

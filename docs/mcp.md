@@ -62,10 +62,30 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 стоит различать исход по полю `status`, а не по `isError`. Без исключений:
 `s3_bucket_create` тоже ждёт `confirmed=true`.
 
-Ошибка инструмента — `{"status":"error","error":"…"}` с `isError: true`.
-Если у ошибки есть символьный код из [таблицы](exit-codes.md), он приходит
-в поле `reason` (`API_UNREACHABLE`, `AUTH_FAILED`), подсказка — в `hint`;
-у ошибок без кода этих полей нет.
+## Ошибки
+
+Ошибка инструмента — `{"status":"error","reason":"…","error":"…","hint":"…"}`
+с `isError: true`, например
+`{"status":"error","reason":"USAGE","error":"vm_get requires vm_id or name"}`:
+
+- `reason` есть всегда — символьный код из [таблицы](exit-codes.md):
+  `USAGE` (инструмент отверг аргументы, в облако ничего не ушло),
+  `NOT_FOUND`, `AUTH_FAILED`, `API_UNREACHABLE`, `API_ERROR` и т. д. Ошибка
+  без своего кода получает `NOT_FOUND`, если в ответе сказано «not found»,
+  иначе `API_ERROR` — так же её понимает CLI (`evo tools call`, код выхода).
+- `error` — только фраза, без префикса `КОД: `. Код остаётся внутри текста
+  лишь после добавленного контекста (`create VM: API_ERROR: …`), как в
+  сообщениях CLI. Решайте по `reason`, а не по тексту.
+- `hint` — что сделать дальше, когда это известно; иначе поля нет.
+
+У части ошибок есть свои поля: `vm_id` у `provision`, когда ВМ уже создана
+(её надо удалить); `output` и `stage` у `k8s_kubectl`, `k8s_apply`,
+`k8s_helm`. `provision`, не дождавшийся ВМ, отвечает `"status":"timeout"`
+с теми же `reason` и `error`. Отказ политики HTTP (`secret_value`,
+`cert_private_key`, `k8s_kubeconfig` с токеном, путь вне рабочего каталога)
+— `USAGE`; нет `kubectl`/`helm` на сервере — `CONFIG_INVALID` с подсказкой;
+сервер занят — `API_RATE_LIMITED`. Ответ `confirmation_required` — не
+ошибка, поля `reason` у него нет.
 
 ## Цена
 
@@ -142,6 +162,26 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 сам POST создания ещё в пути, облако могло успеть создать ресурс, не
 вернув id: у `deploy_apply` и шагов стека с поиском по имени повтор его
 найдёт, у `provision` проверьте `vm_list`.
+
+## Состояние развёртывания
+
+`status` читает запись развёртывания из `.evo/state.json` и по умолчанию
+спрашивает облако о её ВМ: один `GET /vms/{id}`, не дольше 8 с вместе с
+получением токена. К записи добавляются поля:
+
+- `cloud_checked` — облако ответило (ВМ есть или 404);
+- `cloud_state` — живое состояние ВМ (`running`, `stopped`, …);
+- `not_found_in_cloud: true` — ВМ удалили вне evo (в консоли); запись
+  уберёт `destroy` (без аргументов или с `vm_id`): освободит её floating IP
+  и закроет правила портов; с `vm_id` ответ — `status: "already_deleted"`;
+- `cloud_error` — почему облако не проверено (нет ключа, сеть, ошибка API),
+  фразой без кода; `cloud_reason` — код этой ошибки (`API_UNREACHABLE`,
+  `AUTH_REQUIRED`, …), как `reason` у ошибки инструмента; запись всё равно
+  возвращается, вызов не считается ошибкой.
+
+`refresh: false` — только state, без запроса (`cloud_checked: false`).
+Инструмент только читает: state он не меняет. `list` по-прежнему читает
+только state.
 
 ## Только нужные группы инструментов
 

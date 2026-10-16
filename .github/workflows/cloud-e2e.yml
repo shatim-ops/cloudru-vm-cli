@@ -32,7 +32,7 @@ on:
         type: boolean
         default: false
       k8s_smoke:
-        description: "Also run Managed Kubernetes live (billable, ~40 min): cluster → one-node pool → delete (no addon: evo does not install addons in v1.0)"
+        description: "Also run Managed Kubernetes live (billable, ~60 min): cluster → one-node pool → evo k8s kubectl → cert-manager install with the evo of be6f908 (add-addon is not in v1.0) and its pods → delete"
         type: boolean
         default: false
       cleanup_only:
@@ -672,6 +672,78 @@ jobs:
             [ $(( $(date +%s) - start )) -lt 1800 ] || { echo "::error::пул не готов за 30 мин"; exit 1; }
             sleep 60
           done
+
+      # kubectl пишет stdout и stderr вместе (CombinedOutput): строки
+      # «Warning:» перед JSON отрезаются, разбирается JSON с первой «{».
+      - name: evo k8s kubectl вживую (узлы)
+        run: |
+          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g"; }
+          kubectl version --client=true 2>/dev/null | head -1 || { echo "::error::нет kubectl на раннере"; exit 1; }
+          evo --json k8s kubectl "$CLUSTER_ID" get nodes -o json 2>"$RUNNER_TEMP/kerr" > "$RUNNER_TEMP/nodes.json" ||
+            { echo "::error::kubectl: $(tail -c 300 "$RUNNER_TEMP/kerr" | tr '\n' ' ' | redact)"; exit 1; }
+          jq -r .output "$RUNNER_TEMP/nodes.json" | sed -n '/^{/,$p' |
+            jq -e '{nodes: (.items | length), ready: ([.items[] | select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))] | length)} | ., (.nodes > 0)' ||
+            { echo "::error::kubectl get nodes -o json не разобран"; exit 1; }
+          # Человеческий вывод — как у kubectl, без таблицы ПОЛЕ/ЗНАЧЕНИЕ.
+          rows=$(evo k8s kubectl "$CLUSTER_ID" get nodes --no-headers | grep -c .)
+          echo "evo k8s kubectl get nodes: строк $rows"
+          [ "$rows" -ge 1 ] || { echo "::error::evo k8s kubectl без --json не вывел узлы"; exit 1; }
+
+      # Установка плагина убрана из v1.0 (вариант B): её реализация — в
+      # be6f908, бинарь собирается оттуда только для этой проверки. Поды
+      # смотрит текущий evo: Ready=True у подов без владельца Job (поды Job,
+      # например cert-manager-startupapicheck, не учитываются).
+      - name: add-addon cert-manager (бинарь из be6f908) и его поды (до 25 мин)
+        env:
+          ADDON_REV: be6f908bc64f1c39ae23277c967f848fc44ba279
+        run: |
+          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g"; }
+          git fetch --no-tags --depth=1 origin "$ADDON_REV"
+          git worktree add --detach "$RUNNER_TEMP/addon-src" "$ADDON_REV"
+          (cd "$RUNNER_TEMP/addon-src" && go build -o "$RUNNER_TEMP/evo-addon" ./cmd/evo)
+          "$RUNNER_TEMP/evo-addon" --json --yes k8s add-addon "$CLUSTER_ID" "$ADDON" > "$RUNNER_TEMP/addon.json" || {
+            jq -c '{status, error, reason}' "$RUNNER_TEMP/addon.json" 2>/dev/null | redact; echo "::error::add-addon"; exit 1; }
+          jq -c '{status, version, namespace, operation: (.operation_id != null), cluster_addon: (.cluster_addon_id != null), addon_status, warnings}' "$RUNNER_TEMP/addon.json" | redact
+          start=$(date +%s)
+          while :; do
+            min=$(( ($(date +%s) - start) / 60 ))
+            if evo --json k8s kubectl "$CLUSTER_ID" get pods -A -o json 2>"$RUNNER_TEMP/kerr" > "$RUNNER_TEMP/pods.json" &&
+               jq -r .output "$RUNNER_TEMP/pods.json" | sed -n '/^{/,$p' > "$RUNNER_TEMP/pods.items.json" &&
+               jq -e .items "$RUNNER_TEMP/pods.items.json" >/dev/null 2>&1; then
+              total=$(jq '.items | length' "$RUNNER_TEMP/pods.items.json")
+              # waiting — причины ожидания контейнеров (ImagePullBackOff:
+              # у кластера по умолчанию нет выхода в интернет, нужен SNAT-шлюз
+              # в зоне узлов — документация mk8s, «Ограничения»).
+              pods=$(jq -c --arg a "$ADDON" '[.items[] | select(.metadata.name | startswith($a))
+                | select(all(.metadata.ownerReferences[]?; .kind != "Job"))
+                | {ns: .metadata.namespace, name: .metadata.name, phase: .status.phase,
+                   ready: any(.status.conditions[]?; .type == "Ready" and .status == "True"),
+                   waiting: ([(.status.initContainerStatuses[]?, .status.containerStatuses[]?) | .state.waiting.reason // empty] | unique)}]' "$RUNNER_TEMP/pods.items.json")
+              pull=$(jq '[.items[] | select(any((.status.initContainerStatuses[]?, .status.containerStatuses[]?); (.state.waiting.reason // "") | test("ImagePull|ErrImage")))] | length' "$RUNNER_TEMP/pods.items.json")
+              echo "$min мин: подов в кластере $total, не тянут образ: $pull, $ADDON: $pods"
+            else
+              pods='[]'
+              echo "$min мин: kubectl: $(tail -c 300 "$RUNNER_TEMP/kerr" | tr '\n' ' ' | redact)"
+            fi
+            if [ "$(jq 'length > 0 and all(.ready)' <<<"$pods")" = true ]; then echo "поды $ADDON готовы"; break; fi
+            # Все поды плагина 8 мин не могут скачать образ — ждать дальше
+            # нет смысла: кластеру, вероятно, нужен SNAT-шлюз.
+            if [ "$(jq 'length > 0 and all(.waiting | any(test("ImagePull|ErrImage")))' <<<"$pods")" = true ]; then
+              pullsince=${pullsince:-$(date +%s)}
+              [ $(( $(date +%s) - pullsince )) -lt 480 ] || { fail="поды $ADDON 8 мин не могут скачать образ (ImagePullBackOff): у кластера нет выхода в интернет — нужен SNAT-шлюз в зоне узлов"; break; }
+            else
+              unset pullsince
+            fi
+            [ $(( $(date +%s) - start )) -lt 1500 ] || { fail="поды $ADDON не готовы за 25 мин"; break; }
+            sleep 30
+          done
+          if [ -n "${fail:-}" ]; then
+            echo "События в cert-manager и у подов $ADDON (последние):"
+            evo --json k8s kubectl "$CLUSTER_ID" get events -A --sort-by=.lastTimestamp 2>/dev/null | jq -r '.output // empty' |
+              grep -Ei "$ADDON|pull|image" | tail -15 | cut -c1-240 | redact || true
+            echo "::error::$fail"
+            exit 1
+          fi
 
       - name: Удаление кластера (всегда)
         if: always()

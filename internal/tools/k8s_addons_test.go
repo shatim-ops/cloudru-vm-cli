@@ -172,7 +172,7 @@ func TestK8sAddonVersions(t *testing.T) {
 	if !isErr || m["reason"] != clierrors.CodeNotFound || !strings.Contains(hint, "evo k8s addons") || !strings.Contains(hint, "cert-manager") {
 		t.Errorf("unknown addon: %v", m)
 	}
-	if m, _, isErr := callNamed(t, r, "k8s_addon_versions", nil); !isErr || !strings.HasPrefix(m["error"].(string), clierrors.CodeUsage) {
+	if m, _, isErr := callNamed(t, r, "k8s_addon_versions", nil); !isErr || m["reason"] != clierrors.CodeUsage {
 		t.Errorf("no name: %v", m)
 	}
 }

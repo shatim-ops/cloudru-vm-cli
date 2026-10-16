@@ -101,7 +101,7 @@ func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (s
 	}
 	out, err := kubetools.Kubectl(ctx, kc, "", 90*time.Second, fields...)
 	if err != nil {
-		return toJSON(map[string]any{"status": "error", "output": out, "error": err.Error()}), true
+		return errAnswer(err, map[string]any{"output": out}), true
 	}
 	return toJSON(map[string]any{"status": "ok", "output": out}), false
 }
@@ -134,7 +134,7 @@ func (s *Registry) handleK8sApply(ctx context.Context, args map[string]any) (str
 	}
 	out, err := kubetools.Kubectl(ctx, kc, manifest, 120*time.Second, kargs...)
 	if err != nil {
-		return toJSON(map[string]any{"status": "error", "output": out, "error": err.Error()}), true
+		return errAnswer(err, map[string]any{"output": out}), true
 	}
 	return toJSON(map[string]any{"status": "applied", "output": out}), false
 }
@@ -180,10 +180,10 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 			repoName = chart[:i]
 		}
 		if out, e := kubetools.Helm(ctx, kc, 60*time.Second, "repo", "add", repoName, repoURL, "--force-update"); e != nil {
-			return toJSON(map[string]any{"status": "error", "stage": "repo add", "output": out, "error": e.Error()}), true
+			return errAnswer(e, map[string]any{"stage": "repo add", "output": out}), true
 		}
 		if out, e := kubetools.Helm(ctx, kc, 90*time.Second, "repo", "update"); e != nil {
-			return toJSON(map[string]any{"status": "error", "stage": "repo update", "output": out, "error": e.Error()}), true
+			return errAnswer(e, map[string]any{"stage": "repo update", "output": out}), true
 		}
 	}
 
@@ -251,7 +251,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	}
 	out, err := kubetools.Helm(ctx, kc, timeout, hargs...)
 	if err != nil {
-		return toJSON(map[string]any{"status": "error", "output": out, "error": err.Error()}), true
+		return errAnswer(err, map[string]any{"output": out}), true
 	}
 	return toJSON(map[string]any{"status": "ok", "action": action, "output": out}), false
 }

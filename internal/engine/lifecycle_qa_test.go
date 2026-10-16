@@ -52,8 +52,8 @@ func TestProvisionVM_InterruptedDeleteFailed_KeepsTheVM(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, _ = e.provisionVM(ctx, DeployOptions{Yes: true}, &state.File{Version: 1}, state.DefaultPath(dir),
-		&compose.Project{Hash: "h"}, "flavor", "az")
+	_, _ = e.provisionVM(ctx, DeployOptions{Flavor: "flavor", Yes: true}, &state.File{Version: 1}, state.DefaultPath(dir),
+		&compose.Project{Hash: "h"}, "az")
 	assertVMRecorded(t, e)
 }
 
@@ -71,8 +71,8 @@ func TestProvisionVM_StateWriteFailsAfterCreate_NamesTheVM(t *testing.T) {
 		Printer:  output.NewWithWriters(&bytes.Buffer{}, &bytes.Buffer{}, output.ModePlain, false),
 		StateDir: dir,
 	}
-	rec, err := e.provisionVM(context.Background(), DeployOptions{Yes: true}, &state.File{Version: 1},
-		filepath.Join(blocker, "state.json"), &compose.Project{Hash: "h"}, "flavor", "az")
+	rec, err := e.provisionVM(context.Background(), DeployOptions{Flavor: "flavor", Yes: true}, &state.File{Version: 1},
+		filepath.Join(blocker, "state.json"), &compose.Project{Hash: "h"}, "az")
 	if err == nil {
 		t.Fatal("state write into a file path succeeded")
 	}

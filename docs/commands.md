@@ -701,10 +701,9 @@ evo disk [flags]
 ```text
 Подключить диск к ВМ (диск и ВМ должны быть в одной зоне).
 
-Вызывает инструмент disk_attach (подробнее: 'evo tools describe disk_attach').
-Описание инструмента и его флагов — на английском, как в MCP:
+Подключить существующий диск к ВМ (--vm — имя или UUID ВМ). Диск и ВМ должны быть в одной зоне; зону и id диска показывает 'evo disk list'. Подключённый диск — новое блочное устройство: разметьте, отформатируйте и смонтируйте его на ВМ.
 
-Attach an existing disk to a VM (POST /disks/{id}/attach). Disk and VM must be in the same zone. Mutation: requires confirmed=true.
+Вызывает инструмент disk_attach (подробнее: 'evo tools describe disk_attach').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -717,7 +716,7 @@ evo disk attach <disk-id> [flags]
 
 ```
   -h, --help        Справка по attach
-      --vm string   VM name or UUID.
+      --vm string   ВМ: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -746,10 +745,9 @@ evo disk attach <disk-id> [flags]
 ```text
 Создать диск (с --attach-to — в зоне ВМ и сразу подключить).
 
-Вызывает инструмент disk_create (подробнее: 'evo tools describe disk_create').
-Описание инструмента и его флагов — на английском, как в MCP:
+Создать диск. С --attach-to <ВМ> диск создаётся в зоне этой ВМ и сразу к ней подключается: диск и ВМ должны быть в одной зоне. Подключённый диск — новое блочное устройство, файловая система ВМ от него не растёт: разметьте, отформатируйте и смонтируйте его на ВМ. Увеличить существующий диск — 'evo disk resize'. Диск платный.
 
-Create a block-storage disk. Pass attach_to=<VM name/uuid> to create it in that VM's zone and (with confirmed) attach it in one step — disks must be in the SAME zone as the VM. NB: attaching adds a NEW block device; it does NOT grow the VM's existing filesystem (you then partition/format/mount it on the VM). Resizing the boot disk in place is NOT available via this API (console-only). Mutation (billable): requires confirmed=true.
+Вызывает инструмент disk_create (подробнее: 'evo tools describe disk_create').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -761,11 +759,11 @@ evo disk create <name> [flags]
 ### Options
 
 ```
-      --attach-to string   VM name or UUID to create-in-zone and auto-attach to (e.g. 'vm-712c44').
-      --disk-type string   Disk type name (e.g. from list_disk_types) or UUID. Default: an SSD type.
+      --attach-to string   ВМ (имя или UUID): диск создаётся в её зоне и сразу к ней подключается
+      --disk-type string   Тип диска: имя или UUID (список: evo disk types). По умолчанию — SSD
   -h, --help               Справка по create
-      --size-gb int        Disk size in GB (required).
-      --zone string        Availability zone name or UUID (alternative to attach_to; default: configured region).
+      --size-gb int        Размер диска, ГБ (обязательный)
+      --zone string        Зона доступности: имя или UUID, вместо --attach-to (по умолчанию — зона из --region или профиля)
 ```
 
 ### Options inherited from parent commands
@@ -794,10 +792,9 @@ evo disk create <name> [flags]
 ```text
 Удалить диск и все данные на нём (безвозвратно).
 
-Вызывает инструмент disk_delete (подробнее: 'evo tools describe disk_delete').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить диск и все данные на нём безвозвратно. Подключённый диск сначала отключите: 'evo disk detach'.
 
-Permanently delete a disk and all its data (irreversible). Detach it first if attached. Mutation: requires confirmed=true.
+Вызывает инструмент disk_delete (подробнее: 'evo tools describe disk_delete').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -838,10 +835,9 @@ evo disk delete <disk-id> [flags]
 ```text
 Отключить диск от ВМ.
 
-Вызывает инструмент disk_detach (подробнее: 'evo tools describe disk_detach').
-Описание инструмента и его флагов — на английском, как в MCP:
+Отключить диск от ВМ (--vm — ВМ, к которой он подключён). Загрузочный или используемый диск не отключайте: сначала отмонтируйте файловую систему на ВМ.
 
-Detach a disk from a VM (POST /disks/{id}/detach). Do NOT detach a bootable/in-use disk carelessly. Mutation: requires confirmed=true.
+Вызывает инструмент disk_detach (подробнее: 'evo tools describe disk_detach').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -854,7 +850,7 @@ evo disk detach <disk-id> [flags]
 
 ```
   -h, --help        Справка по detach
-      --vm string   VM name or UUID the disk is attached to.
+      --vm string   ВМ, к которой подключён диск: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -883,10 +879,9 @@ evo disk detach <disk-id> [flags]
 ```text
 Диски: id, имя, размер, состояние, тип, зона, к каким ВМ подключены.
 
-Вызывает инструмент disk_list (подробнее: 'evo tools describe disk_list').
-Описание инструмента и его флагов — на английском, как в MCP:
+Диски проекта: id, имя, размер (ГБ), состояние, тип, зона и ВМ, к которым диск подключён. Только чтение.
 
-List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs). Read-only.
+Вызывает инструмент disk_list (подробнее: 'evo tools describe disk_list').
 ```
 
 ```
@@ -932,10 +927,9 @@ evo disk list [flags]
 ```text
 Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ).
 
-Вызывает инструмент disk_resize (подробнее: 'evo tools describe disk_resize').
-Описание инструмента и его флагов — на английском, как в MCP:
+Увеличить диск на месте, до 65536 ГБ. Только рост: уменьшение и диски бесплатного уровня облако отклоняет (бесплатный загрузочный диск не увеличить — пересоздайте ВМ с платным диском). После увеличения расширьте раздел и файловую систему на ВМ (growpart и resize2fs).
 
-Grow a disk in place via PUT /disks/{id} (up to 65536 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead). Mutation: requires confirmed=true.
+Вызывает инструмент disk_resize (подробнее: 'evo tools describe disk_resize').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -948,7 +942,7 @@ evo disk resize <disk-id> [flags]
 
 ```
   -h, --help          Справка по resize
-      --size-gb int   New size in GB (must be larger than current; max 65536).
+      --size-gb int   Новый размер, ГБ: больше текущего, не больше 65536
 ```
 
 ### Options inherited from parent commands
@@ -977,10 +971,9 @@ evo disk resize <disk-id> [flags]
 ```text
 Типы дисков (UUID и имя, например SSD или HDD).
 
-Вызывает инструмент list_disk_types (подробнее: 'evo tools describe list_disk_types').
-Описание инструмента и его флагов — на английском, как в MCP:
+Типы дисков: UUID и имя (например, SSD или HDD). Имя или UUID типа передаётся в --disk-type команды 'evo disk create'. Только чтение.
 
-List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD). Use a name as the 'disk_type' argument for deploy_plan in manual mode.
+Вызывает инструмент list_disk_types (подробнее: 'evo tools describe list_disk_types').
 ```
 
 ```
@@ -1526,7 +1519,7 @@ evo k8s create [flags]
       --cpu int                Control-plane vCPUs.
       --flavor string          Control-plane flavor name.
   -h, --help                   Справка по create
-      --kube-api-internet      Publish kube-apiserver to internet.
+      --kube-api-internet      Publish kube-apiserver to the internet. To turn off: --kube-api-internet=false (по умолчанию true)
       --master-count int       1, 3 or 5.
       --name string            Cluster name.
       --product string         What the cluster is for.
@@ -1719,7 +1712,7 @@ evo k8s kubeconfig <cluster-id> [flags]
 ### Options
 
 ```
-      --embed-token      Embed a static bearer token so kubectl works without the cloudlogin plugin (default true).
+      --embed-token      Embed a static bearer token so kubectl works without the cloudlogin plugin. To turn off: --embed-token=false (по умолчанию true)
   -h, --help             Справка по kubeconfig
       --network string   NETWORK_TYPE_PUBLIC or NETWORK_TYPE_PRIVATE (default: cluster default).
 ```
@@ -1944,7 +1937,7 @@ evo k8s plan [flags]
       --cpu int                Control-plane vCPUs for auto flavor pick (default 2).
       --flavor string          Control-plane flavor name (see k8s_options); overrides cpu/ram_gb.
   -h, --help                   Справка по plan
-      --kube-api-internet      Publish kube-apiserver to the internet (default true).
+      --kube-api-internet      Publish kube-apiserver to the internet. To turn off: --kube-api-internet=false (по умолчанию true)
       --master-count int       Control-plane node count: 1, 3 or 5 (default 1).
       --name string            Cluster name (3-60; default k8s-<product>).
       --product string         What the cluster is for (used for the name).
@@ -3579,7 +3572,7 @@ evo secret create <path> [flags]
 Вызывает инструмент secret_delete (подробнее: 'evo tools describe secret_delete').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Delete a secret by path AND all its versions. Set force=true to delete one that is in use. Mutation: requires confirmed=true after the user approves.
+Delete a secret by path AND all its versions. force defaults to true (a secret with active versions is deleted too); force=false lets the API refuse such a secret. Mutation: requires confirmed=true after the user approves.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3591,7 +3584,7 @@ evo secret delete <path> [flags]
 ### Options
 
 ```
-      --force   Delete even if the secret is in use by other resources.
+      --force   Delete the secret even if it has active versions. To turn off: --force=false (по умолчанию true)
   -h, --help    Справка по delete
 ```
 
@@ -3743,6 +3736,21 @@ evo secret value <path> [flags]
 
 Состояние текущего развёртывания
 
+### Synopsis
+
+```text
+Показать развёртывание этого каталога по локальному state и живое состояние
+ВМ — одним запросом к Cloud.ru (не дольше 8 с). ВМ, удалённая вне evo (в
+консоли), показывается как не найденная в облаке: 'evo destroy' уберёт её
+запись. Если облако спросить не удалось (нет ключа, сети, ошибка API),
+status всё равно показывает локальное состояние и пишет, почему облако не
+проверено. state команда не меняет.
+
+--no-refresh — только локальный state, без запроса. С --json в ответе
+добавляются cloud_checked, cloud_state, not_found_in_cloud, cloud_error и
+cloud_reason.
+```
+
 ```
 evo status [flags]
 ```
@@ -3757,7 +3765,8 @@ evo status [flags]
 ### Options
 
 ```
-  -h, --help   Справка по status
+  -h, --help         Справка по status
+      --no-refresh   Только локальный state: не спрашивать Cloud.ru о живом состоянии ВМ
 ```
 
 ### Options inherited from parent commands
@@ -4097,10 +4106,15 @@ evo vm [flags]
 ```text
 Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip).
 
-Вызывает инструмент provision (подробнее: 'evo tools describe provision').
-Описание инструмента и его флагов — на английском, как в MCP:
+Создать ВМ без docker-compose. По умолчанию ВМ получает floating IP (внешний адрес); с --no-public-ip создаётся приватная ВМ — только адрес в подсети (интерфейс типа regular), доступна лишь внутри VPC; так создают узлы за балансировщиком. Подсеть и группа безопасности подключаются сами.
 
-Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works, Astra Linux, Alt and RED OS included; an image of the shared catalogue the project cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. evo fills the image's metadata fields itself (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else the call is refused before anything is created. ports opens inbound rules in the VM's security group after boot (destroy closes them). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only.
+Образ — --image (имя, отображаемое имя или UUID; ищется как в 'evo image get': при нескольких совпадениях — ошибка со списком кандидатов) или --image-id (UUID). Подходит любой образ ОС, доступный проекту, в том числе Astra Linux, Альт и РЕД ОС; образ общего каталога, недоступный проекту, отклоняется до создания чего-либо.
+
+Поля метаданных образа (SSH-ключ, имя ВМ, логин, случайный пароль) evo заполняет сам. Обязательное поле, которое evo заполнить не может ('evo image get <образ>' показывает такие поля), задаётся через --meta, иначе команда отказывает до создания ВМ.
+
+--port открывает входящие порты в группе безопасности ВМ после её загрузки; 'evo vm delete' закрывает их. Для docker-compose проекта — 'evo deploy'. ВМ платная.
+
+Вызывает инструмент provision (подробнее: 'evo tools describe provision').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -4123,15 +4137,15 @@ evo vm create <name> [flags]
 ### Options
 
 ```
-      --disk-size int      Boot disk size in GB (default: 10, raised to the image's min_disk).
-      --flavor string      VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier).
+      --disk-size int      Размер загрузочного диска, ГБ (по умолчанию 10, но не меньше минимума образа)
+      --flavor string      Flavor ВМ: имя или UUID, например lowcost10-2-4 (список: evo vm flavors). По умолчанию — самый маленький lowcost не бесплатного уровня
   -h, --help               Справка по create
-      --image string       Boot image by exact name, display name or UUID (see image_list, image_get), e.g. 'Ubuntu-24.04'. Use it or image_id, not both.
-      --image-id string    Boot image UUID (see image_list, image_get).
-      --meta stringArray   Values of the image's metadata fields by name, e.g. {"admin_password": "…"} — the mandatory ones evo cannot fill (image_get: fields_required). They override what evo fills. A field the image does not declare is refused. (key=value, repeatable; the value may contain '='. key=- reads the value from stdin (one field at most), key=@file from a file, its trailing newline trimmed: use these for passwords, so the value stays out of the command line and the shell history)
-      --no-public-ip       Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes.
-      --port stringArray   Inbound ports to open in the VM's security group from 0.0.0.0/0, e.g. ["80", "8080/tcp", "53/udp"] (tcp by default). The group is shared by the zone's VMs; destroy deletes the rules evo created. (repeatable, or comma-separated)
-      --subnet-id string   Subnet UUID for the interface (default: a subnet in the target zone).
+      --image string       Образ: точное имя, отображаемое имя или UUID, например Ubuntu-24.04 (поиск: evo image list). Задаётся --image или --image-id, не оба
+      --image-id string    UUID образа (см. evo image list, evo image get)
+      --meta stringArray   Поле метаданных образа, например admin_password=… — обязательные поля, которые evo не заполняет сам (evo image get <образ>). Перекрывает заполненное evo; поле, которого в образе нет, отклоняется (поле=значение, флаг повторяется; значение может содержать '='. поле=- читает значение из stdin (не больше одного поля), поле=@файл — из файла без завершающего перевода строки: так пароль не попадает в командную строку и историю оболочки)
+      --no-public-ip       Приватная ВМ: без floating IP, интерфейс типа regular — для узлов за балансировщиком и внутренних серверов
+      --port stringArray   Входящий порт, открываемый в группе безопасности ВМ для 0.0.0.0/0: 80, 8080/tcp, 53/udp (по умолчанию tcp). Группа общая для ВМ зоны; evo vm delete удаляет правила, созданные evo (флаг повторяется или значения через запятую)
+      --subnet-id string   UUID подсети для интерфейса (по умолчанию — подсеть в зоне ВМ; список: evo vpc subnets)
 ```
 
 ### Options inherited from parent commands
@@ -4160,10 +4174,9 @@ evo vm create <name> [flags]
 ```text
 Удалить ВМ и все данные на ней (безвозвратно).
 
-Вызывает инструмент destroy (подробнее: 'evo tools describe destroy').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить ВМ и все данные на ней безвозвратно. ВМ задаётся UUID или именем. Floating IP ВМ по умолчанию освобождается тоже; оставить адрес — --release-ip=false. Правила группы безопасности, которые evo открыл для ВМ ('evo deploy', 'evo vm create --port'), удаляются после неё, если порт не нужен другому развёртыванию из локального состояния; правило, которое удалить не удалось, попадает в отчёт, и следующее удаление попробует снова.
 
-Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name. By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy.
+Вызывает инструмент destroy (подробнее: 'evo tools describe destroy').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -4183,7 +4196,7 @@ evo vm delete <vm-id|name> [flags]
 
 ```
   -h, --help         Справка по delete
-      --release-ip   Also release the VM's floating IP (default: true).
+      --release-ip   Освободить и floating IP ВМ. Выключить: --release-ip=false (по умолчанию true)
 ```
 
 ### Options inherited from parent commands
@@ -4212,10 +4225,9 @@ Flavor ВМ: vCPU, RAM, бесплатный уровень, оценка цен
 ```text
 Flavor ВМ: vCPU, RAM, бесплатный уровень, оценка цены за месяц.
 
-Вызывает инструмент list_flavors (подробнее: 'evo tools describe list_flavors').
-Описание инструмента и его флагов — на английском, как в MCP:
+Flavor ВМ: имя, vCPU, RAM, признак бесплатного уровня и оценка цены за месяц. Имя flavor передаётся в --flavor команд 'evo vm create' и 'evo deploy'. Только чтение.
 
-List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each. Use a flavor name as the 'flavor' argument for deploy_plan in manual mode.
+Вызывает инструмент list_flavors (подробнее: 'evo tools describe list_flavors').
 ```
 
 ```
@@ -4254,10 +4266,9 @@ evo vm flavors [flags]
 ```text
 ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы.
 
-Вызывает инструмент vm_get (подробнее: 'evo tools describe vm_get').
-Описание инструмента и его флагов — на английском, как в MCP:
+Сведения о ВМ из облака по UUID или имени: внутренний IP (private_ip), внешний или floating IP (public_ip), состояние и все сетевые интерфейсы. В отличие от 'evo status', который читает локальную запись развёртывания, показывает и внутренний IP — его, например, прописывают в настройки другого сервиса. Только чтение.
 
-Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. Use this whenever you need a VM's IP — e.g. to wire a private service endpoint into a config or secret after creating the VM. Unlike 'list'/'status' (which read local state and omit the private IP), this calls the live API. Never shell out to curl/ssh to discover a VM's IP — use this tool.
+Вызывает инструмент vm_get (подробнее: 'evo tools describe vm_get').
 ```
 
 ```
@@ -4303,10 +4314,9 @@ evo vm get <vm-id|name> [flags]
 ```text
 Список ВМ проекта: id, имя, состояние, зона, время создания.
 
-Вызывает инструмент vm_list (подробнее: 'evo tools describe vm_list').
-Описание инструмента и его флагов — на английском, как в MCP:
+Все ВМ проекта по данным облака, а не по локальным записям развёртываний: id, имя, состояние, зона доступности и время создания. Только чтение. IP-адреса и интерфейсы одной ВМ — 'evo vm get <ВМ>'.
 
-List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. Read-only. For IPs and interfaces of one VM use vm_get. Unlike 'list' (local deployment records of this directory), this shows every VM in the project.
+Вызывает инструмент vm_list (подробнее: 'evo tools describe vm_list').
 ```
 
 ```
@@ -4353,10 +4363,9 @@ evo vm list [flags]
 ```text
 Зоны доступности (UUID и имя).
 
-Вызывает инструмент list_zones (подробнее: 'evo tools describe list_zones').
-Описание инструмента и его флагов — на английском, как в MCP:
+Зоны доступности: UUID и имя. UUID зоны передаётся в --region, например 'evo vm create --region <UUID>'. Только чтение.
 
-List available Cloud.ru availability zones (UUID + name). Use a zone UUID as the 'region' argument for deploy or provision.
+Вызывает инструмент list_zones (подробнее: 'evo tools describe list_zones').
 ```
 
 ```

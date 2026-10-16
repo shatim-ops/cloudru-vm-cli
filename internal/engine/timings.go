@@ -6,6 +6,8 @@ import "time"
 const (
 	vmPollInterval        = 5 * time.Second
 	vmPollTimeout         = 10 * time.Minute // 15.10.2026: ru.AZ-1 took 4m57s, another VM over 5m
+	vmProgressInterval    = 30 * time.Second // a "waiting for the VM" line without a terminal
+	vmLiveRefresh         = time.Second      // the timer of that line on a terminal
 	ifacePollInterval     = 5 * time.Second
 	fipRetryInterval      = 10 * time.Second
 	fipPollInterval       = 5 * time.Second
@@ -18,22 +20,26 @@ const (
 	destroyPollTimeout    = 30 * time.Second
 	deletableWaitTimeout  = 10 * time.Minute // a VM still "creating" cannot be deleted yet
 	deletablePollInterval = 10 * time.Second
-	ifaceMaxAttempts      = 24 // × ifacePollInterval ≈ 2 minutes
-	ifaceFallbackAttempt  = 12 // after this, accept a primary interface in any state
+	statusRefreshTimeout  = 8 * time.Second // status answers even when Cloud.ru does not
+	ifaceMaxAttempts      = 24              // × ifacePollInterval ≈ 2 minutes
+	ifaceFallbackAttempt  = 12              // after this, accept a primary interface in any state
 )
 
 // Timings holds the waits Deploy and Destroy use between polls and retries. A zero field
 // means the production default from the constants above; tests set
 // milliseconds so that no test sleeps for real.
 type Timings struct {
-	VMPollInterval    time.Duration // GetVM polling until the VM is active
-	VMPollTimeout     time.Duration // give up waiting for the VM to become active
-	IfacePollInterval time.Duration // waiting for the primary interface to be "created"
-	FIPRetryInterval  time.Duration // between CreateFloatingIP attempts
-	FIPPollInterval   time.Duration // waiting for the floating IP to become in_use
-	SSHRetryInterval  time.Duration // between SSH connect attempts
-	SettleDelay       time.Duration // pause before health checks after compose up
-	VerifyTimeout     time.Duration // per-port HTTP probe timeout
+	VMPollInterval time.Duration // GetVM polling until the VM is active
+	VMPollTimeout  time.Duration // give up waiting for the VM to become active
+	// VMProgressInterval is how often deploy prints "waiting for the VM…"
+	// without a terminal; on a terminal one line is redrawn every second.
+	VMProgressInterval time.Duration
+	IfacePollInterval  time.Duration // waiting for the primary interface to be "created"
+	FIPRetryInterval   time.Duration // between CreateFloatingIP attempts
+	FIPPollInterval    time.Duration // waiting for the floating IP to become in_use
+	SSHRetryInterval   time.Duration // between SSH connect attempts
+	SettleDelay        time.Duration // pause before health checks after compose up
+	VerifyTimeout      time.Duration // per-port HTTP probe timeout
 
 	DockerPollInterval  time.Duration // between checks that cloud-init has installed Docker
 	DockerWaitTimeout   time.Duration // give up waiting for Docker on a new VM
@@ -42,6 +48,8 @@ type Timings struct {
 
 	DeletableWaitTimeout  time.Duration // destroy: how long to retry while the VM cannot be deleted yet
 	DeletablePollInterval time.Duration // destroy: between those retries
+
+	StatusRefreshTimeout time.Duration // status: the whole GET of the VM, authentication included
 }
 
 // withDefaults fills zero fields with the production defaults.
@@ -53,6 +61,7 @@ func (t Timings) withDefaults() Timings {
 	}
 	def(&t.VMPollInterval, vmPollInterval)
 	def(&t.VMPollTimeout, vmPollTimeout)
+	def(&t.VMProgressInterval, vmProgressInterval)
 	def(&t.IfacePollInterval, ifacePollInterval)
 	def(&t.FIPRetryInterval, fipRetryInterval)
 	def(&t.FIPPollInterval, fipPollInterval)
@@ -65,6 +74,7 @@ func (t Timings) withDefaults() Timings {
 	def(&t.DestroyPollTimeout, destroyPollTimeout)
 	def(&t.DeletableWaitTimeout, deletableWaitTimeout)
 	def(&t.DeletablePollInterval, deletablePollInterval)
+	def(&t.StatusRefreshTimeout, statusRefreshTimeout)
 	return t
 }
 

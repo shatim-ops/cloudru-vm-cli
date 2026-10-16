@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -60,11 +61,78 @@ func TestRussian_TreeHelp(t *testing.T) {
 		!strings.Contains(stdout, "Использование:\n  evo vm [флаги]\n  evo vm [команда]") {
 		t.Errorf("exit %d:\n%s", code, stdout)
 	}
-	// The leaf: Russian summary first, the tool's English description after it.
+	// A leaf of vm or disk is Russian throughout: summary, long help, flags.
 	code, stdout, _ = runCLI(t, "", "vm", "delete", "--help")
-	if code != 0 || !strings.HasPrefix(stdout, toolShortRU["destroy"]+".\n\nВызывает инструмент destroy") ||
-		!strings.Contains(stdout, "Permanently delete a VM") || !strings.Contains(stdout, "Спрашивает подтверждение") {
+	if code != 0 || !strings.HasPrefix(stdout, toolShortRU["destroy"]+".\n\n"+toolLongRU["destroy"]+"\n\nВызывает инструмент destroy") ||
+		strings.Contains(stdout, "Permanently delete a VM") || strings.Contains(stdout, "confirmed") ||
+		!strings.Contains(stdout, "Спрашивает подтверждение") ||
+		!strings.Contains(stdout, "--release-ip   Освободить и floating IP ВМ. Выключить: --release-ip=false (по умолчанию true)\n") {
 		t.Errorf("exit %d:\n%s", code, stdout)
+	}
+	// The other trees: Russian summary first, the tool's English description after it.
+	code, stdout, _ = runCLI(t, "", "vpc", "delete", "--help")
+	if code != 0 || !strings.HasPrefix(stdout, toolShortRU["vpc_delete"]+".\n\nВызывает инструмент vpc_delete") ||
+		!strings.Contains(stdout, "на английском, как в MCP") {
+		t.Errorf("exit %d:\n%s", code, stdout)
+	}
+}
+
+// The trees vm and disk are Russian throughout: every command has a long
+// help in toolLongRU, every flag a text in flagShortRU. The texts speak of
+// the CLI: no confirmed=true (the CLI asks or takes --yes), no tool names
+// (evo image list, not image_list). No entry is left without a flag.
+func TestTrees_RussianFlags(t *testing.T) {
+	reg := newRegistry()
+	toolNames := map[string]bool{}
+	for _, tl := range reg.Tools() {
+		if strings.Contains(tl.Name, "_") {
+			toolNames[tl.Name] = true
+		}
+	}
+	mcpOnly := func(key, s string) {
+		t.Helper()
+		if strings.Contains(s, "confirmed") {
+			t.Errorf("%s mentions confirmed: %q", key, s)
+		}
+		for _, w := range strings.FieldsFunc(s, func(r rune) bool { return r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+			if toolNames[w] {
+				t.Errorf("%s names the tool %s instead of its command: %q", key, w, s)
+			}
+		}
+	}
+	usedLong, usedFlag := map[string]bool{}, map[string]bool{}
+	for _, g := range treeGroups {
+		if g.Name != "vm" && g.Name != "disk" {
+			continue
+		}
+		for _, c := range g.Cmds {
+			tl, _ := reg.Lookup(c.Tool)
+			if s := toolLongRU[c.Tool]; s == "" {
+				t.Errorf("%s %s: no Russian long help for %s in toolLongRU", g.Name, c.Verb, c.Tool)
+			} else {
+				mcpOnly(c.Tool, s)
+			}
+			usedLong[c.Tool] = true
+			for _, p := range c.flagArgs(tl) {
+				key := c.Tool + "." + p.Name
+				usedFlag[key] = true
+				if s := flagShortRU[key]; s == "" {
+					t.Errorf("%s %s --%s: no Russian help for %s in flagShortRU", g.Name, c.Verb, c.flagName(p.Name), key)
+				} else {
+					mcpOnly(key, s)
+				}
+			}
+		}
+	}
+	for k := range toolLongRU {
+		if !usedLong[k] {
+			t.Errorf("toolLongRU: %s is no command of vm or disk", k)
+		}
+	}
+	for k := range flagShortRU {
+		if !usedFlag[k] {
+			t.Errorf("flagShortRU: %s is no flag of vm or disk", k)
+		}
 	}
 }
 

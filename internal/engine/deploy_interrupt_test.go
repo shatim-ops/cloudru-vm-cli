@@ -108,8 +108,8 @@ func provisionInterruptedWith(t *testing.T, nonInteractive bool, cloud *interrup
 
 	statePath := state.DefaultPath(dir)
 	sf := &state.File{Version: 1}
-	_, err := e.provisionVM(ctx, DeployOptions{NonInteractive: nonInteractive, Yes: true}, sf, statePath,
-		&compose.Project{Hash: "h"}, "flavor", "az")
+	_, err := e.provisionVM(ctx, DeployOptions{Flavor: "flavor", NonInteractive: nonInteractive, Yes: true}, sf, statePath,
+		&compose.Project{Hash: "h"}, "az")
 	return cloud, e, &stderr, err
 }
 
@@ -247,8 +247,8 @@ func TestProvisionVM_CancelledInteractive_DeletionUnconfirmedKeepsRecord(t *test
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, _ = e.provisionVM(ctx, DeployOptions{Yes: true}, &state.File{Version: 1}, state.DefaultPath(dir),
-		&compose.Project{Hash: "h"}, "flavor", "az")
+	_, _ = e.provisionVM(ctx, DeployOptions{Flavor: "flavor", Yes: true}, &state.File{Version: 1}, state.DefaultPath(dir),
+		&compose.Project{Hash: "h"}, "az")
 
 	if len(cloud.deleted) != 1 {
 		t.Fatalf("VM not deleted: %v", cloud.deleted)

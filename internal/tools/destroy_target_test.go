@@ -170,3 +170,33 @@ func TestDestroyTargeted_AlreadyGoneCleansState(t *testing.T) {
 func (*targetCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
 	return nil, errNoPriceAPI
 }
+
+// failingGetCloud: the VM is not in the list and GET /vms/{id} fails with
+// something other than 404 — the cloud did not say the VM is gone.
+type failingGetCloud struct{ goneCloud }
+
+func (*failingGetCloud) GetVM(context.Context, string) (*provision.VM, error) {
+	return nil, clerrors.New(clerrors.CodeAPIUnreachable, "cannot reach Cloud.ru API", "")
+}
+
+// destroy vm_id for a recorded VM missing from the list whose GET fails:
+// the answer says the check failed (not "no VM matching") and the record
+// stays, nothing released.
+func TestDestroyTargeted_GetFailsKeepsRecord(t *testing.T) {
+	cloud := &failingGetCloud{}
+	r, dir := targetRegistry(t, cloud)
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-1", "confirmed": true})
+	if !isErr || strings.Contains(text, "no VM matching") || !strings.Contains(text, "record is kept") {
+		t.Fatalf("answer = %s", text)
+	}
+	if cloud.releasedFIP != "" {
+		t.Errorf("FIP released: %q", cloud.releasedFIP)
+	}
+	sf, err := state.Read(state.DefaultPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := sf.ActiveDeployment(); a == nil || a.VMID != "vm-1" || a.Status != "running" {
+		t.Errorf("record changed: %+v", a)
+	}
+}

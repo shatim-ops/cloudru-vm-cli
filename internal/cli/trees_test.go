@@ -340,3 +340,71 @@ func TestTrees_JSONToolErrorNotOnStdout(t *testing.T) {
 		}
 	}
 }
+
+// A boolean argument the tool takes as true when absent is a flag that
+// defaults to true: the help says so, --x=false reaches the tool as false,
+// and an unset flag is not passed at all (the tool's own default applies).
+func TestTrees_BoolDefaultTrue(t *testing.T) {
+	want := map[string]bool{ // "group verb --flag"
+		"vm delete --release-ip":         true,
+		"k8s plan --kube-api-internet":   true,
+		"k8s create --kube-api-internet": true,
+		"k8s kubeconfig --embed-token":   true,
+		"secret delete --force":          true,
+	}
+	reg := tools.New(nil)
+	for _, g := range treeGroups {
+		for _, c := range g.Cmds {
+			tl, _ := reg.Lookup(c.Tool)
+			cmd, _, _ := findLeaf(t, g.Name, c.Verb)
+			for _, p := range c.flagArgs(tl) {
+				if p.Type != "boolean" {
+					continue
+				}
+				key := g.Name + " " + c.Verb + " --" + c.flagName(p.Name)
+				f := cmd.Flags().Lookup(c.flagName(p.Name))
+				on := f.DefValue == "true"
+				if on != want[key] {
+					t.Errorf("%s: flag default %s, want true: %v", key, f.DefValue, want[key])
+				}
+				if on != (p.Default == true) {
+					t.Errorf("%s: flag default %s, schema default %v", key, f.DefValue, p.Default)
+				}
+				if on && (!strings.Contains(f.Usage, "--"+f.Name+"=false") || strings.Contains(f.Usage, "default")) {
+					t.Errorf("%s: usage %q", key, f.Usage)
+				}
+				delete(want, key)
+			}
+		}
+	}
+	for key := range want {
+		t.Errorf("%s: no such boolean flag", key)
+	}
+
+	parse := func(argv ...string) map[string]any {
+		t.Helper()
+		cmd, c, tl := findLeaf(t, "vm", "delete")
+		if err := cmd.ParseFlags(argv); err != nil {
+			t.Fatal(err)
+		}
+		got, err := treeArgs(cmd, c, tl, parsePositionals(c.Args), c.flagArgs(tl), cmd.Flags().Args())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if got := parse("web", "--release-ip=false"); got["release_ip"] != false {
+		t.Errorf("--release-ip=false: %v", got)
+	}
+	if got := parse("web", "--release-ip"); got["release_ip"] != true {
+		t.Errorf("--release-ip: %v", got)
+	}
+	if got := parse("web"); len(got) != 1 || got["name"] != "web" {
+		t.Errorf("unset --release-ip is passed: %v", got)
+	}
+
+	out, _, code := execCLI(t, "vm", "delete", "--help")
+	if code != 0 || !strings.Contains(out, "--release-ip   Also release the VM's floating IP. To turn off: --release-ip=false (default true)\n") {
+		t.Errorf("exit %d:\n%s", code, out)
+	}
+}

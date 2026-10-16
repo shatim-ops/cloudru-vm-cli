@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/kubetools"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -41,10 +42,9 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 		s.wrapHandler(tool, func(next tools.Handler) tools.Handler {
 			return func(ctx context.Context, args map[string]any) (string, bool) {
 				if !binaryAvailable(bin) {
-					return tools.ErrResult(fmt.Errorf(
-						"%s is not available in this mode: %s is not installed on the MCP server (the Docker image ships without kubectl/helm). "+
-							"Use k8s_kubeconfig with embed_token=false and run %s on your machine, or run 'evo mcp' over stdio on a host with %s",
-						tool, bin, bin, bin)), true
+					return tools.ErrResult(clierrors.New(clierrors.CodeConfigInvalid, fmt.Sprintf(
+						"%s is not available in this mode: %s is not installed on the MCP server (the Docker image ships without kubectl/helm)", tool, bin),
+						fmt.Sprintf("Use k8s_kubeconfig with embed_token=false and run %s on your machine, or run 'evo mcp' over stdio on a host with %s", bin, bin))), true
 				}
 				return next(ctx, args)
 			}
@@ -57,7 +57,7 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 		return func(ctx context.Context, args map[string]any) (string, bool) {
 			if p, _ := args["compose_file"].(string); p != "" {
 				if err := insideWorkDir(p); err != nil {
-					return tools.ErrResult(fmt.Errorf("compose_file over HTTP: %w", err)), true
+					return refused(fmt.Errorf("compose_file over HTTP: %w", err)), true
 				}
 			}
 			return next(ctx, args)
@@ -67,7 +67,7 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 		return func(ctx context.Context, args map[string]any) (string, bool) {
 			kargs, _ := args["args"].(string)
 			if err := kubectlHTTPCheck(strings.Fields(kargs), allowSecretExport); err != nil {
-				return tools.ErrResult(err), true
+				return refused(err), true
 			}
 			return next(ctx, args)
 		}
@@ -75,7 +75,7 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 	s.wrapHandler("k8s_helm", func(next tools.Handler) tools.Handler {
 		return func(ctx context.Context, args map[string]any) (string, bool) {
 			if err := helmHTTPCheck(ctx, args); err != nil {
-				return tools.ErrResult(err), true
+				return refused(err), true
 			}
 			return next(ctx, args)
 		}
@@ -97,7 +97,7 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 	}
 	s.wrapHandler("secret_value", func(tools.Handler) tools.Handler {
 		return func(context.Context, map[string]any) (string, bool) {
-			return tools.ErrResult(fmt.Errorf(
+			return refused(fmt.Errorf(
 				"secret_value is disabled over HTTP: it returns a decrypted secret. " +
 					"Start the server with --allow-secret-export to enable it")), true
 		}
@@ -105,7 +105,7 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 	s.wrapHandler("k8s_kubeconfig", func(next tools.Handler) tools.Handler {
 		return func(ctx context.Context, args map[string]any) (string, bool) {
 			if tools.BoolArg(args, "embed_token", true) {
-				return tools.ErrResult(fmt.Errorf(
+				return refused(fmt.Errorf(
 					"k8s_kubeconfig with an embedded token is disabled over HTTP: the token grants access to the cluster. " +
 						"Call it with embed_token=false (kubeconfig with the cloudlogin exec plugin, no credentials inside), " +
 						"or start the server with --allow-secret-export")), true
@@ -119,7 +119,7 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 		return func(ctx context.Context, args map[string]any) (string, bool) {
 			kargs, _ := args["args"].(string)
 			if slices.Contains(strings.Fields(kargs), "config") {
-				return tools.ErrResult(fmt.Errorf(
+				return refused(fmt.Errorf(
 					"k8s_kubectl config is disabled over HTTP: the kubeconfig holds the cluster token. " +
 						"Start the server with --allow-secret-export to enable it")), true
 			}
@@ -128,11 +128,18 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 	})
 	s.wrapHandler("cert_private_key", func(tools.Handler) tools.Handler {
 		return func(context.Context, map[string]any) (string, bool) {
-			return tools.ErrResult(fmt.Errorf(
+			return refused(fmt.Errorf(
 				"cert_private_key is disabled over HTTP: it returns a private key in plaintext. " +
 					"Start the server with --allow-secret-export to enable it")), true
 		}
 	})
+}
+
+// refused is the answer to a call the HTTP policy refuses: USAGE, as a call
+// refused for its arguments, since nothing reached the cloud and the same
+// call over stdio (or with another argument) would run.
+func refused(err error) string {
+	return tools.ErrResult(clierrors.Wrap(clierrors.CodeUsage, err.Error(), "", err))
 }
 
 // wrapHandler wraps a tool's handler in the registry, so the policy also

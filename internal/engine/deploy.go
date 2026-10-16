@@ -128,15 +128,6 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 	e.Printer.StepDone(i18n.T("IAM token valid", "Токен IAM действителен"))
 
-	// Determine flavor (requires auth for ListFlavors API call).
-	var flavorName string
-	if isNewDeploy {
-		flavorName, err = e.resolveFlavor(ctx, opts, project)
-		if err != nil {
-			return err
-		}
-	}
-
 	// Step 2: Analyze.
 	e.Printer.Step(2, totalSteps, i18n.T("Analyzing compose file...", "Разбор compose-файла..."))
 	e.Printer.StepDone(i18n.Tf("%d service(s), %d exposed port(s), hash=%s", "сервисов: %d, открытых портов: %d, хеш=%s",
@@ -154,7 +145,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	var rec state.DeploymentRecord
 	if isNewDeploy {
 		// Step 3: Provision.
-		rec, err = e.provisionVM(ctx, opts, stateFile, statePath, project, flavorName, region)
+		rec, err = e.provisionVM(ctx, opts, stateFile, statePath, project, region)
 		if err == errDryRun {
 			return nil
 		}
@@ -360,8 +351,15 @@ func (e *Engine) resolveFlavor(ctx context.Context, opts DeployOptions, project 
 }
 
 // provisionVM creates a new VM and waits for it to become active.
-func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile *state.File, statePath string, project *compose.Project, flavorName, region string) (state.DeploymentRecord, error) {
+func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile *state.File, statePath string, project *compose.Project, region string) (state.DeploymentRecord, error) {
 	e.Printer.Step(3, totalSteps, i18n.T("Provisioning VM...", "Создание ВМ..."))
+
+	// The flavor: given, or picked for the workload (ListFlavors needs the
+	// token of step 1). "Recommended flavor" belongs to this step.
+	flavorName, err := e.resolveFlavor(ctx, opts, project)
+	if err != nil {
+		return state.DeploymentRecord{}, err
+	}
 
 	projectID := e.Config.ProjectID
 	if projectID == "" {
@@ -561,13 +559,33 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	t := e.timings()
 	pollDeadline := time.After(t.VMPollTimeout)
 	pollTick, stopPoll := newPollTicker(t.VMPollInterval)
-	// A new VM takes minutes, sometimes more than ten (ru.AZ-1, 15.10.2026):
-	// say the state once a minute, as destroy does, so a slow zone is told
-	// apart from a stuck deploy.
-	pollStart, lastReport, lastStatus := time.Now(), time.Now(), ""
 	defer stopPoll()
+	// A new VM takes minutes, sometimes more than ten (ru.AZ-1, 15.10.2026):
+	// the wait shows its time and the VM's state, so a slow zone is told
+	// apart from a stuck deploy. On a terminal one line is redrawn every
+	// second; without one a line goes out on every change of the state and
+	// every VMProgressInterval; --json prints nothing.
+	pollStart, lastStatus := time.Now(), ""
+	live := e.Printer.Live()
+	progressEvery := t.VMProgressInterval
+	if live {
+		progressEvery = vmLiveRefresh
+	}
+	progressTick := time.NewTicker(progressEvery)
+	defer progressTick.Stop()
+	defer e.Printer.ProgressDone()
+	report := func() {
+		msg := i18n.Tf("waiting for the VM… %s (%s)", "ожидание ВМ… %s (%s)",
+			elapsedText(time.Since(pollStart)), statusText(lastStatus))
+		if live {
+			e.Printer.Progress(msg)
+		} else {
+			e.Printer.StepDone(msg)
+		}
+	}
 
 	interrupted := func(sig string) (state.DeploymentRecord, error) {
+		e.Printer.ProgressDone() // the question goes to the same terminal
 		deleted, err := e.handleInterrupt(sig, vm.ID, opts.NonInteractive)
 		if deleted {
 			// The VM goes asynchronously and its FIP stays attached until
@@ -610,22 +628,21 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				i18n.Tf("VM %s did not become active within %s", "ВМ %s не стала активной за %s", vm.ID, t.VMPollTimeout),
 				i18n.Tf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
 					"Проверьте ВМ: 'evo vm get %s' или консоль Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).", vm.ID))
+		case <-progressTick.C:
+			report()
 		case <-pollTick:
 			updated, err := e.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
 				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))
 				continue
 			}
-			if updated.Status != lastStatus || time.Since(lastReport) >= time.Minute {
-				if updated.Status != "active" && updated.Status != "running" {
-					e.Printer.StepDone(i18n.Tf("VM is %s (%s elapsed)", "состояние ВМ — %s (прошло %s)",
-						statusText(updated.Status), time.Since(pollStart).Round(time.Second)))
-				}
-				lastStatus, lastReport = updated.Status, time.Now()
+			if updated.Status != lastStatus && updated.Status != "active" && updated.Status != "running" {
+				lastStatus = updated.Status
+				report()
 			}
 			switch updated.Status {
 			case "active", "running":
-				e.Printer.StepDone(i18n.Tf("VM %s active", "ВМ %s активна", vm.ID))
+				e.Printer.StepDone(i18n.Tf("VM %s active (%s)", "ВМ %s активна (%s)", vm.ID, elapsedText(time.Since(pollStart))))
 
 				// The floating (public) IP: attached at creation, or now.
 				var publicIP, fipID string
@@ -677,6 +694,15 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			return interrupted("interrupt")
 		}
 	}
+}
+
+// elapsedText is a wait in whole seconds: "1m20s", in Russian «1м20с».
+func elapsedText(d time.Duration) string {
+	s := d.Round(time.Second).String()
+	if i18n.Lang() == i18n.RU {
+		s = strings.NewReplacer("h", "ч", "m", "м", "s", "с").Replace(s)
+	}
+	return s
 }
 
 // statusText shows an empty VM state as such, not as a blank.
