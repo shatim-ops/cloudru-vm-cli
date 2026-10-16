@@ -90,7 +90,7 @@ jobs:
           probe fip_states            "$C/floating-ips?$P&limit=100" '[.[] | arrays | .[] | .state] | unique'
           probe vm_states             "$C/vms?$P&limit=100" '[.[] | arrays | .[] | .status // .state] | unique'
 
-          echo "== группы безопасности: SSH и исходящий трафик (имена и признаки, без ID)"
+          echo "== группы безопасности: SSH и исходящий трафик (зона и признаки, без имён и ID)"
           # deploy ждёт SSH (tcp 22) и выход ВМ к метаданным и DHCP (документация
           # «Группы безопасности», ограничения с 07.2026). e2e 16.10: ВМ активна,
           # SSH нет — какая из групп это допускает.
@@ -100,7 +100,7 @@ jobs:
           sgs=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/security-groups?$P&limit=100" || true)
           for id in $(printf '%s' "$sgs" | jq -r '[.[] | arrays | .[] | .id] | .[]' 2>/dev/null); do
             echo "::add-mask::$id"
-            name=$(printf '%s' "$sgs" | jq -r --arg id "$id" '[.[] | arrays | .[] | select(.id == $id) | ((.name // "?") + " / " + ((.availability_zone.name // .availability_zone // "?") | tostring))] | first')
+            name=$(printf '%s' "$sgs" | jq -r --arg id "$id" '[.[] | arrays | .[] | select(.id == $id) | ("zone " + ((.availability_zone.name // .availability_zone // "?") | tostring) + ", default=" + ((.default // false) | tostring) + ", ssh-access-name=" + (((.name // "") | ascii_downcase | startswith("ssh-access_")) | tostring))] | first')
             rules=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/security-groups/$id/rules?limit=100" || true)
             printf '%-40s %s\n' "$name" "$(printf '%s' "$rules" | jq -c "$covers"' [.[] | arrays | .[]] as $r | {
               rules: ($r | length),
