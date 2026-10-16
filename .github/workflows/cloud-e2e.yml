@@ -578,7 +578,7 @@ jobs:
   k8s-smoke:
     if: ${{ inputs.k8s_smoke && !inputs.cleanup_only }}
     runs-on: ubuntu-latest
-    # Шаги ждут до 40 + 30 + 15 мин, удаление — до 30: запас, чтобы job не
+    # Шаги ждут до 40 + 30 + 25 мин, удаление — до 30: запас, чтобы job не
     # оборвался по таймауту до удаления кластера.
     timeout-minutes: 180
     env:
@@ -672,21 +672,36 @@ jobs:
             sleep 60
           done
 
-      - name: add-addon cert-manager и его поды (до 15 мин)
+      - name: add-addon cert-manager и его поды (до 25 мин)
         run: |
+          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g"; }
           evo --json --yes k8s add-addon "$CLUSTER_ID" "$ADDON" > "$RUNNER_TEMP/addon.json" || {
             jq -c '{status, error}' "$RUNNER_TEMP/addon.json" 2>/dev/null; echo "::error::add-addon"; exit 1; }
-          jq -c '{status, version: (.version // .app_version), namespace}' "$RUNNER_TEMP/addon.json"
+          jq -c 'select(.status != "confirmed") | {status, version, namespace, operation: (.operation_id != null), cluster_addon: (.cluster_addon_id != null), addon_status, warnings}' "$RUNNER_TEMP/addon.json"
           start=$(date +%s)
+          n=0
           while :; do
-            # Поды ищутся по имени во всех namespace: addonNamespace релиза в
-            # каталоге 16.10 был похож на версию, а не на namespace.
-            pods=$(evo k8s kubectl "$CLUSTER_ID" get pods -A -o json 2>/dev/null |
-              jq -c --arg a "$ADDON" '[.items[]? | select(.metadata.name | startswith($a)) | {ns: .metadata.namespace, name: .metadata.name, phase: .status.phase}]' || echo '[]')
-            echo "$(( ($(date +%s) - start) / 60 )) мин: $pods"
+            min=$(( ($(date +%s) - start) / 60 ))
+            # Поды ищутся по имени во всех namespace: addonNamespace релиза API
+            # отдаёт неверный. Ошибка kubectl печатается, а не глушится.
+            if out=$(evo k8s kubectl "$CLUSTER_ID" get pods -A -o json 2>"$RUNNER_TEMP/kerr") && jq -e .items >/dev/null 2>&1 <<<"$out"; then
+              total=$(jq '.items | length' <<<"$out")
+              pods=$(jq -c --arg a "$ADDON" '[.items[] | select(.metadata.name | startswith($a)) | {ns: .metadata.namespace, name: .metadata.name, phase: .status.phase}]' <<<"$out")
+              echo "$min мин: подов в кластере $total, $ADDON: $pods"
+            else
+              pods='[]'
+              echo "$min мин: kubectl не ответил: $(tail -c 300 "$RUNNER_TEMP/kerr" | tr '\n' ' ' | redact)"
+            fi
+            # Каждые ~5 мин: видит ли API плагин в кластере (превью k8s_add_addon
+            # без подтверждения ничего не меняет).
+            if [ $((n % 10)) = 0 ]; then
+              evo tools call k8s_add_addon --arg cluster_id="$CLUSTER_ID" --arg name="$ADDON" --json 2>/dev/null |
+                jq -c '{installed: ([.preview.params[]? | select(.key == "installed") | .value] | first), warnings, not_checked: .preview.not_checked}' 2>/dev/null | redact || true
+            fi
+            n=$((n + 1))
             # Поды Job (cert-manager-startupapicheck) заканчиваются в Succeeded.
             if [ "$(jq 'any(.phase == "Running") and all(.phase == "Running" or .phase == "Succeeded")' <<<"$pods")" = true ]; then break; fi
-            [ $(( $(date +%s) - start )) -lt 900 ] || { echo "::error::поды $ADDON не Running за 15 мин"; exit 1; }
+            [ $(( $(date +%s) - start )) -lt 1500 ] || { echo "::error::поды $ADDON не Running за 25 мин"; exit 1; }
             sleep 30
           done
 
