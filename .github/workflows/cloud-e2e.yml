@@ -5,7 +5,8 @@ name: cloud-e2e
 # вручную или пушем в ветку e2e/** — и всегда удаляет за собой ресурсы.
 # Job readonly рядом проверяет чтения API и MCP, ничего не создавая. Job
 # os-smoke (вход os_smoke) создаёт ВМ из образов Astra Linux и РЕД ОС по
-# имени, заходит по SSH и удаляет их.
+# имени, заходит по SSH и удаляет их. Job k8s-smoke (вход k8s_smoke) —
+# кластер Managed Kubernetes с плагином, затем его удаление.
 #
 # Секреты репозитория (Settings → Secrets and variables → Actions):
 #   CLOUDRU_KEY_ID, CLOUDRU_SECRET — ключ тестового сервисного аккаунта
@@ -28,6 +29,10 @@ on:
         default: "1200"
       os_smoke:
         description: "Also create VMs from domestic OS images by name (Astra Linux, RED OS): vm create --image → SSH → os-release → delete"
+        type: boolean
+        default: false
+      k8s_smoke:
+        description: "Also run Managed Kubernetes live (billable, ~1 h): cluster → one-node pool → cert-manager addon → its pods → delete"
         type: boolean
         default: false
       cleanup_only:
@@ -511,6 +516,23 @@ jobs:
           echo "::error::ВМ evo-e2e-* не удалились за 15 минут"
           exit 1
 
+      - name: Кластеры evo-e2e-k8s
+        if: always()
+        run: |
+          ids=$(evo tools call k8s_list --json | jq -r '.clusters[]? | select(.name == "evo-e2e-k8s") | .id')
+          [ -n "$ids" ] || { echo "кластеров evo-e2e-k8s нет"; exit 0; }
+          for id in $ids; do
+            echo "::add-mask::$id"
+            evo --json --yes k8s delete "$id" | jq -c '{status}' || true
+          done
+          for _ in $(seq 1 30); do
+            left=$(evo tools call k8s_list --json | jq '[.clusters[]? | select(.name == "evo-e2e-k8s")] | length')
+            [ "$left" = 0 ] && { echo "кластеры удалены"; exit 0; }
+            sleep 60
+          done
+          echo "::error::кластеры evo-e2e-k8s не удалились за 30 минут"
+          exit 1
+
       - name: Floating IP fip-evo-e2e-*
         if: always()
         run: |
@@ -547,3 +569,133 @@ jobs:
               "https://compute.api.cloud.ru/api/v1/security-groups/$g/rules/$r")
             echo "правило $port: DELETE http=$code"
           done <<<"$rules"
+
+  # Managed Kubernetes вживую (до 16.10.2026 не проверялся ни разу): кластер
+  # с одним мастером → пул из одного узла → плагин cert-manager → поды
+  # плагина через kubectl → удаление кластера. Платно (~40–60 мин работы
+  # кластера), только по входу k8s_smoke; кластер удаляется всегда, в том
+  # числе по имени, если прогон потерял его ID. ID маскируются.
+  k8s-smoke:
+    if: ${{ inputs.k8s_smoke && !inputs.cleanup_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      CLUSTER: evo-e2e-k8s
+      ADDON: cert-manager
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Проверка входов
+        run: |
+          printf '%s' "$ZONE" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' ||
+            { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
+
+      - name: Сборка
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      - name: Кластера evo-e2e-k8s нет до прогона
+        run: |
+          n=$(evo tools call k8s_list --json | jq --arg n "$CLUSTER" '[.clusters[]? | select(.name == $n)] | length')
+          [ "$n" = 0 ] || { echo "::error::кластер $CLUSTER уже есть — сначала cleanup_only"; exit 1; }
+
+      - name: Каталог плагинов и версии cert-manager (только чтение)
+        run: |
+          evo k8s addons --json | jq '{shown: (.shown // (.addons | length)), total}'
+          evo k8s addon-versions "$ADDON" --json > "$RUNNER_TEMP/versions.json"
+          jq '[.releases[]? | {version, mode, kube_versions, ready_workers, namespace, latest}] | .[0:3]' "$RUNNER_TEMP/versions.json"
+          ns=$(jq -r '[.releases[]? | select(.latest)][0].namespace // .releases[0].namespace // empty' "$RUNNER_TEMP/versions.json")
+          [ -n "$ns" ] || { echo "::error::нет namespace у $ADDON"; exit 1; }
+          echo "ADDON_NS=$ns" >> "$GITHUB_ENV"
+
+      - name: k8s plan, затем create (1 мастер)
+        run: |
+          evo --json k8s plan --name "$CLUSTER" --zone "$ZONE" --master-count 1 |
+            jq '{version, master_count, kube_api_internet, warnings}' || true
+          evo --json --yes k8s create --name "$CLUSTER" --zone "$ZONE" --master-count 1 > "$RUNNER_TEMP/create.json"
+          id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json")
+          [ -n "$id" ] || { jq -c '{status, error}' "$RUNNER_TEMP/create.json"; echo "::error::k8s create без cluster_id"; exit 1; }
+          echo "::add-mask::$id"
+          echo "CLUSTER_ID=$id" >> "$GITHUB_ENV"
+          jq '{status}' "$RUNNER_TEMP/create.json"
+
+      - name: Кластер готов (до 40 мин)
+        run: |
+          start=$(date +%s)
+          while :; do
+            st=$(evo tools call k8s_get --arg cluster_id="$CLUSTER_ID" --json | jq -r '.status // .state // "?"')
+            echo "$(( ($(date +%s) - start) / 60 )) мин: $st"
+            case "$st" in
+              *RUNNING*|*running*|*READY*|*ready*|*ACTIVE*|*active*) break ;;
+              *ERROR*|*error*|*FAIL*|*fail*) echo "::error::кластер: $st"; exit 1 ;;
+            esac
+            [ $(( $(date +%s) - start )) -lt 2400 ] || { echo "::error::кластер не готов за 40 мин"; exit 1; }
+            sleep 60
+          done
+
+      - name: Пул из одного узла, готов (до 30 мин)
+        run: |
+          evo --json --yes k8s add-nodepool "$CLUSTER_ID" --name np-e2e --count 1 | jq -c '{status, count}'
+          start=$(date +%s)
+          while :; do
+            st=$(evo k8s nodepools "$CLUSTER_ID" --json | jq -r '[.node_pools[]?.status] | first // "?"')
+            echo "$(( ($(date +%s) - start) / 60 )) мин: $st"
+            case "$st" in
+              *RUNNING*|*running*|*READY*|*ready*|*ACTIVE*|*active*) break ;;
+              *ERROR*|*error*|*FAIL*|*fail*) echo "::error::пул: $st"; exit 1 ;;
+            esac
+            [ $(( $(date +%s) - start )) -lt 1800 ] || { echo "::error::пул не готов за 30 мин"; exit 1; }
+            sleep 60
+          done
+
+      - name: add-addon cert-manager и его поды (до 15 мин)
+        run: |
+          evo --json --yes k8s add-addon "$CLUSTER_ID" "$ADDON" > "$RUNNER_TEMP/addon.json" || {
+            jq -c '{status, error}' "$RUNNER_TEMP/addon.json" 2>/dev/null; echo "::error::add-addon"; exit 1; }
+          jq -c '{status, version: (.version // .app_version), namespace}' "$RUNNER_TEMP/addon.json"
+          start=$(date +%s)
+          while :; do
+            pods=$(evo k8s kubectl "$CLUSTER_ID" get pods -n "$ADDON_NS" -o json 2>/dev/null |
+              jq -c '[.items[]? | {name: .metadata.name, phase: .status.phase}]' || echo '[]')
+            echo "$(( ($(date +%s) - start) / 60 )) мин: $pods"
+            if [ "$(jq 'length > 0 and all(.phase == "Running")' <<<"$pods")" = true ]; then break; fi
+            [ $(( $(date +%s) - start )) -lt 900 ] || { echo "::error::поды $ADDON не Running за 15 мин"; exit 1; }
+            sleep 30
+          done
+
+      - name: Удаление кластера (всегда)
+        if: always()
+        run: |
+          ids=$(evo tools call k8s_list --json | jq -r --arg n "$CLUSTER" '.clusters[]? | select(.name == $n) | .id')
+          [ -n "$ids" ] || { echo "кластера $CLUSTER нет"; exit 0; }
+          for id in $ids; do
+            echo "::add-mask::$id"
+            evo --json --yes k8s delete "$id" | jq -c '{status}' || true
+          done
+          start=$(date +%s)
+          while :; do
+            left=$(evo tools call k8s_list --json | jq -c --arg n "$CLUSTER" '[.clusters[]? | select(.name == $n) | .status]')
+            echo "$(( ($(date +%s) - start) / 60 )) мин: $left"
+            [ "$left" = "[]" ] && { echo "кластер удалён"; exit 0; }
+            [ $(( $(date +%s) - start )) -lt 1800 ] || { echo "::error::кластер $CLUSTER не удалился за 30 мин — удалите его в консоли Cloud.ru"; exit 1; }
+            sleep 60
+          done
