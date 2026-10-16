@@ -117,7 +117,15 @@ func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRele
 		if err := json.Unmarshal(data, &r); err != nil {
 			return "", err
 		}
-		out = append(out, r.Releases...)
+		for _, rel := range r.Releases {
+			// The live API (16.10.2026) puts the addon version into
+			// addonNamespace too ("1.21.1-sbc.0" for cert-manager): such a
+			// value is not a namespace, so it is left out.
+			if rel.AddonNamespace != "" && rel.AddonNamespace == rel.AddonVersion {
+				rel.AddonNamespace = ""
+			}
+			out = append(out, rel)
+		}
 		return r.NextPageToken, nil
 	})
 	return out, err

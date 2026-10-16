@@ -108,7 +108,8 @@ func TestGetAddonReleases(t *testing.T) {
 			_, _ = io.WriteString(w, `{"releases":[{"addonVersion":"1.0.0","appVersion":"v1.14.0","addonNamespace":"cert-manager","configurationSchema":"{\"type\":\"object\"}","mode":"SUPPORT_MODE_ACTIVE","requirements":{"kubeVersions":">=1.26.0-0","readyWorkers":1}}],"nextPageToken":"n"}`)
 			return
 		}
-		_, _ = io.WriteString(w, `{"releases":[{"addonVersion":"0.9.0","appVersion":"v1.13.0","mode":"SUPPORT_MODE_END_OF_LIFE","requirements":{"readyWorkers":"2"}}]}`)
+		// Живой API 16.10: addonNamespace повторяет addonVersion.
+		_, _ = io.WriteString(w, `{"releases":[{"addonVersion":"0.9.0-sbc.0","addonNamespace":"0.9.0-sbc.0","appVersion":"v1.13.0","mode":"SUPPORT_MODE_END_OF_LIFE","requirements":{"readyWorkers":"2"}}]}`)
 	})
 	got, err := cli.GetAddonReleases(context.Background(), "cert-manager")
 	if err != nil {
@@ -121,6 +122,9 @@ func TestGetAddonReleases(t *testing.T) {
 	if r.AppVersion != "v1.14.0" || r.AddonNamespace != "cert-manager" || r.ConfigurationSchema != `{"type":"object"}` ||
 		r.Requirements.KubeVersions != ">=1.26.0-0" || r.Requirements.ReadyWorkers != 1 || NormalizeMode(r.Mode) != ModeActive {
 		t.Errorf("release 0: %+v", r)
+	}
+	if got[1].AddonNamespace != "" {
+		t.Errorf("a version-shaped addonNamespace kept: %q", got[1].AddonNamespace)
 	}
 	if got[1].Requirements.ReadyWorkers != 2 {
 		t.Errorf("readyWorkers as a string: %+v", got[1].Requirements)

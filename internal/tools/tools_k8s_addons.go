@@ -517,11 +517,14 @@ func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return errResult(err), true
 	}
+	check := "get pods -A"
+	if r.AddonNamespace != "" {
+		check = "get pods -n " + r.AddonNamespace
+	}
 	out := map[string]any{
 		"status": "installing", "cluster_id": clusterID, "addon": plan.addon.Name,
 		"version": r.AppVersion, "namespace": r.AddonNamespace, "requirements": requirements,
-		"note": "Installation is async. Check the addon's pods: k8s_kubectl args=\"get pods -n " +
-			firstNonEmptyStr(r.AddonNamespace, "<namespace>") + "\".",
+		"note": "Installation is async. Check the addon's pods: k8s_kubectl args=\"" + check + "\".",
 	}
 	if res.OperationID != "" {
 		out["operation_id"] = res.OperationID
