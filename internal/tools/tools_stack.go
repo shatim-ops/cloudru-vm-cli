@@ -261,6 +261,17 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				if err != nil {
 					st.Attempts++
 					st.Detail = err.Error()
+					// The tool named what it made although the call failed
+					// (provision: a VM in error_creating or not active in
+					// time). It exists and is billed: record it for
+					// stack_destroy and stop — a retry would create another.
+					if id := firstStr(res, "vm_id", "cluster_id"); id != "" {
+						st.ResourceID = id
+						st.Status = "error"
+						job.Error = fmt.Sprintf("%s: %s (resource %s kept for stack_destroy)", st.Key, err.Error(), id)
+						job.Status = "error"
+						return
+					}
 					// Reconcile before retrying: a create can fail the RESPONSE yet
 					// succeed server-side (e.g. 504 gateway timeout after the backend
 					// applied it). If the resource now exists by name, ADOPT it — never

@@ -561,9 +561,12 @@ func Plan(m Manifest) *Job {
 		if vm.Flavor != "" {
 			args["flavor"] = vm.Flavor
 		}
-		// provision is synchronous (waits for active), returns vm_id.
+		// provision is synchronous (waits for active), returns vm_id. A
+		// failed answer may still have created the VM: it is looked up by
+		// name before any retry, as for the other steps.
 		j.Steps = append(j.Steps, &Step{
 			Key: "vm", Tool: "provision", Args: args, ReadyKind: "", Status: "pending",
+			FindTool: "vm_list", FindField: "vms", FindName: vm.Name,
 		})
 	}
 
