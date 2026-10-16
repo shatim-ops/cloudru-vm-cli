@@ -58,8 +58,8 @@ func renderAddonList(p *output.Printer, w io.Writer, text string) error {
 		i18n.T("NAME", "ИМЯ"), i18n.T("DISPLAY NAME", "ОТОБРАЖАЕМОЕ ИМЯ"),
 		i18n.T("CATEGORIES", "КАТЕГОРИИ"), i18n.T("BILLABLE", "ПЛАТНЫЙ"),
 	}, rows)
-	fmt.Fprintln(w, i18n.Tf("Shown %d of %d. Versions: evo k8s addon-versions <name>; install: evo k8s add-addon <cluster-id> <name>.",
-		"Показаны %d из %d. Версии: evo k8s addon-versions <имя>; установка: evo k8s add-addon <id-кластера> <имя>.", a.Shown, a.Total))
+	fmt.Fprintln(w, i18n.Tf("Shown %d of %d. Versions: evo k8s addon-versions <name>. evo does not install addons yet: install them in the Cloud.ru console.",
+		"Показаны %d из %d. Версии: evo k8s addon-versions <имя>. Установка плагинов через evo пока недоступна: устанавливайте в консоли Cloud.ru.", a.Shown, a.Total))
 	return nil
 }
 
@@ -139,11 +139,11 @@ func renderAddonVersions(p *output.Printer, w io.Writer, text string) error {
 		"KUBERNETES", i18n.T("NODES", "УЗЛОВ"), i18n.T("NAMESPACE", "NAMESPACE"), i18n.T("SETTINGS SCHEMA", "СХЕМА НАСТРОЕК"),
 	}, rows)
 	if a.Latest != "" {
-		fmt.Fprintln(w, i18n.Tf("* the version add-addon installs without --version (the newest active one). Install: evo k8s add-addon <cluster-id> %s [--version <version>] [--config settings.json].",
-			"* версия, которую add-addon ставит без --version (новейшая активная). Установка: evo k8s add-addon <id-кластера> %s [--version <версия>] [--config настройки.json].", a.Addon))
+		fmt.Fprintln(w, i18n.T("* the recommended version (the newest active one). Installation is in the Cloud.ru console for now.",
+			"* рекомендуемая версия (новейшая активная). Установка — пока в консоли Cloud.ru."))
 	} else {
-		fmt.Fprintln(w, i18n.T("No version to install: every release is end of life or inactive.",
-			"Устанавливать нечего: все версии сняты с поддержки или неактивны."))
+		fmt.Fprintln(w, i18n.T("No supported version: every release is end of life or inactive.",
+			"Поддерживаемой версии нет: все версии сняты с поддержки или неактивны."))
 	}
 	fmt.Fprintln(w, i18n.T("KUBERNETES is the cluster version range, NODES the ready worker nodes the release needs; the settings schema: --full (with --json — as JSON).",
 		"KUBERNETES — какие версии кластера подходят, УЗЛОВ — сколько готовых рабочих узлов нужно; схема настроек — --full (с --json — в JSON)."))

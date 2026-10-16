@@ -37,7 +37,6 @@
     - [evo image list](#evo-image-list)
   - [evo init](#evo-init)
   - [evo k8s](#evo-k8s)
-    - [evo k8s add-addon](#evo-k8s-add-addon)
     - [evo k8s add-nodepool](#evo-k8s-add-nodepool)
     - [evo k8s addon-versions](#evo-k8s-addon-versions)
     - [evo k8s addons](#evo-k8s-addons)
@@ -1279,7 +1278,6 @@ evo k8s [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
-* [evo k8s add-addon](#evo-k8s-add-addon)	 - Установить плагин в кластер (асинхронно; версия по умолчанию — последняя активная)
 * [evo k8s add-nodepool](#evo-k8s-add-nodepool)	 - Добавить группу рабочих узлов (платно, асинхронно)
 * [evo k8s addon-versions](#evo-k8s-addon-versions)	 - Версии плагина: режим поддержки, требования к кластеру, схема настроек
 * [evo k8s addons](#evo-k8s-addons)	 - Каталог плагинов Kubernetes: поиск по имени и описанию, категория, платность
@@ -1294,60 +1292,6 @@ evo k8s [flags]
 * [evo k8s nodepools](#evo-k8s-nodepools)	 - Группы узлов кластера
 * [evo k8s options](#evo-k8s-options)	 - Версии Kubernetes, flavor узлов и зоны для кластеров
 * [evo k8s plan](#evo-k8s-plan)	 - Шаг 1: рассчитать конфигурацию кластера, ничего не создавая
-
-## evo k8s add-addon
-
-Установить плагин в кластер (асинхронно; версия по умолчанию — последняя активная)
-
-### Synopsis
-
-```text
-Установить плагин в кластер (асинхронно; версия по умолчанию — последняя активная).
-
-Вызывает инструмент k8s_add_addon (подробнее: 'evo tools describe k8s_add_addon').
-Описание инструмента и его флагов — на английском, как в MCP:
-
-Install a Managed Kubernetes addon release into a cluster. REQUIRES confirmed=true after the user approves. Without it only reads and returns a preview: the version picked (default: newest ACTIVE), namespace, the release's requirements and the cluster checks (Kubernetes version against kube_versions, node pools against ready_workers; what cannot be determined is listed in not_checked, a certain mismatch refuses with USAGE). Async: returns operation_id / cluster_addon_id. resolve_mode OVERWRITE may replace objects already in the cluster.
-
-Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
-```
-
-```
-evo k8s add-addon <cluster-id> <name> [flags]
-```
-
-### Examples
-
-```
-  evo k8s add-addon <cluster-id> cert-manager --dry-run
-  evo k8s add-addon <cluster-id> cert-manager --version v1.14.0 --config settings.json
-```
-
-### Options
-
-```
-      --config string         Файл со значением ('-' — из stdin). Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}} and {{clusterName}} in it. Default: the addon's defaults.
-  -h, --help                  Справка по add-addon
-      --resolve-mode string   What to do with objects of the addon already in the cluster (installed by hand): NONE keeps them, the install may then fail; OVERWRITE resets them to the recommended values. Default NONE.
-      --version string        Release version: the app version from k8s_addon_versions. The API installs by app version and picks the addon_version itself, so an addon_version is accepted only when it is the newest of its app version. Default: newest ACTIVE.
-```
-
-### Options inherited from parent commands
-
-```
-      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
-      --json                Вывод в формате JSON
-      --no-color            Без цвета
-      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
-      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
-      --verbose             Подробный журнал
-  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
-```
-
-### SEE ALSO
-
-* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
 ## evo k8s add-nodepool
 
@@ -1414,7 +1358,7 @@ evo k8s add-nodepool <cluster-id> [flags]
 Вызывает инструмент k8s_addon_versions (подробнее: 'evo tools describe k8s_addon_versions').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-List the releases of one Managed Kubernetes addon, newest first: version (appVersion, what k8s_add_addon takes), addon_version, mode (ACTIVE, EXPERIMENTAL, END_OF_SUPPORT, END_OF_LIFE, INACTIVE), kube_versions (semver range the cluster must satisfy), ready_workers (ready worker nodes needed), namespace, has_schema and schema_bytes of the configuration JSON Schema, latest (the release k8s_add_addon picks by default: newest ACTIVE). Read-only. The schema itself (up to ~94 KB) only with full=true.
+List the releases of one Managed Kubernetes addon, newest first: version (appVersion), addon_version, mode (ACTIVE, EXPERIMENTAL, END_OF_SUPPORT, END_OF_LIFE, INACTIVE), kube_versions (semver range the cluster must satisfy), ready_workers (ready worker nodes needed), namespace, has_schema and schema_bytes of the configuration JSON Schema, latest (the recommended release: newest ACTIVE). Read-only; evo does not install addons yet (the Cloud.ru console does). The schema itself (up to ~94 KB) only with full=true.
 ```
 
 ```
@@ -1464,7 +1408,7 @@ evo k8s addon-versions <name> [flags]
 Вызывает инструмент k8s_addons (подробнее: 'evo tools describe k8s_addons').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Search the Managed Kubernetes addon catalogue (Cloud.ru-packaged plugins: ingress, cert-manager, monitoring, CSI drivers, …). Read-only. Compact rows {name, display_name, categories, billable, deploy_with}; categories are Russian words of the console (e.g. 'Сети', 'Безопасность', 'Мониторинг'), the answer lists them all. Next: k8s_addon_versions for versions and requirements, k8s_add_addon to install.
+Search the Managed Kubernetes addon catalogue (Cloud.ru-packaged plugins: ingress, cert-manager, monitoring, CSI drivers, …). Read-only. Compact rows {name, display_name, categories, billable}; categories are Russian words of the console (e.g. 'Сети', 'Безопасность', 'Мониторинг'), the answer lists them all. Next: k8s_addon_versions for versions and requirements. evo does not install addons yet: install them in the Cloud.ru console.
 ```
 
 ```

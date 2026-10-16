@@ -2,7 +2,6 @@ package mk8s
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,15 +11,11 @@ import (
 )
 
 // Все ID выдуманы; формы ответов — как у живого API (api-probe #5).
-const (
-	fakeProject = "00000000-0000-0000-0000-0000000000f1"
-	fakeCluster = "00000000-0000-0000-0000-0000000000c1"
-)
+const fakeProject = "00000000-0000-0000-0000-0000000000f1"
 
 type addonAPI struct {
 	mu   sync.Mutex
 	reqs []*http.Request
-	body []string
 }
 
 func (a *addonAPI) last() *http.Request {
@@ -33,10 +28,8 @@ func newAddonAPI(t *testing.T, h func(w http.ResponseWriter, r *http.Request)) (
 	t.Helper()
 	rec := &addonAPI{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
 		rec.mu.Lock()
 		rec.reqs = append(rec.reqs, r)
-		rec.body = append(rec.body, string(b))
 		rec.mu.Unlock()
 		h(w, r)
 	}))
@@ -142,71 +135,5 @@ func TestGetAddonReleases_EscapesName(t *testing.T) {
 	_, _ = cli.GetAddonReleases(context.Background(), "../clusters")
 	if p := rec.last().URL.EscapedPath(); p != "/v3/addons/..%2Fclusters" {
 		t.Errorf("escaped path %q", p)
-	}
-}
-
-// Установка: тело по спецификации; ответ — операция (как у других
-// изменений mk8s) или сам ClusterAddon.
-func TestCreateClusterAddon(t *testing.T) {
-	answer := `{"id":"op-1","resourceId":"ca-1","done":false}`
-	cli, rec := newAddonAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v3/clusterAddons" {
-			http.Error(w, "unexpected", 400)
-			return
-		}
-		_, _ = io.WriteString(w, answer)
-	})
-	req := CreateClusterAddonReq{ClusterID: fakeCluster, Name: "cert-manager", AppVersion: "v1.14.0",
-		AddonConfiguration: `{"replicas":2,"name":"{{clusterName}}"}`, ResolveMode: "RESOLVE_CONFLICTS_MODE_NONE"}
-	res, err := cli.CreateClusterAddon(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.OperationID != "op-1" || res.ID != "ca-1" {
-		t.Errorf("operation answer: %+v", res)
-	}
-	var body map[string]any
-	if err := json.Unmarshal([]byte(rec.body[0]), &body); err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]any{"clusterId": fakeCluster, "name": "cert-manager", "appVersion": "v1.14.0",
-		"addonConfiguration": `{"replicas":2,"name":"{{clusterName}}"}`, "resolveMode": "RESOLVE_CONFLICTS_MODE_NONE"}
-	for k, v := range want {
-		if body[k] != v {
-			t.Errorf("body[%s] = %v, want %v", k, body[k], v)
-		}
-	}
-	if rec.last().URL.Query().Get("projectId") != fakeProject {
-		t.Errorf("no projectId: %s", rec.last().URL.RawQuery)
-	}
-
-	answer = `{"id":"ca-2","status":"CLUSTER_ADDON_STATUS_INSTALLING"}`
-	res, err = cli.CreateClusterAddon(context.Background(), CreateClusterAddonReq{ClusterID: fakeCluster, Name: "x", AppVersion: "1"})
-	if err != nil || res.ID != "ca-2" || res.OperationID != "" || res.Status != "CLUSTER_ADDON_STATUS_INSTALLING" {
-		t.Errorf("cluster addon answer: %+v, %v", res, err)
-	}
-	// resolveMode обязателен (живой API 16.10: 400 «must be specified»):
-	// без него уходит NONE; пустая конфигурация не уходит.
-	if strings.Contains(rec.body[1], "addonConfiguration") || !strings.Contains(rec.body[1], `"resolveMode":"RESOLVE_CONFLICTS_MODE_NONE"`) {
-		t.Errorf("body: %s", rec.body[1])
-	}
-
-	answer = `{"id":"op-3","done":true,"error":{"code":9,"message":"no ready workers"}}`
-	if _, err := cli.CreateClusterAddon(context.Background(), req); err == nil || !strings.Contains(err.Error(), "no ready workers") {
-		t.Errorf("failed operation: %v", err)
-	}
-}
-
-func TestListClusterAddons_ByCluster(t *testing.T) {
-	cli, rec := newAddonAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, `{"clusterAddons":[{"id":"ca-1","name":"cert-manager","status":"INSTALLED"}]}`)
-	})
-	got, err := cli.ListClusterAddons(context.Background(), fakeCluster)
-	if err != nil || len(got) != 1 || got[0]["name"] != "cert-manager" {
-		t.Fatalf("%v, %v", got, err)
-	}
-	q := rec.last().URL.Query()
-	if q.Get("clusterId") != fakeCluster || q.Get("projectId") != fakeProject {
-		t.Errorf("query %s", rec.last().URL.RawQuery)
 	}
 }

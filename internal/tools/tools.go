@@ -336,7 +336,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_addons",
-			Description: "Search the Managed Kubernetes addon catalogue (Cloud.ru-packaged plugins: ingress, cert-manager, monitoring, CSI drivers, …). Read-only. Compact rows {name, display_name, categories, billable, deploy_with}; categories are Russian words of the console (e.g. 'Сети', 'Безопасность', 'Мониторинг'), the answer lists them all. Next: k8s_addon_versions for versions and requirements, k8s_add_addon to install.",
+			Description: "Search the Managed Kubernetes addon catalogue (Cloud.ru-packaged plugins: ingress, cert-manager, monitoring, CSI drivers, …). Read-only. Compact rows {name, display_name, categories, billable}; categories are Russian words of the console (e.g. 'Сети', 'Безопасность', 'Мониторинг'), the answer lists them all. Next: k8s_addon_versions for versions and requirements. evo does not install addons yet: install them in the Cloud.ru console.",
 			InputSchema: objSchema(map[string]any{
 				"query":    strProp("Substring of the name, display name or description, case-insensitive (e.g. 'cert', 'ingress'). Default: the whole catalogue."),
 				"category": strProp("Only addons of this category, exact and case-insensitive (see 'categories' in the answer)."),
@@ -345,23 +345,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_addon_versions",
-			Description: "List the releases of one Managed Kubernetes addon, newest first: version (appVersion, what k8s_add_addon takes), addon_version, mode (ACTIVE, EXPERIMENTAL, END_OF_SUPPORT, END_OF_LIFE, INACTIVE), kube_versions (semver range the cluster must satisfy), ready_workers (ready worker nodes needed), namespace, has_schema and schema_bytes of the configuration JSON Schema, latest (the release k8s_add_addon picks by default: newest ACTIVE). Read-only. The schema itself (up to ~94 KB) only with full=true.",
+			Description: "List the releases of one Managed Kubernetes addon, newest first: version (appVersion), addon_version, mode (ACTIVE, EXPERIMENTAL, END_OF_SUPPORT, END_OF_LIFE, INACTIVE), kube_versions (semver range the cluster must satisfy), ready_workers (ready worker nodes needed), namespace, has_schema and schema_bytes of the configuration JSON Schema, latest (the recommended release: newest ACTIVE). Read-only; evo does not install addons yet (the Cloud.ru console does). The schema itself (up to ~94 KB) only with full=true.",
 			InputSchema: objSchema(map[string]any{
 				"name": strProp("Addon name from k8s_addons, e.g. 'cert-manager'."),
 				"full": boolProp("Include configuration_schema of every release (large; default false)."),
 			}, "name"),
-		},
-		{
-			Name:        "k8s_add_addon",
-			Description: "Install a Managed Kubernetes addon release into a cluster. REQUIRES confirmed=true after the user approves. Without it only reads and returns a preview: the version picked (default: newest ACTIVE), namespace, the release's requirements and the cluster checks (Kubernetes version against kube_versions, node pools against ready_workers; what cannot be determined is listed in not_checked, a certain mismatch refuses with USAGE). Async: returns operation_id / cluster_addon_id. resolve_mode OVERWRITE may replace objects already in the cluster.",
-			InputSchema: objSchema(map[string]any{
-				"cluster_id":   strProp("Cluster UUID (from k8s_list)."),
-				"name":         strProp("Addon name from k8s_addons."),
-				"version":      strProp("Release version: the app version from k8s_addon_versions. The API installs by app version and picks the addon_version itself, so an addon_version is accepted only when it is the newest of its app version. Default: newest ACTIVE."),
-				"config":       map[string]any{"type": "object", "description": "Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}} and {{clusterName}} in it. Default: the addon's defaults."},
-				"resolve_mode": strProp("What to do with objects of the addon already in the cluster (installed by hand): NONE keeps them, the install may then fail; OVERWRITE resets them to the recommended values. Default NONE."),
-				"confirmed":    confirmedProp(),
-			}, "cluster_id", "name"),
 		},
 		{
 			Name:        "k8s_kubectl",
@@ -1309,7 +1297,6 @@ func (s *Registry) registerTools() {
 		"k8s_nodepools":        s.handleK8sNodePools,
 		"k8s_addons":           s.handleK8sAddons,
 		"k8s_addon_versions":   s.handleK8sAddonVersions,
-		"k8s_add_addon":        s.handleK8sAddAddon,
 		"k8s_kubectl":          s.handleK8sKubectl,
 		"k8s_apply":            s.handleK8sApply,
 		"k8s_helm":             s.handleK8sHelm,

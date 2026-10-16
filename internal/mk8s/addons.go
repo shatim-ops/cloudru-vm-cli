@@ -11,14 +11,13 @@ import (
 	"strings"
 )
 
-// Addons (plugins) of Managed Kubernetes: the shared catalogue, the releases
-// of one addon, and installing a release into a cluster.
+// Addons (plugins) of Managed Kubernetes: the shared catalogue and the
+// releases of one addon, read-only.
 //
 // The catalogue shapes (GET /v3/addons, GET /v3/addons/{name}) were read on
 // the live API (api-probe #5, 16.10.2026, docs/internal/standalone/BACKLOG.md
-// [k8s-addons]). The cluster side (POST and GET /v3/clusterAddons) comes from
-// the v3 spec only: the test project has no cluster, so it is not
-// live-verified yet.
+// [k8s-addons]). Installing (POST /v3/clusterAddons) is not in v1.0: see
+// [k8s-addons] for why and where the code is.
 
 // addonPageSize is the page size of the catalogue calls; maxAddonPages stops
 // a server that keeps returning a next page token.
@@ -92,7 +91,7 @@ func (c *Client) projectQuery() url.Values {
 // ListAddons returns the whole addon catalogue, following nextPageToken.
 func (c *Client) ListAddons(ctx context.Context) ([]Addon, error) {
 	var out []Addon
-	err := c.pages(ctx, "/v3/addons", nil, func(data []byte) (string, error) {
+	err := c.pages(ctx, "/v3/addons", func(data []byte) (string, error) {
 		var r struct {
 			Addons        []Addon `json:"addons"`
 			NextPageToken string  `json:"nextPageToken"`
@@ -110,7 +109,7 @@ func (c *Client) ListAddons(ctx context.Context) ([]Addon, error) {
 // (which is not defined: sort with SortReleases).
 func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRelease, error) {
 	var out []AddonRelease
-	err := c.pages(ctx, "/v3/addons/"+seg(name), nil, func(data []byte) (string, error) {
+	err := c.pages(ctx, "/v3/addons/"+seg(name), func(data []byte) (string, error) {
 		var r struct {
 			Releases      []AddonRelease `json:"releases"`
 			NextPageToken string         `json:"nextPageToken"`
@@ -135,14 +134,11 @@ func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRele
 
 // pages GETs path page by page; page decodes one body and returns the next
 // page token ("" ends). A token seen twice ends it too.
-func (c *Client) pages(ctx context.Context, path string, extra url.Values, page func([]byte) (string, error)) error {
+func (c *Client) pages(ctx context.Context, path string, page func([]byte) (string, error)) error {
 	seen := map[string]bool{}
 	token := ""
 	for i := 0; i < maxAddonPages; i++ {
 		q := c.projectQuery()
-		for k, v := range extra {
-			q[k] = v
-		}
 		q.Set("pageSize", strconv.Itoa(addonPageSize))
 		if token != "" {
 			q.Set("pageToken", token)
@@ -165,93 +161,6 @@ func (c *Client) pages(ctx context.Context, path string, extra url.Values, page 
 		token = next
 	}
 	return nil
-}
-
-// Resolve modes of CreateClusterAddonReq: what the installation does with
-// objects of the addon already in the cluster.
-// The spec says PRESERVE does not apply to adding an addon, so only
-// these two are accepted when installing.
-var ResolveModes = []string{"NONE", "OVERWRITE"}
-
-// DefaultResolveMode is sent when none is given: resolveMode is required
-// (live API 16.10.2026: 400 "resolveMode: must be specified"), and NONE
-// leaves manifests the user installed by hand as they are.
-const DefaultResolveMode = "RESOLVE_CONFLICTS_MODE_NONE"
-
-// CreateClusterAddonReq is the body of POST /v3/clusterAddons (v3 spec, not
-// live-verified).
-type CreateClusterAddonReq struct {
-	ClusterID  string `json:"clusterId"`
-	Name       string `json:"name"`
-	AppVersion string `json:"appVersion"`
-	// AddonConfiguration is a JSON document as a string; the server
-	// substitutes {{clusterID}} and {{clusterName}} in it.
-	AddonConfiguration string `json:"addonConfiguration,omitempty"`
-	ResolveMode        string `json:"resolveMode"`
-}
-
-// ClusterAddonResult is the answer of CreateClusterAddon. Other mk8s
-// mutations return an Operation; the spec names a ClusterAddon. Both are
-// read: OperationID is set for an operation, ID and Status for an addon.
-type ClusterAddonResult struct {
-	OperationID string
-	ID          string // the cluster addon (an operation's resourceId)
-	Status      string
-	Done        bool
-}
-
-// CreateClusterAddon installs an addon release into a cluster.
-func (c *Client) CreateClusterAddon(ctx context.Context, req CreateClusterAddonReq) (*ClusterAddonResult, error) {
-	if req.ResolveMode == "" {
-		req.ResolveMode = DefaultResolveMode
-	}
-	data, st, err := c.do(ctx, http.MethodPost, "/v3/clusterAddons", c.projectQuery(), req)
-	if err != nil {
-		return nil, err
-	}
-	if st != 200 {
-		return nil, apiError(st, data)
-	}
-	var r struct {
-		ID         string          `json:"id"`
-		ResourceID string          `json:"resourceId"`
-		Done       *bool           `json:"done"`
-		Status     string          `json:"status"`
-		Error      json.RawMessage `json:"error"`
-	}
-	if err := json.Unmarshal(data, &r); err != nil {
-		return nil, err
-	}
-	if r.Done != nil || r.ResourceID != "" {
-		res := &ClusterAddonResult{OperationID: r.ID, ID: r.ResourceID, Done: r.Done != nil && *r.Done}
-		if len(r.Error) > 0 && string(r.Error) != "null" {
-			return res, fmt.Errorf("mk8s operation %s failed: %s", r.ID, r.Error)
-		}
-		return res, nil
-	}
-	return &ClusterAddonResult{ID: r.ID, Status: r.Status}, nil
-}
-
-// ListClusterAddons lists the addons installed in a cluster. Not
-// live-verified: GET /v3/clusterAddons?projectId= alone answers 400, and
-// clusterId (the filter of /v3/nodePools) is the most plausible filter.
-// Callers treat an error as "unknown", never as "none installed".
-func (c *Client) ListClusterAddons(ctx context.Context, clusterID string) ([]map[string]any, error) {
-	var out []map[string]any
-	err := c.pages(ctx, "/v3/clusterAddons", url.Values{"clusterId": {clusterID}}, func(data []byte) (string, error) {
-		var r struct {
-			ClusterAddons []map[string]any `json:"clusterAddons"`
-			Items         []map[string]any `json:"items"`
-			NextPageToken string           `json:"nextPageToken"`
-		}
-		if err := json.Unmarshal(data, &r); err != nil {
-			return "", err
-		}
-		out = append(out, r.ClusterAddons...)
-		out = append(out, r.Items...)
-		return r.NextPageToken, nil
-	})
-	return out, err
 }
 
 // namespaceRE is a Kubernetes namespace name (a DNS-1123 label).

@@ -210,8 +210,7 @@ var mutatingOverride = map[string]bool{
 // destructiveTools are the mutating tools, besides *_delete, that may delete
 // or overwrite data: they get destructiveHint in MCP, so a client asks the
 // person every time. kubectl, apply and helm run whatever they are given
-// (delete, uninstall); s3_put overwrites an existing key; k8s_add_addon with
-// resolve_mode OVERWRITE replaces objects already in the cluster.
+// (delete, uninstall); s3_put overwrites an existing key.
 var destructiveTools = map[string]bool{
 	"destroy":             true,
 	"stack_destroy":       true,
@@ -221,7 +220,6 @@ var destructiveTools = map[string]bool{
 	"k8s_kubectl":         true,
 	"k8s_apply":           true,
 	"k8s_helm":            true,
-	"k8s_add_addon":       true,
 }
 
 // IsDestructive reports whether a mutating tool may delete or overwrite
