@@ -34,6 +34,7 @@ type fakeMK8s struct {
 	kubeVersion string // "" — в ответе кластера версии нет
 	pools       string // тело /v3/nodePools
 	installed   string // тело /v3/clusterAddons; "" — 400
+	releases    string // тело /v3/addons/cert-manager; "" — три релиза ниже
 }
 
 func (f *fakeMK8s) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -65,6 +66,8 @@ func (f *fakeMK8s) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = io.WriteString(w, `{"addons":[{"name":"gpu-operator","displayName":"GPU Operator","categories":["AI","Мониторинг"],"isBillable":true}]}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/v3/addons/cert-manager" && f.releases != "":
+		_, _ = io.WriteString(w, f.releases)
 	case r.Method == http.MethodGet && r.URL.Path == "/v3/addons/cert-manager":
 		_, _ = io.WriteString(w, `{"releases":[
 			{"addonVersion":"1.0.0","appVersion":"v1.13.0","addonNamespace":"cert-manager","mode":"SUPPORT_MODE_ACTIVE","requirements":{"kubeVersions":">=1.25.0-0","readyWorkers":1}},
@@ -344,5 +347,32 @@ func TestK8sAddonTools_GroupAndMutating(t *testing.T) {
 	tl, _ := r.Lookup("k8s_add_addon")
 	if !IsDestructive(tl) {
 		t.Error("k8s_add_addon with resolve_mode OVERWRITE replaces objects: destructiveHint")
+	}
+}
+
+// API ставит по appVersion и сам выбирает addonVersion (openapi-v3): версию
+// плагина, которую сервер для этой версии приложения, скорее всего, не
+// выберет, закрепить нельзя — USAGE, а не тихая подмена (ревью Grok на #78).
+func TestK8sAddAddon_AddonVersionCannotBePinned(t *testing.T) {
+	f := &fakeMK8s{kubeVersion: "v1.30.2", pools: `{"nodePools":[{"id":"np","scalePolicy":{"fixedScale":{"count":2}}}]}`,
+		releases: `{"releases":[
+			{"addonVersion":"1.1.0","appVersion":"v1.14.0","addonNamespace":"cert-manager","mode":"SUPPORT_MODE_ACTIVE","requirements":{"readyWorkers":1}},
+			{"addonVersion":"1.1.1","appVersion":"v1.14.0","addonNamespace":"cert-manager","mode":"SUPPORT_MODE_ACTIVE","requirements":{"readyWorkers":1}}]}`}
+	r := addonRegistry(t, f)
+	args := func(v string) map[string]any {
+		return map[string]any{"cluster_id": addonCluster, "name": "cert-manager", "version": v}
+	}
+	m, text, isErr := callNamed(t, r, "k8s_add_addon", args("1.1.0"))
+	if !isErr || m["reason"] != clierrors.CodeUsage || !strings.Contains(m["hint"].(string), "--version v1.14.0") {
+		t.Errorf("older addon version of a shared app version: %s", text)
+	}
+	for _, v := range []string{"1.1.1", "v1.14.0"} {
+		_, text, _ = callNamed(t, r, "k8s_add_addon", args(v))
+		if !strings.Contains(text, "confirmation_required") || !strings.Contains(text, "the server picks one") {
+			t.Errorf("version %s: %s", v, text)
+		}
+	}
+	if len(f.posts) != 0 {
+		t.Errorf("installed without confirmation: %v", f.posts)
 	}
 }

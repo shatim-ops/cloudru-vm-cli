@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -119,9 +120,10 @@ func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRele
 		}
 		for _, rel := range r.Releases {
 			// The live API (16.10.2026) puts the addon version into
-			// addonNamespace too ("1.21.1-sbc.0" for cert-manager): such a
-			// value is not a namespace, so it is left out.
-			if rel.AddonNamespace != "" && rel.AddonNamespace == rel.AddonVersion {
+			// addonNamespace too ("1.21.1-sbc.0" for cert-manager): a value
+			// that is not a namespace name (DNS-1123 label) is left out —
+			// an agent would run "get pods -n 1.21.1-sbc.0" literally.
+			if !namespaceRE.MatchString(rel.AddonNamespace) {
 				rel.AddonNamespace = ""
 			}
 			out = append(out, rel)
@@ -251,3 +253,6 @@ func (c *Client) ListClusterAddons(ctx context.Context, clusterID string) ([]map
 	})
 	return out, err
 }
+
+// namespaceRE is a Kubernetes namespace name (a DNS-1123 label).
+var namespaceRE = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)

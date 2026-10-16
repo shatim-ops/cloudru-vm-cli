@@ -325,6 +325,20 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 				i18n.Tf("addon %s has no version %q", "у плагина %s нет версии %q", addon.Name, version),
 				i18n.Tf("Versions: evo k8s addon-versions %s (MCP: k8s_addon_versions).", "Версии: evo k8s addon-versions %s (MCP: k8s_addon_versions).", addon.Name))
 		}
+		// POST /v3/clusterAddons takes appVersion only (openapi-v3,
+		// CreateClusterAddonRequest): the server picks the addonVersion. A
+		// release asked for by an addonVersion other than the one the
+		// server is expected to pick for its appVersion (the newest — an
+		// assumption) cannot be pinned.
+		if same := releasesOf(rels, rel.AppVersion); len(same) > 1 {
+			if rel.AddonVersion != same[0].AddonVersion {
+				return nil, clierrors.New(clierrors.CodeUsage,
+					i18n.Tf("addon version %s cannot be pinned: the API installs by app version (%s) and picks the addon version itself",
+						"версию плагина %s закрепить нельзя: API ставит по версии приложения (%s) и сам выбирает версию плагина", rel.AddonVersion, rel.AppVersion),
+					i18n.Tf("Give the app version: --version %s.", "Укажите версию приложения: --version %s.", rel.AppVersion))
+			}
+			p.warnings = append(p.warnings, fmt.Sprintf("app version %s has %d addon versions; the server picks one (expected %s)", rel.AppVersion, len(same), same[0].AddonVersion))
+		}
 		p.release, p.requested = rel, true
 		switch m := mk8s.NormalizeMode(rel.Mode); m {
 		case mk8s.ModeEndOfLife, mk8s.ModeInactive, mk8s.ModeEndOfSupport:
@@ -539,4 +553,16 @@ func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (
 		out["warnings"] = plan.warnings
 	}
 	return toJSON(out), false
+}
+
+// releasesOf is the releases of one appVersion, in the order of rels
+// (newest addonVersion first after SortReleases).
+func releasesOf(rels []mk8s.AddonRelease, appVersion string) []mk8s.AddonRelease {
+	var out []mk8s.AddonRelease
+	for _, r := range rels {
+		if r.AppVersion == appVersion {
+			out = append(out, r)
+		}
+	}
+	return out
 }

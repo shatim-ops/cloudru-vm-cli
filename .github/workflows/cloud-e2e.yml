@@ -470,7 +470,7 @@ jobs:
   cleanup:
     if: ${{ inputs.cleanup_only }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     defaults:
@@ -646,9 +646,11 @@ jobs:
           while :; do
             st=$(evo tools call k8s_get --arg cluster_id="$CLUSTER_ID" --json | jq -r '.status // .state // "?"')
             echo "$(( ($(date +%s) - start) / 60 )) мин: $st"
+            # Точные статусы (живые: OBJECT_STATUS_PENDING → PROVISIONING →
+            # RUNNING): подстрока *ACTIVE* совпала бы и с INACTIVE.
             case "$st" in
-              *RUNNING*|*running*|*READY*|*ready*|*ACTIVE*|*active*) break ;;
-              *ERROR*|*error*|*FAIL*|*fail*) echo "::error::кластер: $st"; exit 1 ;;
+              OBJECT_STATUS_RUNNING|RUNNING) break ;;
+              *ERROR*|*FAIL*|*DELET*) echo "::error::кластер: $st"; exit 1 ;;
             esac
             [ $(( $(date +%s) - start )) -lt 2400 ] || { echo "::error::кластер не готов за 40 мин"; exit 1; }
             sleep 60
@@ -662,8 +664,8 @@ jobs:
             st=$(evo k8s nodepools "$CLUSTER_ID" --json | jq -r '[.node_pools[]?.status] | first // "?"')
             echo "$(( ($(date +%s) - start) / 60 )) мин: $st"
             case "$st" in
-              *RUNNING*|*running*|*READY*|*ready*|*ACTIVE*|*active*) break ;;
-              *ERROR*|*error*|*FAIL*|*fail*) echo "::error::пул: $st"; exit 1 ;;
+              OBJECT_STATUS_RUNNING|RUNNING) break ;;
+              *ERROR*|*FAIL*|*DELET*) echo "::error::пул: $st"; exit 1 ;;
             esac
             [ $(( $(date +%s) - start )) -lt 1800 ] || { echo "::error::пул не готов за 30 мин"; exit 1; }
             sleep 60
@@ -681,7 +683,8 @@ jobs:
             pods=$(evo k8s kubectl "$CLUSTER_ID" get pods -A -o json 2>/dev/null |
               jq -c --arg a "$ADDON" '[.items[]? | select(.metadata.name | startswith($a)) | {ns: .metadata.namespace, name: .metadata.name, phase: .status.phase}]' || echo '[]')
             echo "$(( ($(date +%s) - start) / 60 )) мин: $pods"
-            if [ "$(jq 'length > 0 and all(.phase == "Running")' <<<"$pods")" = true ]; then break; fi
+            # Поды Job (cert-manager-startupapicheck) заканчиваются в Succeeded.
+            if [ "$(jq 'any(.phase == "Running") and all(.phase == "Running" or .phase == "Succeeded")' <<<"$pods")" = true ]; then break; fi
             [ $(( $(date +%s) - start )) -lt 900 ] || { echo "::error::поды $ADDON не Running за 15 мин"; exit 1; }
             sleep 30
           done
