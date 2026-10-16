@@ -57,6 +57,9 @@ func (*cancelCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 func (*cancelCloud) GetImage(context.Context, string) (*provision.ImageDetail, error) {
 	return &provision.ImageDetail{ID: "img-1", Name: "ubuntu"}, nil
 }
+func (*cancelCloud) ListImages(context.Context, ...provision.ImageFilter) ([]*provision.Image, error) {
+	return []*provision.Image{{ID: "img-1", Name: "ubuntu"}}, nil
+}
 func (*cancelCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
 	return nil, nil
 }

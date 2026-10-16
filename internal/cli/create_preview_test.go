@@ -52,6 +52,9 @@ func (previewCloud) ListAvailabilityZones(context.Context) ([]*provision.Availab
 func (previewCloud) GetImage(_ context.Context, id string) (*provision.ImageDetail, error) {
 	return &provision.ImageDetail{ID: id, Name: "Ubuntu 22.04", MinDisk: 20}, nil
 }
+func (previewCloud) ListImages(context.Context, ...provision.ImageFilter) ([]*provision.Image, error) {
+	return []*provision.Image{{ID: pvImage, Name: "Ubuntu 22.04"}}, nil
+}
 func (previewCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
 	return []*provision.DiskType{{ID: "00000000-0000-0000-0000-0000000000e6", Name: "SSD"}}, nil
 }

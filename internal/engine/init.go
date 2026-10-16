@@ -305,13 +305,16 @@ func yamlComment(s string) string {
 // line of the project file: a name as the catalogue spells it (image:), a
 // UUID as given (image_id:). A name that would not resolve back to the same
 // image at deploy (a copy with the same name elsewhere in the catalogue) is
-// written as its UUID. An image deploy cannot put Docker on is refused here,
-// not at the first deploy.
+// written as its UUID. An image deploy cannot put Docker on, or one the
+// project cannot use, is refused here, not at the first deploy.
 func (e *Engine) initImage(ctx context.Context, ref string) (*provision.Image, string, error) {
 	cat := images.Catalog{Cloud: e.Cloud, ProjectID: e.Config.ProjectID}
 	img, err := cat.Resolve(ctx, ref)
 	if err != nil {
 		return nil, "", err
+	}
+	if img.NotInProject {
+		return nil, "", images.NotInProjectError(img.Name)
 	}
 	if family := images.NoDockerFamily(img.Name, img.DisplayName, img.OS); family != "" {
 		return nil, "", images.NoDockerError(clerrors.CodeUsage, img.Name, family)

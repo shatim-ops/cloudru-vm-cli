@@ -47,20 +47,24 @@ type mockCloudAPI struct {
 	listFlavorsFn           func(ctx context.Context) ([]*provision.Flavor, error)
 	listAvailabilityZonesFn func(ctx context.Context) ([]*provision.AvailabilityZone, error)
 	listImagesFn            func(ctx context.Context) ([]*provision.Image, error)
-	getImageFn              func(ctx context.Context, id string) (*provision.ImageDetail, error)
-	getVMDetailFn           func(ctx context.Context, id string) (*provision.VMDetail, error)
-	createFloatingIPFn      func(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error)
-	getFloatingIPFn         func(ctx context.Context, id string) (*provision.FloatingIP, error)
-	listFloatingIPsFn       func(ctx context.Context, projectID string) ([]*provision.FloatingIP, error)
-	deleteFloatingIPFn      func(ctx context.Context, fipID, projectID string) error
-	listDiskTypesFn         func(ctx context.Context, projectID string) ([]*provision.DiskType, error)
-	listSubnetsFn           func(ctx context.Context, projectID string) ([]*provision.Subnet, error)
-	listSecurityGroupsFn    func(ctx context.Context, projectID string) ([]*provision.SecurityGroup, error)
-	addedRules              []provision.SGRule
-	addRuleFn               func(ctx context.Context, sgID string, rule provision.SGRule) (*provision.SGRule, error)
-	deleteRuleFn            func(ctx context.Context, sgID, ruleID string) error
-	deletedRules            []string // "sgID/ruleID"
-	ruleSeq                 int
+	// projectViewFn answers GET /images?project_id= (the catalogue as the
+	// project sees it); nil: that call fails, so nothing is marked as
+	// unavailable to the project.
+	projectViewFn        func(ctx context.Context, f provision.ImageFilter) ([]*provision.Image, error)
+	getImageFn           func(ctx context.Context, id string) (*provision.ImageDetail, error)
+	getVMDetailFn        func(ctx context.Context, id string) (*provision.VMDetail, error)
+	createFloatingIPFn   func(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error)
+	getFloatingIPFn      func(ctx context.Context, id string) (*provision.FloatingIP, error)
+	listFloatingIPsFn    func(ctx context.Context, projectID string) ([]*provision.FloatingIP, error)
+	deleteFloatingIPFn   func(ctx context.Context, fipID, projectID string) error
+	listDiskTypesFn      func(ctx context.Context, projectID string) ([]*provision.DiskType, error)
+	listSubnetsFn        func(ctx context.Context, projectID string) ([]*provision.Subnet, error)
+	listSecurityGroupsFn func(ctx context.Context, projectID string) ([]*provision.SecurityGroup, error)
+	addedRules           []provision.SGRule
+	addRuleFn            func(ctx context.Context, sgID string, rule provision.SGRule) (*provision.SGRule, error)
+	deleteRuleFn         func(ctx context.Context, sgID, ruleID string) error
+	deletedRules         []string // "sgID/ruleID"
+	ruleSeq              int
 
 	token        string
 	createCalled bool
@@ -131,7 +135,13 @@ func (m *mockCloudAPI) ListAvailabilityZones(ctx context.Context) ([]*provision.
 	}, nil
 }
 
-func (m *mockCloudAPI) ListImages(ctx context.Context, _ ...provision.ImageFilter) ([]*provision.Image, error) {
+func (m *mockCloudAPI) ListImages(ctx context.Context, filter ...provision.ImageFilter) ([]*provision.Image, error) {
+	if len(filter) > 0 && filter[0].ProjectID != "" {
+		if m.projectViewFn != nil {
+			return m.projectViewFn(ctx, filter[0])
+		}
+		return nil, fmt.Errorf("mock: no project view of the catalogue")
+	}
 	if m.listImagesFn != nil {
 		return m.listImagesFn(ctx)
 	}

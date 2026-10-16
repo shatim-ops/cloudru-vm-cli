@@ -25,11 +25,22 @@ type imageListAnswer struct {
 		Type        string   `json:"type"`
 		ZonesReady  []string `json:"zones_ready"`
 		MinDiskGB   int      `json:"min_disk_gb"`
+		// AvailableInProject is false for an image the project cannot
+		// use, absent otherwise.
+		AvailableInProject *bool `json:"available_in_project"`
 	} `json:"images"`
-	Shown   int    `json:"shown"`
-	Total   int    `json:"total"`
-	Hidden  int    `json:"hidden"`
-	Warning string `json:"warning"`
+	Shown              int    `json:"shown"`
+	Total              int    `json:"total"`
+	Hidden             int    `json:"hidden"`
+	HiddenNotInProject int    `json:"hidden_not_in_project"`
+	Warning            string `json:"warning"`
+}
+
+// notInProjectLine explains the images the project cannot use, under the
+// list and on the card.
+func notInProjectLine() string {
+	return i18n.T("Images not available to the project are in the Cloud.ru catalogue, but the API will not create a VM of this project from them (probably the Marketplace product has to be connected to the project; unverified).",
+		"Недоступные проекту образы есть в каталоге Cloud.ru, но ВМ этого проекта API из них не создаст (вероятно, продукт Marketplace нужно подключить к проекту; не проверено).")
 }
 
 func gb(n int) string {
@@ -59,10 +70,27 @@ func renderImageList(p *output.Printer, w io.Writer, text string) error {
 	}
 	hidden := ""
 	if a.Hidden > 0 {
-		hidden = i18n.Tf(" (ready in no zone: %d; show them: --all)", " (не готовы ни в одной зоне: %d; показать — --all)", a.Hidden)
+		var why []string
+		if n := a.Hidden - a.HiddenNotInProject; n > 0 {
+			why = append(why, i18n.Tf("ready in no zone: %d", "не готовы ни в одной зоне: %d", n))
+		}
+		if a.HiddenNotInProject > 0 {
+			why = append(why, i18n.Tf("not available to the project: %d", "недоступны проекту: %d", a.HiddenNotInProject))
+		}
+		hidden = " (" + strings.Join(why, "; ") + i18n.T("; show them: --all)", "; показать — --all)")
+	}
+	flagged := false
+	for _, img := range a.Images {
+		flagged = flagged || (img.AvailableInProject != nil && !*img.AvailableInProject)
+	}
+	explain := func() {
+		if flagged || a.HiddenNotInProject > 0 {
+			fmt.Fprintln(w, notInProjectLine())
+		}
 	}
 	if len(a.Images) == 0 {
 		fmt.Fprintln(w, i18n.T("No images found", "Образы не найдены")+hidden+".")
+		explain()
 		fmt.Fprintln(w, i18n.T("The search is a substring of the name or the display name: evo image list <part of the name>.",
 			"Поиск — по подстроке имени или отображаемого имени: evo image list <часть имени>."))
 		return nil
@@ -73,14 +101,29 @@ func renderImageList(p *output.Printer, w io.Writer, text string) error {
 		if zones == "" {
 			zones = "—"
 		}
-		rows = append(rows, []string{img.Name, clip(img.DisplayName, 48), img.Type, zones, gb(img.MinDiskGB)})
+		row := []string{img.Name, clip(img.DisplayName, 48), img.Type, zones, gb(img.MinDiskGB)}
+		if flagged {
+			// The column is there only when a row is flagged: the check
+			// was made, so the other rows are available.
+			avail := i18n.T("yes", "да")
+			if img.AvailableInProject != nil && !*img.AvailableInProject {
+				avail = i18n.T("NO", "НЕТ")
+			}
+			row = append(row, avail)
+		}
+		rows = append(rows, row)
 	}
-	p.Table([]string{
+	headers := []string{
 		i18n.T("NAME", "ИМЯ"), i18n.T("DISPLAY NAME", "ОТОБРАЖАЕМОЕ ИМЯ"), i18n.T("TYPE", "ТИП"),
 		i18n.T("ZONES", "ЗОНЫ"), i18n.T("MIN DISK", "МИН. ДИСК"),
-	}, rows)
+	}
+	if flagged {
+		headers = append(headers, i18n.T("AVAILABLE TO PROJECT", "ДОСТУПЕН ПРОЕКТУ"))
+	}
+	p.Table(headers, rows)
 	fmt.Fprintln(w, i18n.Tf("Shown %d of %d%s. UUID: --json or 'evo image get <name>'.",
 		"Показаны %d из %d%s. UUID — в --json или 'evo image get <имя>'.", len(a.Images), a.Total, hidden))
+	explain()
 	return nil
 }
 
@@ -100,6 +143,8 @@ type imageCardAnswer struct {
 	ZonesReady     []string           `json:"zones_ready"`
 	Fields         []images.FieldInfo `json:"fields"`
 	FieldsRequired []string           `json:"fields_required"`
+	// AvailableInProject is false for an image the project cannot use.
+	AvailableInProject *bool `json:"available_in_project"`
 }
 
 // fieldFiller says who fills a field, for the card.
@@ -182,6 +227,10 @@ func renderImageCard(p *output.Printer, w io.Writer, text string) error {
 		zones += "; " + strings.Join(other, ", ")
 	}
 	lines = append(lines, kv{i18n.T("Zones", "Зоны"), zones})
+	unavailable := a.AvailableInProject != nil && !*a.AvailableInProject
+	if unavailable {
+		lines = append(lines, kv{i18n.T("Project", "Проект"), i18n.T("NOT available: a VM cannot be created from it", "НЕ доступен: ВМ из него не создать")})
+	}
 
 	width := 0
 	for _, l := range lines {
@@ -219,6 +268,11 @@ func renderImageCard(p *output.Printer, w io.Writer, text string) error {
 	}
 
 	fmt.Fprintln(w)
+	if unavailable {
+		fmt.Fprintln(w, notInProjectLine())
+		fmt.Fprintln(w, i18n.T("Images the project can use: evo image list <query>", "Образы, доступные проекту: evo image list <запрос>"))
+		return nil
+	}
 	fmt.Fprintln(w, i18n.T("Create a VM:", "Создать ВМ:"))
 	fmt.Fprintf(w, "  evo vm create %s --image %s%s\n", i18n.T("<vm-name>", "<имя-вм>"), images.ShellQuote(img.Name), meta)
 	if img.MinCPU > 0 || img.MinRAM > 0 {

@@ -125,8 +125,10 @@ const previewLookupTimeout = 20 * time.Second
 // reach the cloud (the MCP preview of provision never does): the configured
 // project, zone names, the flavor auto picks with its size, the image name
 // and the boot disk it needs, then the price. Lookups are best effort: what
-// cannot be read stays as it is.
-func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) {
+// cannot be read stays as it is. The one error is a refusal: the VM's image
+// is in the catalogue but the project cannot use it
+// (images.NotInProjectError) — the call would be refused after consent.
+func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 	if p.ProjectID == "" && p.Resource != ResourceS3Bucket && !contains(p.Missing, "project_id") {
 		p.ProjectID, p.ProjectFrom = e.Config.ProjectID, e.Config.ProjectOrigin
 		if p.ProjectID == "" {
@@ -140,13 +142,13 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) {
 	}
 	needZone := zone != nil && zone.ID != "" && (zone.Name == "" || zone.Name == zone.ID)
 	if (!needZone && p.VM == nil) || e.Auth == nil || e.Cloud == nil {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, previewLookupTimeout)
 	defer cancel()
 	tok, err := e.Auth.Token(ctx)
 	if err != nil {
-		return
+		return nil
 	}
 	e.Cloud.SetToken(tok.Value)
 	if needZone {
@@ -160,7 +162,7 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) {
 		}
 	}
 	if p.VM == nil {
-		return
+		return nil
 	}
 	vm := p.VM
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
@@ -173,20 +175,32 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) {
 			}
 		}
 	}
+	cat := images.Catalog{Cloud: e.Cloud, ProjectID: p.ProjectID}
+	checked := false
 	if vm.Image.ID == "" && vm.Image.Name != "" {
 		// image by name: the call resolves it the same way.
-		if img, err := (images.Catalog{Cloud: e.Cloud, ProjectID: p.ProjectID}).Resolve(ctx, vm.Image.Name); err == nil {
-			vm.Image.ID, vm.Image.Name = img.ID, img.Name
+		if img, err := cat.Resolve(ctx, vm.Image.Name); err == nil {
+			if img.NotInProject {
+				return images.NotInProjectError(img.Name)
+			}
+			vm.Image.ID, vm.Image.Name, checked = img.ID, img.Name, true
 		}
 	}
 	if vm.Image.ID != "" {
 		if img, err := e.Cloud.GetImage(ctx, vm.Image.ID); err == nil {
+			if !checked {
+				cat.MarkInProject(ctx, img)
+				if img.NotInProject {
+					return images.NotInProjectError(img.Name)
+				}
+			}
 			if img.Name != "" {
 				vm.Image.Name = img.Name
 			}
 			vm.Disk.SizeGB, _ = provision.BootDiskGB(vm.Disk.SizeGB, img.MinDisk)
 		}
 	}
+	return nil
 }
 
 // PickVMFlavor is the flavor provision creates a VM with: a name or UUID

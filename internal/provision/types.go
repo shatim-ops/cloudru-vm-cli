@@ -257,6 +257,11 @@ type Image struct {
 	// AvailZones is the documented build state per zone
 	// (availability_zones[].state, .enabled; api-contract §4.6).
 	AvailZones []ImageAvailZone `json:"availability_zones,omitempty"`
+	// NotInProject marks a shared image that the project's own view of the
+	// catalogue (GET /images?project_id=) leaves out: creating a VM from it
+	// fails with 422 wrong_image (seen live 16.10.2026). images.Catalog sets
+	// it; the API never sends it.
+	NotInProject bool `json:"-"`
 }
 
 // ImageFilter is the server-side query of GET /api/v1/images. Name and
@@ -270,6 +275,10 @@ type ImageFilter struct {
 	Enabled            *bool
 	NeedGPU            *bool
 	AvailabilityZoneID string
+	// ProjectID asks for the catalogue as this project sees it: the shared
+	// images the project can use plus its own. It combines with the other
+	// fields (checked live 16.10.2026).
+	ProjectID string
 }
 
 // Query is the filter as URL parameters.
@@ -284,6 +293,7 @@ func (f ImageFilter) Query() url.Values {
 	set("display_name", f.DisplayName)
 	set("type", f.Type)
 	set("availability_zone_id", f.AvailabilityZoneID)
+	set("project_id", f.ProjectID)
 	if f.Enabled != nil {
 		q.Set("enabled", strconv.FormatBool(*f.Enabled))
 	}
@@ -358,6 +368,8 @@ type ImageDetail struct {
 	// AvailZones carries the real build state: the top-level Status is often
 	// empty, and an image is usable only once a zone reports "created".
 	AvailZones []ImageAvailZone `json:"availability_zones"`
+	// NotInProject is Image.NotInProject for an image read by UUID.
+	NotInProject bool `json:"-"`
 }
 
 // ImageAvailZone is an image's per-zone build state and size.

@@ -277,14 +277,30 @@ func selectFlavor(flavors []*provision.Flavor, p Params) (provision.Flavor, []st
 // The default branch deliberately stays on the shared catalogue: it guesses a
 // base OS, and a project's own product images have no business being guessed.
 func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want string) (provision.Image, error) {
+	img, own, err := pickImage(ctx, cloud, projectID, want)
+	if err != nil {
+		return img, err
+	}
+	// A shared image the project cannot use: the create call would answer
+	// 422 wrong_image after the plan is approved — refuse the plan.
+	if !own && (images.Catalog{Cloud: cloud, ProjectID: projectID}).MissingFromProject(ctx, img.ID, img.Name) {
+		return provision.Image{}, images.NotInProjectError(img.Name)
+	}
+	return img, nil
+}
+
+// pickImage is the image of the plan: by exact name or UUID in the shared
+// catalogue, then among the project's own (the bool is true for those); by
+// default Ubuntu 24.04.
+func pickImage(ctx context.Context, cloud provision.CloudAPI, projectID, want string) (provision.Image, bool, error) {
 	images, err := cloud.ListImages(ctx)
 	if err != nil {
-		return provision.Image{}, fmt.Errorf("list images: %w", err)
+		return provision.Image{}, false, fmt.Errorf("list images: %w", err)
 	}
 	if want != "" {
 		for _, img := range images {
 			if img.Name == want || img.ID == want {
-				return *img, nil
+				return *img, false, nil
 			}
 		}
 		// Ошибка выборки по проекту глотается намеренно: у токена может не быть
@@ -293,11 +309,11 @@ func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want 
 		if own, e := cloud.ListImagesInProject(ctx, projectID); e == nil {
 			for _, img := range own {
 				if img.Name == want || img.ID == want {
-					return *img, nil
+					return *img, true, nil
 				}
 			}
 		}
-		return provision.Image{}, fmt.Errorf(
+		return provision.Image{}, false, fmt.Errorf(
 			"image %q not found in the shared catalogue or in project %s (use the list_images tool to see options)",
 			want, projectID)
 	}
@@ -305,13 +321,13 @@ func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want 
 	for _, img := range images {
 		n := strings.ToLower(img.Name)
 		if strings.Contains(n, "ubuntu") && strings.Contains(n, "24.04") && !strings.Contains(n, "gpu") {
-			return *img, nil
+			return *img, false, nil
 		}
 	}
 	if len(images) > 0 {
-		return *images[0], nil
+		return *images[0], false, nil
 	}
-	return provision.Image{}, fmt.Errorf("no images available")
+	return provision.Image{}, false, fmt.Errorf("no images available")
 }
 
 // resolveAccess fills the image's metadata by its declared fields

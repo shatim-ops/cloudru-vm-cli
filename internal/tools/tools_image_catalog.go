@@ -23,7 +23,7 @@ func imageListSchema() map[string]any {
 		"query": strProp("Substring of the image name or display name, case-insensitive (e.g. 'astra', 'ubuntu'). Default: the whole catalogue."),
 		"type":  typ,
 		"zone":  strProp("Only images ready in this availability zone: name ('ru.AZ-1', 'AZ-1') or UUID."),
-		"all":   boolProp("Also show catalogue images ready in no zone (hidden by default: the shared catalogue carries test and broken images)."),
+		"all":   boolProp("Also show catalogue images ready in no zone and those the project cannot use (hidden by default: the shared catalogue carries test and broken images, and images a VM of this project cannot be created from — these come with available_in_project=false)."),
 	})
 }
 
@@ -36,6 +36,10 @@ type imageRow struct {
 	Type        string   `json:"type,omitempty"`
 	ZonesReady  []string `json:"zones_ready"`
 	MinDiskGB   int      `json:"min_disk_gb,omitempty"`
+	// AvailableInProject is false for an image of the shared catalogue the
+	// project cannot create a VM from (the API answers 422 wrong_image);
+	// absent otherwise.
+	AvailableInProject *bool `json:"available_in_project,omitempty"`
 }
 
 // zoneNamer names zones for a row: the image's own zone name when it has
@@ -130,16 +134,39 @@ func (s *Registry) handleImageList(ctx context.Context, args map[string]any) (st
 	}
 	rows := make([]imageRow, 0, len(res.Images))
 	for _, img := range res.Images {
-		rows = append(rows, imageRow{
+		row := imageRow{
 			ID: img.ID, Name: img.Name, DisplayName: img.DisplayName, Type: img.Type,
 			ZonesReady: zn.readyShort(img.AvailZones), MinDiskGB: img.MinDisk,
-		})
+		}
+		if img.NotInProject {
+			row.AvailableInProject = new(bool)
+		}
+		rows = append(rows, row)
 	}
 	out := map[string]any{"images": rows, "shown": len(rows), "total": res.Total, "hidden": res.Hidden}
+	if res.HiddenNotInProject > 0 {
+		out["hidden_not_in_project"] = res.HiddenNotInProject
+	}
+	if res.HiddenNotInProject > 0 || hasNotInProject(res.Images) {
+		out["note"] = notInProjectNote
+	}
 	if res.Warning != "" {
 		out["warning"] = res.Warning
 	}
 	return toJSON(out), false
+}
+
+// notInProjectNote explains available_in_project=false and
+// hidden_not_in_project to an agent.
+const notInProjectNote = "Some images of the shared Cloud.ru catalogue are not available to this project (the catalogue as the project sees it, project_id=, leaves them out): a VM cannot be created from them — provision, deploy and deploy_plan refuse them before anything is created (the API would answer 422 wrong_image). Why is unverified: probably the Marketplace product has to be connected to the project first."
+
+func hasNotInProject(list []*provision.Image) bool {
+	for _, img := range list {
+		if img.NotInProject {
+			return true
+		}
+	}
+	return false
 }
 
 // imageErrResult is errResult plus the candidates of an ambiguous
@@ -153,7 +180,11 @@ func imageErrResult(err error) string {
 	_ = json.Unmarshal([]byte(errResult(err)), &m)
 	cands := make([]map[string]any, 0, len(amb.Candidates))
 	for _, c := range amb.Candidates {
-		cands = append(cands, map[string]any{"id": c.ID, "name": c.Name, "display_name": c.DisplayName, "type": c.Type})
+		cand := map[string]any{"id": c.ID, "name": c.Name, "display_name": c.DisplayName, "type": c.Type}
+		if c.NotInProject {
+			cand["available_in_project"] = false
+		}
+		cands = append(cands, cand)
 	}
 	m["candidates"] = cands
 	return toJSON(m)
@@ -216,6 +247,12 @@ func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (str
 	if len(needs) > 0 {
 		out["note"] = "The image has mandatory fields evo cannot fill (" + strings.Join(needs, ", ") +
 			"): pass them to provision in image_metadata (CLI: --meta field=value), or the call is refused before anything is created."
+	}
+	if img.NotInProject {
+		// No "create": provision would refuse it.
+		delete(out, "create")
+		out["available_in_project"] = false
+		out["note"] = notInProjectNote + " Pick another image: image_list (it hides such images by default)."
 	}
 	return toJSON(out), false
 }

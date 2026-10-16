@@ -12,20 +12,36 @@ import (
 )
 
 // BootImage reads the configured boot image with its metadata fields:
-// image_id by UUID as it is (one read, as before), image by a catalogue
-// reference — an exact name, a display name or a UUID (images.Resolve:
-// ambiguous is USAGE with the candidates, none is NOT_FOUND). Neither set
-// is CONFIG_INVALID.
+// image_id by UUID as it is (one read and the project's check), image by a
+// catalogue reference — an exact name, a display name or a UUID
+// (images.Resolve: ambiguous is USAGE with the candidates, none is
+// NOT_FOUND). Neither set is CONFIG_INVALID. An image of the shared
+// catalogue the project cannot use is NOT_FOUND here, before anything is
+// created: the create call would answer 422 wrong_image
+// (images.NotInProjectError).
 func (e *Engine) BootImage(ctx context.Context, projectID string) (*provision.ImageDetail, error) {
-	if id := e.Config.ImageID; id != "" {
-		img, err := e.Cloud.GetImage(ctx, id)
+	cat := images.Catalog{Cloud: e.Cloud, ProjectID: projectID}
+	var img *provision.ImageDetail
+	switch {
+	case e.Config.ImageID != "":
+		d, err := e.Cloud.GetImage(ctx, e.Config.ImageID)
 		if err != nil {
 			return nil, fmt.Errorf(i18n.T("get image details: %w", "сведения об образе: %w"), err)
 		}
-		return img, nil
+		cat.MarkInProject(ctx, d)
+		img = d
+	case e.Config.Image != "":
+		d, err := cat.Get(ctx, e.Config.Image)
+		if err != nil {
+			return nil, err
+		}
+		img = d
 	}
-	if ref := e.Config.Image; ref != "" {
-		return images.Catalog{Cloud: e.Cloud, ProjectID: projectID}.Get(ctx, ref)
+	if img != nil {
+		if img.NotInProject {
+			return nil, images.NotInProjectError(img.Name)
+		}
+		return img, nil
 	}
 	return nil, clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.T("no boot image: image and image_id are not set", "не задан образ: нет ни image, ни image_id"),

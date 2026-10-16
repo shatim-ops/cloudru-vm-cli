@@ -628,7 +628,11 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 	if resp := parseObject(text); resp["status"] == "confirmation_required" {
 		preview := toolPreview(t.Name, resp)
 		if human {
-			if p, ok := createPreview(ctx, t.Name, resp); ok {
+			p, ok, err := createPreview(ctx, t.Name, resp)
+			if err != nil {
+				return "", err
+			}
+			if ok {
 				preview = p
 			}
 		}
@@ -683,22 +687,26 @@ func toolPreview(name string, resp map[string]any) confirm.Preview {
 // createPreview is the human preview of a billable tool: the "preview"
 // object of its answer, completed with what the tool leaves to the CLI
 // (zone names, the flavor, the image, the price). --json gets the same
-// answer with the completed object.
-func createPreview(ctx context.Context, name string, resp map[string]any) (confirm.Preview, bool) {
+// answer with the completed object. The error is a refusal the lookups
+// found (an image the project cannot use): it stops the call before the
+// question.
+func createPreview(ctx context.Context, name string, resp map[string]any) (confirm.Preview, bool, error) {
 	raw, ok := resp["preview"]
 	if !ok {
-		return confirm.Preview{}, false
+		return confirm.Preview{}, false, nil
 	}
 	b, err := json.Marshal(raw)
 	if err != nil {
-		return confirm.Preview{}, false
+		return confirm.Preview{}, false, nil
 	}
 	var cp engine.CreatePreview
 	if json.Unmarshal(b, &cp) != nil || cp.Resource == "" {
-		return confirm.Preview{}, false
+		return confirm.Preview{}, false, nil
 	}
 	if eng, err := toolEngine(map[string]any{}); err == nil && eng != nil {
-		eng.CompletePreview(ctx, &cp)
+		if err := eng.CompletePreview(ctx, &cp); err != nil {
+			return confirm.Preview{}, false, err
+		}
 	}
 	p := engine.ShowCreatePreview(name, cp)
 	details := make(map[string]any, len(resp))
@@ -707,7 +715,7 @@ func createPreview(ctx context.Context, name string, resp map[string]any) (confi
 	}
 	details["preview"] = cp
 	p.Details = details
-	return p, true
+	return p, true, nil
 }
 
 func callSummary(tool string) string { return i18n.T("call ", "вызвать ") + tool }

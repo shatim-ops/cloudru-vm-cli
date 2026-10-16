@@ -28,6 +28,15 @@
   `provision`): несколько совпадений — `1` (`USAGE`, в сообщении до 10
   кандидатов), ни одного — `4` (`NOT_FOUND`, подсказка
   `evo image list <запрос>`).
+- Образ есть в общем каталоге Cloud.ru, но недоступен проекту (его нет в
+  каталоге, каким его видит проект — `project_id`): `evo vm create`,
+  `evo deploy`, `evo init --image`, `provision`, `deploy`, `deploy_plan` —
+  `4` (`NOT_FOUND`, «образ … есть в каталоге Cloud.ru, но недоступен
+  проекту»), до вопроса и до создания ВМ и floating IP; иначе API ответил бы
+  422 `wrong_image`. Если и ОС без Docker, `deploy` называет сначала
+  недоступность. `evo image get` такого образа — `0`, карточка с пометкой.
+  MCP `provision` проверяет это при вызове с `confirmed=true`: превью в
+  облако не ходит.
 - Поля образа: у `evo vm create` / `provision` неизвестное поле в `--meta`
   (`image_metadata`) или незаполненное обязательное поле — `1` (`USAGE`); у
   `deploy` то же из `image_metadata:` в `.evo.yaml` — `2`

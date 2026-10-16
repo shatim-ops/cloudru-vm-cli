@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -15,10 +16,15 @@ import (
 
 // fakeCloud — каталог образов, который фильтрует как сервер: name= и
 // display_name= — подстрока без учёта регистра, type=, availability_zone_id=.
+//
+// С project_id= каталог — как его видит проект: без образов hidden (по id)
+// и с образами проекта; projErr — ошибка такого вызова.
 type fakeCloud struct {
 	shared  []*provision.Image
 	own     []*provision.Image
 	ownErr  error
+	hidden  map[string]bool
+	projErr error
 	queries []provision.ImageFilter
 }
 
@@ -28,8 +34,21 @@ func (c *fakeCloud) ListImages(_ context.Context, filter ...provision.ImageFilte
 		f = filter[0]
 	}
 	c.queries = append(c.queries, f)
+	list := c.shared
+	if f.ProjectID != "" {
+		if c.projErr != nil {
+			return nil, c.projErr
+		}
+		list = nil
+		for _, img := range c.shared {
+			if !c.hidden[img.ID] {
+				list = append(list, img)
+			}
+		}
+		list = append(list, c.own...)
+	}
 	var out []*provision.Image
-	for _, img := range c.shared {
+	for _, img := range list {
 		if f.Name != "" && !strings.Contains(strings.ToLower(img.Name), strings.ToLower(f.Name)) {
 			continue
 		}
@@ -118,9 +137,10 @@ func names(list []*provision.Image) []string {
 }
 
 // Запрос уходит на сервер дважды — name= и display_name=, ответы
-// сливаются по id без дублей; неготовые образы каталога скрыты, образ
-// проекта виден; порядок — public, marketplace, private, внутри по
-// отображаемому имени.
+// сливаются по id без дублей; с проектом — ещё дважды с project_id= (каким
+// каталог видит проект). Неготовые образы каталога скрыты, образ проекта
+// виден; порядок — public, marketplace, private, внутри по отображаемому
+// имени.
 func TestSearch_QueryMergeHideSort(t *testing.T) {
 	cloud := testCatalog()
 	cat := Catalog{Cloud: cloud, ProjectID: "00000000-0000-0000-0000-0000000000f1"}
@@ -128,9 +148,11 @@ func TestSearch_QueryMergeHideSort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cloud.queries) != 2 || cloud.queries[0].Name != "ASTRA" || cloud.queries[1].DisplayName != "ASTRA" ||
-		cloud.queries[0].DisplayName != "" || cloud.queries[1].Name != "" {
-		t.Fatalf("server queries: %+v", cloud.queries)
+	q := cloud.queries
+	if len(q) != 4 || q[0].Name != "ASTRA" || q[1].DisplayName != "ASTRA" || q[0].DisplayName != "" || q[1].Name != "" ||
+		q[0].ProjectID != "" || q[1].ProjectID != "" ||
+		q[2].Name != "ASTRA" || q[3].DisplayName != "ASTRA" || q[2].ProjectID != cat.ProjectID || q[3].ProjectID != cat.ProjectID {
+		t.Fatalf("server queries: %+v", q)
 	}
 	got := strings.Join(names(res.Images), ",")
 	want := "alse-base-1-7-7,astra_1.8.1,AstraLinuxSmolensk1.8.3KES,astra-golden"
@@ -152,14 +174,25 @@ func TestSearch_QueryMergeHideSort(t *testing.T) {
 		t.Errorf("--all: %v hidden %d", names(all.Images), all.Hidden)
 	}
 
-	// Без запроса — один вызов без name/display_name; public первыми.
+	// Без запроса — один вызов без name/display_name (и один с project_id=);
+	// public первыми.
 	cloud.queries = nil
 	every, err := cat.Search(context.Background(), "", Filter{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cloud.queries) != 1 || cloud.queries[0].Name != "" || cloud.queries[0].DisplayName != "" {
+	if len(cloud.queries) != 2 || cloud.queries[0].Name != "" || cloud.queries[0].DisplayName != "" ||
+		cloud.queries[0].ProjectID != "" || cloud.queries[1].ProjectID != cat.ProjectID {
 		t.Errorf("queries without a query: %+v", cloud.queries)
+	}
+
+	// Без проекта — как раньше: только общий каталог.
+	cloud.queries = nil
+	if _, err := (Catalog{Cloud: cloud}).Search(context.Background(), "astra", Filter{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(cloud.queries) != 2 || cloud.queries[0].ProjectID != "" || cloud.queries[1].ProjectID != "" {
+		t.Errorf("queries without a project: %+v", cloud.queries)
 	}
 	if got := strings.Join(names(every.Images), ","); got != "Ubuntu-22.04,Ubuntu-24.04,alse-base-1-7-7,astra_1.8.1,AstraLinuxSmolensk1.8.3KES,astra-golden" {
 		t.Errorf("order: %s", got)
@@ -288,5 +321,143 @@ func TestZoneShort(t *testing.T) {
 		if got := ZoneShort(in); got != want {
 			t.Errorf("%q → %q", in, got)
 		}
+	}
+}
+
+// notInProject — каталог, в котором проект не видит двух образов Astra
+// (как 16.10.2026: все отечественные ОС общего каталога).
+func notInProject() *fakeCloud {
+	cloud := testCatalog()
+	cloud.hidden = map[string]bool{
+		"00000000-0000-0000-0000-000000000001": true, // AstraLinuxSmolensk1.8.3KES
+		"00000000-0000-0000-0000-000000000007": true, // astra_1.8.1
+	}
+	return cloud
+}
+
+// Образ, которого нет в каталоге проекта, скрыт, как неготовый, и посчитан
+// отдельно; --all показывает его с пометкой.
+func TestSearch_NotInProjectHiddenAndFlagged(t *testing.T) {
+	cat := Catalog{Cloud: notInProject(), ProjectID: "00000000-0000-0000-0000-0000000000f1"}
+	res, err := cat.Search(context.Background(), "astra", Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(names(res.Images), ","); got != "alse-base-1-7-7,astra-golden" {
+		t.Errorf("images: %s", got)
+	}
+	if res.Total != 5 || res.Hidden != 3 || res.HiddenNotInProject != 2 || res.Warning != "" {
+		t.Errorf("total %d hidden %d not in project %d warning %q, want 5, 3, 2, none", res.Total, res.Hidden, res.HiddenNotInProject, res.Warning)
+	}
+
+	all, err := cat.Search(context.Background(), "astra", Filter{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flagged := map[string]bool{}
+	for _, img := range all.Images {
+		flagged[img.Name] = img.NotInProject
+	}
+	if len(all.Images) != 5 || !flagged["AstraLinuxSmolensk1.8.3KES"] || !flagged["astra_1.8.1"] ||
+		flagged["alse-base-1-7-7"] || flagged["astra-voronej"] || flagged["astra-golden"] || all.HiddenNotInProject != 0 {
+		t.Errorf("--all: %v", flagged)
+	}
+}
+
+// Каталог проекта не прочитался — ничего не отмечено, предупреждение есть.
+func TestSearch_ProjectViewFailsWarnsAndMarksNothing(t *testing.T) {
+	cloud := notInProject()
+	cloud.projErr = stderrors.New("boom")
+	cat := Catalog{Cloud: cloud, ProjectID: "00000000-0000-0000-0000-0000000000f1"}
+	res, err := cat.Search(context.Background(), "astra", Filter{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Warning, "boom") {
+		t.Errorf("warning: %q", res.Warning)
+	}
+	for _, img := range res.Images {
+		if img.NotInProject {
+			t.Errorf("%s marked although the project's view was not read", img.Name)
+		}
+	}
+	got, err := cat.Resolve(context.Background(), "AstraLinuxSmolensk1.8.3KES")
+	if err != nil || got.NotInProject {
+		t.Errorf("resolve: %v %+v", err, got)
+	}
+	// По UUID: вызов не прошёл — тоже ничего не отмечено.
+	d, err := cat.Get(context.Background(), "00000000-0000-0000-0000-000000000001")
+	if err != nil || d.NotInProject {
+		t.Errorf("get by UUID: %v %+v", err, d)
+	}
+}
+
+// Resolve и Get отдают недоступный проекту образ — с пометкой: отказывает
+// тот, кто создаёт ВМ. По UUID — проверка списком проекта с name=.
+func TestResolve_NotInProject(t *testing.T) {
+	cloud := notInProject()
+	cat := Catalog{Cloud: cloud, ProjectID: "00000000-0000-0000-0000-0000000000f1"}
+	ctx := context.Background()
+	for ref, want := range map[string]bool{
+		"astralinuxsmolensk1.8.3kes":           true,
+		"astra_1.8.1":                          true,
+		"alse-base":                            false,
+		"00000000-0000-0000-0000-000000000001": true,
+		"00000000-0000-0000-0000-000000000004": false,
+		"00000000-0000-0000-0000-000000000099": false, // образ проекта не проверяется
+	} {
+		cloud.queries = nil
+		got, err := cat.Resolve(ctx, ref)
+		if err != nil {
+			t.Errorf("%q: %v", ref, err)
+			continue
+		}
+		if got.NotInProject != want {
+			t.Errorf("%q → NotInProject %v, want %v", ref, got.NotInProject, want)
+		}
+		d, err := cat.Get(ctx, ref)
+		if err != nil || d.NotInProject != want {
+			t.Errorf("get %q: %v NotInProject %v", ref, err, d != nil && d.NotInProject)
+		}
+	}
+
+	cloud.queries = nil
+	if _, err := cat.Resolve(ctx, "00000000-0000-0000-0000-000000000001"); err != nil {
+		t.Fatal(err)
+	}
+	if len(cloud.queries) != 1 || cloud.queries[0].ProjectID != cat.ProjectID || cloud.queries[0].Name != "AstraLinuxSmolensk1.8.3KES" {
+		t.Errorf("UUID check queries: %+v", cloud.queries)
+	}
+
+	// Подстрока: недоступные проекту не делают годный образ неоднозначным.
+	_, err := cat.Resolve(ctx, "astra")
+	var amb *AmbiguousError
+	if !stderrors.As(err, &amb) || len(amb.Candidates) != 2 {
+		t.Errorf("astra: %v", err)
+	}
+}
+
+func TestNotInProjectError(t *testing.T) {
+	was := i18n.Lang()
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(was) })
+	err := NotInProjectError("AstraLinuxSmolensk1.8.3KES")
+	if clierrors.Reason(err) != clierrors.CodeNotFound || clierrors.ExitCode(err) != clierrors.ExitNotFound {
+		t.Fatalf("%v (exit %d)", err, clierrors.ExitCode(err))
+	}
+	var ce *clierrors.CLIError
+	stderrors.As(err, &ce)
+	for _, w := range []string{"образ \"AstraLinuxSmolensk1.8.3KES\" есть в каталоге Cloud.ru, но недоступен проекту: создать из него ВМ API не даст"} {
+		if !strings.Contains(ce.Message, w) {
+			t.Errorf("message %q lacks %q", ce.Message, w)
+		}
+	}
+	for _, w := range []string{"evo image list <запрос>", "Marketplace", "вероятно", "не проверено"} {
+		if !strings.Contains(ce.Hint, w) {
+			t.Errorf("hint %q lacks %q", ce.Hint, w)
+		}
+	}
+	if line := CandidateLine(&provision.Image{Name: "x", Type: "marketplace", NotInProject: true}); !strings.HasSuffix(line, " — недоступен проекту") {
+		t.Errorf("candidate line: %q", line)
 	}
 }
