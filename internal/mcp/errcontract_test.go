@@ -25,7 +25,7 @@ func TestHTTPPolicy_RefusalReasons(t *testing.T) {
 		{"secret_value", map[string]any{"path": "app/db"}, clierrors.CodeUsage, false},
 		{"cert_private_key", map[string]any{"certificate_id": "c", "confirmed": true}, clierrors.CodeUsage, false},
 		{"k8s_kubeconfig", map[string]any{"cluster_id": "c"}, clierrors.CodeUsage, false},
-		{"deploy", map[string]any{"compose_file": "/etc/passwd"}, clierrors.CodeUsage, false},
+		{"deploy", map[string]any{"compose_file": "../x.yml"}, clierrors.CodeUsage, false},
 		{"k8s_kubectl", map[string]any{"cluster_id": "c", "args": "get pods"}, clierrors.CodeConfigInvalid, true},
 	} {
 		text, isErr := call(s, tt.tool, tt.args)
