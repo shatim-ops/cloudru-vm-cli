@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/s3"
 )
 
@@ -138,6 +139,7 @@ func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
 			"message": fmt.Sprintf("s3_bucket_create creates bucket %q (billable storage). Call again with confirmed=true after the user approves.", bucket),
+			"preview": s3BucketPreview(bucket, stringArg(args, "region")),
 		}), true
 	}
 	cli, err := s.s3Client()
@@ -169,4 +171,13 @@ func (s *Registry) handleS3BucketDelete(ctx context.Context, args map[string]any
 		return errResult(err), true
 	}
 	return toJSON(map[string]any{"status": "deleted", "bucket": bucket}), false
+}
+
+// s3BucketPreview is the preview of s3_bucket_create. Storage is billed by
+// use, so there is no price up front.
+func s3BucketPreview(bucket, region string) engine.CreatePreview {
+	p := engine.CreatePreview{Resource: engine.ResourceS3Bucket, Name: bucket}
+	p.Add("region", region)
+	p.Price()
+	return p
 }

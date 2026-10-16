@@ -28,9 +28,13 @@ func newRegistry() *tools.Registry {
 		if overrides == nil {
 			overrides = map[string]any{}
 		}
-		return buildEngine(overrides)
+		return toolEngine(overrides)
 	})
 }
+
+// toolEngine builds the engines of the tools and of their previews
+// (tests replace it to reach a fake cloud).
+var toolEngine = buildEngine
 
 // cmdPrinter is output.New writing to the command's streams (tests replace
 // them with buffers).
@@ -361,7 +365,7 @@ func runToolsCall(cmd *cobra.Command, name, argsFile, argsJSON string, argPairs 
 			return err
 		}
 	}
-	text, err := invokeTool(cmd.Context(), cmd, t, callArgs)
+	text, err := invokeTool(cmd.Context(), cmd, t, callArgs, false)
 	if text != "" {
 		fmt.Fprintln(cmd.OutOrStdout(), text)
 	}
@@ -606,7 +610,9 @@ func applyWait(t tools.Tool, args map[string]any) error {
 // confirm.Ask and, once given, the tool is called again with
 // confirmed=true. It returns the tool's final JSON text ("" when the call
 // stopped at a --dry-run preview) and an error carrying the exit code.
-func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[string]any) (string, error) {
+// human (the command trees) shows the structured preview of a billable
+// tool in the words of deploy; 'evo tools call' shows the answer as is.
+func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[string]any, human bool) (string, error) {
 	opts := confirm.Options{Yes: flagYes, DryRun: flagDryRun, JSON: flagJSON,
 		Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr()}
 
@@ -620,7 +626,13 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 
 	text, isErr := t.Handler(ctx, args)
 	if resp := parseObject(text); resp["status"] == "confirmation_required" {
-		ok, err := confirm.Ask(ctx, toolPreview(t.Name, resp), opts)
+		preview := toolPreview(t.Name, resp)
+		if human {
+			if p, ok := createPreview(ctx, t.Name, resp); ok {
+				preview = p
+			}
+		}
+		ok, err := confirm.Ask(ctx, preview, opts)
 		if !ok {
 			return "", err
 		}
@@ -666,6 +678,36 @@ func toolPreview(name string, resp map[string]any) confirm.Preview {
 	}
 	p.Lines = append(p.Lines, argLines(rest)...)
 	return p
+}
+
+// createPreview is the human preview of a billable tool: the "preview"
+// object of its answer, completed with what the tool leaves to the CLI
+// (zone names, the flavor, the image, the price). --json gets the same
+// answer with the completed object.
+func createPreview(ctx context.Context, name string, resp map[string]any) (confirm.Preview, bool) {
+	raw, ok := resp["preview"]
+	if !ok {
+		return confirm.Preview{}, false
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return confirm.Preview{}, false
+	}
+	var cp engine.CreatePreview
+	if json.Unmarshal(b, &cp) != nil || cp.Resource == "" {
+		return confirm.Preview{}, false
+	}
+	if eng, err := toolEngine(map[string]any{}); err == nil && eng != nil {
+		eng.CompletePreview(ctx, &cp)
+	}
+	p := engine.ShowCreatePreview(name, cp)
+	details := make(map[string]any, len(resp))
+	for k, v := range resp {
+		details[k] = v
+	}
+	details["preview"] = cp
+	p.Details = details
+	return p, true
 }
 
 func callSummary(tool string) string { return i18n.T("call ", "вызвать ") + tool }

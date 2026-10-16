@@ -10,6 +10,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -83,28 +84,15 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 	}
 	cost := deployplan.EstimateVM(vm)
 
-	flavor := vm.Flavor.Name
-	if vm.Flavor.VCPUs > 0 {
-		flavor += i18n.Tf(" (%d vCPU, %d GB RAM)", " (%d vCPU, %d ГБ RAM)", vm.Flavor.VCPUs, vm.Flavor.RAMGB)
-	}
-	costLine := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (compute %.2f + disk %.2f), %s",
-		"~%.2f %s в месяц (вычисления %.2f + диск %.2f), %s",
-		cost.TotalMonthlyRub, cost.Currency, cost.ComputeMonthlyRub, cost.DiskMonthlyRub, costNoteText())
-	if vm.Flavor.VCPUs == 0 {
-		costLine += i18n.T("; flavor size unknown, compute may be missing from the total",
-			"; размер flavor неизвестен, вычисления могут не войти в итог")
-	}
-
 	lines := []string{
 		previewLabel("project", "проект") + projectText(req.ProjectID, e.projectFrom(nil)),
-		previewLabel("flavor", "flavor") + flavor,
+		previewLabel("flavor", "flavor") + flavorText(vm.Flavor),
 		previewLabel("zone", "зона") + refText(vm.Zone),
 		previewLabel("image", "образ") + refText(vm.Image),
-		previewLabel("disk", "диск") + i18n.Tf("%d GB boot disk (priced at the SSD rate)",
-			"загрузочный, %d ГБ (цена по тарифу SSD)", vm.Disk.SizeGB),
+		bootDiskLine(vm.Disk.SizeGB),
 		previewLabel("network", "сеть") + i18n.Tf("subnet %s, security group %s", "подсеть %s, группа безопасности %s",
 			network.SubnetName, network.SecurityGroup),
-		previewLabel("public IP", "внешний IP") + i18n.T("a floating IP will be created and attached", "будет создан и привязан floating IP"),
+		publicIPLine(true),
 	}
 	if len(ports)+len(udpPorts) > 0 {
 		ps := make([]string, 0, len(ports)+len(udpPorts))
@@ -120,7 +108,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 				"destroy удалит правила, которые создаст этот deploy",
 			strings.Join(ps, ","), network.SecurityGroup))
 	}
-	lines = append(lines, costLine)
+	lines = append(lines, vmCostLine(cost, vm.Flavor.VCPUs > 0))
 
 	return confirm.Preview{
 		Action:  "deploy",
@@ -139,6 +127,42 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 			"cost_note":      costNoteText(),
 		},
 	}
+}
+
+// flavorText is the flavor of a preview: its name and, when known, its size.
+func flavorText(f deployplan.FlavorSpec) string {
+	s := f.Name
+	if f.VCPUs > 0 {
+		s += i18n.Tf(" (%d vCPU, %d GB RAM)", " (%d vCPU, %d ГБ RAM)", f.VCPUs, f.RAMGB)
+	}
+	return s
+}
+
+// bootDiskLine is the boot disk of a VM preview.
+func bootDiskLine(sizeGB int) string {
+	return previewLabel("disk", "диск") + i18n.Tf("%d GB boot disk (priced at the SSD rate)",
+		"загрузочный, %d ГБ (цена по тарифу SSD)", sizeGB)
+}
+
+// publicIPLine says whether a VM preview gets a public address.
+func publicIPLine(public bool) string {
+	if !public {
+		return previewLabel("public IP", "внешний IP") + i18n.T("none (private VM, no floating IP)", "нет (ВМ без floating IP)")
+	}
+	return previewLabel("public IP", "внешний IP") + i18n.T("a floating IP will be created and attached", "будет создан и привязан floating IP")
+}
+
+// vmCostLine is the price of a VM preview, marked as an estimate. Without
+// the flavor size the compute part may be missing from the total.
+func vmCostLine(cost pricing.Estimate, sizeKnown bool) string {
+	line := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (compute %.2f + disk %.2f), %s",
+		"~%.2f %s в месяц (вычисления %.2f + диск %.2f), %s",
+		cost.TotalMonthlyRub, cost.Currency, cost.ComputeMonthlyRub, cost.DiskMonthlyRub, costNoteText())
+	if !sizeKnown {
+		line += i18n.T("; flavor size unknown, compute may be missing from the total",
+			"; размер flavor неизвестен, вычисления могут не войти в итог")
+	}
+	return line
 }
 
 // redeployPreview describes an update of an already running VM.

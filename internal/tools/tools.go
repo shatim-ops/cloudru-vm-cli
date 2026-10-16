@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -1422,17 +1424,6 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 }
 
 func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (string, bool) {
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		noPublicIP, _ := args["no_public_ip"].(bool)
-		will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
-			firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
-		will["public_ip"] = !noPublicIP
-		return toJSON(map[string]any{
-			"status":      "confirmation_required",
-			"message":     "provision creates a billable VM (and a public floating IP unless no_public_ip=true). For a costed preview use deploy_plan or list_flavors. Get the user's approval, then call again with confirmed=true.",
-			"will_create": will,
-		}), true
-	}
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
 		"flavor":     "Flavor",
@@ -1444,6 +1435,22 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		if v, ok := args[arg]; ok && v != nil && v != "" {
 			overrides[field] = v
 		}
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		noPublicIP, _ := args["no_public_ip"].(bool)
+		// One engine, no token: the configuration names the project, the
+		// zone and the image; the preview does not reach the cloud.
+		eng, _ := s.newEngine(overrides)
+		preview := provisionPreview(eng, args)
+		will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
+			firstNonEmptyStr(stringArg(args, "project_id"), preview.ProjectID))
+		will["public_ip"] = !noPublicIP
+		return toJSON(map[string]any{
+			"status":      "confirmation_required",
+			"message":     "provision creates a billable VM (and a public floating IP unless no_public_ip=true). For a costed preview use deploy_plan or list_flavors. Get the user's approval, then call again with confirmed=true.",
+			"will_create": will,
+			"preview":     preview,
+		}), true
 	}
 
 	eng, err := s.newEngine(overrides)
@@ -1485,61 +1492,10 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	if err != nil {
 		return errResult(fmt.Errorf("list flavors: %w", err)), true
 	}
-	if flavorID == "" || flavorID == "auto" {
-		// Pick smallest lowcost flavor by CPU then RAM (skip free-tier)
-		type scored struct {
-			id  string
-			cpu int
-			ram int
-		}
-		var candidates []scored
-		for _, f := range flavors {
-			if f.FreeTier || strings.Contains(strings.ToLower(f.Name), "free") {
-				continue
-			}
-			if strings.Contains(strings.ToLower(f.Name), "low") || strings.Contains(strings.ToLower(f.Name), "lowcost") {
-				candidates = append(candidates, scored{f.ID, f.VCPUs, f.RAMGB})
-			}
-		}
-		if len(candidates) > 0 {
-			best := candidates[0]
-			for _, c := range candidates[1:] {
-				if c.cpu < best.cpu || (c.cpu == best.cpu && c.ram < best.ram) {
-					best = c
-				}
-			}
-			flavorID = best.id
-		} else if len(flavors) > 0 {
-			// Fallback: first non-free-tier
-			for _, f := range flavors {
-				if !f.FreeTier {
-					flavorID = f.ID
-					break
-				}
-			}
-			if flavorID == "" {
-				flavorID = flavors[0].ID
-			}
-		}
-	} else {
-		// If not a UUID, resolve by name
-		if !isUUID(flavorID) {
-			resolved := ""
-			for _, f := range flavors {
-				if f.Name == flavorID || f.ID == flavorID {
-					resolved = f.ID
-					break
-				}
-			}
-			if resolved == "" {
-				names := make([]string, len(flavors))
-				for i, f := range flavors {
-					names[i] = f.Name + " (" + f.ID + ")"
-				}
-				return errResult(fmt.Errorf("flavor %q not found. Available: %s", flavorID, strings.Join(names, ", "))), true
-			}
-			flavorID = resolved
-		}
+	if picked, err := engine.PickVMFlavor(flavors, flavorID); err != nil {
+		return errResult(err), true
+	} else if picked != "" {
+		flavorID = picked
 	}
 
 	// Fetch image metadata
@@ -2423,3 +2379,44 @@ func isUUID(s string) bool {
 }
 
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// provisionPreview is what provision would create, from the call and the
+// configuration only: the zone, image and flavor as configured (names,
+// the flavor auto picks and the price need the cloud; the CLI adds them).
+// eng may be nil when the configuration cannot be built.
+func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePreview {
+	noPublicIP, _ := args["no_public_ip"].(bool)
+	public := !noPublicIP
+	p := engine.CreatePreview{Resource: engine.ResourceVM, Name: stringArg(args, "name"),
+		PublicIP: &public, SubnetID: stringArg(args, "subnet_id")}
+	var cfg config.Config
+	if eng != nil {
+		cfg = eng.Config
+	}
+	p.ProjectID, p.ProjectFrom = cfg.ProjectID, cfg.ProjectOrigin
+	if v := stringArg(args, "project_id"); v != "" {
+		p.ProjectID, p.ProjectFrom = v, "argument"
+	}
+	vm := deployplan.VMSpec{Name: p.Name,
+		Zone:  deployplan.RefSpec{ID: cfg.Region},
+		Image: deployplan.RefSpec{ID: cfg.ImageID},
+		Disk:  deployplan.DiskSpec{Type: "SSD"}}
+	if f := cfg.Flavor; f != "" && f != "auto" {
+		if isUUID(f) {
+			vm.Flavor.ID = f
+		} else {
+			vm.Flavor.Name = f
+		}
+	}
+	// The image may need a larger disk: the CLI raises it once it has read
+	// the image, as provision itself does.
+	vm.Disk.SizeGB, _ = provision.BootDiskGB(cfg.DiskSize, 0)
+	p.VM = &vm
+	for _, m := range []struct{ name, val string }{{"project_id", p.ProjectID}, {"image_id", cfg.ImageID}, {"region", cfg.Region}} {
+		if m.val == "" {
+			p.Missing = append(p.Missing, m.name)
+		}
+	}
+	p.Price()
+	return p
+}

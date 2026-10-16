@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/mk8s"
 )
 
@@ -269,6 +271,8 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
 			"message": "k8s_create builds a real (billable) Kubernetes cluster. Show the k8s_plan to the user; call again with confirmed=true after approval.",
+			"preview": k8sPreview(engine.ResourceK8sCluster,
+				firstNonEmptyStr(stringArg(args, "name"), "k8s-"+firstNonEmptyStr(stringArg(args, "product"), "cluster")), args),
 		}), true
 	}
 	req, _, _, err := s.resolveK8sPlan(ctx, args)
@@ -417,6 +421,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
 			"message": "k8s_add_nodepool creates billable worker nodes. Call again with confirmed=true after the user approves.",
+			"preview": k8sPreview(engine.ResourceK8sNodePool, stringArg(args, "name"), args),
 		}), true
 	}
 
@@ -535,4 +540,22 @@ func firstNonEmptyStr(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// k8sPreview is the preview of k8s_create and k8s_add_nodepool: the
+// arguments as given (the rest is resolved at creation; k8s_plan shows it).
+// evo has no rate card for Managed Kubernetes, so there is no price.
+func k8sPreview(resource, name string, args map[string]any) engine.CreatePreview {
+	p := engine.CreatePreview{Resource: resource, Name: name}
+	if z := stringArg(args, "zone"); z != "" {
+		if looksUUID(z) {
+			p.Zone = &deployplan.RefSpec{ID: z}
+		} else {
+			p.Zone = &deployplan.RefSpec{Name: z}
+		}
+	}
+	p.Add("cluster_id", stringArg(args, "cluster_id"))
+	p.AddArgs(args, "name", "zone", "cluster_id")
+	p.Price()
+	return p
 }
