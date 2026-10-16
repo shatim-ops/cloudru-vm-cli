@@ -513,7 +513,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "org_projects",
-			Description: "List Cloud.ru projects visible to the caller (id, name, status, org unit). Read-only.",
+			Description: "List Cloud.ru projects visible to the caller (id, name, status, org unit). Read-only. A key the Organization API lists no projects for (a project-level service account) is not an error: the answer is projects: null, the active project and a note.",
 			InputSchema: objSchema(nil),
 		},
 		{

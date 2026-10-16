@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -39,14 +40,23 @@ func (s *Registry) adminGET(ctx context.Context, rawurl string) (map[string]any,
 	data, _ := io.ReadAll(resp.Body)
 	var m map[string]any
 	if e := json.Unmarshal(data, &m); e != nil {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(data[:min(len(data), 300)]))
+		return nil, &adminHTTPError{Status: resp.StatusCode, Msg: string(data[:min(len(data), 300)])}
 	}
 	if resp.StatusCode != 200 {
 		msg, _ := m["message"].(string)
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
+		return nil, &adminHTTPError{Status: resp.StatusCode, Msg: msg}
 	}
 	return m, nil
 }
+
+// adminHTTPError is an answer of the API other than 200 (or not JSON): the
+// API was reached and refused, unlike a network error.
+type adminHTTPError struct {
+	Status int
+	Msg    string
+}
+
+func (e *adminHTTPError) Error() string { return fmt.Sprintf("HTTP %d: %s", e.Status, e.Msg) }
 
 // projectID returns the configured project id.
 func (s *Registry) projectID(ctx context.Context) string {
@@ -84,9 +94,28 @@ func (s *Registry) handleIamServiceAccounts(ctx context.Context, args map[string
 	return toJSON(map[string]any{"service_accounts": out}), false
 }
 
-// handleOrgProjects lists projects the caller can see.
+// orgProjectsNote is the note of org_projects when the Organization API
+// refuses the list: the same case and wording as 'evo project list'.
+const orgProjectsNote = "unknown (the Organization API does not list projects for this key)"
+
+// handleOrgProjects lists projects the caller can see. A key the
+// Organization API does not list projects for (a project-level service
+// account: 400 "user not found", 14.10.2026) is not a failure — the key
+// works in its project. As 'evo project list' does (QA r3 C3), the answer
+// is then projects: null, the active project and a note, not an error
+// (it was NOT_FOUND, exit 4, from "user not found" in the message).
 func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (string, bool) {
 	m, err := s.adminGET(ctx, "https://organization.api.cloud.ru/v3/projects")
+	var he *adminHTTPError
+	if errors.As(err, &he) {
+		return toJSON(map[string]any{
+			"projects":    nil,
+			"active":      s.projectID(ctx),
+			"note":        orgProjectsNote,
+			"http_status": he.Status,
+			"hint":        "Not an error: the key works in the active project (whoami). Pass project_id where a tool takes one.",
+		}), false
+	}
 	if err != nil {
 		return errResult(err), true
 	}
