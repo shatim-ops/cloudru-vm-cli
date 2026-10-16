@@ -3,9 +3,9 @@ name: api-probe
 # Только чтение: проверяет на живом API Cloud.ru то, что сверка со
 # спецификациями (docs/internal/api-contract.md) не смогла решить по
 # документации, — форму ответов IAM и аудита, поведение limit=200, имена
-# параметров camelCase/snake_case, вложенные поля зоны и IP, каталог образов
-# и расчёт цены. Ничего не создаёт и не удаляет: всё — GET, кроме POST
-# price-calculation, который только считает стоимость.
+# параметров camelCase/snake_case, вложенные поля зоны и IP, каталог образов,
+# расчёт цены и каталог плагинов mk8s. Ничего не создаёт и не удаляет: всё —
+# GET, кроме POST price-calculation, который только считает стоимость.
 #
 # Репозиторий публичный, лог виден всем: печатаются только коды HTTP, имена
 # полей и количества — никаких значений, ID, адресов и токенов. Исключение —
@@ -161,3 +161,23 @@ jobs:
           else
             echo "price: нет флейвора или типа диска — расчёт пропущен"
           fi
+
+          # Плагины mk8s (docs/internal/design-images.md §3.3, вживую не
+          # проверялись): каталог общий, имена плагинов публичны — их печатаем;
+          # кластеры и плагины проекта — только счётчики.
+          echo "== mk8s: каталог плагинов"
+          M=https://mk8s.api.cloud.ru
+          list='(.addons // .items // (if type == "array" then . else [] end))'
+          probe addons_top            "$M/v3/addons?projectId=$PROJECT" '{top: (if type == "object" then keys else type end)}'
+          probe addons_paged          "$M/v3/addons?projectId=$PROJECT&pageSize=100" "{n: ($list | length), next: (.nextPageToken // null | type)}"
+          probe addons_item_keys      "$M/v3/addons?projectId=$PROJECT&pageSize=100" "$list | .[0] // null | if . == null then null else keys end"
+          probe addons_names          "$M/v3/addons?projectId=$PROJECT&pageSize=100" "[${list}[] | {name, displayName, billable: .isBillable, categories}]"
+          probe addons_filter_bill    "$M/v3/addons?projectId=$PROJECT&filter=isBillable%3Dtrue" "{n: ($list | length)}"
+          probe addons_no_project     "$M/v3/addons" "{n: ($list | length)}"
+          addons=$(curl -sS -H "Authorization: Bearer $TOKEN" "$M/v3/addons?projectId=$PROJECT&pageSize=100" | jq -r "${list}[]?.name // empty" 2>/dev/null | head -8 || true)
+          rel='(.releases // .addonReleases // .items // (if type == "array" then . else [] end))'
+          for a in $addons; do
+            probe "addon_$a" "$M/v3/addons/$a?projectId=$PROJECT" "{top: (if type == \"object\" then keys else type end), n: ($rel | length), rel_keys: ($rel | .[0] // null | if . == null then null else keys end), modes: ([${rel}[]?.mode] | unique), versions: [${rel}[]? | .appVersion // .addonVersion], schema_len: (($rel | .[0].configurationSchema // \"\") | length), required: (($rel | .[0].configurationSchema // \"{}\") | fromjson? | .required // null), kube: ($rel | .[0].requirements // null)}"
+          done
+          probe cluster_addons        "$M/v3/clusterAddons?projectId=$PROJECT" "{top: (if type == \"object\" then keys else type end), n: ((.clusterAddons // .items // []) | length)}"
+          probe clusters_count        "$M/v3/clusters?projectId=$PROJECT" '{n: ((.clusters // .items // []) | length)}'
