@@ -229,7 +229,7 @@ jobs:
             for id in $ids; do echo "::add-mask::$id"; done
             echo "осталась ВМ evo-e2e-app — удаляю (попытка $i)"
             for id in $ids; do
-              evo tools call destroy --arg vm_id="$id" --arg confirmed=true --json >/dev/null 2>&1 || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
             done
             sleep 60
           done
@@ -237,7 +237,7 @@ jobs:
             jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-app-")) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
-            evo tools call release_floating_ip --arg id="$id" --arg confirmed=true --json >/dev/null 2>&1 || true
+            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
           done
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ evo-e2e-app ($left) — удалите её в консоли Cloud.ru"; exit 1; }
@@ -394,7 +394,7 @@ jobs:
             for id in $ids; do echo "::add-mask::$id"; done
             echo "осталась ВМ $VM — удаляю (попытка $i)"
             for id in $ids; do
-              evo tools call destroy --arg vm_id="$id" --arg confirmed=true --json >/dev/null 2>&1 || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
             done
             sleep 60
           done
@@ -402,7 +402,7 @@ jobs:
             jq -r --arg p "fip-$VM-" '.floating_ips[]? | select(((.name // "") | startswith($p)) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
-            evo tools call release_floating_ip --arg id="$id" --arg confirmed=true --json >/dev/null 2>&1 || true
+            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
           done
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ $VM — удалите её в консоли Cloud.ru"; exit 1; }
@@ -465,7 +465,7 @@ jobs:
             jq -c '[.[] | {name, state}]' <<<"$list"
             [ "$(jq length <<<"$list")" = 0 ] && { echo "ВМ evo-e2e-* нет"; exit 0; }
             for id in $(jq -r '.[].id' <<<"$list"); do
-              evo tools call destroy --arg vm_id="$id" --arg confirmed=true --json 2>&1 |
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 |
                 jq -c '{status, error: ((.error // null) | if . == null then null else tostring | .[0:300] end), message: ((.message // null) | if . == null then null else tostring | .[0:200] end)}' 2>/dev/null | redact || true
             done
             echo "попытка $i: жду 60 с"
@@ -481,7 +481,7 @@ jobs:
             jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-")) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
-            evo tools call release_floating_ip --arg id="$id" --arg confirmed=true --json | jq -c '{status}' || true
+            evo --yes tools call release_floating_ip --arg id="$id" --json | jq -c '{status}' || true
           done
           left=$(evo tools call list_floating_ips --json | jq '[.floating_ips[]? | select((.name // "") | startswith("fip-evo-e2e-"))] | length')
           echo "FIP fip-evo-e2e-* осталось: $left"
