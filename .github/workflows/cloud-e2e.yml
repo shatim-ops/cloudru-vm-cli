@@ -3,7 +3,9 @@ name: cloud-e2e
 # Сквозная проверка на настоящем Cloud.ru: init → deploy → verify → logs -f →
 # destroy → правило порта 80 удалено из группы безопасности. Создаёт платную ВМ и floating IP, поэтому запускается только
 # вручную или пушем в ветку e2e/** — и всегда удаляет за собой ресурсы.
-# Job readonly рядом проверяет чтения API и MCP, ничего не создавая.
+# Job readonly рядом проверяет чтения API и MCP, ничего не создавая. Job
+# os-smoke (вход os_smoke) создаёт ВМ из образов Astra Linux и РЕД ОС по
+# имени, заходит по SSH и удаляет их.
 #
 # Секреты репозитория (Settings → Secrets and variables → Actions):
 #   CLOUDRU_KEY_ID, CLOUDRU_SECRET — ключ тестового сервисного аккаунта
@@ -24,6 +26,10 @@ on:
       timeout:
         description: "Seconds deploy waits for the VM to become active (CLOUDRU_TIMEOUT; ru.AZ-1 took over 10 min on 15.10.2026)"
         default: "1200"
+      os_smoke:
+        description: "Also create VMs from domestic OS images by name (Astra Linux, RED OS): vm create --image → SSH → os-release → delete"
+        type: boolean
+        default: false
   push:
     branches: ["e2e/**"]
 
@@ -237,4 +243,159 @@ jobs:
             sleep 10
           done
           echo "::error::после destroy в группе $SG_ID осталось правило «evo:» для порта 80"
+          exit 1
+
+  # Отечественные ОС по имени образа (шаг E, docs/internal/design-images.md):
+  # init --image отказывает (Docker на них не ставится), vm create --image
+  # создаёт ВМ, к ней заходит SSH, порт 8080 открыт и после удаления закрыт.
+  # IP и ID ВМ в лог не попадают (маскируются), os-release — только ID и
+  # версия.
+  os-smoke:
+    if: inputs.os_smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: AstraLinuxSmolensk1.8.3KES
+            vm: evo-e2e-os-astra
+            os_id: astra
+          # обязательное поле fqdn типа hostname (BACKLOG [images])
+          - image: redos_7.3_image
+            vm: evo-e2e-os-redos
+            os_id: redos
+    env:
+      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      FLAVOR: ${{ inputs.flavor || 'lowcost10-2-4' }}
+      IMAGE: ${{ matrix.image }}
+      VM: ${{ matrix.vm }}
+      OS_ID: ${{ matrix.os_id }}
+      CLOUDRU_TIMEOUT: ${{ inputs.timeout || '1200' }}
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Проверка входов
+        run: |
+          for v in "$ZONE" "$FLAVOR"; do
+            printf '%s' "$v" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' ||
+              { echo "::error::недопустимое значение входа: $v"; exit 1; }
+          done
+          printf '%s' "$CLOUDRU_TIMEOUT" | grep -Eq '^[0-9]{2,5}$' ||
+            { echo "::error::timeout — число секунд"; exit 1; }
+
+      - name: Сборка
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      - name: image get по имени, init --image отказывает (ничего не создаёт)
+        run: |
+          evo image get "$IMAGE" --json | jq '{name: .image.name, ready, fields_required, filled: [.fields[] | {name, filled_by}]}'
+          mkdir -p os-app
+          printf 'services:\n  web:\n    image: nginx:alpine\n' > os-app/docker-compose.yml
+          set +e
+          (cd os-app && evo init --non-interactive --image "$IMAGE" > init.txt 2>&1)
+          rc=$?
+          set -e
+          tail -3 os-app/init.txt
+          if [ "$rc" = 0 ] || ! grep -q "get.docker.com" os-app/init.txt; then
+            echo "::error::init --image $IMAGE: код $rc, ждали отказ про get.docker.com"; exit 1
+          fi
+
+      - name: Правила групп безопасности до создания
+        run: evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg-before.json"
+
+      - name: vm create --image по имени и --port 8080
+        run: |
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/key"
+          zone_id=$(evo list-zones --json | jq -r --arg n "$ZONE" '.[] | select(.name==$n) | .id')
+          [ -n "$zone_id" ] && [ "$zone_id" != null ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
+          set +e
+          evo --json --yes vm create "$VM" --image "$IMAGE" --flavor "$FLAVOR" --region "$zone_id" \
+            --ssh-key "$(cat "$RUNNER_TEMP/key.pub")" --port 8080 > "$RUNNER_TEMP/vm.json"
+          rc=$?
+          set -e
+          id=$(jq -r '.vm_id // empty' "$RUNNER_TEMP/vm.json")
+          ip=$(jq -r '.vm_ip // empty' "$RUNNER_TEMP/vm.json")
+          if [ -n "$id" ]; then echo "::add-mask::$id"; echo "VM_ID=$id" >> "$GITHUB_ENV"; fi
+          if [ -n "$ip" ]; then echo "::add-mask::$ip"; fi
+          jq '{status, ssh_user, disk_gb, ports: (.ports.opened // null), warning, error}' "$RUNNER_TEMP/vm.json"
+          if [ "$rc" != 0 ] || [ -z "$ip" ]; then echo "::error::vm create: код $rc"; exit 1; fi
+          echo "VM_IP=$ip" >> "$GITHUB_ENV"
+          echo "SSH_USER=$(jq -r .ssh_user "$RUNNER_TEMP/vm.json")" >> "$GITHUB_ENV"
+          jq -e '.ports.opened | length == 1' "$RUNNER_TEMP/vm.json" >/dev/null ||
+            jq -e '.ports.already_open | length == 1' "$RUNNER_TEMP/vm.json" >/dev/null ||
+            { echo "::error::порт 8080 не открыт"; exit 1; }
+
+      - name: SSH и os-release
+        run: |
+          for _ in $(seq 1 40); do
+            if ssh -i "$RUNNER_TEMP/key" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 \
+                "$SSH_USER@$VM_IP" 'cat /etc/os-release' > "$RUNNER_TEMP/os-release" 2>/dev/null; then
+              grep -E '^(ID|VERSION_ID|PRETTY_NAME)=' "$RUNNER_TEMP/os-release"
+              grep -Eiq "^ID=\"?$OS_ID" "$RUNNER_TEMP/os-release" ||
+                { echo "::error::в os-release не $OS_ID"; exit 1; }
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::SSH к ВМ не поднялся за 10 минут"
+          exit 1
+
+      - name: vm delete (всегда)
+        if: always() && env.VM_ID != ''
+        run: |
+          for _ in 1 2; do evo --yes vm delete "$VM_ID" && break; sleep 30; done
+
+      - name: Сирот нет (всегда)
+        if: always()
+        run: |
+          vms() { evo tools call vm_list --json | jq -r --arg n "$VM" '[.vms[]? | select(.name==$n) | .id] | join(" ")'; }
+          for i in 1 2 3 4 5 6; do
+            ids=$(vms)
+            [ -z "$ids" ] && break
+            for id in $ids; do echo "::add-mask::$id"; done
+            echo "осталась ВМ $VM — удаляю (попытка $i)"
+            for id in $ids; do
+              evo tools call destroy --arg vm_id="$id" --arg confirmed=true --json >/dev/null 2>&1 || true
+            done
+            sleep 60
+          done
+          for id in $(evo tools call list_floating_ips --json |
+            jq -r --arg p "fip-$VM-" '.floating_ips[]? | select(((.name // "") | startswith($p)) and .available) | .id'); do
+            echo "::add-mask::$id"
+            echo "освобождаю floating IP"
+            evo tools call release_floating_ip --arg id="$id" --arg confirmed=true --json >/dev/null 2>&1 || true
+          done
+          left=$(vms)
+          [ -z "$left" ] || { echo "::error::после прогона осталась ВМ $VM — удалите её в консоли Cloud.ru"; exit 1; }
+
+      - name: Правило порта 8080 удалено после delete
+        if: always() && env.VM_ID != ''
+        run: |
+          rule='[.security_groups[] | .rules[]? | select(.direction=="ingress" and .port_range=="8080:8080" and ((.description // "") | startswith("evo:")))] | length'
+          had=$(jq "$rule" "$RUNNER_TEMP/sg-before.json")
+          if [ "$had" != 0 ]; then echo "правило для 8080 было до создания — проверка пропущена"; exit 0; fi
+          for _ in 1 2 3 4 5 6; do
+            left=$(evo tools call list_security_groups --arg rules=true --json | jq "$rule")
+            [ "$left" = 0 ] && { echo "правило для 8080 удалено"; exit 0; }
+            sleep 10
+          done
+          echo "::error::после vm delete осталось правило «evo:» для порта 8080"
           exit 1
