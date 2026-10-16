@@ -4,13 +4,15 @@ name: api-probe
 # спецификациями (docs/internal/api-contract.md) не смогла решить по
 # документации, — форму ответов IAM и аудита, поведение limit=200, имена
 # параметров camelCase/snake_case, вложенные поля зоны и IP, каталог образов,
-# расчёт цены и каталог плагинов mk8s. Ничего не создаёт и не удаляет: всё —
+# расчёт цены, каталог плагинов mk8s, списки и спецификации Kafka/Redis и
+# группы узлов mk8s. Ничего не создаёт и не удаляет: всё —
 # GET, кроме POST price-calculation, который только считает стоимость.
 #
 # Репозиторий публичный, лог виден всем: печатаются только коды HTTP, имена
 # полей и количества — никаких значений, ID, адресов и токенов. Исключение —
 # имена образов общего каталога Cloud.ru: они публичны (видны любому
-# клиенту); образы проекта — только счётчики.
+# клиенту); образы проекта — только счётчики. И ещё текст ошибки API
+# (message, grpc-message) — до 160 символов, ID в нём замаскированы.
 #
 # Секреты — те же, что у cloud-e2e: CLOUDRU_KEY_ID, CLOUDRU_SECRET,
 # CLOUDRU_PROJECT_ID.
@@ -217,3 +219,63 @@ jobs:
           probe addon_raw_traefik     "$M/v3/addons/traefik?projectId=$PROJECT" "[$rel | .[0:2][] | {appVersion, addonVersion, addonNamespace, mode}]"
           probe cluster_addons        "$M/v3/clusterAddons?projectId=$PROJECT" "{top: (if type == \"object\" then keys else type end), n: ((.clusterAddons // .items // []) | length)}"
           probe clusters_count        "$M/v3/clusters?projectId=$PROJECT" '{n: ((.clusters // .items // []) | length)}'
+
+          # probeh NAME URL JQ — как probe, плюс заголовок grpc-message: у
+          # grpc-gateway (dbaas, mk8s) ответ 4xx бывает с пустым телом, а
+          # причина — только в нём. Сообщения API — до 160 символов; ID в них
+          # замаскированы (::add-mask:: выше по ходу).
+          probeh() {
+            local name=$1 url=$2 filter=$3 r c b h g
+            h=$(mktemp)
+            r=$(curl -sS -D "$h" -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "$url" || true)
+            c=${r##*$'\n'}; b=${r%$'\n'*}
+            g=$(awk 'tolower($1) == "grpc-message:" { sub(/^[^:]*:[ ]*/, ""); sub(/\r$/, ""); print; exit }' "$h" || true)
+            rm -f "$h"
+            printf '%-28s http=%s %s grpc=%.160s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c "$filter" 2>/dev/null || echo 'не JSON')" "${g:--}"
+          }
+          msg='message: ((.message // null) | if . == null then null else tostring | .[0:160] end)'
+          dlist="if type == \"object\" then {top: keys, n: ((.clusters // null) | if . == null then null else length end), next: ((.next_page_token // \"\") != \"\"), $msg} else {type: type} end"
+          dspecs="if type == \"object\" then {top: keys, n: ((.specifications // null) | if . == null then null else length end), item: ((.specifications // [])[0] // null | if . == null then null else keys end), $msg} else {type: type} end"
+          dvers='{n: ((.versions // []) | length), item: ((.versions // [])[0] // null | if . == null then null else keys end)}'
+
+          # cloud-e2e readonly #23: kafka_list, kafka_specs, redis_list,
+          # redis_specs — API_ERROR (статус не записан), *_versions — 200.
+          # Было: список с page_size=1000, спецификации без
+          # availability_zone_id (профиль без --region). Стало: page_size=100
+          # + next_page_token, зона — регион или ru.AZ-2 (evo ≥ ветки tails).
+          echo "== dbaas: Kafka и Redis — список кластеров и спецификации, как их зовёт evo"
+          az=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/availability-zones" | jq -r '[(.items? // .)[] | select(.name == "ru.AZ-2") | .id][0] // empty' 2>/dev/null || true)
+          [ -z "$az" ] || echo "::add-mask::$az"
+          echo "zone ru.AZ-2: $([ -n "$az" ] && echo найдена || echo 'не найдена')"
+          for svc in kafka redis; do
+            D="https://$svc.api.cloud.ru/v1"
+            pt=""; [ "$svc" = kafka ] && pt="product_type=kafka&"
+            probeh "${svc}_versions"            "$D/versions?${pt%&}" "$dvers"
+            ver=$(curl -sS -H "Authorization: Bearer $TOKEN" "$D/versions?${pt%&}" | jq -r '(.versions // [])[-1].id // empty' 2>/dev/null || true)
+            [ -z "$ver" ] || echo "::add-mask::$ver"
+            probeh "${svc}_list_ps1000"         "$D/clusters?${pt}$P&page_size=1000" "$dlist"
+            probeh "${svc}_list_ps100"          "$D/clusters?${pt}$P&page_size=100" "$dlist"
+            probeh "${svc}_list_ps10"           "$D/clusters?${pt}$P&page_size=10" "$dlist"
+            probeh "${svc}_list_nopagesize"     "$D/clusters?${pt}$P" "$dlist"
+            probeh "${svc}_list_camel"          "$D/clusters?${pt}projectId=$PROJECT&page_size=100" "$dlist"
+            probeh "${svc}_list_item_keys"      "$D/clusters?${pt}$P&page_size=100" '[(.clusters // [])[0] // empty | keys] | first // null'
+            probeh "${svc}_specs_noaz"          "$D/specifications?version_id=$ver" "$dspecs"
+            probeh "${svc}_specs_az"            "$D/specifications?version_id=$ver&availability_zone_id=$az" "$dspecs"
+            probeh "${svc}_specs_az_nover"      "$D/specifications?availability_zone_id=$az" "$dspecs"
+          done
+          probeh kafka_list_noproduct         "https://kafka.api.cloud.ru/v1/clusters?$P&page_size=100" "$dlist"
+
+          # k8s_nodepools без cluster_id звал GET /v3/nodePools без параметров
+          # (API_ERROR в readonly #23); в спецификации clusterId — required.
+          echo "== mk8s: группы узлов без кластера и с кластером"
+          nlist='if type == "object" then {top: keys, n: ((.nodePools // null) | if . == null then null else length end), next: ((.nextPageToken // "") != ""), item: ((.nodePools // [])[0] // null | if . == null then null else keys end), '"$msg"'} else {type: type} end'
+          probeh nodepools_no_params          "$M/v3/nodePools" "$nlist"
+          probeh nodepools_project_only       "$M/v3/nodePools?projectId=$PROJECT" "$nlist"
+          cid=$(curl -sS -H "Authorization: Bearer $TOKEN" "$M/v3/clusters?projectId=$PROJECT" | jq -r '(.clusters // .items // [])[0].id // empty' 2>/dev/null || true)
+          if [ -n "$cid" ]; then
+            echo "::add-mask::$cid"
+            probeh nodepools_cluster          "$M/v3/nodePools?clusterId=$cid&pageSize=100" "$nlist"
+          else
+            echo "nodepools_cluster: кластеров в проекте нет — запрос с clusterId пропущен"
+          fi
+          probeh nodepools_unknown_cluster    "$M/v3/nodePools?clusterId=00000000-0000-4000-8000-000000000000" "$nlist"
