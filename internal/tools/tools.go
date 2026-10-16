@@ -2001,8 +2001,23 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			break
 		}
 	}
+	statePath := state.DefaultPath(eng.StateDir)
+	// alreadyGone: the VM was deleted outside evo (console, another tool)
+	// but this directory still records it. The cloud confirms it is gone
+	// (404), so the record, its FIP and port rules are cleaned up as after
+	// a delete; "no VM matching" left the record for status to show forever.
+	alreadyGone := false
 	if target == nil {
-		return errResult(fmt.Errorf("no VM matching vm_id=%q name=%q in this project", vmID, name)), true
+		if vmID != "" && recordedVM(statePath, vmID) {
+			_, gerr := eng.Cloud.GetVM(ctx, vmID)
+			var ce *clierrors.CLIError
+			if stderrors.As(gerr, &ce) && ce.Code == clierrors.CodeVMNotFound {
+				target, alreadyGone = &provision.VM{ID: vmID}, true
+			}
+		}
+		if target == nil {
+			return errResult(fmt.Errorf("no VM matching vm_id=%q name=%q in this project", vmID, name)), true
+		}
 	}
 
 	// The VM's floating IP, found before the VM goes: the record deploy or
@@ -2010,7 +2025,6 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	// one boot FIP named for it. The list's flat floating_ip field is often
 	// empty (BACKLOG [04]), which used to leave the FIP billed (QA H4).
 	fipRec := state.DeploymentRecord{VMID: target.ID}
-	statePath := state.DefaultPath(eng.StateDir)
 	if sf, err := state.Read(statePath); err == nil {
 		for _, d := range sf.Deployments {
 			if d.VMID == target.ID {
@@ -2046,7 +2060,9 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	}
 	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
 
-	if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
+	if alreadyGone {
+		// Nothing to delete in the cloud.
+	} else if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
 		if engine.IsNotDeletableYet(err) {
 			// A VM still being created cannot be deleted yet; say when to
 			// come back instead of a bare API error (QA H1/H4).
@@ -2064,6 +2080,9 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	// the VM is gone. Only then the record goes — dropping it before a failed
 	// release left the FIP billed with no trace (QA r3 R1).
 	msg := "VM deleted"
+	if alreadyGone {
+		msg = "VM already deleted (not found in the cloud); its local record is cleaned up"
+	}
 	fipLeft := false
 	if releaseIP && hasFIP {
 		if !eng.WaitVMGone(ctx, target.ID) {
@@ -2119,6 +2138,9 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		"deleted_vm": target.ID,
 		"name":       target.Name,
 	}
+	if alreadyGone {
+		out["status"] = "already_deleted"
+	}
 	if len(rules.Closed) > 0 {
 		msg += "; closed ports " + strings.Join(rules.Closed, ",")
 	}
@@ -2135,6 +2157,20 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	}
 	out["message"] = msg
 	return toJSON(out), false
+}
+
+// recordedVM reports whether the local state has a deployment of vmID.
+func recordedVM(statePath, vmID string) bool {
+	sf, err := state.Read(statePath)
+	if err != nil {
+		return false
+	}
+	for _, d := range sf.Deployments {
+		if d.VMID == vmID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Registry) handleListZones(ctx context.Context, args map[string]any) (string, bool) {
