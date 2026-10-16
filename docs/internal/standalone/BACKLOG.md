@@ -18,7 +18,7 @@
 - [audit] `kubetools`: ~~не передавать `CLOUDRU_*` в дочерние процессы (`kubetools.go:65`)~~ — **сделано на этапе 8** (`childEnv`, заодно `MCP_BEARER_TOKEN`); пути поиска для Windows — остаются
 - [audit] ~~`id.cloud.ru/auth/system/openid/token` (mk8s kubeconfig) не найден в документации~~ — **проверено вживую 2026-10-14**: и `id.cloud.ru`, и `auth.iam.cloud.ru` (`/auth/system/openid/token`) отвечают 200 на `grant_type=access_key`; вопрос закрыт
 - [audit] Хост billing API и `CLOUDRU_AGREEMENT_ID`: документация хоста не называет; подтвердить
-- [audit] Публичный API цен Cloud.ru отсутствует; `internal/pricing` — оценка по зашитой карте. Для внешнего продукта нужен источник или явный disclaimer в каждом превью
+- [audit] ~~Публичный API цен Cloud.ru отсутствует; `internal/pricing` — оценка по зашитой карте. Для внешнего продукта нужен источник или явный disclaimer в каждом превью~~ **Пересмотрено (16.10, api-probe #4)**: `POST /api/v1/projects/{project_id}/price-calculation` из спецификации compute отвечает 200 ключу тестового проекта; в ответе сверх спецификации есть `mkp_image` и `custom_image_size`. Перевести превью на него с откатом на карту — см. [images]
 - [06] Жёсткие ожидания в MCP и deployplan: poll 5 с, 8 с, 10 с, `time.Sleep(5s)` · internal/mcp/tools.go:1687, internal/mcp/tools_stack.go:494, internal/mcp/captainkeys.go:79, internal/deployplan/apply.go:17,252 · текущие тесты эти пути не проходят; внедрить, когда появятся тесты
 - ~~[06] `go test -race` тратит ≈1 с на каждый пакет: race-рантайм спит `atexit_sleep_ms=1000` при выходе · все пакеты · с ростом числа пакетов с тестами упрёмся в 10 с; тогда `GORACE=atexit_sleep_ms=0` в CI и документацию для разработчика~~ **Сделано (15.10)**: `GORACE=atexit_sleep_ms=0` в шаге тестов CI и совет в README «Сборка из исходников»
 - [01] ~~Compute API 401/403 даёт `API_ERROR` (код 5), а не код 2 · internal/provision/adapter.go `doWithRetry`, ветка default · в adapter.go этап 1 меняет только http.Client: параллельно идёт этап 6~~ — **сделано в QA (qa-engine)**
@@ -156,3 +156,18 @@
   - **Q11 (low):** `evo configure` без терминала и без `--key-id`/`--secret-stdin` при существующем профиле отвечает rc 0 «Профиль сохранён», хотя ключ не менялся. В CI это маскирует ошибку. Нужно отвечать ошибкой «нужны Key ID и секрет», как без профиля.
   - **Q12 (info):** частичное окружение (`CLOUDRU_SECRET` без `CLOUDRU_KEY_ID`) заменяет профиль целиком и даёт AUTH_REQUIRED. Так задумано (`internal/config/config.go:233`); описать в `docs/troubleshooting.md` рядом с AUTH_FAILED.
   - **Подтверждены остатки r3:** R14, C4, C5, C6, C7, C12, I2 — см. [qa-r3].
+- [images] Проба каталога образов (api-probe #2–#4, 16.10.2026; дизайн — PR #65, `docs/internal/design-images.md`):
+  - **Каталог:** 86 образов, все без `project_id`: 60 `marketplace`, 26 `public`. Отечественные ОС — только `marketplace`, во всех трёх зонах:
+    - Astra Linux — 7 образов (Смоленск 1.8.1/1.8.2/1.8.3, в том числе KES; «Усиленный» и «Базовый» 1.7.7);
+    - Альт — 7;
+    - РЕД ОС — 3;
+    - SberLinux — 1.
+
+    Отдельного признака семейства и версии нет: имена разнобойные (`AstraLinuxSmolensk1.8.3KES`, `astra_1.8.1`, `alse-base-1-7-7`). Резолвер «семейство → последняя версия» по имени для них не сработает.
+  - **Мусор в общем каталоге:** среди `public` есть тестовые и сломанные образы, видные всем клиентам (`*-test*`, `debian-11_error`, `img-nester-*`). Это вопрос к команде compute. evo стоит прятать их по умолчанию: `enabled=true` оставляет 78 из 86, но уходят ли именно тестовые — не проверено.
+  - **Поиск на сервере работает:** `name=` и `display_name=` ищут по подстроке без учёта регистра (`name=ubuntu` — 17, `display_name=Astra` — 7). Своя индексация не нужна.
+  - **Поля продуктов:** у Astra, Альт и РЕД ОС тот же набор, что у Ubuntu (`name`/`linux_login`, `public_key`, `linux_password`, `hostname`, флаги `vmm_enabled`/`guest_agent_ready`). evo заполняет его уже сейчас, поэтому `evo vm create <имя> --image-id <ID из list-images>` для Astra должен работать (вживую не проверено). Исключения:
+    - у `redos_7.3_image` и `REDOS7.3-sert` есть обязательное `fqdn` типа `hostname`. evo заполняет поля по имени, а не по `field_type`, — вероятен 422;
+    - `mandatory_group` бывает с пробелом (`" authentication"`), по-русски («Метод аутентификации») и `null`; `guest_agent_ready` у одного образа типа `text`.
+  - **Цена:** `price-calculation` у всех образов, включая Astra KES, даёт `image` = 0 и `mkp_image` = 0. Два образа Astra (`alse-smolensk-1-8-3-mkp`, `alse-adv-1-7-7`) отвечают 422 `sku_list[1]: sku_identifier cannot be blank` — в биллинге у них нет SKU. Вопрос к маркетплейсу: создаются ли они вообще и как тарифицируется лицензия Astra.
+  - **`deploy` на Astra/Альт/РЕД ОС:** Docker ставится через `get.docker.com` (`internal/bootstrap/install.sh:54`), а он эти ОС не знает (по памяти, не проверено). ВМ будет создана и оплачена, затем `docker_failed`. До поддержки — отказ до создания ВМ ([cli-practice], дизайн §4.2).
