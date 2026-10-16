@@ -111,7 +111,7 @@ jobs:
           echo "== образы: каталог"
           ru='astra|астра|alt[- _]?(linux|server|workstation)|альт|red[- _]?os|ред[- _]?ос|rosa|роса'
           probe images_types          "$C/images?limit=100" '{total, n: (.items|length), types: ([.items[].type] | group_by(.) | map({(.[0]): length}) | add), shared: ([.items[] | select(.project_id == null)] | length)}'
-          probe images_ru_os          "$C/images?limit=100" "[.items[] | select(.project_id == null) | select(((.name // \"\") + \" \" + (.display_name // \"\")) | test(\"$ru\"; \"i\")) | {name, display_name, type, min_disk, need_gpu: (.min_gpu // 0 > 0), zones: [.availability_zones[]? | select(.enabled) | .availability_zone_name], fields: [.image_metadata[]?.field_type]}]"
+          probe images_ru_os          "$C/images?limit=100" "[.items[] | select(.project_id == null) | select(((.name // \"\") + \" \" + (.display_name // \"\")) | test(\"$ru\"; \"i\")) | {name, display_name, type, min_disk, need_gpu: ((.min_gpu // 0) > 0), zones: [.availability_zones[]? | select(.enabled) | .availability_zone_name], fields: [.image_metadata[]?.field_type]}]"
           probe images_marketplace    "$C/images?type=marketplace&limit=100" '{total, items: [.items[] | select(.project_id == null) | {name, display_name}]}'
           probe images_public         "$C/images?type=public&limit=100" '{total, names: [.items[] | select(.project_id == null) | .name]}'
           probe images_private_proj   "$C/images?$P&type=private&limit=100" "{total, ru_os: ([.items[] | select(((.name // \"\") + \" \" + (.display_name // \"\")) | test(\"$ru\"; \"i\"))] | length)}"
@@ -138,7 +138,8 @@ jobs:
 
           echo "== расчёт цены (POST без побочных эффектов; в лог — код, ключи и признак платы за образ)"
           flavor=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/flavors?limit=100" | jq -r '[.items[] | select((.gpu // 0) == 0)] | sort_by(.cpu, .ram) | .[0].id // empty' || true)
-          disk=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/disk-types?$P&limit=100" | jq -r '.items[0].id // empty' || true)
+          # у disk-types нет limit/offset: с ними ответ не JSON (disk_types_limit200)
+          disk=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/disk-types?$P" | jq -r '(.items? // .)[0].id // empty' 2>/dev/null || true)
           price() {
             local name=$1 image=$2 r c b
             r=$(jq -n --arg f "$flavor" --arg i "$image" --arg d "$disk" '{total_count: 1, flavor_id: $f, disks: [{disk_type_id: $d, size: 20}], floating_ips: [{floating_ip_action: "new", count: 1}]} + (if $i == "" then {} else {image_id: $i} end)' |
