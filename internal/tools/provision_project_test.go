@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -94,5 +95,58 @@ func TestProvision_ImageNotInProjectRefusedBeforeAnyMutation(t *testing.T) {
 				t.Errorf("каталог проекта не спрошен: %+v", cloud.projected)
 			}
 		})
+	}
+}
+
+// noGroupCloud — ВМ создаётся и сразу активна, групп безопасности в
+// проекте нет; правило порта не должно создаваться (встроенный nil
+// CloudAPI уронит тест на AddSecurityGroupRule).
+type noGroupCloud struct {
+	cancelCloud
+}
+
+func (c *noGroupCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
+	c.creates++
+	c.createReq = req
+	return &provision.VM{ID: "vm-made", Status: "creating"}, nil
+}
+func (*noGroupCloud) GetVM(_ context.Context, id string) (*provision.VM, error) {
+	return &provision.VM{ID: id, Status: "running"}, nil
+}
+
+// provision с ports, когда группа безопасности не нашлась: ВМ создана,
+// порты не открыты, ответ это говорит.
+func TestProvision_PortsWithoutSecurityGroup(t *testing.T) {
+	cloud := &noGroupCloud{cancelCloud: cancelCloud{cancel: func() {}}}
+	dir := t.TempDir()
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		var buf bytes.Buffer
+		return &engine.Engine{
+			Config: config.Config{ProjectID: "p", Region: "z", ImageID: "img-1", KeyID: "k", Secret: "s"},
+			Auth:   staticToken{}, Cloud: cloud,
+			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
+			StateDir: dir, SSHKeyPEM: []byte("key"), SSHPubKey: "ssh-ed25519 AAAA test",
+			Timings: engine.Timings{VMPollInterval: time.Millisecond},
+		}, nil
+	})
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{
+		"name": "web", "confirmed": true, "no_public_ip": true, "ports": []any{"80", "53/udp"}})
+	if isErr {
+		t.Fatalf("ошибка: %s", text)
+	}
+	var res map[string]any
+	_ = json.Unmarshal([]byte(text), &res)
+	if res["status"] != "ok" || cloud.creates != 1 || len(cloud.createReq.Interfaces) != 1 || len(cloud.createReq.Interfaces[0].SecurityGroups) != 0 {
+		t.Fatalf("ответ %s, creates %d, req %+v", text, cloud.creates, cloud.createReq.Interfaces)
+	}
+	msg, _ := res["message"].(string)
+	if !strings.Contains(msg, "Ports: no security group was resolved for the VM, so ports 80,53/udp were not opened — open them with open_ports.") {
+		t.Errorf("message: %q", msg)
+	}
+	if _, has := res["ports"]; has {
+		t.Errorf("ports в ответе, хотя ничего не открыто: %v", res["ports"])
+	}
+	if rec := stateHasVM(t, dir, "vm-made"); rec.SecurityGroupID != "" || len(rec.OpenedRules) != 0 {
+		t.Errorf("state: %+v", rec)
 	}
 }
