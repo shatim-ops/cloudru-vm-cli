@@ -187,11 +187,15 @@ func asGroup(cmd *cobra.Command) *cobra.Command {
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "evo",
-		Short: i18n.T("Deploy docker-compose projects to Cloud.ru VMs", "Развёртывание docker-compose проектов на ВМ Cloud.ru"),
-		Long: i18n.T("Deploy docker-compose projects to Cloud.ru VMs.",
-			"Развёртывание docker-compose проектов на ВМ Cloud.ru и управление ресурсами\n"+
-				"облака: ВМ, диски, сети, Kubernetes, PostgreSQL, Object Storage, секреты.\n\n"+
+		Use: "evo",
+		Short: i18n.T("CLI and MCP server for Cloud.ru Evolution: VMs, networks, k8s, PostgreSQL and deploy of compose projects",
+			"CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов"),
+		Long: i18n.T("CLI and MCP server for Cloud.ru Evolution: deploy of docker-compose projects\n"+
+			"to VMs and management of cloud resources: VMs, disks, networks, Kubernetes,\n"+
+			"PostgreSQL, Object Storage, secrets.",
+			"CLI и MCP-сервер для Cloud.ru Evolution: развёртывание docker-compose проектов\n"+
+				"на ВМ и управление ресурсами облака: ВМ, диски, сети, Kubernetes, PostgreSQL,\n"+
+				"Object Storage, секреты.\n\n"+
 				"Сообщения по-английски: EVO_LANG=en.") + "\n\n" +
 			clerrors.ExitCodesHelp(),
 		// Errors are printed once, by run(): as text or, with --json, as

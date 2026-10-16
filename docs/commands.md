@@ -116,13 +116,14 @@
 
 ## evo
 
-Развёртывание docker-compose проектов на ВМ Cloud.ru
+CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ### Synopsis
 
 ```text
-Развёртывание docker-compose проектов на ВМ Cloud.ru и управление ресурсами
-облака: ВМ, диски, сети, Kubernetes, PostgreSQL, Object Storage, секреты.
+CLI и MCP-сервер для Cloud.ru Evolution: развёртывание docker-compose проектов
+на ВМ и управление ресурсами облака: ВМ, диски, сети, Kubernetes, PostgreSQL,
+Object Storage, секреты.
 
 Сообщения по-английски: EVO_LANG=en.
 
@@ -208,7 +209,7 @@
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo completion bash](#evo-completion-bash)	 - Скрипт автодополнения для bash
 * [evo completion fish](#evo-completion-fish)	 - Скрипт автодополнения для fish
 * [evo completion powershell](#evo-completion-powershell)	 - Скрипт автодополнения для powershell
@@ -479,7 +480,7 @@ evo configure [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo configure delete](#evo-configure-delete)	 - Удалить сохранённый профиль и его токен из кэша
 * [evo configure list](#evo-configure-list)	 - Сохранённые профили
 
@@ -601,7 +602,7 @@ evo deploy [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo destroy
 
@@ -652,7 +653,7 @@ evo destroy [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo disk
 
@@ -683,7 +684,7 @@ evo disk [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo disk attach](#evo-disk-attach)	 - Подключить диск к ВМ (диск и ВМ должны быть в одной зоне)
 * [evo disk create](#evo-disk-create)	 - Создать диск (с --attach-to — в зоне ВМ и сразу подключить)
 * [evo disk delete](#evo-disk-delete)	 - Удалить диск и все данные на нём (безвозвратно)
@@ -1057,7 +1058,7 @@ evo doctor [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo init
 
@@ -1109,7 +1110,7 @@ evo init [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo k8s
 
@@ -1140,7 +1141,7 @@ evo k8s [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo k8s add-nodepool](#evo-k8s-add-nodepool)	 - Добавить группу рабочих узлов (платно, асинхронно)
 * [evo k8s apply](#evo-k8s-apply)	 - Применить манифест Kubernetes (как kubectl apply -f -)
 * [evo k8s create](#evo-k8s-create)	 - Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут)
@@ -1765,7 +1766,7 @@ evo list-images [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo list-zones
 
@@ -1812,7 +1813,7 @@ evo list-zones [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo logs
 
@@ -1854,7 +1855,7 @@ evo logs [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo mcp
 
@@ -1952,7 +1953,7 @@ evo mcp [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo pg
 
@@ -1983,7 +1984,7 @@ evo pg [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo pg backup-create](#evo-pg-backup-create)	 - Создать резервную копию вручную (асинхронно)
 * [evo pg backups](#evo-pg-backups)	 - Резервные копии кластера
 * [evo pg create](#evo-pg-create)	 - Создать кластер PostgreSQL (платно, асинхронно)
@@ -2706,7 +2707,7 @@ evo project [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo project list](#evo-project-list)	 - Проекты, которые видит ключ (* — активный)
 * [evo project use](#evo-project-use)	 - Сделать проект проектом профиля по умолчанию
 
@@ -2827,7 +2828,7 @@ evo s3 [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo s3 bucket-create](#evo-s3-bucket-create)	 - Создать бакет
 * [evo s3 bucket-delete](#evo-s3-bucket-delete)	 - Удалить пустой бакет
 * [evo s3 buckets](#evo-s3-buckets)	 - Бакеты Object Storage
@@ -3186,7 +3187,7 @@ evo secret [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo secret add-version](#evo-secret-add-version)	 - Добавить новую версию значения секрета (ротация)
 * [evo secret create](#evo-secret-create)	 - Создать секрет
 * [evo secret delete](#evo-secret-delete)	 - Удалить секрет со всеми версиями
@@ -3494,7 +3495,7 @@ evo status [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo tools
 
@@ -3540,7 +3541,7 @@ evo tools [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo tools call](#evo-tools-call)	 - Вызвать инструмент и напечатать его ответ (JSON)
 * [evo tools describe](#evo-tools-describe)	 - Описание и аргументы инструмента
 * [evo tools list](#evo-tools-list)	 - Список инструментов: имя, группа, меняет ли что-то, описание
@@ -3737,7 +3738,7 @@ evo verify [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo version
 
@@ -3768,7 +3769,7 @@ evo version [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo vm
 
@@ -3799,7 +3800,7 @@ evo vm [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo vm create](#evo-vm-create)	 - Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip)
 * [evo vm delete](#evo-vm-delete)	 - Удалить ВМ и все данные на ней (безвозвратно)
 * [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, RAM, бесплатный уровень, оценка цены за месяц
@@ -4128,7 +4129,7 @@ evo vpc [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
 * [evo vpc create](#evo-vpc-create)	 - Создать VPC (асинхронно)
 * [evo vpc delete](#evo-vpc-delete)	 - Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы)
 * [evo vpc fip-attach](#evo-vpc-fip-attach)	 - Привязать свободный floating IP к основному интерфейсу ВМ
@@ -4761,4 +4762,4 @@ evo whoami [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Развёртывание docker-compose проектов на ВМ Cloud.ru
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов

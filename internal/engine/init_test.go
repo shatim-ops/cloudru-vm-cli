@@ -122,6 +122,36 @@ func TestInit_InvalidChoice(t *testing.T) {
 	}
 }
 
+// init warns, but does not fail, when the compose file deploy reads is
+// missing: otherwise one learns about it only at 'evo deploy'.
+func TestInit_WarnsWithoutComposeFile(t *testing.T) {
+	eng, path, out := initEngine(t)
+	compose := filepath.Join(filepath.Dir(path), "docker-compose.yml")
+	eng.Config.ComposeFile = compose
+	if err := eng.Init(context.Background(), InitOptions{Path: path, NonInteractive: true}); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if !strings.Contains(out.String(), "Warning: "+compose+" not found") {
+		t.Errorf("no warning about the missing compose file:\n%s", out.String())
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("config not written: %v", err)
+	}
+
+	eng, path, out = initEngine(t)
+	compose = filepath.Join(filepath.Dir(path), "docker-compose.yml")
+	eng.Config.ComposeFile = compose
+	if err := os.WriteFile(compose, []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Init(context.Background(), InitOptions{Path: path, NonInteractive: true}); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if strings.Contains(out.String(), "not found") {
+		t.Errorf("warning with the compose file present:\n%s", out.String())
+	}
+}
+
 func TestInit_ExistingConfigUntouched(t *testing.T) {
 	eng, path, _ := initEngine(t)
 	if err := os.WriteFile(path, []byte("mine"), 0o644); err != nil {
