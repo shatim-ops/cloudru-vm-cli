@@ -30,9 +30,9 @@ type InitOptions struct {
 // Init writes a project config with an availability zone and a boot image
 // taken from the Cloud.ru API, not from a list baked into the binary: zone
 // and image UUIDs differ between tenants and change over time. Without a
-// terminal (or with NonInteractive) it takes the preferred zone (else the
-// first) and the newest plain Ubuntu (else Debian) image and prints what it
-// chose.
+// terminal (or with NonInteractive) it takes the first zone of initZones
+// (one with a subnet of the project, ru.AZ-2 first) and the newest plain
+// Ubuntu (else Debian) image and prints what it chose.
 func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	if _, err := os.Stat(opts.Path); err == nil {
 		e.Printer.Warning(opts.Path + i18n.T(" already exists. Skipping.", " уже существует, файл не изменён."))
@@ -87,7 +87,7 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 
 	interactive := !opts.NonInteractive && confirm.StdinIsTTY()
 
-	zones = PreferredZoneFirst(zones)
+	zones = e.initZones(ctx, zones)
 	zoneNames := make([]string, len(zones))
 	for i, z := range zones {
 		zoneNames[i] = z.Name
@@ -149,6 +149,58 @@ func PreferredZoneFirst(zones []*provision.AvailabilityZone) []*provision.Availa
 			out = append(out, z)
 			out = append(out, zones[:i]...)
 			return append(out, zones[i+1:]...)
+		}
+	}
+	return zones
+}
+
+// initZones orders the zones for init: first a zone where the project has
+// a subnet — deploy cannot plug a VM in elsewhere, and a new project has
+// one only in ru.AZ-1 (docs, «Подсети»: Default_ru.AZ-1 is created
+// automatically). Among them ru.AZ-2 (preferredZone) if it has one, else a
+// zone with the project's main subnet (the API's default flag), else the
+// first; then the other zones. It says why when preferredZone is not
+// first, and warns when no zone has a subnet. Without a project or the
+// subnet list the order is PreferredZoneFirst.
+func (e *Engine) initZones(ctx context.Context, zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
+	zones = PreferredZoneFirst(zones)
+	if e.Config.ProjectID == "" {
+		return zones
+	}
+	subnets, err := e.Cloud.ListSubnets(ctx, e.Config.ProjectID)
+	if err != nil {
+		return zones
+	}
+	rank := func(z *provision.AvailabilityZone) int {
+		has, main := false, false
+		for _, s := range subnets {
+			if provision.SubnetInZone(s, z.ID, z.Name) {
+				has, main = true, main || s.Default
+			}
+		}
+		switch {
+		case has && z.Name == preferredZone:
+			return 0
+		case has && main:
+			return 1
+		case has:
+			return 2
+		}
+		return 3
+	}
+	sort.SliceStable(zones, func(i, j int) bool { return rank(zones[i]) < rank(zones[j]) })
+	switch {
+	case len(zones) == 0:
+	case rank(zones[0]) == 3:
+		e.Printer.Warning(i18n.T("the project has no subnet in any zone: deploy cannot plug a VM in. Create a subnet in the Cloud.ru console (Network → Subnets), then run 'evo init' again",
+			"в проекте нет подсети ни в одной зоне: deploy не сможет подключить ВМ к сети. Создайте подсеть в консоли Cloud.ru (Сеть → Подсети) и повторите 'evo init'"))
+	case zones[0].Name != preferredZone:
+		for _, z := range zones {
+			if z.Name == preferredZone {
+				e.Printer.Hint(i18n.Tf("%s is not offered first: the project has no subnet there; %s has one",
+					"%s не предлагается первой: в ней нет подсети проекта; подсеть есть в %s", preferredZone, zones[0].Name))
+				break
+			}
 		}
 	}
 	return zones

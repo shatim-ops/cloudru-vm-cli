@@ -754,21 +754,24 @@ func newInitCmd() *cobra.Command {
 		Long: i18n.T(`Create .evo.yaml for this project.
 
 The availability zone and the boot image are listed from the Cloud.ru API
-(credentials required). On a terminal you choose from a numbered list;
-ru.AZ-2 is listed first and is the default (on 15.10.2026 ru.AZ-1 failed to
-create VMs); with --non-interactive or without a terminal ru.AZ-2 (else the
-first zone) and the newest plain Ubuntu (else Debian) image are taken, and
-the choice is printed. --image takes the image by name (any case) or UUID
+(credentials required). On a terminal you choose from a numbered list.
+Zones where the project has a subnet come first (deploy cannot plug a VM in
+elsewhere; a new project has one only in ru.AZ-1): ru.AZ-2 if it has one (on
+15.10.2026 ru.AZ-1 failed to create VMs), else the zone of the project's
+main subnet. With --non-interactive or without a terminal the first zone and
+the newest plain Ubuntu (else Debian) image are taken, and the choice is
+printed. --image takes the image by name (any case) or UUID
 instead: a name is written to .evo.yaml as the catalogue spells it (image:),
 a UUID as image_id:. deploy needs Ubuntu or Debian: Astra Linux, Alt and
 RED OS images are refused (create a plain VM from them: evo vm create).`, `Создать .evo.yaml для этого проекта.
 
 Зона доступности и загрузочный образ берутся из API Cloud.ru (нужен ключ
-доступа). На терминале их выбирают из нумерованного списка. ru.AZ-2 стоит
-первой и выбрана по умолчанию (15.10.2026 в ru.AZ-1 ВМ не создавались); с
---non-interactive или без терминала берутся ru.AZ-2 (если её нет — первая
-зона) и самый новый обычный образ Ubuntu (если его нет — Debian), выбор
-печатается. --image задаёт образ по имени (регистр не важен) или UUID: имя
+доступа). На терминале их выбирают из нумерованного списка. Первыми идут
+зоны, где у проекта есть подсеть (в другую deploy ВМ не подключит; в новом
+проекте подсеть есть только в ru.AZ-1): ru.AZ-2, если подсеть есть в ней
+(15.10.2026 в ru.AZ-1 ВМ не создавались), иначе зона основной подсети
+проекта. С --non-interactive или без терминала берутся первая зона и самый
+новый обычный образ Ubuntu (если его нет — Debian), выбор печатается. --image задаёт образ по имени (регистр не важен) или UUID: имя
 пишется в .evo.yaml так, как в каталоге (image:), UUID — как image_id:.
 deploy нужен Ubuntu или Debian: образы Astra Linux, Альт и РЕД ОС
 отклоняются (ВМ из них создаёт evo vm create).`),
@@ -785,8 +788,8 @@ deploy нужен Ubuntu или Debian: образы Astra Linux, Альт и Р
 		},
 	}
 
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Take ru.AZ-2 (else the first zone) and the preferred image without asking",
-		"Без вопросов взять ru.AZ-2 (если её нет — первую зону) и предпочтительный образ"))
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Take the first zone (ru.AZ-2 if the project has a subnet there) and the preferred image without asking",
+		"Без вопросов взять первую зону (ru.AZ-2, если в ней есть подсеть проекта) и предпочтительный образ"))
 	cmd.Flags().StringVar(&image, "image", "", i18n.T("Boot image by name or UUID (evo image list) instead of the newest Ubuntu",
 		"Загрузочный образ по имени или UUID (evo image list) вместо самого нового Ubuntu"))
 

@@ -12,7 +12,7 @@ import "strings"
 func PickSubnet(subnets []*Subnet, zoneID, zoneName string) int {
 	best := -1
 	for i, s := range subnets {
-		if !subnetInZone(s, zoneID, zoneName) {
+		if !SubnetInZone(s, zoneID, zoneName) {
 			continue
 		}
 		if best < 0 || subnetRank(s) > subnetRank(subnets[best]) {
@@ -46,9 +46,9 @@ func subnetRank(s *Subnet) int {
 	return r
 }
 
-// subnetInZone: by the zone ID the answer carries, else (no zone in the
+// SubnetInZone: by the zone ID the answer carries, else (no zone in the
 // answer) by a name containing the zone name ("Default_ru.AZ-1").
-func subnetInZone(s *Subnet, zoneID, zoneName string) bool {
+func SubnetInZone(s *Subnet, zoneID, zoneName string) bool {
 	if s.AvailabilityZoneID != "" {
 		return s.AvailabilityZoneID == zoneID
 	}

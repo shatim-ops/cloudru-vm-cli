@@ -19,6 +19,12 @@ func catalogCloud() *mockCloudAPI {
 		listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
 			return []*provision.AvailabilityZone{{ID: "az-1-id", Name: "ru.AZ-1"}, {ID: "az-2-id", Name: "ru.AZ-2"}}, nil
 		},
+		listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
+			return []*provision.Subnet{
+				{ID: "sn-1", Name: "Default_ru.AZ-1", AvailabilityZoneID: "az-1-id", Default: true},
+				{ID: "sn-2", Name: "app", AvailabilityZoneID: "az-2-id"},
+			}, nil
+		},
 		listImagesFn: func(context.Context) ([]*provision.Image, error) {
 			return []*provision.Image{
 				{ID: "talos", Name: "Talos_Linux"},
@@ -79,6 +85,45 @@ func TestInit_NonInteractiveTakesPreferredZoneAndImage(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("choice not printed (%q):\n%s", want, out.String())
 		}
+	}
+}
+
+// Зона init — та, где у проекта есть подсеть: в новом проекте подсеть
+// Default_ru.AZ-1 создаётся только в ru.AZ-1 (документация «Подсети»), и
+// deploy в ru.AZ-2 остановился бы на «нет подсети». ru.AZ-2 — если подсеть
+// есть и там.
+func TestInit_ZoneWithSubnet(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		subnets []*provision.Subnet
+		want    string
+		say     string
+	}{
+		{"подсеть только в ru.AZ-1", []*provision.Subnet{{ID: "sn-1", Name: "Default_ru.AZ-1", AvailabilityZoneID: "az-1-id", Default: true}},
+			"region: az-1-id", "ru.AZ-2 is not offered first"},
+		{"подсети в обеих зонах — ru.AZ-2", nil, "region: az-2-id", ""},
+		{"подсетей нет — ru.AZ-2 и предупреждение", []*provision.Subnet{}, "region: az-2-id", "no subnet in any zone"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			eng, path, out := initEngine(t)
+			if tc.subnets != nil {
+				sn := tc.subnets
+				eng.Cloud.(*mockCloudAPI).listSubnetsFn = func(context.Context, string) ([]*provision.Subnet, error) { return sn, nil }
+			}
+			if err := eng.Init(context.Background(), InitOptions{Path: path, NonInteractive: true}); err != nil {
+				t.Fatal(err)
+			}
+			data, _ := os.ReadFile(path)
+			if !strings.Contains(string(data), tc.want) {
+				t.Errorf("config lacks %q:\n%s", tc.want, data)
+			}
+			if tc.say != "" && !strings.Contains(out.String(), tc.say) {
+				t.Errorf("output lacks %q:\n%s", tc.say, out.String())
+			}
+			if tc.say == "" && (strings.Contains(out.String(), "not offered first") || strings.Contains(out.String(), "no subnet")) {
+				t.Errorf("unexpected note:\n%s", out.String())
+			}
+		})
 	}
 }
 
