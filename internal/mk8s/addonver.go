@@ -167,7 +167,8 @@ func LatestRelease(rs []AddonRelease) (AddonRelease, bool) {
 }
 
 // FindRelease finds the release with this appVersion, else this
-// addonVersion; a leading "v" does not matter.
+// addonVersion; a leading "v" does not matter. The first match wins: sort
+// the releases first (SortReleases), so that it is the newest addonVersion.
 func FindRelease(rs []AddonRelease, version string) (AddonRelease, bool) {
 	trim := func(s string) string { return strings.TrimPrefix(strings.TrimSpace(s), "v") }
 	want := trim(version)

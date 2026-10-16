@@ -239,7 +239,13 @@ func (c *Client) CreateClusterAddon(ctx context.Context, req CreateClusterAddonR
 	// itself.
 	if r.ID == "" && r.ResourceID == "" {
 		// Nothing to follow: not "installing" without a single identifier.
-		return nil, fmt.Errorf("unexpected answer of POST /v3/clusterAddons: no operation or addon id")
+		// The POST answered 2xx, so the install may have started: say so
+		// before a retry, and keep the API's own error text.
+		msg := "unexpected answer of POST /v3/clusterAddons: no operation or addon id"
+		if len(r.Error) > 0 && string(r.Error) != "null" {
+			msg += ": " + string(r.Error)
+		}
+		return nil, fmt.Errorf("%s; the install may have started — check the addons of the cluster in the Cloud.ru console before retrying", msg)
 	}
 	if r.Done != nil || r.ResourceID != "" || (r.Status == "" && r.ClusterID == "" && r.AppVersion == "" && r.Name == "") {
 		res := &ClusterAddonResult{OperationID: r.ID, ID: r.ResourceID, Done: r.Done != nil && *r.Done}

@@ -201,6 +201,11 @@ func TestCreateClusterAddon(t *testing.T) {
 	if _, err = cli.CreateClusterAddon(context.Background(), req); err == nil {
 		t.Error("empty answer accepted")
 	}
+	// Ошибка без id: текст API не теряется (ревью Grok на #82).
+	answer = `{"done":true,"error":{"message":"boom"}}`
+	if _, err = cli.CreateClusterAddon(context.Background(), req); err == nil || !strings.Contains(err.Error(), "boom") || !strings.Contains(err.Error(), "may have started") {
+		t.Errorf("error without id: %v", err)
+	}
 	rec.body = rec.body[:1]
 
 	answer = `{"id":"ca-2","status":"CLUSTER_ADDON_STATUS_INSTALLING"}`
