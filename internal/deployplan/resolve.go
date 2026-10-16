@@ -86,6 +86,14 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if err != nil {
 		return nil, err
 	}
+	// A compose deploy installs Docker through get.docker.com, which knows
+	// no domestic distributions: no plan, so deploy_apply does not bill a
+	// VM Docker cannot go on (as for a missing metadata field).
+	if p.ComposeFile != "" {
+		if family := images.NoDockerFamily(image.Name, image.DisplayName, image.OS); family != "" {
+			return nil, images.NoDockerError(clierrors.CodeUsage, image.Name, family)
+		}
+	}
 
 	// --- Disk type ---
 	minDisk := 0
@@ -153,11 +161,6 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	}
 	if sErr != nil {
 		warnings = append(warnings, "could not read image metadata template: "+sErr.Error())
-	}
-	if p.ComposeFile != "" {
-		if family := images.NoDockerFamily(image.Name, image.DisplayName, image.OS); family != "" {
-			warnings = append(warnings, fmt.Sprintf("image %s is %s: Docker's install script (get.docker.com) does not support it — take an Ubuntu or Debian image for a compose deploy", image.Name, family))
-		}
 	}
 
 	vm := VMSpec{

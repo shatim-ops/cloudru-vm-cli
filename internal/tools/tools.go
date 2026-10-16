@@ -192,7 +192,7 @@ func (s *Registry) registerTools() {
 				"disk_gb":      intProp("Boot disk size in GB (default: 10)."),
 				"ports":        map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Product ports to open in the VM's security group (e.g. [80,443] for a web server, from the README). deploy_apply opens them automatically; destroy deletes the rules it created."},
 				"name":         strProp("Explicit VM name (default: <product>-<timestamp>)."),
-				"compose_file": strProp("Path to a docker-compose.yml if this is a compose deploy (sets compose_required)."),
+				"compose_file": strProp("Path to a docker-compose.yml if this is a compose deploy (sets compose_required). With it an Astra Linux, Alt or RED OS image is refused (USAGE, no plan): Docker's install script does not support them."),
 				"external_ip":  boolProp("Attach a public floating IP (default: true)."),
 				"flavor":       strProp("manual: exact flavor name (see list_flavors)."),
 				"zone":         strProp("manual: availability zone name or UUID (see list_zones)."),

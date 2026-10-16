@@ -33,3 +33,27 @@ func TestResolve_MissingFieldNoPlan(t *testing.T) {
 		t.Errorf("план %v, запрос %v", plan.MetaStatic, req.ImageMetadata)
 	}
 }
+
+// astraCloud — каталог, в котором есть только Astra Linux.
+type astraCloud struct{ metaCloud }
+
+func (*astraCloud) ListImages(context.Context, ...provision.ImageFilter) ([]*provision.Image, error) {
+	return []*provision.Image{{ID: "img-a", Name: "astra_1.8.1", DisplayName: "Astra Linux SE 1.8.1"}}, nil
+}
+
+// deploy_plan с compose_file на Astra Linux (Альт, РЕД ОС): Docker туда не
+// встанет — плана нет, как без обязательного поля; без compose_file — это
+// обычная ВМ, план строится.
+func TestResolve_NoDockerOSWithComposeNoPlan(t *testing.T) {
+	cloud := &astraCloud{metaCloud{fields: ubuntu2404Fields(), cancel: func() {}}}
+	plan, err := Resolve(context.Background(), cloud, "proj-1", Params{Name: "web", Image: "astra_1.8.1", ComposeFile: "services: {}"})
+	ce, ok := err.(*clierrors.CLIError)
+	if plan != nil || !ok || ce.Code != clierrors.CodeUsage || !strings.Contains(ce.Message, "astra_1.8.1") ||
+		!strings.Contains(ce.Message, "get.docker.com") || !strings.Contains(ce.Message, "Astra Linux") {
+		t.Fatalf("ошибка: %#v", err)
+	}
+	plan, err = Resolve(context.Background(), cloud, "proj-1", Params{Name: "web", Image: "astra_1.8.1"})
+	if err != nil || plan == nil || plan.VM.Image.Name != "astra_1.8.1" {
+		t.Fatalf("без compose_file: %v", err)
+	}
+}
