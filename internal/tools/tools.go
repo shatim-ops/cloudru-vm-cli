@@ -640,7 +640,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_create",
-			Description: "Create a Managed Kafka cluster. Resolves version (latest), specification (by specification_id or cpu+ram), subnet (first project subnet), storage & brokers (spec minimum). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll kafka_operation.",
+			Description: "Create a Managed Kafka cluster. Resolves version (latest), subnet (the main subnet of the configured zone, else of the first zone that has one, ru.AZ-2 first) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram), storage & brokers (spec minimum). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll kafka_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name (2-63 chars). Required."),
 				"version_id":       strProp("Kafka version UUID (from kafka_versions). Optional; default = latest."),
@@ -692,7 +692,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster. Resolves version (latest), specification (by specification_id or cpu+ram), subnet. type STANDALONE (default) or MASTER_REPLICA. Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
+			Description: "Create a Managed Redis cluster. Resolves version (latest), subnet (as kafka_create) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram). type MASTER_REPLICA (default: a master and two replicas, all in the subnet's zone — Single-AZ; the API has rejected STANDALONE). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name. Required."),
 				"version_id":       strProp("Redis version UUID (from redis_versions). Optional; default = latest."),
@@ -701,8 +701,8 @@ func (s *Registry) registerTools() {
 				"ram":              intProp("RAM GB — with cpu."),
 				"storage_gb":       intProp("Disk size GB. Optional; default = spec minimum."),
 				"shards":           intProp("Shard count 1-8 (default 1)."),
-				"replicas":         intProp("Replica count (default 0)."),
-				"type":             strProp("STANDALONE (default) or MASTER_REPLICA."),
+				"replicas":         intProp("Replica count (default 3; MASTER_REPLICA takes at least 3)."),
+				"type":             strProp("MASTER_REPLICA (default) or STANDALONE (rejected by the API so far)."),
 				"description":      strProp("Optional description."),
 				"confirmed":        confirmedProp(),
 			}, "name"),

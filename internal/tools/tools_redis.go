@@ -119,14 +119,20 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		versionID, _ = vers[len(vers)-1]["id"].(string)
 	}
 
-	specs, err := cli.ListSpecifications(ctx, versionID, eng.Config.Region)
+	// The subnet first: its zone is the cluster's, and the specifications
+	// are listed for it.
+	subnetID, zoneID, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
+	if err != nil {
+		return errResult(err), true
+	}
+	specs, err := cli.ListSpecifications(ctx, versionID, zoneID)
 	if err != nil {
 		return errResult(fmt.Errorf("list specifications: %w", err)), true
 	}
 	spec := findDbaasSpec(specs, stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0))
 	if spec == nil {
 		menu, trunc := compactSpecs(specs, specMenuCap)
-		out := map[string]any{"status": "need_specification", "resolved_version_id": versionID,
+		out := map[string]any{"status": "need_specification", "resolved_version_id": versionID, "availability_zone": zone,
 			"message": "redis_create needs a specification: pass specification_id, or cpu+ram matching one of these.", "available_specifications": menu}
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
@@ -158,18 +164,15 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		replicas = 3
 	}
 
-	subnetID := stringArg(args, "subnet_id")
-	if subnetID == "" {
-		if subs, e := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID); e == nil && len(subs) > 0 {
-			subnetID = subs[0].ID
-		}
-	}
-
 	willCreate := map[string]any{"name": name, "version_id": versionID, "specification_id": specID,
-		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gb": storage, "shards": shards, "replicas": replicas, "type": rtype}
+		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gb": storage, "shards": shards, "replicas": replicas, "type": rtype,
+		"subnet_id": subnetID, "availability_zone": zone}
 	warn := ""
 	if rtype == "MASTER_REPLICA" {
-		warn = "MASTER_REPLICA needs 3 replicas spread across 3 availability zones — it will FAIL to provision in a single-zone project. A FAILED cluster currently CANNOT be deleted via the API (Cloud.ru orphan-lock) and needs console cleanup. Confirm the project has ≥3 AZs before creating."
+		// Docs (Redis, «Создание кластера»): Master/Replica is a master and
+		// two replicas, Multi-AZ or Single-AZ. One subnet_id puts every host
+		// in its zone.
+		warn = "MASTER_REPLICA is a master and two replicas; with one subnet all hosts go to zone " + zone + " (Single-AZ, which the docs allow — Multi-AZ needs a subnet per zone, not available through evo). If the cluster ends FAILED it currently cannot be deleted via the API (Cloud.ru orphan-lock) and needs console cleanup."
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		out := map[string]any{"status": "confirmation_required",
@@ -188,9 +191,7 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 	// Use the DEPRECATED singular subnet_id, NOT subnet_ids[]: the Redis backend
 	// panics (divide-by-zero) when given the subnet_ids array (it mishandles
 	// zone-distribution across the list), but works with the single subnet_id.
-	if subnetID != "" {
-		body["subnet_id"] = subnetID
-	}
+	body["subnet_id"] = subnetID
 	if d := stringArg(args, "description"); d != "" {
 		body["description"] = d
 	}

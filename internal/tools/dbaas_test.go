@@ -45,6 +45,9 @@ func (f *fakeDbaas) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/api/v1/availability-zones":
 		_, _ = io.WriteString(w, `{"items":[{"id":"`+zoneAZ1+`","name":"ru.AZ-1"},{"id":"`+zoneAZ2+`","name":"ru.AZ-2"}]}`)
+	case r.URL.Path == "/api/v1/subnets":
+		// Подсеть есть только в ru.AZ-1, как в новом проекте.
+		_, _ = io.WriteString(w, `{"items":[{"id":"sn-1","name":"Default_ru.AZ-1","default":true,"availability_zone":{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}}],"total":1}`)
 	case host != "kafka.api.cloud.ru" && host != "redis.api.cloud.ru":
 		http.Error(w, "unexpected host "+host, 500)
 	case r.URL.Path == "/v1/clusters":
@@ -182,6 +185,36 @@ func TestDbaasSpecs_UnknownZoneIsUsage(t *testing.T) {
 	for _, q := range f.take() {
 		if strings.Contains(q, "/v1/specifications") {
 			t.Errorf("specifications requested with an unknown zone: %s", q)
+		}
+	}
+}
+
+// kafka_create и redis_create: сначала подсеть, зона — её. Подсеть есть
+// только в ru.AZ-1, поэтому спецификации — для ru.AZ-1 (раньше: регион
+// профиля или пусто, а подсеть — первая в любой зоне). В регионе без
+// подсети — USAGE.
+func TestDbaasCreate_ZoneFromSubnet(t *testing.T) {
+	for _, tool := range []string{"kafka_create", "redis_create"} {
+		f := &fakeDbaas{}
+		r := dbaasRegistry(t, f, "")
+		m, text, _ := callNamed(t, r, tool, map[string]any{"name": "c1", "cpu": 2, "ram": 4})
+		wc, _ := m["will_create"].(map[string]any)
+		if m["status"] != "confirmation_required" || wc["subnet_id"] != "sn-1" || wc["availability_zone"] != "ru.AZ-1" {
+			t.Errorf("%s: %s", tool, text)
+		}
+		for _, q := range f.take() {
+			if strings.Contains(q, "/v1/specifications?") && !strings.Contains(q, "availability_zone_id="+zoneAZ1) {
+				t.Errorf("%s: specifications of another zone: %s", tool, q)
+			}
+		}
+		if tool == "redis_create" && (strings.Contains(text, "3 availability zones") || !strings.Contains(text, "Single-AZ")) {
+			t.Errorf("redis warning: %s", text)
+		}
+
+		r = dbaasRegistry(t, &fakeDbaas{}, zoneAZ2)
+		m, text, isErr := callNamed(t, r, tool, map[string]any{"name": "c1", "cpu": 2, "ram": 4})
+		if !isErr || m["reason"] != "USAGE" {
+			t.Errorf("%s in a zone without a subnet: %s", tool, text)
 		}
 	}
 }

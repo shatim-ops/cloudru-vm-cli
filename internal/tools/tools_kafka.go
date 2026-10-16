@@ -9,6 +9,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/dbaas"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 const kafkaHost = "https://kafka.api.cloud.ru"
@@ -99,6 +100,67 @@ func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown s
 		return "", "", fmt.Errorf("no availability zones listed: pass 'zone'")
 	}
 	return zones[0].ID, zones[0].Name, nil
+}
+
+// dbaasSubnet picks the subnet of a new Kafka/Redis cluster first and takes
+// the zone from it: the create request carries only the subnet, so the
+// cluster lives in the subnet's zone, and its specification must be one of
+// that zone (a flavor may be missing in a zone). subnet_id as given; else
+// in the configured region the zone's main subnet (provision.PickSubnet);
+// without a region the first zone with a subnet, ru.AZ-2 first (as evo
+// init). Returns the subnet, the zone UUID and the zone to show.
+func dbaasSubnet(ctx context.Context, eng *engine.Engine, subnetArg string) (subnetID, zoneID, zoneShown string, err error) {
+	subs, err := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
+	if err != nil || len(subs) == 0 {
+		if subnetArg == "" {
+			return "", "", "", fmt.Errorf("resolve subnet: no subnet of the project could be read; pass subnet_id explicitly")
+		}
+		subs = nil
+	}
+	zones, _ := eng.Cloud.ListAvailabilityZones(ctx)
+	zoneName := func(id string) string {
+		for _, z := range zones {
+			if z.ID == id && z.Name != "" {
+				return z.Name
+			}
+		}
+		return id
+	}
+	var picked *provision.Subnet
+	switch {
+	case subnetArg != "":
+		for _, s := range subs {
+			if s.ID == subnetArg {
+				picked = s
+			}
+		}
+		if picked == nil || picked.AvailabilityZoneID == "" {
+			zid, shown, zerr := dbaasZone(ctx, eng, "")
+			return subnetArg, zid, shown, zerr
+		}
+	case eng.Config.Region != "":
+		zid, shown, zerr := dbaasZone(ctx, eng, "")
+		if zerr != nil {
+			return "", "", "", zerr
+		}
+		if i := provision.PickSubnet(subs, zid, shown); i >= 0 && provision.SubnetInZone(subs[i], zid, shown) {
+			return subs[i].ID, zid, shown, nil
+		}
+		return "", "", "", clierrors.New(clierrors.CodeUsage, fmt.Sprintf("no subnet of the project in zone %s", shown),
+			"Pass subnet_id, or create a subnet in this zone in the Cloud.ru console.")
+	default:
+		for _, z := range engine.PreferredZoneFirst(zones) {
+			if i := provision.PickSubnet(subs, z.ID, z.Name); i >= 0 && provision.SubnetInZone(subs[i], z.ID, z.Name) {
+				return subs[i].ID, z.ID, z.Name, nil
+			}
+		}
+		picked = subs[0]
+	}
+	if picked.AvailabilityZoneID == "" {
+		zid, shown, zerr := dbaasZone(ctx, eng, "")
+		return picked.ID, zid, shown, zerr
+	}
+	return picked.ID, picked.AvailabilityZoneID, zoneName(picked.AvailabilityZoneID), nil
 }
 
 func (s *Registry) kafkaClientEng(ctx context.Context) (*dbaas.Client, *engine.Engine, error) {
@@ -215,14 +277,20 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 		versionID, _ = vers[len(vers)-1]["id"].(string)
 	}
 
-	specs, err := cli.ListSpecifications(ctx, versionID, eng.Config.Region)
+	// The subnet first: its zone is the cluster's, and the specifications
+	// are listed for it.
+	subnetID, zoneID, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
+	if err != nil {
+		return errResult(err), true
+	}
+	specs, err := cli.ListSpecifications(ctx, versionID, zoneID)
 	if err != nil {
 		return errResult(fmt.Errorf("list specifications: %w", err)), true
 	}
 	spec := findDbaasSpec(specs, stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0))
 	if spec == nil {
 		menu, trunc := compactSpecs(specs, specMenuCap)
-		out := map[string]any{"status": "need_specification", "resolved_version_id": versionID,
+		out := map[string]any{"status": "need_specification", "resolved_version_id": versionID, "availability_zone": zone,
 			"message": "kafka_create needs a specification: pass specification_id, or cpu+ram matching one of these.", "available_specifications": menu}
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
@@ -246,17 +314,9 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 		brokers = 1
 	}
 
-	subnetID := stringArg(args, "subnet_id")
-	if subnetID == "" {
-		subs, e := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
-		if e != nil || len(subs) == 0 {
-			return errResult(fmt.Errorf("resolve subnet: pass subnet_id explicitly")), true
-		}
-		subnetID = subs[0].ID
-	}
-
 	willCreate := map[string]any{"name": name, "version_id": versionID, "specification_id": specID,
-		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gib": storage, "brokers": brokers, "subnet_id": subnetID}
+		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gib": storage, "brokers": brokers, "subnet_id": subnetID,
+		"availability_zone": zone}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required",
 			"message":     "kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes). Get the user's approval, then call again with confirmed=true.",
