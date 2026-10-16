@@ -137,7 +137,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		ImageName:          plan.VM.Image.Name,
 		AvailabilityZoneID: plan.VM.Zone.ID,
 		Disks: []provision.DiskReq{{
-			Name:         plan.VM.Name + "-disk",
+			Name:         provision.FitName(plan.VM.Name, "-disk"),
 			Size:         plan.VM.Disk.SizeGB,
 			DiskTypeName: firstNonEmpty(plan.VM.Disk.Type, "SSD"),
 		}},
@@ -310,7 +310,7 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		}
 	}
 
-	name := plan.VM.Name + "-fip"
+	name := provision.FitName(plan.VM.Name, "-fip")
 	f, e := cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
 		Name:               name,
 		ProjectID:          plan.ProjectID,

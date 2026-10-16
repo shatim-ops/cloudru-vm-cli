@@ -1725,7 +1725,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		ImageMetadata:      imgMeta,
 		Disks: []provision.DiskReq{
 			{
-				Name:         vmName + "-boot",
+				Name:         provision.FitName(vmName, "-boot"),
 				Size:         diskSize,
 				DiskTypeName: "SSD",
 			},
@@ -2115,7 +2115,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		if fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID); e == nil {
 			var named []*provision.FloatingIP
 			for _, f := range fips {
-				if strings.HasPrefix(f.Name, "fip-"+target.Name+"-") {
+				if strings.HasPrefix(f.Name, provision.BootFIPPrefix(target.Name)) {
 					named = append(named, f)
 				}
 			}

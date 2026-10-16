@@ -212,7 +212,7 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 	// fall back to the address's existing name, then to the VM's.
 	name := fipName
 	if name == "" {
-		name = "fip-" + detail.Name
+		name = provision.FitName("fip-"+detail.Name, "")
 	}
 	res, err := eng.Cloud.AttachFloatingIP(ctx, fipID, pid, ifaceID, name)
 	if err != nil {
