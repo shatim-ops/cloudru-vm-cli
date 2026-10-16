@@ -196,8 +196,7 @@ func newRootCmd() *cobra.Command {
 			"CLI и MCP-сервер для Cloud.ru Evolution: развёртывание docker-compose проектов\n"+
 				"на ВМ и управление ресурсами облака: ВМ, диски, сети, Kubernetes, PostgreSQL,\n"+
 				"Object Storage, секреты.\n\n"+
-				"Сообщения по-английски: EVO_LANG=en.") + "\n\n" +
-			clerrors.ExitCodesHelp(),
+				"Сообщения по-английски: EVO_LANG=en."),
 		// Errors are printed once, by run(): as text or, with --json, as
 		// {"error": {...}} on stderr.
 		SilenceUsage:  true,
@@ -246,6 +245,7 @@ func newRootCmd() *cobra.Command {
 	)
 	cmd.AddCommand(newTreeCmds()...)
 	applyExamples(cmd)
+	groupCommands(cmd)
 	localizeHelp(cmd)
 
 	return cmd

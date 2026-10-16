@@ -72,7 +72,7 @@ func localizeHelp(root *cobra.Command) {
 	if i18n.Lang() != i18n.RU {
 		return
 	}
-	root.SetUsageTemplate(usageTemplateRU)
+	root.SetUsageTemplate(strings.TrimSuffix(usageTemplateRU, "\n") + exitCodesTail)
 
 	// cobra adds these on Execute (and keeps what is already there).
 	root.InitDefaultHelpCmd()
