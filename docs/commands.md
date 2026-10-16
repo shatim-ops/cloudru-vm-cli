@@ -3941,7 +3941,7 @@ evo vm create <name> [flags]
   -h, --help               Справка по create
       --image string       Boot image by exact name, display name or UUID (see image_list, image_get), e.g. 'Ubuntu-24.04'. Use it or image_id, not both.
       --image-id string    Boot image UUID (see image_list, image_get).
-      --meta stringArray   Values of the image's metadata fields by name, e.g. {"admin_password": "…"} — the mandatory ones evo cannot fill (image_get: fields_required). They override what evo fills. A field the image does not declare is refused. (key=value, repeatable)
+      --meta stringArray   Values of the image's metadata fields by name, e.g. {"admin_password": "…"} — the mandatory ones evo cannot fill (image_get: fields_required). They override what evo fills. A field the image does not declare is refused. (key=value, repeatable; the value may contain '=')
       --no-public-ip       Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes.
       --port stringArray   Inbound ports to open in the VM's security group from 0.0.0.0/0, e.g. ["80", "8080/tcp", "53/udp"] (tcp by default). The group is shared by the zone's VMs; destroy deletes the rules evo created. (repeatable, or comma-separated)
       --subnet-id string   Subnet UUID for the interface (default: a subnet in the target zone).

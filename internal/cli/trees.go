@@ -287,7 +287,7 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	for _, p := range flagArgs {
 		name := c.flagName(p.Name)
 		if c.Pairs[p.Name] {
-			cmd.Flags().StringArray(name, nil, p.Description+" (key=value, repeatable)")
+			cmd.Flags().StringArray(name, nil, p.Description+" (key=value, repeatable; the value may contain '=')")
 			continue
 		}
 		switch p.Type {

@@ -320,14 +320,16 @@ jobs:
       - name: Правила групп безопасности до создания
         run: evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg-before.json"
 
+      # vm create кладёт ключ SSH и state в .evo/ рабочего каталога: create,
+      # SSH и delete идут из одного каталога.
       - name: vm create --image по имени и --port 8080
         run: |
-          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/key"
+          mkdir -p os-vm && cd os-vm
           zone_id=$(evo list-zones --json | jq -r --arg n "$ZONE" '.[] | select(.name==$n) | .id')
           [ -n "$zone_id" ] && [ "$zone_id" != null ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
           set +e
           evo --json --yes vm create "$VM" --image "$IMAGE" --flavor "$FLAVOR" --region "$zone_id" \
-            --ssh-key "$(cat "$RUNNER_TEMP/key.pub")" --port 8080 > "$RUNNER_TEMP/vm.json"
+            --port 8080 > "$RUNNER_TEMP/vm.json"
           rc=$?
           set -e
           id=$(jq -r '.vm_id // empty' "$RUNNER_TEMP/vm.json")
@@ -343,9 +345,10 @@ jobs:
             { echo "::error::порт 8080 не открыт"; exit 1; }
 
       - name: SSH и os-release
+        working-directory: os-vm
         run: |
           for _ in $(seq 1 40); do
-            if ssh -i "$RUNNER_TEMP/key" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            if ssh -i .evo/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
                 -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 \
                 "$SSH_USER@$VM_IP" 'cat /etc/os-release' > "$RUNNER_TEMP/os-release" 2>/dev/null; then
               grep -E '^(ID|VERSION_ID|PRETTY_NAME)=' "$RUNNER_TEMP/os-release"
@@ -360,6 +363,7 @@ jobs:
 
       - name: vm delete (всегда)
         if: always() && env.VM_ID != ''
+        working-directory: os-vm
         run: |
           for _ in 1 2; do evo --yes vm delete "$VM_ID" && break; sleep 30; done
 
