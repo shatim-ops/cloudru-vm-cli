@@ -55,9 +55,9 @@ func initEngine(t *testing.T) (*Engine, string, *bytes.Buffer) {
 	return eng, filepath.Join(dir, ".evo.yaml"), &out
 }
 
-// --non-interactive: first zone, newest plain Ubuntu, choice printed; no
-// UUID is baked into the binary.
-func TestInit_NonInteractiveTakesFirstZoneAndPreferredImage(t *testing.T) {
+// --non-interactive: ru.AZ-2 (listed second by the API), newest plain Ubuntu,
+// choice printed; no UUID is baked into the binary.
+func TestInit_NonInteractiveTakesPreferredZoneAndImage(t *testing.T) {
 	withPromptStdin(t, strings.NewReader("2\n"), true) // a terminal, but the flag wins
 	eng, path, out := initEngine(t)
 
@@ -69,13 +69,13 @@ func TestInit_NonInteractiveTakesFirstZoneAndPreferredImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := string(data)
-	for _, want := range []string{"region: az-1-id  # ru.AZ-1", "image_id: u2404  # Ubuntu-24.04",
+	for _, want := range []string{"region: az-2-id  # ru.AZ-2", "image_id: u2404  # Ubuntu-24.04",
 		"project_id: 00000000-0000-0000-0000-000000000001"} {
 		if !strings.Contains(cfg, want) {
 			t.Errorf("config lacks %q:\n%s", want, cfg)
 		}
 	}
-	for _, want := range []string{"Zone: ru.AZ-1 (az-1-id)", "Image: Ubuntu-24.04 (u2404)"} {
+	for _, want := range []string{"Zone: ru.AZ-2 (az-2-id)", "Image: Ubuntu-24.04 (u2404)"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("choice not printed (%q):\n%s", want, out.String())
 		}
@@ -102,10 +102,11 @@ func TestInit_InteractiveChoice(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	data, _ := os.ReadFile(path)
-	if !strings.Contains(string(data), "region: az-2-id") {
+	// ru.AZ-2 is offered first, so "2" picks ru.AZ-1.
+	if !strings.Contains(string(data), "region: az-1-id") {
 		t.Errorf("zone choice ignored:\n%s", data)
 	}
-	if !strings.Contains(out.String(), "1) ru.AZ-1") || !strings.Contains(out.String(), "2) ru.AZ-2") {
+	if !strings.Contains(out.String(), "1) ru.AZ-2") || !strings.Contains(out.String(), "2) ru.AZ-1") {
 		t.Errorf("options not listed:\n%s", out.String())
 	}
 }
@@ -132,5 +133,27 @@ func TestInit_ExistingConfigUntouched(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(path); string(data) != "mine" {
 		t.Errorf("config overwritten: %q", data)
+	}
+}
+
+// Without ru.AZ-2 the API order stays: the first zone is the default.
+func TestPreferredZoneFirst(t *testing.T) {
+	names := func(zs []*provision.AvailabilityZone) string {
+		var n []string
+		for _, z := range zs {
+			n = append(n, z.Name)
+		}
+		return strings.Join(n, ",")
+	}
+	in := []*provision.AvailabilityZone{{Name: "ru.AZ-1"}, {Name: "ru.AZ-3"}, {Name: "ru.AZ-2"}}
+	if got := names(preferredZoneFirst(in)); got != "ru.AZ-2,ru.AZ-1,ru.AZ-3" {
+		t.Errorf("order = %s", got)
+	}
+	if got := names(in); got != "ru.AZ-1,ru.AZ-3,ru.AZ-2" {
+		t.Errorf("input changed: %s", got)
+	}
+	other := []*provision.AvailabilityZone{{Name: "kz.AZ-1"}, {Name: "kz.AZ-2"}}
+	if got := names(preferredZoneFirst(other)); got != "kz.AZ-1,kz.AZ-2" {
+		t.Errorf("order without ru.AZ-2 = %s", got)
 	}
 }

@@ -670,13 +670,17 @@ func newInitCmd() *cobra.Command {
 
 The availability zone and the boot image are listed from the Cloud.ru API
 (credentials required). On a terminal you choose from a numbered list;
-with --non-interactive or without a terminal the first zone and the newest
-plain Ubuntu (else Debian) image are taken, and the choice is printed.`, `Создать .evo.yaml для этого проекта.
+ru.AZ-2 is listed first and is the default (on 15.10.2026 ru.AZ-1 failed to
+create VMs); with --non-interactive or without a terminal ru.AZ-2 (else the
+first zone) and the newest plain Ubuntu (else Debian) image are taken, and
+the choice is printed.`, `Создать .evo.yaml для этого проекта.
 
 Зона доступности и загрузочный образ берутся из API Cloud.ru (нужен ключ
-доступа). На терминале их выбирают из нумерованного списка; с
---non-interactive или без терминала берутся первая зона и самый новый
-обычный образ Ubuntu (если его нет — Debian), выбор печатается.`),
+доступа). На терминале их выбирают из нумерованного списка. ru.AZ-2 стоит
+первой и выбрана по умолчанию (15.10.2026 в ru.AZ-1 ВМ не создавались); с
+--non-interactive или без терминала берутся ru.AZ-2 (если её нет — первая
+зона) и самый новый обычный образ Ubuntu (если его нет — Debian), выбор
+печатается.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
@@ -689,8 +693,8 @@ plain Ubuntu (else Debian) image are taken, and the choice is printed.`, `Соз
 		},
 	}
 
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Take the first zone and the preferred image without asking",
-		"Без вопросов взять первую зону и предпочтительный образ"))
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Take ru.AZ-2 (else the first zone) and the preferred image without asking",
+		"Без вопросов взять ru.AZ-2 (если её нет — первую зону) и предпочтительный образ"))
 
 	return cmd
 }
