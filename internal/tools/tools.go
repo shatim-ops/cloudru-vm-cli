@@ -121,6 +121,11 @@ func (s *Registry) registerTools() {
 			InputSchema: imageListSchema(),
 		},
 		{
+			Name:        "marketplace_list",
+			Description: marketplaceListDescription,
+			InputSchema: marketplaceListSchema(),
+		},
+		{
 			Name:        "list_images",
 			Description: "List available Cloud.ru VM boot images (UUID + name). Use an image UUID as the 'image_id' argument for deploy or provision. Prefer image_list: it searches by name and answers compact rows.",
 			InputSchema: objSchema(nil),
@@ -1270,6 +1275,7 @@ func (s *Registry) registerTools() {
 		"list_zones":           s.handleListZones,
 		"image_list":           s.handleImageList,
 		"list_images":          s.handleListImages,
+		"marketplace_list":     s.handleMarketplaceList,
 		"image_create":         s.handleImageCreate,
 		"image_get":            s.handleImageGet,
 		"fip_attach":           s.handleFipAttach,

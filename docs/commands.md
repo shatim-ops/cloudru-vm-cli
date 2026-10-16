@@ -53,6 +53,8 @@
     - [evo k8s plan](#evo-k8s-plan)
   - [evo list-zones](#evo-list-zones)
   - [evo logs](#evo-logs)
+  - [evo marketplace](#evo-marketplace)
+    - [evo marketplace list](#evo-marketplace-list)
   - [evo mcp](#evo-mcp)
   - [evo pg](#evo-pg)
     - [evo pg backup-create](#evo-pg-backup-create)
@@ -159,6 +161,7 @@ Object Storage, секреты.
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 * [evo list-zones](#evo-list-zones)	 - Список зон доступности
 * [evo logs](#evo-logs)	 - Журналы контейнеров на развёрнутой ВМ
+* [evo marketplace](#evo-marketplace)	 - Витрина: образы ВМ и плагины Kubernetes с командой развёртывания каждого
 * [evo mcp](#evo-mcp)	 - MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)
 * [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 * [evo project](#evo-project)	 - Проекты, которые видит ключ, и проект профиля
@@ -2055,6 +2058,82 @@ evo logs [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
+
+## evo marketplace
+
+Витрина: образы ВМ и плагины Kubernetes с командой развёртывания каждого
+
+```
+evo marketplace [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по marketplace
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов
+* [evo marketplace list](#evo-marketplace-list)	 - Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания
+
+## evo marketplace list
+
+Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания
+
+### Synopsis
+
+```text
+Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания.
+
+Вызывает инструмент marketplace_list (подробнее: 'evo tools describe marketplace_list').
+Описание инструмента и его флагов — на английском, как в MCP:
+
+Read-only showcase of what Cloud.ru offers to deploy, in one list: VM images of the shared catalogue (OS images and Cloud.ru Marketplace products; the project's own images are not included) and Managed Kubernetes addons. Changes nothing. kind: vm-os (type public, or a marketplace image whose name or display name starts with an OS family word: Ubuntu, Debian, CentOS, Rocky, Alma, Fedora, openSUSE, Astra, Alt/Альт, RED OS/РЕД ОС, SberLinux, ROSA/РОСА, Windows — a heuristic, the catalogue has no such field), vm-app (any other marketplace image, e.g. nginx-ubuntu-22.04), k8s-addon. query matches a substring of the name or display_name (addons: the description too), case-insensitive. Images the project cannot use and images ready in no zone are hidden unless all=true (counted in hidden_not_in_project, hidden_not_ready). Rows {kind, name, display_name, id (images), billable (addons only: whether an image or its licence is paid is not known — the price calculation gives 0 for every image), available_in_project (images, when checked against the catalogue as the project sees it), ready=false (an image ready in no zone, with all=true), deploy{cli, tool, args}}: deploy is provision with args.image (the name, or the UUID when names repeat) or, for an addon, k8s_addon_versions with args.name (evo does not install addons yet: the install is in the Cloud.ru console); an image not available to the project has no deploy. Sorted by kind, then display name; counts{vm-os, vm-app, k8s-addon} are the rows shown per kind, total the matches before hiding. If one catalogue cannot be read, the other is still answered, with warnings[]; an error only when none is read.
+```
+
+```
+evo marketplace list [query] [flags]
+```
+
+### Options
+
+```
+      --all           Also show the images hidden by default: those the project cannot use (available_in_project=false, no deploy) and those ready in no zone (ready=false).
+  -h, --help          Справка по list
+      --kind string   Only this kind: vm-os (OS images), vm-app (Marketplace products on a VM) or k8s-addon (Managed Kubernetes addons). Default: all three; a VM kind does not read the addon catalogue and k8s-addon not the image one.
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo marketplace](#evo-marketplace)	 - Витрина: образы ВМ и плагины Kubernetes с командой развёртывания каждого
 
 ## evo mcp
 

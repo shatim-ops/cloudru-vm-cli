@@ -18,7 +18,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
-// The command trees (vm, image, disk, vpc, k8s, pg, s3, secret) are data: each
+// The command trees (vm, image, marketplace, disk, vpc, k8s, pg, s3, secret) are data: each
 // command names a registry tool, which of its arguments are positional, and
 // how the answer is shown. Every other argument of the tool becomes a flag
 // with the type from its schema. The cobra layer only parses flags into
@@ -67,6 +67,9 @@ var treeGroups = []treeGroup{
 	{Name: "image", Short: "VM images: operating systems and Marketplace products", Cmds: []treeCmd{
 		{Verb: "list", Tool: "image_list", Args: []string{"query?"}, Render: renderImageList},
 		{Verb: "get", Tool: "image_get", Args: []string{"image_id|image"}, Render: renderImageCard},
+	}},
+	{Name: "marketplace", Short: "Showcase: VM images and Kubernetes addons, with the command that deploys each", Cmds: []treeCmd{
+		{Verb: "list", Tool: "marketplace_list", Args: []string{"query?"}, Render: renderMarketplaceList},
 	}},
 	{Name: "disk", Short: "Disks", Cmds: []treeCmd{
 		{Verb: "list", Tool: "disk_list", Columns: []string{"id", "name", "size_gb", "state", "disk_type", "zone", "attached_to"}},

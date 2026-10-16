@@ -8,14 +8,15 @@ package cli
 
 // treeGroupShortRU is the Russian summary of each tree.
 var treeGroupShortRU = map[string]string{
-	"vm":     "Виртуальные машины",
-	"image":  "Образы ВМ: операционные системы и продукты маркетплейса",
-	"disk":   "Диски",
-	"vpc":    "Сети: VPC, маршруты, подсети, группы безопасности, floating IP",
-	"k8s":    "Кластеры Managed Kubernetes",
-	"pg":     "Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии",
-	"s3":     "Object Storage: бакеты и объекты",
-	"secret": "Secret Manager: секреты",
+	"vm":          "Виртуальные машины",
+	"image":       "Образы ВМ: операционные системы и продукты маркетплейса",
+	"marketplace": "Витрина: образы ВМ и плагины Kubernetes с командой развёртывания каждого",
+	"disk":        "Диски",
+	"vpc":         "Сети: VPC, маршруты, подсети, группы безопасности, floating IP",
+	"k8s":         "Кластеры Managed Kubernetes",
+	"pg":          "Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии",
+	"s3":          "Object Storage: бакеты и объекты",
+	"secret":      "Secret Manager: секреты",
 }
 
 // toolShortRU is the Russian summary of each tool used by a tree command.
@@ -29,6 +30,8 @@ var toolShortRU = map[string]string{
 
 	"image_list": "Поиск образов: ОС (public), маркетплейс (marketplace), образы проекта (private)",
 	"image_get":  "Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ",
+
+	"marketplace_list": "Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания",
 
 	"disk_list":       "Диски: id, имя, размер, состояние, тип, зона, к каким ВМ подключены",
 	"list_disk_types": "Типы дисков (UUID и имя, например SSD или HDD)",

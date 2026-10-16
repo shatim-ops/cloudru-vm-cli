@@ -42,6 +42,10 @@ type Filter struct {
 	// project's own images are always shown: one being built is what its
 	// owner looks for.
 	All bool
+	// Shared leaves the project's own images out: the shared catalogue
+	// only, public and marketplace (evo marketplace list). The project's
+	// list is not read at all.
+	Shared bool
 }
 
 // SearchResult is a search answer.
@@ -134,7 +138,7 @@ func (c Catalog) fetch(ctx context.Context, query string, f Filter) ([]*provisio
 			}
 		}
 	}
-	if (f.Type == "" || f.Type == provision.ImageTypePrivate) && c.ProjectID != "" {
+	if (f.Type == "" || f.Type == provision.ImageTypePrivate) && c.ProjectID != "" && !f.Shared {
 		own, err := c.Cloud.ListImagesInProject(ctx, c.ProjectID)
 		switch {
 		case err != nil && f.Type == provision.ImageTypePrivate:
@@ -187,6 +191,9 @@ func matches(img *provision.Image, query string, f Filter) bool {
 	if f.Type != "" && img.Type != "" && img.Type != f.Type {
 		return false
 	}
+	if f.Shared && img.Type == provision.ImageTypePrivate {
+		return false
+	}
 	if f.ZoneID != "" && !inZone(img, f.ZoneID, !f.All) {
 		return false
 	}
@@ -202,8 +209,10 @@ func inZone(img *provision.Image, zoneID string, ready bool) bool {
 	return false
 }
 
-// visible reports whether an image is shown without --all.
-func visible(img *provision.Image) bool {
+// Visible reports whether an image is shown without --all: the project can
+// use it (not NotInProject) and it is ready in some zone, or it is the
+// project's own.
+func Visible(img *provision.Image) bool {
 	if img.NotInProject {
 		return false
 	}
@@ -259,7 +268,7 @@ func (c Catalog) Search(ctx context.Context, query string, f Filter) (*SearchRes
 		}
 		res.Total++
 		switch {
-		case f.All || visible(img):
+		case f.All || Visible(img):
 			res.Images = append(res.Images, img)
 		case img.NotInProject:
 			res.HiddenNotInProject++
@@ -397,7 +406,7 @@ func (c Catalog) Resolve(ctx context.Context, ref string) (*provision.Image, err
 	// working one ambiguous.
 	var usable []*provision.Image
 	for _, img := range res.Images {
-		if visible(img) {
+		if Visible(img) {
 			usable = append(usable, img)
 		}
 	}

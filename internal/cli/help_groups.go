@@ -27,7 +27,7 @@ var commandGroups = []struct {
 	{"compose", "Deploy a compose project:", "Развёртывание compose-проекта:",
 		[]string{"init", "deploy", "status", "logs", "verify", "destroy"}},
 	{"resources", "Project resources:", "Ресурсы проекта:",
-		[]string{"vm", "image", "disk", "vpc", "k8s", "pg", "s3", "secret", "list-zones"}},
+		[]string{"vm", "image", "marketplace", "disk", "vpc", "k8s", "pg", "s3", "secret", "list-zones"}},
 	{"setup", "Setup:", "Настройка:",
 		[]string{"configure", "project", "whoami", "doctor", "version", "completion", "help"}},
 	{"agents", "For AI agents:", "Для ИИ-агентов:",
