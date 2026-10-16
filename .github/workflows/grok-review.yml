@@ -1,0 +1,62 @@
+name: grok-review
+
+# Сигнал Grok начать ревью PR сразу, не дожидаясь его часового обхода, по
+# команде `/grok review` в комментарии к PR. Grok работает через
+# GitHub-приложение Cursor и оставляет ревью сам; этот workflow только
+# посылает POST на его вебхук. Запустить может только владелец репозитория.
+#
+# Уходит минимум: репозиторий, номер PR, ссылка на комментарий и автор
+# команды — ни кода, ни diff, ни токенов. Код PR не выгружается и не
+# выполняется. Адрес вебхука и ответ на него в лог не печатаются, только
+# HTTP-код.
+#
+# Секреты (Settings → Secrets and variables → Actions):
+#   GROK_REVIEW_WEBHOOK — адрес вебхука (обязателен; без него — notice)
+#   GROK_REVIEW_SECRET  — необязательно: тело подписывается HMAC-SHA256,
+#                         заголовок X-Signature-256: sha256=<hex>, как у
+#                         вебхуков GitHub
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: grok-review-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  signal:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.author_association == 'OWNER' &&
+      startsWith(github.event.comment.body, '/grok review')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Сигнал Grok
+        env:
+          WEBHOOK: ${{ secrets.GROK_REVIEW_WEBHOOK }}
+          SIGNING_SECRET: ${{ secrets.GROK_REVIEW_SECRET }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
+          REQUESTED_BY: ${{ github.event.comment.user.login }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "::notice::нет секрета GROK_REVIEW_WEBHOOK — сигнал не отправлен; Grok посмотрит PR при часовом обходе"
+            exit 0
+          fi
+          body=$(jq -cn --arg repo "$REPO" --argjson pr "$PR" --arg comment_url "$COMMENT_URL" \
+            --arg requested_by "$REQUESTED_BY" \
+            '{event: "review_requested", repo: $repo, pr: $pr, comment_url: $comment_url, requested_by: $requested_by}')
+          sig=()
+          if [ -n "$SIGNING_SECRET" ]; then
+            hmac=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$SIGNING_SECRET" -r | cut -d' ' -f1)
+            sig=(-H "X-Signature-256: sha256=$hmac")
+          fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 --retry 2 \
+            -H 'Content-Type: application/json' "${sig[@]}" -d "$body" "$WEBHOOK") || code=000
+          echo "вебхук Grok ответил HTTP $code"
+          case "$code" in 2??) ;; *) echo "::error::вебхук Grok ответил HTTP $code"; exit 1 ;; esac
