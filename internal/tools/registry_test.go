@@ -38,8 +38,8 @@ func TestRegistry_OneHandlerPerTool(t *testing.T) {
 			t.Errorf("handler %q has no tool definition", name)
 		}
 	}
-	if len(r.Tools()) != 148 {
-		t.Errorf("registry has %d tools, want 148 (146 + vm_list + image_list)", len(r.Tools()))
+	if len(r.Tools()) != 151 {
+		t.Errorf("registry has %d tools, want 151 (146 + vm_list + image_list + k8s_addons, k8s_addon_versions, k8s_add_addon)", len(r.Tools()))
 	}
 }
 

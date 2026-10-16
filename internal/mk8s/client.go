@@ -47,7 +47,8 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if query == nil {
 		query = url.Values{}
 	}
-	if query.Get("project_id") == "" && c.projectID != "" {
+	// The addon calls send projectId (camelCase); the others get project_id.
+	if query.Get("project_id") == "" && query.Get("projectId") == "" && c.projectID != "" {
 		query.Set("project_id", c.projectID)
 	}
 	u := c.base + path

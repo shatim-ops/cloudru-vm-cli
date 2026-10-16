@@ -24,6 +24,7 @@ const (
 	ResourcePGCluster   = "pg_cluster"
 	ResourceK8sCluster  = "k8s_cluster"
 	ResourceK8sNodePool = "k8s_nodepool"
+	ResourceK8sAddon    = "k8s_addon"
 	ResourceS3Bucket    = "s3_bucket"
 )
 
@@ -35,7 +36,7 @@ const (
 // rather than filled with a placeholder.
 type CreatePreview struct {
 	// Resource is what is created: vm, disk, disk_resize, pg_cluster,
-	// k8s_cluster, k8s_nodepool or s3_bucket.
+	// k8s_cluster, k8s_nodepool, k8s_addon or s3_bucket.
 	Resource string `json:"resource"`
 	Name     string `json:"name,omitempty"`
 	// ProjectFrom is where the project comes from: profile, project, env,
@@ -403,6 +404,8 @@ func createSummary(p CreatePreview, zone string) string {
 		return i18n.Tf("create Kubernetes cluster %s", "создать кластер Kubernetes %s", p.Name) + inZone
 	case ResourceK8sNodePool:
 		return i18n.Tf("add node pool %s to a Kubernetes cluster", "добавить группу узлов %s в кластер Kubernetes", p.Name) + inZone
+	case ResourceK8sAddon:
+		return i18n.Tf("install addon %s into a Kubernetes cluster", "установить плагин %s в кластер Kubernetes", p.Name)
 	case ResourceS3Bucket:
 		return i18n.Tf("create bucket %s", "создать бакет %s", p.Name)
 	}
@@ -436,6 +439,9 @@ func createdLine(p CreatePreview) string {
 		what = append(what, i18n.Tf("Managed Kubernetes cluster %s", "кластер Managed Kubernetes %s", p.Name))
 	case ResourceK8sNodePool:
 		what = append(what, i18n.Tf("worker node pool %s", "группа рабочих узлов %s", p.Name))
+	case ResourceK8sAddon:
+		return i18n.Tf("Will install: addon %s into the cluster (the cluster's nodes run it)",
+			"Будет установлено: плагин %s в кластер (работает на узлах кластера)", p.Name)
 	case ResourceS3Bucket:
 		what = append(what, i18n.Tf("Object Storage bucket %s", "бакет Object Storage %s", p.Name))
 	default:
@@ -505,10 +511,33 @@ var paramLabels = map[string]struct {
 	"attach_to":         {"attach to", "к ВМ", false},
 	"disk_id":           {"disk", "диск", false},
 	"description":       {"about", "описание", false},
+	"cluster_name":      {"cluster name", "имя кластера", false},
+	"addon_version":     {"addon version", "версия плагина", false},
+	"support":           {"support", "поддержка", false},
+	"namespace":         {"namespace", "пространство имён", false},
+	"requires_kube":     {"needs Kubernetes", "нужен Kubernetes", false},
+	"cluster_version":   {"cluster Kubernetes", "Kubernetes кластера", false},
+	"requires_workers":  {"needs ready nodes", "нужно готовых узлов", false},
+	"worker_nodes":      {"nodes in pools", "узлов в группах", false},
+	"installed":         {"already installed", "уже установлен", false},
+	"billable":          {"billable addon", "платный плагин", false},
+	"resolve_mode":      {"on conflict", "при конфликте", false},
+	"config_keys":       {"settings", "настройки", false},
+}
+
+// notCheckedLabels name what a k8s_addon preview could not check (its
+// not_checked parameter).
+var notCheckedLabels = map[string]struct{ en, ru string }{
+	"kube_version":  {"the cluster's Kubernetes version (not in the API answer)", "версия Kubernetes кластера (нет в ответе API)"},
+	"ready_workers": {"ready nodes (node pools unreadable or autoscaled)", "готовые узлы (группы узлов не прочитались или с автомасштабированием)"},
+	"installed":     {"whether the addon is already installed", "установлен ли плагин уже"},
 }
 
 // paramLine is one parameter as "label: value"; "" for an empty value.
 func paramLine(prm PreviewParam) string {
+	if prm.Key == "not_checked" {
+		return notCheckedLine(prm.Value)
+	}
 	v := paramValue(prm.Value)
 	if v == "" {
 		return ""
@@ -521,6 +550,30 @@ func paramLine(prm PreviewParam) string {
 		v += i18n.T(" GB", " ГБ")
 	}
 	return previewLabel(l.en, l.ru) + v
+}
+
+// notCheckedLine is the not_checked parameter in words.
+func notCheckedLine(v any) string {
+	var items []string
+	switch x := v.(type) {
+	case []string:
+		items = x
+	case []any:
+		for _, e := range x {
+			items = append(items, paramValue(e))
+		}
+	}
+	if len(items) == 0 {
+		return ""
+	}
+	words := make([]string, len(items))
+	for i, it := range items {
+		words[i] = it
+		if l, ok := notCheckedLabels[it]; ok {
+			words[i] = i18n.T(l.en, l.ru)
+		}
+	}
+	return previewLabel("not checked", "не проверено") + strings.Join(words, "; ")
 }
 
 func paramValue(v any) string {

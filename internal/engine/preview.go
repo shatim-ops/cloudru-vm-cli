@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
@@ -22,12 +23,17 @@ const costNote = "estimate, not a bill"
 
 func costNoteText() string { return i18n.T(costNote, "оценка, а не счёт") }
 
-// previewLabel is the name of a preview line, padded so the values line up.
+// previewLabel is the name of a preview line, padded so the values line up;
+// a longer name ("пространство имён") keeps one space before its value.
 func previewLabel(en, ru string) string {
+	label, width := ru+":", 12
 	if i18n.Lang() == i18n.EN {
-		return fmt.Sprintf("%-11s", en+":")
+		label, width = en+":", 11
 	}
-	return fmt.Sprintf("%-12s", ru+":")
+	if utf8.RuneCountInString(label) >= width {
+		return label + " "
+	}
+	return fmt.Sprintf("%-*s", width, label)
 }
 
 // errDryRun stops provisionVM before the VM is created; Deploy turns it into
