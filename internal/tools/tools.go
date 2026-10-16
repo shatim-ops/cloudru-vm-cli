@@ -1706,12 +1706,6 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		},
 	}
 
-	// dry_run: return the exact request body without creating anything (debug).
-	if dr, _ := args["dry_run"].(bool); dr {
-		b, _ := json.Marshal([]provision.CreateVMRequest{req})
-		return string(b), false
-	}
-
 	// The public IP goes on at creation, as in deploy: Cloud.ru images set
 	// up their apt mirror at first boot and need the internet for it; a VM
 	// that boots offline can spend 10+ minutes on mirror timeouts before
