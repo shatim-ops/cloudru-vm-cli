@@ -117,7 +117,7 @@ func TestImageList_CompactForMCP(t *testing.T) {
 		t.Errorf("list_images changed its answer: %s", text)
 	}
 
-	if m, _, isErr := callNamed(t, r, "image_list", map[string]any{"type": "gold"}); !isErr || m["error"] == nil || !strings.HasPrefix(m["error"].(string), clierrors.CodeUsage) {
+	if m, _, isErr := callNamed(t, r, "image_list", map[string]any{"type": "gold"}); !isErr || m["error"] == nil || m["reason"] != clierrors.CodeUsage {
 		t.Errorf("bad type: %v", m)
 	}
 	if m, _, isErr := callNamed(t, r, "image_list", map[string]any{"zone": "AZ-9"}); !isErr || m["reason"] != clierrors.CodeNotFound {

@@ -134,12 +134,13 @@ func TestRegistry_WrapReachesInProcessCalls(t *testing.T) {
 	}
 }
 
-// A call refused for its arguments says so with the USAGE code, so the CLI
-// exits 1 (bad input) rather than 5 (API error) — and nothing reaches the cloud.
+// A call refused for its arguments says so with the USAGE reason, so the CLI
+// exits 1 (bad input) rather than 5 (API error) — and nothing reaches the
+// cloud. The code is in "reason", not in the text.
 func TestUsageResult_MarksArgumentErrors(t *testing.T) {
 	r := newTestServer()
 	text, isErr := r.handlers["vm_get"](context.Background(), map[string]any{})
-	if !isErr || !strings.Contains(text, `"USAGE: vm_get requires vm_id or name"`) {
+	if !isErr || !strings.Contains(text, `"reason": "USAGE"`) || !strings.Contains(text, `"error": "vm_get requires vm_id or name"`) {
 		t.Fatalf("vm_get without arguments: %s", text)
 	}
 }

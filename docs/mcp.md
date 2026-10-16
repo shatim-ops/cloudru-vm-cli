@@ -62,10 +62,30 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 стоит различать исход по полю `status`, а не по `isError`. Без исключений:
 `s3_bucket_create` тоже ждёт `confirmed=true`.
 
-Ошибка инструмента — `{"status":"error","error":"…"}` с `isError: true`.
-Если у ошибки есть символьный код из [таблицы](exit-codes.md), он приходит
-в поле `reason` (`API_UNREACHABLE`, `AUTH_FAILED`), подсказка — в `hint`;
-у ошибок без кода этих полей нет.
+## Ошибки
+
+Ошибка инструмента — `{"status":"error","reason":"…","error":"…","hint":"…"}`
+с `isError: true`, например
+`{"status":"error","reason":"USAGE","error":"vm_get requires vm_id or name"}`:
+
+- `reason` есть всегда — символьный код из [таблицы](exit-codes.md):
+  `USAGE` (инструмент отверг аргументы, в облако ничего не ушло),
+  `NOT_FOUND`, `AUTH_FAILED`, `API_UNREACHABLE`, `API_ERROR` и т. д. Ошибка
+  без своего кода получает `NOT_FOUND`, если в ответе сказано «not found»,
+  иначе `API_ERROR` — так же её понимает CLI (`evo tools call`, код выхода).
+- `error` — только фраза, без префикса `КОД: `. Код остаётся внутри текста
+  лишь после добавленного контекста (`create VM: API_ERROR: …`), как в
+  сообщениях CLI. Решайте по `reason`, а не по тексту.
+- `hint` — что сделать дальше, когда это известно; иначе поля нет.
+
+У части ошибок есть свои поля: `vm_id` у `provision`, когда ВМ уже создана
+(её надо удалить); `output` и `stage` у `k8s_kubectl`, `k8s_apply`,
+`k8s_helm`. `provision`, не дождавшийся ВМ, отвечает `"status":"timeout"`
+с теми же `reason` и `error`. Отказ политики HTTP (`secret_value`,
+`cert_private_key`, `k8s_kubeconfig` с токеном, путь вне рабочего каталога)
+— `USAGE`; нет `kubectl`/`helm` на сервере — `CONFIG_INVALID` с подсказкой;
+сервер занят — `API_RATE_LIMITED`. Ответ `confirmation_required` — не
+ошибка, поля `reason` у него нет.
 
 ## Цена
 

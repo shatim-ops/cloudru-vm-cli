@@ -1780,12 +1780,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		// lost answer): then it is billed and holds the FIP — record it.
 		if found := provision.FindCreatedVM(eng.Cloud, projectID, vmName, createStart); found != nil {
 			serr := saveState(found.ID, "creating", "")
-			return toJSON(map[string]any{
-				"status": "error",
-				"vm_id":  found.ID,
-				"error": fmt.Sprintf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
-					"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
-			}), true
+			return errAnswer(fmt.Errorf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
+				"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
+				map[string]any{"vm_id": found.ID}), true
 		}
 		eng.ReleaseBootFIP(bootFIP, projectID)
 		return errResult(fmt.Errorf("create VM: %w", err)), true
@@ -1800,12 +1797,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// answer names it, and the state has it.
 	interrupted := func(publicIP string) (string, bool) {
 		serr := saveState(vm.ID, "creating", publicIP)
-		return toJSON(map[string]any{
-			"status": "error",
-			"vm_id":  vm.ID,
-			"error": fmt.Sprintf("VM %s was created, but provision was interrupted (%v); it is still running and recorded in the state — "+
-				"check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, ctx.Err(), vm.ID, notInState(vm.ID, serr)),
-		}), true
+		return errAnswer(fmt.Errorf("VM %s was created, but provision was interrupted (%v); it is still running and recorded in the state — "+
+			"check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, ctx.Err(), vm.ID, notInState(vm.ID, serr)),
+			map[string]any{"vm_id": vm.ID}), true
 	}
 
 	// Poll until active: 10 minutes, as the CLI deploy (a new VM took ~5 in
@@ -1827,11 +1821,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		case <-deadline:
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
-			return toJSON(map[string]any{
-				"status":  "timeout",
-				"vm_id":   vm.ID,
-				"message": fmt.Sprintf("VM %s created but did not become active within %s; it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
-			}), true
+			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
+				map[string]any{"status": "timeout", "vm_id": vm.ID}), true
 		case <-ticker.C:
 			updated, err := eng.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
@@ -1867,12 +1858,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					}
 				}
 				if serr := saveState(vm.ID, "running", publicIP); serr != nil {
-					return toJSON(map[string]any{
-						"status": "error",
-						"vm_id":  vm.ID,
-						"vm_ip":  publicIP,
-						"error":  fmt.Sprintf("VM %s is active at %s and billed.%s", vm.ID, publicIP, notInState(vm.ID, serr)),
-					}), true
+					return errAnswer(fmt.Errorf("VM %s is active at %s and billed.%s", vm.ID, publicIP, notInState(vm.ID, serr)),
+						map[string]any{"vm_id": vm.ID, "vm_ip": publicIP}), true
 				}
 
 				msg := fmt.Sprintf("VM %s is active at %s. SSH: ssh %s@%s", vm.ID, publicIP, sshUser, publicIP)
@@ -1920,13 +1907,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				if fipID != "" {
 					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; destroy releases it.", ip)
 				}
-				return toJSON(map[string]any{
-					"status":         "error",
-					"vm_id":          vm.ID,
-					"floating_ip_id": fipID,
-					"error": fmt.Sprintf("VM %s entered state %s. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
-						vm.ID, updated.Status, vm.ID, fipNote, notInState(vm.ID, serr)),
-				}), true
+				return errAnswer(fmt.Errorf("VM %s entered state %s. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
+					vm.ID, updated.Status, vm.ID, fipNote, notInState(vm.ID, serr)),
+					map[string]any{"vm_id": vm.ID, "floating_ip_id": fipID}), true
 			}
 		case <-ctx.Done():
 			return interrupted("")
@@ -2482,28 +2465,61 @@ func toJSON(v any) string {
 }
 
 // usageResult is errResult for a call the tool refuses before touching the
-// cloud: a missing or malformed argument. The USAGE prefix lets the CLI exit
+// cloud: a missing or malformed argument. The USAGE reason lets the CLI exit
 // with 1 (bad input) instead of 5 (API error), and tells an agent the call
 // itself is wrong, not the cloud.
 func usageResult(err error) string {
-	return errResult(fmt.Errorf("%s: %w", clierrors.CodeUsage, err))
+	return errResult(clierrors.Wrap(clierrors.CodeUsage, err.Error(), "", err))
 }
 
-// errResult formats an error as a JSON tool result. A CLIError in the chain
-// adds its code as "reason" and its hint as "hint": the CLI keeps the exit
-// code and the hint of the error (evo vm list fails like evo whoami), an
-// agent learns what to do next.
-func errResult(err error) string {
-	res := map[string]any{"status": "error", "error": err.Error()}
+// errResult formats an error as a JSON tool result (see errAnswer).
+func errResult(err error) string { return errAnswer(err, nil) }
+
+// errAnswer is the error answer of a tool: fields (vm_id, output, …) plus
+// "status": "error" (unless fields set another status), "reason", "error"
+// and, when one is known, "hint". Every error answer has a reason, a code
+// from internal/errors:
+//   - the code of the CLIError in the chain (its hint goes to "hint");
+//   - else the "CODE: " prefix of the message ("USAGE: …");
+//   - else NOT_FOUND when the answer says something was not found, and
+//     API_ERROR otherwise.
+//
+// "error" is the message without the leading "CODE: ": the code is in
+// "reason". Context added before the code stays as it is ("create VM:
+// API_ERROR: …"), as in the CLI's own messages. This is the rule the CLI
+// applies to a tool's answer (toolError in internal/cli), so the CLI keeps
+// the exit code, the message and the hint, and an agent learns what to do
+// next.
+func errAnswer(err error, fields map[string]any) string {
+	res := make(map[string]any, len(fields)+4)
+	for k, v := range fields {
+		res[k] = v
+	}
+	if _, ok := res["status"]; !ok {
+		res["status"] = "error"
+	}
+	msg := err.Error()
+	reason := ""
 	var ce *clierrors.CLIError
 	if stderrors.As(err, &ce) {
-		if ce.Code != "" {
-			res["reason"] = ce.Code
+		if clierrors.IsCode(ce.Code) {
+			reason = ce.Code
 		}
 		if ce.Hint != "" {
 			res["hint"] = ce.Hint
 		}
 	}
+	if code, rest, ok := strings.Cut(msg, ": "); ok && clierrors.IsCode(code) && (reason == "" || reason == code) {
+		reason, msg = code, rest
+	}
+	res["error"] = msg
+	if reason == "" {
+		reason = clierrors.CodeAPIError
+		if strings.Contains(strings.ToLower(toJSON(res)), "not found") {
+			reason = clierrors.CodeNotFound
+		}
+	}
+	res["reason"] = reason
 	return toJSON(res)
 }
 

@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -445,8 +446,8 @@ func (h *HTTPHandler) dispatch(ctx context.Context, scope string, req *rpcReques
 		if req.isNotification() {
 			return nil, false
 		}
-		return h.srv.toolResult(req, tools.ErrResult(fmt.Errorf(
-			"server busy: %d tool calls are already running; retry later", httpMaxToolCalls)), true), false
+		return h.srv.toolResult(req, tools.ErrResult(clierrors.New(clierrors.CodeAPIRateLimited, fmt.Sprintf(
+			"server busy: %d tool calls are already running", httpMaxToolCalls), "Retry later")), true), false
 	}
 	if !req.isNotification() {
 		var call *inflightCall

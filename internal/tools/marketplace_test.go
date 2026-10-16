@@ -138,7 +138,7 @@ func TestMarketplaceList_Answer(t *testing.T) {
 		t.Errorf("all, vm-os: %v", m)
 	}
 
-	if m, _, isErr := callNamed(t, r, "marketplace_list", map[string]any{"kind": "app"}); !isErr || !strings.HasPrefix(m["error"].(string), clierrors.CodeUsage) {
+	if m, _, isErr := callNamed(t, r, "marketplace_list", map[string]any{"kind": "app"}); !isErr || m["reason"] != clierrors.CodeUsage {
 		t.Errorf("bad kind: %v", m)
 	}
 }
