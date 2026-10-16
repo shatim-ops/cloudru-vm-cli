@@ -123,6 +123,15 @@ fi
 run addonnf evo k8s addon-versions no-such-addon-evo --json
 if [ "$rc" = 4 ]; then ok "k8s addon-versions <нет такого> → 4" "reason $reason"; else warn "k8s addon-versions <нет такого> → 4" "код $rc, reason $reason"; fi
 
+# Витрина: образы общего каталога и плагины mk8s одним списком. Печатаются
+# только счётчики по видам; оба каталога должны прочитаться (warnings пуст).
+run market evo marketplace list --json
+if [ "$rc" = 0 ] && jq -e '(.items | length) == .shown and .counts["vm-os"] > 0 and .counts["k8s-addon"] > 0 and ((.warnings // []) | length) == 0' "$tmp/out" >/dev/null; then
+	ok "marketplace list --json" "$(j -r '"vm-os: \(.counts["vm-os"]), vm-app: \(.counts["vm-app"]), k8s-addon: \(.counts["k8s-addon"]), скрыто: \(.hidden)"' "$tmp/out")"
+else
+	bad "marketplace list --json" "код $rc, reason $reason, предупреждений: $(j -r '(.warnings // []) | length' "$tmp/out")"
+fi
+
 echo "== Инструменты только для чтения"
 # Без аргументов вызываются все, кроме читающих локальный state/каталог
 # (status, list, logs) и пишущих план на диск (deploy_plan, k8s_plan).
