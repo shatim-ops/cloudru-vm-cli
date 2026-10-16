@@ -295,7 +295,11 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		}
 		text, err := invokeTool(cmd.Context(), cmd, t, callArgs)
 		if flagJSON {
-			if text != "" {
+			// On a tool error the text is the tool's error body: the error
+			// itself goes to stderr as {"error":…}, so stdout stays empty
+			// for jq. The confirmation_required and dry_run envelopes are
+			// written by confirm.Ask, not returned here.
+			if text != "" && err == nil {
 				fmt.Fprintln(cmd.OutOrStdout(), text)
 			}
 			return err
