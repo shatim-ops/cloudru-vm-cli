@@ -161,8 +161,9 @@ func imageErrResult(err error) string {
 
 // handleImageGet returns one image by name or UUID: a card with what evo
 // fills in its metadata fields and what the person must, and the command
-// that creates a VM from it. The icon and the cloud-init template only with
-// full=true: they are kilobytes of an agent's context.
+// that creates a VM from it. The icon, the cloud-init template and the raw
+// metadata fields only with full=true: they are kilobytes of an agent's
+// context.
 func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (string, bool) {
 	ref := strings.TrimSpace(stringArg(args, "image"))
 	if ref == "" {
@@ -188,16 +189,9 @@ func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (str
 	if !full {
 		delete(card, "icon")
 		delete(card, "user_data_template")
-		// A catalogue default of a secret field is still a secret.
-		if fields, ok := card["image_metadata"].([]any); ok {
-			for _, x := range fields {
-				f, _ := x.(map[string]any)
-				ft, _ := f["field_type"].(string)
-				if sens, _ := f["sensitive"].(bool); sens || ft == images.TypeLinuxPassword || ft == images.TypePlainPassword {
-					delete(f, "default_value")
-				}
-			}
-		}
+		// fields[] below carries the metadata fields, without the defaults
+		// of secret ones.
+		delete(card, "image_metadata")
 	}
 
 	zn := &zoneNamer{ctx: ctx, eng: eng}

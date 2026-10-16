@@ -138,8 +138,8 @@ disk, image, vpc, k8s, pg, s3, secret, stack и другие. `--toolsets all` �
 - `image_get` (`image` — имя, отображаемое имя или UUID; `image_id` — как
   раньше; `full`) — карточка: `ready`, `zones_ready`, `fields[]` с
   `filled_by` (`evo`, `default`, `user`, `none`, `status`), `fields_required`
-  и `create{cli, tool, args}`. Иконка и `user_data_template` — только с
-  `full=true`. Несколько совпадений — ошибка `USAGE` с `candidates[]`, ни
+  и `create{cli, tool, args}`. Иконка, `user_data_template` и исходные
+  `image_metadata` — только с `full=true`. Несколько совпадений — ошибка `USAGE` с `candidates[]`, ни
   одного — `NOT_FOUND`.
 
 UUID из ответа передаётся в `provision` и `deploy` как `image_id`.

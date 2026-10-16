@@ -136,6 +136,9 @@ func TestImageGet_ByNameCompactAndFull(t *testing.T) {
 			t.Errorf("default answer has %q: %s", bad, text)
 		}
 	}
+	if _, dup := m["image"].(map[string]any)["image_metadata"]; dup {
+		t.Error("default answer repeats image_metadata: fields[] carries it")
+	}
 	if m["ready"] != true || m["image"].(map[string]any)["id"] != catImg1 {
 		t.Errorf("answer: %v", m)
 	}
@@ -145,8 +148,8 @@ func TestImageGet_ByNameCompactAndFull(t *testing.T) {
 	}
 
 	_, text, _ = callNamed(t, r, "image_get", map[string]any{"image_id": catImg1, "full": true})
-	if !strings.Contains(text, `"icon"`) || !strings.Contains(text, "#cloud-config") {
-		t.Errorf("full=true lacks icon/template: %s", text)
+	if !strings.Contains(text, `"icon"`) || !strings.Contains(text, "#cloud-config") || !strings.Contains(text, `"image_metadata"`) {
+		t.Errorf("full=true lacks icon/template/image_metadata: %s", text)
 	}
 
 	// Неоднозначная ссылка: USAGE и кандидаты для агента.
