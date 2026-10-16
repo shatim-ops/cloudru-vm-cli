@@ -226,6 +226,7 @@ type param struct {
 	ItemType    string // for arrays
 	Required    bool
 	Description string
+	Default     any // the schema's "default", when it declares one
 }
 
 // schemaParams lists the tool's arguments, required first, then by name.
@@ -254,6 +255,7 @@ func schemaParams(t tools.Tool) []param {
 		a := param{Name: name, Required: required[name]}
 		a.Type, _ = m["type"].(string)
 		a.Description, _ = m["description"].(string)
+		a.Default = m["default"]
 		if items, ok := m["items"].(map[string]any); ok {
 			a.ItemType, _ = items["type"].(string)
 		}

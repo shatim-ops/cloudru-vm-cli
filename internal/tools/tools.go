@@ -104,7 +104,7 @@ func (s *Registry) registerTools() {
 				"vm_id":      strProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
 				"name":       strProp("Delete a specific VM by name (alternative to vm_id). Requires confirmed=true."),
 				"confirmed":  confirmedProp(),
-				"release_ip": boolProp("Also release the VM's floating IP (default: true)."),
+				"release_ip": boolPropTrue("Also release the VM's floating IP (default: true)."),
 			}),
 		},
 		{
@@ -284,7 +284,7 @@ func (s *Registry) registerTools() {
 				"zone":              strProp("Availability zone name, e.g. ru.AZ-2 (default from productConfiguration)."),
 				"subnet_id":         strProp("Subnet UUID for the control-plane private VIP (default: auto zone-matched)."),
 				"cluster_sa_id":     strProp("Cluster service-account UUID (default: the agent's own service account)."),
-				"kube_api_internet": boolProp("Publish kube-apiserver to the internet (default true)."),
+				"kube_api_internet": boolPropTrue("Publish kube-apiserver to the internet (default true)."),
 			}),
 		},
 		{
@@ -296,7 +296,7 @@ func (s *Registry) registerTools() {
 				"cpu": intProp("Control-plane vCPUs."), "ram_gb": intProp("Control-plane RAM GB."),
 				"master_count": intProp("1, 3 or 5."), "zone": strProp("Zone name."),
 				"subnet_id": strProp("Control-plane VIP subnet UUID."), "cluster_sa_id": strProp("Cluster service-account UUID."),
-				"kube_api_internet": boolProp("Publish kube-apiserver to internet."),
+				"kube_api_internet": boolPropTrue("Publish kube-apiserver to the internet (default true)."),
 				"confirmed":         confirmedProp(),
 			}),
 		},
@@ -306,7 +306,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id":  strProp("Cluster UUID."),
 				"network":     strProp("NETWORK_TYPE_PUBLIC or NETWORK_TYPE_PRIVATE (default: cluster default)."),
-				"embed_token": boolProp("Embed a static bearer token so kubectl works without the cloudlogin plugin (default true)."),
+				"embed_token": boolPropTrue("Embed a static bearer token so kubectl works without the cloudlogin plugin (default true)."),
 			}, "cluster_id"),
 		},
 		{
@@ -462,7 +462,7 @@ func (s *Registry) registerTools() {
 				"cpu":           strProp("CPU request, e.g. '0.1', '1' (default 0.1)."),
 				"memory":        strProp("Memory request, e.g. '256Mi', '1Gi' (default 256Mi)."),
 				"port":          intProp("Container port the app listens on (default 8080)."),
-				"public":        boolProp("Expose a public URL (default true)."),
+				"public":        boolPropTrue("Expose a public URL (default true)."),
 				"min_instances": intProp("Minimum instances (default 0 = scale to zero)."),
 				"max_instances": intProp("Maximum instances (default 1)."),
 				"env":           map[string]any{"type": "object", "description": "Environment variables as a name→value object.", "additionalProperties": map[string]any{"type": "string"}},
@@ -818,7 +818,7 @@ func (s *Registry) registerTools() {
 				"port":            intProp("Listener port the balancer accepts traffic on. Required."),
 				"target_port":     intProp("Port on the targets to forward to. Default = port."),
 				"hc_port":         intProp("Health-check port. Default = target_port."),
-				"external":        boolProp("Allocate a public IP (default true). Set false for an internal-only balancer."),
+				"external":        boolPropTrue("Allocate a public IP (default true). Set false for an internal-only balancer."),
 				"vpc_id":          strProp("VPC UUID. Optional; default = the target group's VPC."),
 				"subnet_id":       strProp("Subnet UUID for the balancer's AZ. Optional; default = first project subnet."),
 				"confirmed":       confirmedProp(),
@@ -1006,10 +1006,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_delete",
-			Description: "Delete a secret by path AND all its versions. Set force=true to delete one that is in use. Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a secret by path AND all its versions. force defaults to true (a secret with active versions is deleted too); force=false lets the API refuse such a secret. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
-				"force":     boolProp("Delete even if the secret is in use by other resources."),
+				"force":     boolPropTrue("Delete the secret even if it has active versions (default true)."),
 				"confirmed": confirmedProp(),
 			}, "path"),
 		},
@@ -2289,6 +2289,14 @@ func confirmedPropNote(note string) map[string]any { return boolProp(note + " " 
 
 func boolProp(desc string) map[string]any {
 	return map[string]any{"type": "boolean", "description": desc}
+}
+
+// boolPropTrue is a boolean argument whose handler treats an absent value
+// as true. The schema says so with "default": true, so the CLI flag of the
+// command trees defaults to true too (TestBoolDefaultsTrue keeps the two in
+// step).
+func boolPropTrue(desc string) map[string]any {
+	return map[string]any{"type": "boolean", "description": desc, "default": true}
 }
 
 func stringArg(args map[string]any, key string) string {

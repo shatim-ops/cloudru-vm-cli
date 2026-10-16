@@ -261,8 +261,13 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		if ru, ok := toolShortRU[t.Name]; ok {
 			short = ru
 		}
-		long = short + ".\n\nВызывает инструмент " + t.Name + " (подробнее: 'evo tools describe " + t.Name + "').\n" +
-			"Описание инструмента и его флагов — на английском, как в MCP:\n\n" + t.Description
+		runs := "Вызывает инструмент " + t.Name + " (подробнее: 'evo tools describe " + t.Name + "')."
+		if ru, ok := toolLongRU[t.Name]; ok {
+			long = short + ".\n\n" + ru + "\n\n" + runs
+		} else {
+			long = short + ".\n\n" + runs + "\n" +
+				"Описание инструмента и его флагов — на английском, как в MCP:\n\n" + t.Description
+		}
 		if t.Mutating {
 			long += "\n\nСпрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью."
 		}
@@ -297,23 +302,42 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	flagArgs := c.flagArgs(t)
 	for _, p := range flagArgs {
 		name := c.flagName(p.Name)
+		desc, ru := flagDesc(t, p)
+		// The notes follow the language of the description they extend.
+		note := func(en, ruNote string) string {
+			if ru {
+				return ruNote
+			}
+			return en
+		}
 		if c.Pairs[p.Name] {
-			cmd.Flags().StringArray(name, nil, p.Description+" (key=value, repeatable; the value may contain '='. "+
+			cmd.Flags().StringArray(name, nil, desc+note(" (key=value, repeatable; the value may contain '='. "+
 				"key=- reads the value from stdin (one field at most), key=@file from a file, its trailing newline trimmed: "+
-				"use these for passwords, so the value stays out of the command line and the shell history)")
+				"use these for passwords, so the value stays out of the command line and the shell history)",
+				" (поле=значение, флаг повторяется; значение может содержать '='. "+
+					"поле=- читает значение из stdin (не больше одного поля), поле=@файл — из файла без завершающего перевода строки: "+
+					"так пароль не попадает в командную строку и историю оболочки)"))
 			continue
 		}
 		switch p.Type {
 		case "integer":
-			cmd.Flags().Int(name, 0, p.Description)
+			cmd.Flags().Int(name, 0, desc)
 		case "number":
-			cmd.Flags().Float64(name, 0, p.Description)
+			cmd.Flags().Float64(name, 0, desc)
 		case "boolean":
-			cmd.Flags().Bool(name, false, p.Description)
+			// An argument the tool takes as true when absent defaults to
+			// true here too: the help says "(default true)" and
+			// --x=false turns it off. An unset flag still goes to the
+			// tool as nothing (treeArgs takes changed flags only).
+			on, _ := p.Default.(bool)
+			if on {
+				desc = defaultTrueRE.ReplaceAllString(desc, "") + note(" To turn off: --"+name+"=false", " Выключить: --"+name+"=false")
+			}
+			cmd.Flags().Bool(name, on, desc)
 		case "array":
-			cmd.Flags().StringArray(name, nil, p.Description+" (repeatable, or comma-separated)")
+			cmd.Flags().StringArray(name, nil, desc+note(" (repeatable, or comma-separated)", " (флаг повторяется или значения через запятую)"))
 		default:
-			cmd.Flags().String(name, "", p.Description)
+			cmd.Flags().String(name, "", desc)
 		}
 	}
 
@@ -345,6 +369,22 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		return renderAnswer(cmdPrinter(cmd), cmd.OutOrStdout(), text, c.Columns)
 	}
 	return cmd
+}
+
+// defaultTrueRE is the "(default: true)" of a schema description: pflag
+// adds its own "(default true)" to the help of a flag that defaults to true.
+var defaultTrueRE = regexp.MustCompile(` ?\(default:? true\)`)
+
+// flagDesc is the help of the flag for argument p: the Russian text from
+// flagShortRU when the CLI speaks Russian and the map has one (ru is then
+// true), the schema's English description otherwise.
+func flagDesc(t tools.Tool, p param) (desc string, ru bool) {
+	if i18n.Lang() == i18n.RU {
+		if s, ok := flagShortRU[t.Name+"."+p.Name]; ok {
+			return s, true
+		}
+	}
+	return p.Description, false
 }
 
 // printRaw prints the "output" of a kubectl, apply or helm answer as the

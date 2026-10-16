@@ -5,6 +5,12 @@ package cli
 // summary from here; a tool missing from the map falls back to the first
 // sentence of its English description (TestTrees_RussianShorts keeps the map
 // complete).
+//
+// The trees vm and disk are Russian throughout: the long help (toolLongRU)
+// and every flag (flagShortRU) too, written for the CLI — consent is the
+// prompt or --yes, not confirmed=true, and other tools are named by their
+// commands (TestTrees_RussianFlags keeps these complete). The other trees
+// show the tool's English description and flags, as MCP does (v1.1).
 
 // treeGroupShortRU is the Russian summary of each tree.
 var treeGroupShortRU = map[string]string{
@@ -101,4 +107,76 @@ var toolShortRU = map[string]string{
 	"secret_create":      "Создать секрет",
 	"secret_add_version": "Добавить новую версию значения секрета (ротация)",
 	"secret_delete":      "Удалить секрет со всеми версиями",
+}
+
+// toolLongRU is the Russian long help of a tree command, in place of the
+// tool's English description.
+var toolLongRU = map[string]string{
+	"vm_list": "Все ВМ проекта по данным облака, а не по локальным записям развёртываний: id, имя, состояние, " +
+		"зона доступности и время создания. Только чтение. IP-адреса и интерфейсы одной ВМ — 'evo vm get <ВМ>'.",
+	"vm_get": "Сведения о ВМ из облака по UUID или имени: внутренний IP (private_ip), внешний или floating IP (public_ip), " +
+		"состояние и все сетевые интерфейсы. В отличие от 'evo status', который читает локальную запись развёртывания, " +
+		"показывает и внутренний IP — его, например, прописывают в настройки другого сервиса. Только чтение.",
+	"provision": "Создать ВМ без docker-compose. По умолчанию ВМ получает floating IP (внешний адрес); с --no-public-ip " +
+		"создаётся приватная ВМ — только адрес в подсети (интерфейс типа regular), доступна лишь внутри VPC; так создают " +
+		"узлы за балансировщиком. Подсеть и группа безопасности подключаются сами.\n\n" +
+		"Образ — --image (имя, отображаемое имя или UUID; ищется как в 'evo image get': при нескольких совпадениях — ошибка " +
+		"со списком кандидатов) или --image-id (UUID). Подходит любой образ ОС, доступный проекту, в том числе Astra Linux, " +
+		"Альт и РЕД ОС; образ общего каталога, недоступный проекту, отклоняется до создания чего-либо.\n\n" +
+		"Поля метаданных образа (SSH-ключ, имя ВМ, логин, случайный пароль) evo заполняет сам. Обязательное поле, которое " +
+		"evo заполнить не может ('evo image get <образ>' показывает такие поля), задаётся через --meta, иначе команда " +
+		"отказывает до создания ВМ.\n\n" +
+		"--port открывает входящие порты в группе безопасности ВМ после её загрузки; 'evo vm delete' закрывает их. " +
+		"Для docker-compose проекта — 'evo deploy'. ВМ платная.",
+	"destroy": "Удалить ВМ и все данные на ней безвозвратно. ВМ задаётся UUID или именем. Floating IP ВМ по умолчанию " +
+		"освобождается тоже; оставить адрес — --release-ip=false. Правила группы безопасности, которые evo открыл для ВМ " +
+		"('evo deploy', 'evo vm create --port'), удаляются после неё, если порт не нужен другому развёртыванию из " +
+		"локального состояния; правило, которое удалить не удалось, попадает в отчёт, и следующее удаление попробует снова.",
+	"list_zones": "Зоны доступности: UUID и имя. UUID зоны передаётся в --region, например 'evo vm create --region <UUID>'. " +
+		"Только чтение.",
+	"list_flavors": "Flavor ВМ: имя, vCPU, RAM, признак бесплатного уровня и оценка цены за месяц. Имя flavor передаётся " +
+		"в --flavor команд 'evo vm create' и 'evo deploy'. Только чтение.",
+
+	"disk_list": "Диски проекта: id, имя, размер (ГБ), состояние, тип, зона и ВМ, к которым диск подключён. Только чтение.",
+	"list_disk_types": "Типы дисков: UUID и имя (например, SSD или HDD). Имя или UUID типа передаётся в --disk-type " +
+		"команды 'evo disk create'. Только чтение.",
+	"disk_create": "Создать диск. С --attach-to <ВМ> диск создаётся в зоне этой ВМ и сразу к ней подключается: диск и ВМ " +
+		"должны быть в одной зоне. Подключённый диск — новое блочное устройство, файловая система ВМ от него не растёт: " +
+		"разметьте, отформатируйте и смонтируйте его на ВМ. Увеличить существующий диск — 'evo disk resize'. Диск платный.",
+	"disk_attach": "Подключить существующий диск к ВМ (--vm — имя или UUID ВМ). Диск и ВМ должны быть в одной зоне; " +
+		"зону и id диска показывает 'evo disk list'. Подключённый диск — новое блочное устройство: разметьте, " +
+		"отформатируйте и смонтируйте его на ВМ.",
+	"disk_detach": "Отключить диск от ВМ (--vm — ВМ, к которой он подключён). Загрузочный или используемый диск не " +
+		"отключайте: сначала отмонтируйте файловую систему на ВМ.",
+	"disk_resize": "Увеличить диск на месте, до 65536 ГБ. Только рост: уменьшение и диски бесплатного уровня облако " +
+		"отклоняет (бесплатный загрузочный диск не увеличить — пересоздайте ВМ с платным диском). После увеличения " +
+		"расширьте раздел и файловую систему на ВМ (growpart и resize2fs).",
+	"disk_delete": "Удалить диск и все данные на нём безвозвратно. Подключённый диск сначала отключите: 'evo disk detach'.",
+}
+
+// flagShortRU is the Russian help of a tree command's flag, by
+// "tool.argument". The notes on repeatable flags and on a flag that
+// defaults to true are added to it, as to the English one.
+var flagShortRU = map[string]string{
+	"provision.flavor": "Flavor ВМ: имя или UUID, например lowcost10-2-4 (список: evo vm flavors). По умолчанию — " +
+		"самый маленький lowcost не бесплатного уровня",
+	"provision.image": "Образ: точное имя, отображаемое имя или UUID, например Ubuntu-24.04 (поиск: evo image list). " +
+		"Задаётся --image или --image-id, не оба",
+	"provision.image_id": "UUID образа (см. evo image list, evo image get)",
+	"provision.image_metadata": "Поле метаданных образа, например admin_password=… — обязательные поля, которые evo не " +
+		"заполняет сам (evo image get <образ>). Перекрывает заполненное evo; поле, которого в образе нет, отклоняется",
+	"provision.ports": "Входящий порт, открываемый в группе безопасности ВМ для 0.0.0.0/0: 80, 8080/tcp, 53/udp " +
+		"(по умолчанию tcp). Группа общая для ВМ зоны; evo vm delete удаляет правила, созданные evo",
+	"provision.disk_size":    "Размер загрузочного диска, ГБ (по умолчанию 10, но не меньше минимума образа)",
+	"provision.subnet_id":    "UUID подсети для интерфейса (по умолчанию — подсеть в зоне ВМ; список: evo vpc subnets)",
+	"provision.no_public_ip": "Приватная ВМ: без floating IP, интерфейс типа regular — для узлов за балансировщиком и внутренних серверов",
+	"destroy.release_ip":     "Освободить и floating IP ВМ.",
+
+	"disk_create.size_gb":   "Размер диска, ГБ (обязательный)",
+	"disk_create.disk_type": "Тип диска: имя или UUID (список: evo disk types). По умолчанию — SSD",
+	"disk_create.attach_to": "ВМ (имя или UUID): диск создаётся в её зоне и сразу к ней подключается",
+	"disk_create.zone":      "Зона доступности: имя или UUID, вместо --attach-to (по умолчанию — зона из --region или профиля)",
+	"disk_attach.vm":        "ВМ: имя или UUID",
+	"disk_detach.vm":        "ВМ, к которой подключён диск: имя или UUID",
+	"disk_resize.size_gb":   "Новый размер, ГБ: больше текущего, не больше 65536",
 }
