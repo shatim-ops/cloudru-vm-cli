@@ -87,6 +87,27 @@ jobs:
           probe fip_states            "$C/floating-ips?$P&limit=100" '[.[] | arrays | .[] | .state] | unique'
           probe vm_states             "$C/vms?$P&limit=100" '[.[] | arrays | .[] | .status // .state] | unique'
 
+          echo "== группы безопасности: SSH и исходящий трафик (имена и признаки, без ID)"
+          # deploy ждёт SSH (tcp 22) и выход ВМ к метаданным и DHCP (документация
+          # «Группы безопасности», ограничения с 07.2026). e2e 16.10: ВМ активна,
+          # SSH нет — какая из групп это допускает.
+          # shellcheck disable=SC2016 # $r и $a — переменные jq
+          covers='def covers(p): (.port_range // "") as $r | ($r == "" or $r == "any" or
+            (($r | split(":") | map(tonumber? // 0)) as $a | ($a[0] <= p and p <= ($a[1] // $a[0]))));'
+          sgs=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/security-groups?$P&limit=100" || true)
+          for id in $(printf '%s' "$sgs" | jq -r '[.[] | arrays | .[] | .id] | .[]' 2>/dev/null); do
+            echo "::add-mask::$id"
+            name=$(printf '%s' "$sgs" | jq -r --arg id "$id" '[.[] | arrays | .[] | select(.id == $id) | ((.name // "?") + " / " + ((.availability_zone.name // .availability_zone // "?") | tostring))] | first')
+            rules=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/security-groups/$id/rules?limit=100" || true)
+            printf '%-40s %s\n' "$name" "$(printf '%s' "$rules" | jq -c "$covers"' [.[] | arrays | .[]] as $r | {
+              rules: ($r | length),
+              ssh_in_world: any($r[]; .direction == "ingress" and ((.ip_protocol // "any") | test("tcp|any")) and covers(22) and ((.remote_ip_prefix // "0.0.0.0/0") == "0.0.0.0/0")),
+              ssh_in_any: any($r[]; .direction == "ingress" and ((.ip_protocol // "any") | test("tcp|any")) and covers(22)),
+              egress: ($r | map(select(.direction == "egress")) | length),
+              egress_world: any($r[]; .direction == "egress" and ((.remote_ip_prefix // "0.0.0.0/0") == "0.0.0.0/0")),
+              egress_metadata: any($r[]; .direction == "egress" and ((.remote_ip_prefix // "0.0.0.0/0") | test("^(0\\.0\\.0\\.0/0|169\\.254\\.169\\.254/32)$")))}' 2>/dev/null || echo 'не JSON')"
+          done
+
           echo "== grpc-gateway: projectId (спецификация) против project_id (сейчас)"
           probe vpc_snake             "https://vpc.api.cloud.ru/v1/vpcs?project_id=$PROJECT" "$shape"
           probe vpc_camel             "https://vpc.api.cloud.ru/v1/vpcs?projectId=$PROJECT" "$shape"
