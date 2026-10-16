@@ -100,8 +100,9 @@ evo deploy --region <UUID ru.AZ-2>   # или region: в .evo.yaml
 ВМ так и не стала удаляемой, `destroy` выходит с ошибкой, а запись в
 `.evo/state.json` остаётся: повторите `evo destroy` позже (проверить ВМ —
 `evo vm get <id>`). ВМ без записи (скрипт потерял каталог) удалите
-`evo vm delete <id>` или в консоли, затем освободите её floating IP
-(`evo vpc fip-release <IP>`).
+`evo vm delete <id>`: floating IP ВМ освобождается вместе с ней
+(`--release-ip=false` — оставить). Удалили в консоли — освободите IP
+сами: `evo vpc fip-release <IP>`.
 
 ### `deploy`: «ВМ … не стала активной за 10m0s» (did not become active within)
 
