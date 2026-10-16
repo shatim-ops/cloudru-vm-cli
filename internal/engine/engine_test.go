@@ -153,8 +153,8 @@ func (m *mockCloudAPI) GetImage(ctx context.Context, id string) (*provision.Imag
 		Name: "Ubuntu 22.04",
 		OS:   "linux",
 		MetadataFields: []provision.ImageMetadataField{
-			{ID: "mf-1", Name: "ssh_key", Required: true, MandatoryGroup: "ssh"},
-			{ID: "mf-2", Name: "hostname", Required: false},
+			{ID: "mf-1", Name: "ssh_key", MandatoryGroup: "ssh"},
+			{ID: "mf-2", Name: "hostname"},
 			{ID: "mf-3", Name: "name", MandatoryGroup: "name", DefaultValue: "user1"},
 		},
 	}, nil
