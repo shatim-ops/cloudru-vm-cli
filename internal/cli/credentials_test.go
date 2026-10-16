@@ -609,3 +609,36 @@ func TestWhoamiDoctor_ProjectFlag(t *testing.T) {
 		t.Fatalf("doctor --project-id: exit %d\n%s", code, stdout)
 	}
 }
+
+// QA r4 Q11: без терминала и без флагов при сохранённом профиле configure
+// отвечал «Профиль сохранён» с кодом 0, ничего не меняя. Теперь — та же
+// ошибка, что без профиля; --project-id и --region по-прежнему меняют
+// только своё со старым ключом.
+func TestConfigure_NothingGivenWithoutTTYFails(t *testing.T) {
+	fc := setupCLI(t)
+	saveProfile(t, "default", "p-old")
+	code, stdout, stderr := runCLI(t, "", "configure")
+	if code != clerrors.ExitAuth || !strings.Contains(stderr, "--secret-stdin") || strings.Contains(stdout+stderr, "saved") {
+		t.Fatalf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	if n := fc.iamCalls.Load(); n != 0 {
+		t.Errorf("IAM called %d times for a configure with nothing to do", n)
+	}
+
+	code, _, stderr = runCLI(t, "", "configure", "--project-id", "p-new")
+	if code != 0 {
+		t.Fatalf("--project-id alone: exit %d: %s", code, stderr)
+	}
+	prof, creds, _, _ := config.LoadProfile("default")
+	if prof.ProjectID != "p-new" || creds.KeyID != fakeKeyID || creds.Secret != fakeSecret {
+		t.Errorf("--project-id alone: got project %q key %q", prof.ProjectID, creds.KeyID)
+	}
+
+	code, _, stderr = runCLI(t, "", "configure", "--region", "zone-1")
+	if code != 0 {
+		t.Fatalf("--region alone: exit %d: %s", code, stderr)
+	}
+	if prof, _, _, _ = config.LoadProfile("default"); prof.Region != "zone-1" {
+		t.Errorf("--region alone: got region %q", prof.Region)
+	}
+}
