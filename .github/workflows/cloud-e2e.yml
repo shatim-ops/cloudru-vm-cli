@@ -625,9 +625,10 @@ jobs:
           evo k8s addons --json | jq '{shown: (.shown // (.addons | length)), total}'
           evo k8s addon-versions "$ADDON" --json > "$RUNNER_TEMP/versions.json"
           jq '[.releases[]? | {version, mode, kube_versions, ready_workers, namespace, latest}] | .[0:3]' "$RUNNER_TEMP/versions.json"
-          ns=$(jq -r '[.releases[]? | select(.latest)][0].namespace // .releases[0].namespace // empty' "$RUNNER_TEMP/versions.json")
-          [ -n "$ns" ] || { echo "::error::нет namespace у $ADDON"; exit 1; }
-          echo "ADDON_NS=$ns" >> "$GITHUB_ENV"
+          # namespace релиза API отдаёт неверный (повторяет addonVersion),
+          # evo его не показывает; поды ищутся по имени во всех namespace.
+          jq -e '[.releases[]? | select(.latest)] | length == 1' "$RUNNER_TEMP/versions.json" >/dev/null ||
+            { echo "::error::у $ADDON нет версии по умолчанию"; exit 1; }
 
       - name: k8s plan, затем create (1 мастер)
         run: |

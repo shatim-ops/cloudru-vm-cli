@@ -259,6 +259,29 @@ func checkComparator(c string, v semver) (bool, bool) {
 	}
 	w.pre = nil
 	cmp := cmpNums(v, w)
+	// A partial version is a wildcard over the missing parts, as in Helm
+	// (Masterminds/semver): "1.29" and "=1.29" are 1.29.x, "<=1.30" admits
+	// 1.30.7, ">1.29" starts at 1.30.0. A false refusal is worse than a
+	// miss: add-addon would not install at all.
+	if w.parts < 3 && op != ">=" && op != "<" && op != "~" && op != "^" {
+		next := w
+		if w.parts >= 2 {
+			next.nums = [3]int{w.nums[0], w.nums[1] + 1, 0}
+		} else {
+			next.nums = [3]int{w.nums[0] + 1, 0, 0}
+		}
+		in := cmp >= 0 && cmpNums(v, next) < 0
+		switch op {
+		case "", "=", "==":
+			return in, true
+		case "!=":
+			return !in, true
+		case "<=":
+			return cmpNums(v, next) < 0, true
+		case ">":
+			return cmpNums(v, next) >= 0, true
+		}
+	}
 	switch op {
 	case ">=":
 		return cmp >= 0, true

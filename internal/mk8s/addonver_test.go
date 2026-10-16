@@ -138,3 +138,30 @@ func TestFindRelease_SameAppVersionTakesNewestAddonVersion(t *testing.T) {
 		t.Fatalf("FindRelease = %+v, %v; want addon 1.14.0-3", r, ok)
 	}
 }
+
+// Частичная версия — шаблон по недостающим частям, как в Helm
+// (Masterminds/semver): ложный отказ хуже пропуска (ревью Grok на #78).
+func TestCheckKubeVersion_PartialVersionsAsHelm(t *testing.T) {
+	for _, c := range []struct {
+		constraint, version string
+		ok                  bool
+	}{
+		{"<=1.30", "1.30.7", true},
+		{"<=1.30", "1.31.0", false},
+		{"1.29", "1.29.4", true},
+		{"=1.29", "1.29.4", true},
+		{"=1.29", "1.30.0", false},
+		{">1.29", "1.29.5", false},
+		{">1.29", "1.30.0", true},
+		{"!=1.29", "1.29.5", false},
+		{">=1.29", "1.29.0", true},
+		{"<1.30", "1.30.1", false},
+		{"<=1", "1.34.2", true},
+		{">1", "1.99.0", false},
+		{"<=1.30.0", "1.30.7", false},
+	} {
+		if ok, known := CheckKubeVersion(c.constraint, c.version); !known || ok != c.ok {
+			t.Errorf("CheckKubeVersion(%q, %q) = %v, %v; want %v", c.constraint, c.version, ok, known, c.ok)
+		}
+	}
+}
