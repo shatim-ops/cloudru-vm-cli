@@ -226,6 +226,7 @@ func (c *Client) CreateClusterAddon(ctx context.Context, req CreateClusterAddonR
 		Error      json.RawMessage `json:"error"`
 		ClusterID  string          `json:"clusterId"`
 		AppVersion string          `json:"appVersion"`
+		Name       string          `json:"name"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
 		return nil, err
@@ -234,8 +235,13 @@ func (c *Client) CreateClusterAddon(ctx context.Context, req CreateClusterAddonR
 	// answer, 16.10.2026), and also bare — protojson leaves out done:false
 	// and resourceId may be empty until the operation ends, so {"id":"op-1"}
 	// is an operation too. Only an answer without these and with the fields
-	// of a ClusterAddon (status, clusterId, appVersion) is the addon itself.
-	if r.Done != nil || r.ResourceID != "" || (r.Status == "" && r.ClusterID == "" && r.AppVersion == "") {
+	// of a ClusterAddon (status, clusterId, appVersion, name) is the addon
+	// itself.
+	if r.ID == "" && r.ResourceID == "" {
+		// Nothing to follow: not "installing" without a single identifier.
+		return nil, fmt.Errorf("unexpected answer of POST /v3/clusterAddons: no operation or addon id")
+	}
+	if r.Done != nil || r.ResourceID != "" || (r.Status == "" && r.ClusterID == "" && r.AppVersion == "" && r.Name == "") {
 		res := &ClusterAddonResult{OperationID: r.ID, ID: r.ResourceID, Done: r.Done != nil && *r.Done}
 		if len(r.Error) > 0 && string(r.Error) != "null" {
 			return res, fmt.Errorf("mk8s operation %s failed: %s", r.ID, r.Error)

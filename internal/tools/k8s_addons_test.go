@@ -35,6 +35,7 @@ type fakeMK8s struct {
 	pools       string // тело /v3/nodePools
 	installed   string // тело /v3/clusterAddons; "" — 400
 	releases    string // тело /v3/addons/cert-manager; "" — три релиза ниже
+	created     string // ответ POST /v3/clusterAddons; "" — операция op-1
 }
 
 func (f *fakeMK8s) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -90,6 +91,10 @@ func (f *fakeMK8s) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == "/v3/clusterAddons":
 		b, _ := io.ReadAll(r.Body)
 		f.posts = append(f.posts, string(b))
+		if f.created != "" {
+			_, _ = io.WriteString(w, f.created)
+			return
+		}
 		_, _ = io.WriteString(w, `{"id":"op-1","resourceId":"ca-1","done":false}`)
 	default:
 		http.Error(w, `{"message":"not found"}`, 404)
@@ -420,5 +425,17 @@ func TestK8sAddAddon_AddonVersionCannotBePinned(t *testing.T) {
 	}
 	if len(f.posts) != 0 {
 		t.Errorf("installed without confirmation: %v", f.posts)
+	}
+}
+
+// Неуспешная операция установки: ошибка по контракту, и operation_id в ней
+// остаётся — агент может найти операцию (ревью Grok на #82).
+func TestK8sAddAddon_FailedOperationKeepsID(t *testing.T) {
+	f := &fakeMK8s{kubeVersion: "v1.30.2", pools: `{"nodePools":[{"scalePolicy":{"fixedScale":{"count":1}}}]}`,
+		created: `{"id":"op-3","done":true,"error":{"code":9,"message":"addon install failed"}}`}
+	r := addonRegistry(t, f)
+	m, text, isErr := callNamed(t, r, "k8s_add_addon", map[string]any{"cluster_id": addonCluster, "name": "cert-manager", "confirmed": true})
+	if !isErr || m["operation_id"] != "op-3" || m["reason"] == nil || !strings.Contains(m["error"].(string), "addon install failed") {
+		t.Fatalf("answer: %s", text)
 	}
 }

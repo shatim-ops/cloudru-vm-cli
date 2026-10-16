@@ -191,6 +191,17 @@ func TestCreateClusterAddon(t *testing.T) {
 		t.Errorf("bare operation answer: %+v, %v", res, err)
 	}
 	rec.body = rec.body[:1]
+	// Плагин с одним name — плагин, не операция (ревью Grok на #82);
+	// пустой ответ — ошибка, а не «installing» без id.
+	answer = `{"id":"ca-3","name":"x"}`
+	if res, err = cli.CreateClusterAddon(context.Background(), req); err != nil || res.ID != "ca-3" || res.OperationID != "" {
+		t.Errorf("addon with a name only: %+v, %v", res, err)
+	}
+	answer = `{}`
+	if _, err = cli.CreateClusterAddon(context.Background(), req); err == nil {
+		t.Error("empty answer accepted")
+	}
+	rec.body = rec.body[:1]
 
 	answer = `{"id":"ca-2","status":"CLUSTER_ADDON_STATUS_INSTALLING"}`
 	res, err = cli.CreateClusterAddon(context.Background(), CreateClusterAddonReq{ClusterID: fakeCluster, Name: "x", AppVersion: "1"})
