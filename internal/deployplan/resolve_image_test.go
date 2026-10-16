@@ -20,7 +20,7 @@ type имитацияОблака struct {
 	спрошенПро string
 }
 
-func (м *имитацияОблака) ListImages(context.Context) ([]*provision.Image, error) {
+func (м *имитацияОблака) ListImages(context.Context, ...provision.ImageFilter) ([]*provision.Image, error) {
 	return м.общие, nil
 }
 

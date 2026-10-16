@@ -22,7 +22,7 @@ func (*metaCloud) ListAvailabilityZones(context.Context) ([]*provision.Availabil
 func (*metaCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 	return []*provision.Flavor{{ID: "fl-1", Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4}}, nil
 }
-func (*metaCloud) ListImages(context.Context) ([]*provision.Image, error) {
+func (*metaCloud) ListImages(context.Context, ...provision.ImageFilter) ([]*provision.Image, error) {
 	return []*provision.Image{{ID: "img-u", Name: "Ubuntu-24.04"}}, nil
 }
 func (m *metaCloud) GetImage(_ context.Context, id string) (*provision.ImageDetail, error) {

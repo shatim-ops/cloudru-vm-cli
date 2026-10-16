@@ -193,9 +193,15 @@ func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*Availabi
 
 // ListImages lists boot images via GET /api/v1/images, every page. A bare
 // call returns only the shared catalogue — images built inside a project
-// are invisible there. ListImagesInProject exists for those.
-func (a *CloudRuAdapter) ListImages(ctx context.Context) ([]*Image, error) {
-	return listAll[Image](a, ctx, "/api/v1/images", url.Values{}, true)
+// are invisible there. ListImagesInProject exists for those. An optional
+// filter is sent as the server-side query (name, display_name, type,
+// enabled, need_gpu, availability_zone_id); only the first one counts.
+func (a *CloudRuAdapter) ListImages(ctx context.Context, filter ...ImageFilter) ([]*Image, error) {
+	q := url.Values{}
+	if len(filter) > 0 {
+		q = filter[0].Query()
+	}
+	return listAll[Image](a, ctx, "/api/v1/images", q, true)
 }
 
 // ListImagesInProject returns the images owned by one project — the ones
