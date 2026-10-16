@@ -230,7 +230,7 @@ running, ssh_timeout, docker_failed, destroying, destroyed`. В коде пиш�
 | `vm delete` | `destroy` (по `vm_id`/`name`) | да | пишет (удаляет запись этой ВМ) |
 | `vm zones` | `list_zones` | нет | нет |
 | `vm flavors` | `list_flavors` | нет | нет |
-| `marketplace list` | `marketplace_list` (каталог образов и каталог плагинов mk8s; ставят `vm create --image` и `k8s add-addon`) | нет | нет |
+| `marketplace list` | `marketplace_list` (каталог образов и каталог плагинов mk8s; образ ставит `vm create --image`, плагин — консоль Cloud.ru, версии — `k8s addon-versions`) | нет | нет |
 | `disk list`, `disk types` | `disk_list`, `list_disk_types` | нет | нет |
 | `disk create`, `attach`, `detach`, `resize`, `delete` | `disk_create`, `disk_attach`, `disk_detach`, `disk_resize`, `disk_delete` | да | нет |
 | `vpc list`, `get`, `operation`, `routes`, `subnets`, `security-groups`, `fips` | `vpc_list`, `vpc_get`, `vpc_operation`, `vpc_routes`, `list_subnets`, `list_security_groups`, `list_floating_ips` | нет | нет |
