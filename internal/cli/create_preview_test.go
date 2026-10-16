@@ -261,3 +261,8 @@ func TestToolsCall_PreviewStaysRaw(t *testing.T) {
 		t.Errorf("exit %d:\n%s", code, errOut)
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (previewCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}

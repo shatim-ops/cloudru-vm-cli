@@ -65,6 +65,9 @@ type mockCloudAPI struct {
 	deleteRuleFn         func(ctx context.Context, sgID, ruleID string) error
 	deletedRules         []string // "sgID/ruleID"
 	ruleSeq              int
+	// priceFn answers price-calculation; nil: the call fails, so previews
+	// show the rate-card estimate (as before the API was used).
+	priceFn func(ctx context.Context, projectID string, req provision.PriceCalculationRequest) (*provision.PriceCalculation, error)
 
 	token        string
 	createCalled bool
@@ -247,6 +250,13 @@ func (m *mockCloudAPI) ListDiskTypes(ctx context.Context, projectID string) ([]*
 		{ID: "dt-ssd", Name: "SSD"},
 		{ID: "dt-hdd", Name: "HDD"},
 	}, nil
+}
+
+func (m *mockCloudAPI) PriceCalculation(ctx context.Context, projectID string, req provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	if m.priceFn != nil {
+		return m.priceFn(ctx, projectID, req)
+	}
+	return nil, errNoPriceAPI
 }
 
 type mockDeployer struct {

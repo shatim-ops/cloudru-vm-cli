@@ -193,3 +193,8 @@ func TestDestroyTargeted_StateNotWritable_Warns(t *testing.T) {
 		t.Fatalf("answer does not warn about the state: %s", text)
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (*sgCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}

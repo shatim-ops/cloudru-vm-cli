@@ -307,3 +307,12 @@ func testProvisionErrorState(t *testing.T, status string) {
 		t.Errorf("record = %+v, want status error with floating_ip_id fip-boot", rec)
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (*cancelCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}
+
+// errNoPriceAPI — ответ подделок на PriceCalculation: расчёт цены не
+// получен, превью и план показывают оценку по карте, как раньше.
+var errNoPriceAPI = errors.New("price-calculation: not in this fake")

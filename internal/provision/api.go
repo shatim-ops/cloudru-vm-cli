@@ -57,4 +57,8 @@ type CloudAPI interface {
 	DetachDisk(ctx context.Context, diskID, vmID, projectID string) (map[string]any, error)
 	ResizeDisk(ctx context.Context, diskID string, sizeGB int, projectID string) (map[string]any, error)
 	DeleteDisk(ctx context.Context, diskID, projectID string) error
+
+	// PriceCalculation computes the price of resources (POST, no side
+	// effects: nothing is created or reserved).
+	PriceCalculation(ctx context.Context, projectID string, req PriceCalculationRequest) (*PriceCalculation, error)
 }

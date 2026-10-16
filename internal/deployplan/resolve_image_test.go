@@ -112,3 +112,8 @@ func TestПоУмолчаниюБерётсяТолькоОбщийКатало�
 		t.Errorf("по умолчанию выбран %q — продуктовый образ проекта угадывать нельзя", img.ID)
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (*имитацияОблака) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}

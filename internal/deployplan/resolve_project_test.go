@@ -99,3 +99,8 @@ func TestSelectImage_AvailableOwnAndUnknown(t *testing.T) {
 		t.Errorf("project view failing: %v %+v", err, img)
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (*projectViewCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}

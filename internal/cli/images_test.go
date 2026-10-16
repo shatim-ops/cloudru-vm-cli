@@ -357,3 +357,8 @@ func TestListImages_DeprecatedStillWorks(t *testing.T) {
 		t.Error("list-images must be hidden")
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (imageCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}

@@ -161,3 +161,17 @@ func TestApply_LookupFails_CreatesNothing(t *testing.T) {
 		t.Errorf("CreateVM called %d times after a failed lookup, want 0", c.creates)
 	}
 }
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (applyCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}
+
+// PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
+func (*lostAnswerCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, errNoPriceAPI
+}
+
+// errNoPriceAPI — ответ подделок на PriceCalculation: расчёт цены не
+// получен, превью и план показывают оценку по карте, как раньше.
+var errNoPriceAPI = errors.New("price-calculation: not in this fake")
