@@ -711,19 +711,39 @@ jobs:
                jq -r .output "$RUNNER_TEMP/pods.json" | sed -n '/^{/,$p' > "$RUNNER_TEMP/pods.items.json" &&
                jq -e .items "$RUNNER_TEMP/pods.items.json" >/dev/null 2>&1; then
               total=$(jq '.items | length' "$RUNNER_TEMP/pods.items.json")
+              # waiting — причины ожидания контейнеров (ImagePullBackOff:
+              # у кластера по умолчанию нет выхода в интернет, нужен SNAT-шлюз
+              # в зоне узлов — документация mk8s, «Ограничения»).
               pods=$(jq -c --arg a "$ADDON" '[.items[] | select(.metadata.name | startswith($a))
                 | select(all(.metadata.ownerReferences[]?; .kind != "Job"))
                 | {ns: .metadata.namespace, name: .metadata.name, phase: .status.phase,
-                   ready: any(.status.conditions[]?; .type == "Ready" and .status == "True")}]' "$RUNNER_TEMP/pods.items.json")
-              echo "$min мин: подов в кластере $total, $ADDON: $pods"
+                   ready: any(.status.conditions[]?; .type == "Ready" and .status == "True"),
+                   waiting: ([(.status.initContainerStatuses[]?, .status.containerStatuses[]?) | .state.waiting.reason // empty] | unique)}]' "$RUNNER_TEMP/pods.items.json")
+              pull=$(jq '[.items[] | select(any((.status.initContainerStatuses[]?, .status.containerStatuses[]?); (.state.waiting.reason // "") | test("ImagePull|ErrImage")))] | length' "$RUNNER_TEMP/pods.items.json")
+              echo "$min мин: подов в кластере $total, не тянут образ: $pull, $ADDON: $pods"
             else
               pods='[]'
               echo "$min мин: kubectl: $(tail -c 300 "$RUNNER_TEMP/kerr" | tr '\n' ' ' | redact)"
             fi
             if [ "$(jq 'length > 0 and all(.ready)' <<<"$pods")" = true ]; then echo "поды $ADDON готовы"; break; fi
-            [ $(( $(date +%s) - start )) -lt 1500 ] || { echo "::error::поды $ADDON не готовы за 25 мин"; exit 1; }
+            # Все поды плагина 8 мин не могут скачать образ — ждать дальше
+            # нет смысла: кластеру, вероятно, нужен SNAT-шлюз.
+            if [ "$(jq 'length > 0 and all(.waiting | any(test("ImagePull|ErrImage")))' <<<"$pods")" = true ]; then
+              pullsince=${pullsince:-$(date +%s)}
+              [ $(( $(date +%s) - pullsince )) -lt 480 ] || { fail="поды $ADDON 8 мин не могут скачать образ (ImagePullBackOff): у кластера нет выхода в интернет — нужен SNAT-шлюз в зоне узлов"; break; }
+            else
+              unset pullsince
+            fi
+            [ $(( $(date +%s) - start )) -lt 1500 ] || { fail="поды $ADDON не готовы за 25 мин"; break; }
             sleep 30
           done
+          if [ -n "${fail:-}" ]; then
+            echo "События в cert-manager и у подов $ADDON (последние):"
+            evo --json k8s kubectl "$CLUSTER_ID" get events -A --sort-by=.lastTimestamp 2>/dev/null | jq -r '.output // empty' |
+              grep -Ei "$ADDON|pull|image" | tail -15 | cut -c1-240 | redact || true
+            echo "::error::$fail"
+            exit 1
+          fi
 
       - name: Удаление кластера (всегда)
         if: always()
