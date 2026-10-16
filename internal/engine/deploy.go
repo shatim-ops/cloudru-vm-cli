@@ -1050,7 +1050,11 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	e.Printer.StepDone(i18n.T("Preparing Docker on the VM (a fresh VM takes a few minutes)...",
 		"Подготовка Docker на ВМ (на новой ВМ — несколько минут)..."))
 	var lastErr error
-	var lastOut string
+	// lastOut is the last attempt's output; failOut that of the last one
+	// that failed on its own, before the deadline. The last attempt is
+	// usually cut by the deadline with a line or two printed, and an
+	// earlier one holds the apt or DNS error (cloud-e2e 16.10.2026).
+	var lastOut, failOut string
 	for attempt := 1; ; attempt++ {
 		var out bytes.Buffer
 		attemptCtx, cancel := context.WithDeadline(ctx, deadline)
@@ -1077,9 +1081,16 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		if !time.Now().Before(deadline) {
 			break
 		}
-		e.Printer.Warning(i18n.Tf("Docker not ready yet (attempt %d, %s elapsed: %s), retrying...",
+		if strings.TrimSpace(lastOut) != "" {
+			failOut = lastOut
+		}
+		msg := i18n.Tf("Docker not ready yet (attempt %d, %s elapsed: %s), retrying...",
 			"Docker ещё не готов (попытка %d, прошло %s: %s), повтор...",
-			attempt, time.Since(start).Round(time.Second), errLine(err)))
+			attempt, time.Since(start).Round(time.Second), errLine(err))
+		if l := lastLines(lastOut, 1); l != "" {
+			msg += i18n.Tf(" Last line of the install: %s", " Последняя строка установки: %s", clipLine(l))
+		}
+		e.Printer.Warning(msg)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -1110,6 +1121,10 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	} else {
 		hint = reason + i18n.T(" (the install printed nothing)\n", " (установка ничего не вывела)\n") + hint
 	}
+	if failOut != "" && failOut != lastOut {
+		hint = i18n.T("Output of the last attempt that failed on its own:\n", "Вывод последней попытки, завершившейся ошибкой:\n") +
+			lastLines(failOut, 15) + "\n" + hint
+	}
 	return clerrors.Wrap(clerrors.CodeSSHTimeout,
 		i18n.Tf("Docker is not ready on VM %s after %s", "Docker на ВМ %s не готов за %s", ip, t.DockerWaitTimeout),
 		hint, lastErr)
@@ -1120,7 +1135,12 @@ func errLine(err error) string {
 	if err == nil {
 		return i18n.T("no error reported", "ошибка не сообщается")
 	}
-	s := strings.Join(strings.Fields(err.Error()), " ")
+	return clipLine(err.Error())
+}
+
+// clipLine is s on one line, at most 200 characters.
+func clipLine(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > 200 {
 		s = string(r[:200]) + "…"
 	}

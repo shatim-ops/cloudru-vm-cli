@@ -258,6 +258,7 @@ type mockDeployer struct {
 	execErr         error
 	streamErrs      map[string][]error                          // per-command errors for ExecStream, consumed in order
 	streamHook      func(ctx context.Context, cmd string) error // runs first; a non-nil error is returned
+	streamOut       func(cmd string) string                     // written to stdout before streamHook/streamErrs
 	hostFingerprint string
 	connectCalled   bool
 	connectCalls    int
@@ -315,6 +316,9 @@ func (m *mockDeployer) Exec(_ context.Context, cmd string) (string, error) {
 
 // ExecStream records the call like Exec and writes the scripted result.
 func (m *mockDeployer) ExecStream(ctx context.Context, cmd string, stdout, _ io.Writer) error {
+	if m.streamOut != nil {
+		_, _ = io.WriteString(stdout, m.streamOut(cmd))
+	}
 	if m.streamHook != nil {
 		if err := m.streamHook(ctx, cmd); err != nil {
 			m.mu.Lock()
