@@ -117,6 +117,13 @@ func TestResolveNetwork_SecurityGroupChoice(t *testing.T) {
 		{"security_group по имени", "SSH-access_ru.AZ-2", groups, "sg-ssh", false},
 		{"security_group по UUID", "sg-other", groups, "sg-other", false},
 		{"security_group, которой нет", "nope", groups, "", true},
+		// Ревью Grok на #67: явная группа другой зоны не берётся.
+		{"security_group из другой зоны", "Default_ru.AZ-1", groups, "", true},
+		// «DefaultWeb» — не группа Default зоны: берётся первая по имени.
+		{"префикс Default — не Default", "", []*provision.SecurityGroup{
+			{ID: "sg-dweb", Name: "DefaultWeb", AvailabilityZoneID: "z2"},
+			{ID: "sg-app", Name: "app", AvailabilityZoneID: "z2"},
+		}, "sg-app", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sgs := tc.groups
