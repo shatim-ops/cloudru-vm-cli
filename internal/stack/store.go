@@ -185,6 +185,10 @@ type Step struct {
 	// reached the cloud, so the next crank looks for the resource before
 	// creating it again.
 	Interrupted bool `json:"interrupted,omitempty"`
+	// StartedAt is when the step first called its create tool. A VM found by
+	// name counts as the step's own only if it was created after it, so a
+	// user's VM with the same name is never adopted (and never destroyed).
+	StartedAt time.Time `json:"started_at,omitempty"`
 }
 
 type Job struct {

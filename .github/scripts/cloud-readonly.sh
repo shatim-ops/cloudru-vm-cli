@@ -43,7 +43,7 @@ run() {
 	[ -n "$reason" ] || reason=$(j -r '.reason? // empty' "$tmp/out" | head -1)
 	[ -n "$reason" ] || reason=-
 	# HTTP-статус из сообщения — без тела ответа и URL (в нём бывает проект).
-	httpst=$(j -r '.error.message? // .error? // empty' "$tmp/err" "$tmp/out" | grep -oE '(статус|status|\()[ ]?[45][0-9]{2}' | grep -oE '[45][0-9]{2}' | head -1)
+	httpst=$(j -r '.error.message? // .error? // empty' "$tmp/err" "$tmp/out" | grep -oE '(статус|status|\()[ ]?[45][0-9]{2}' | grep -oE '[45][0-9]{2}' | head -1 || true)
 	[ -z "$httpst" ] || reason="$reason, HTTP $httpst"
 }
 
@@ -114,12 +114,14 @@ required=" list_zones list_images list_flavors list_disk_types list_subnets list
 skip=" status list logs deploy_plan k8s_plan "
 total=0
 passed=0
+called=" "
 for t in $(evo tools list --json | j -r '.[] | select(.mutating == false) | .name'); do
 	case "$skip" in *" $t "*) continue ;; esac
 	if ! evo tools describe "$t" --json | jq -e '((.inputSchema.required // []) | length) == 0' >/dev/null; then
 		continue
 	fi
 	total=$((total + 1))
+	called="$called$t "
 	run "$t" timeout 120 evo tools call "$t" --json
 	if [ "$rc" = 0 ]; then
 		passed=$((passed + 1))
@@ -129,6 +131,10 @@ for t in $(evo tools list --json | j -r '.[] | select(.mutating == false) | .nam
 	else
 		warn "tools call $t" "код $rc, reason $reason"
 	fi
+done
+# Пустой или упавший tools list не должен молча пропустить обязательные.
+for t in $required; do
+	case "$called" in *" $t "*) ;; *) bad "tools call $t" "не вызван: нет в tools list" ;; esac
 done
 echo "прошли $passed из $total"
 echo "| **инструменты только для чтения** | $passed / $total | |" >>"$summary"
