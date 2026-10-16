@@ -64,8 +64,9 @@ func QuoteVM(ctx context.Context, cloud provision.CloudAPI, in PriceInput) (pric
 	}
 	// A 200 with a zero total is not a price (the API answers 0 for what
 	// it cannot price, e.g. image licences): fall back to the rate card
-	// with the reason (ревью Fable на #80).
-	if pc.TotalPriceMonth <= 0 && pc.TotalPriceHour <= 0 {
+	// with the reason (ревью Fable на #80). A free-tier flavor without a
+	// new floating IP does cost 0: that is the price (ревью Fable, A4).
+	if pc.TotalPriceMonth <= 0 && pc.TotalPriceHour <= 0 && !(in.VM.Flavor.FreeTier && !in.PublicIP) {
 		return pricing.Estimate{}, fmt.Errorf("%s", i18n.T("the API answered a zero price", "API ответил нулевой ценой"))
 	}
 	return pricing.FromCalculation(*pc), nil

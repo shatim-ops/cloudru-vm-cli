@@ -176,7 +176,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 
 	vm := VMSpec{
 		Name:   name,
-		Flavor: FlavorSpec{ID: flavor.ID, Name: flavor.Name, VCPUs: flavor.VCPUs, RAMGB: flavor.RAMGB},
+		Flavor: FlavorSpec{ID: flavor.ID, Name: flavor.Name, VCPUs: flavor.VCPUs, RAMGB: flavor.RAMGB, FreeTier: flavor.FreeTier},
 		Image:  RefSpec{ID: image.ID, Name: image.Name},
 		Zone:   RefSpec{ID: zone.ID, Name: zone.Name},
 		Disk:   DiskSpec{SizeGB: diskGB, Type: diskName, TypeID: diskID},

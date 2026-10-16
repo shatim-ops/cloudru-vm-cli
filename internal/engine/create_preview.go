@@ -203,7 +203,7 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 		if id, err := PickVMFlavor(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name)); err == nil {
 			for _, f := range flavors {
 				if f.ID == id {
-					vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB}
+					vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB, FreeTier: f.FreeTier}
 					break
 				}
 			}

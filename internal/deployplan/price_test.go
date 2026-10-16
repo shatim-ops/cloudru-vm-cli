@@ -184,3 +184,21 @@ func TestPriceVM_ZeroPriceFallsBack(t *testing.T) {
 		t.Errorf("cost %+v, want the estimate with the reason", c)
 	}
 }
+
+// Flavor бесплатного уровня без нового floating IP честно стоит 0: это
+// цена API, а не «нулевой ценой» с картой (ревью Fable, A4). С новым IP
+// ноль по-прежнему не цена.
+func TestPriceVM_FreeTierZeroIsThePrice(t *testing.T) {
+	cloud := &priceCloud{answer: func(context.Context) (*provision.PriceCalculation, error) {
+		return &provision.PriceCalculation{}, nil
+	}}
+	vm := VMSpec{Flavor: FlavorSpec{ID: "fl-free", Name: "free-tier1", VCPUs: 1, RAMGB: 1, FreeTier: true}, Disk: DiskSpec{SizeGB: 10, Type: "SSD"}}
+	c := PriceVM(context.Background(), cloud, PriceInput{ProjectID: "proj-1", VM: vm})
+	if c.Source != pricing.SourceAPI || c.TotalMonthlyRub != 0 || c.PriceAPIError != "" {
+		t.Errorf("cost %+v, want the API's zero", c)
+	}
+	c = PriceVM(context.Background(), cloud, PriceInput{ProjectID: "proj-1", VM: vm, PublicIP: true})
+	if c.Source == pricing.SourceAPI || c.PriceAPIError == "" {
+		t.Errorf("with a new floating IP: cost %+v, want the estimate with the reason", c)
+	}
+}

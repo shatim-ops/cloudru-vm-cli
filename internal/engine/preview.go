@@ -84,7 +84,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
 		for _, f := range flavors {
 			if f.Name == req.FlavorName || f.ID == req.FlavorName {
-				vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB}
+				vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB, FreeTier: f.FreeTier}
 				break
 			}
 		}
