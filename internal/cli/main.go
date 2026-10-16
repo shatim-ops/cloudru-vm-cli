@@ -63,7 +63,7 @@ var commandStarted bool
 // cmd/cloudru-vm ("go build ./cmd/cloudru-vm" in existing scripts) builds
 // the same program until v1.1.
 func Main(buildVersion, buildCommit, buildDate string) {
-	version, commit, date = buildVersion, buildCommit, buildDate
+	setBuildIdentity(buildVersion, buildCommit, buildDate)
 	if isLegacyAlias(os.Args[0]) {
 		printAliasNotice(os.Stderr, os.Args[1:])
 	}
@@ -450,6 +450,11 @@ func handleError(p *output.Printer, err error) {
 		return
 	}
 	p.Errorf("%s", message)
+	// --verbose: the underlying cause too (SSH exit status, HTTP error),
+	// which the message and hint summarise (QA r4 Q14).
+	if flagVerbose && cliErr != nil && cliErr.Err != nil {
+		p.Errorf(i18n.T("cause: %s", "причина: %s"), cliErr.Err)
+	}
 	if hint != "" {
 		p.Hint(hint)
 	}
@@ -646,6 +651,22 @@ func newVerifyCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Short: i18n.T("Run health checks against the deployed application (exit 1 if unhealthy, 4 if nothing is deployed)",
 			"Проверить, отвечает ли приложение (код 1 — не отвечает, 4 — ничего не развёрнуто)"),
+		Long: i18n.T(`Run health checks against the deployed application: a TCP connect to each
+port the compose file publishes, then HTTP (or HTTPS). An HTTP answer 2xx or
+3xx is healthy, and so is a port that accepts connections but does not speak
+HTTP (a database, a cache).
+
+With --json: an array with one object per port, keys port, status_code (0
+without an HTTP answer), healthy, latency_ms, error (only when the check
+failed) and protocol ("http", "https", "tcp", or "" when nothing answered).`,
+			`Проверить развёрнутое приложение: TCP-соединение с каждым портом, который
+публикует compose-файл, затем HTTP (или HTTPS). Ответ HTTP 2xx или 3xx —
+работает; порт, который принимает соединения, но не говорит по HTTP (база
+данных, кэш), — тоже.
+
+С --json — массив, по объекту на порт, с ключами port, status_code (0 без
+ответа HTTP), healthy, latency_ms, error (только если проверка не прошла) и
+protocol ("http", "https", "tcp" или "", если ничего не ответило).`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {

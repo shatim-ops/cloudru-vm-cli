@@ -12,6 +12,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -243,5 +244,17 @@ func TestApplyWait(t *testing.T) {
 	_ = applyWait(op, args)
 	if args["wait_seconds"] != float64(10) {
 		t.Errorf("explicit wait_seconds overridden: %v", args)
+	}
+}
+
+// A tool error without a hint prints no "hint" key in --json, not "hint":""
+// (QA r4 Q10); the other keys stay.
+func TestToolError_JSONWithoutHint(t *testing.T) {
+	var buf bytes.Buffer
+	handleError(output.NewWithWriter(&buf, output.ModeJSON, false),
+		toolError("dns_zones", `{"status":"error","error":"zone not found"}`))
+	want := `{"error":{"code":4,"reason":"NOT_FOUND","message":"dns_zones: zone not found"}}` + "\n"
+	if buf.String() != want {
+		t.Errorf("got %q, want %q", buf.String(), want)
 	}
 }

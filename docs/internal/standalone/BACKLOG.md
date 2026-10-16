@@ -18,7 +18,7 @@
 - [audit] `kubetools`: ~~не передавать `CLOUDRU_*` в дочерние процессы (`kubetools.go:65`)~~ — **сделано на этапе 8** (`childEnv`, заодно `MCP_BEARER_TOKEN`); пути поиска для Windows — остаются
 - [audit] ~~`id.cloud.ru/auth/system/openid/token` (mk8s kubeconfig) не найден в документации~~ — **проверено вживую 2026-10-14**: и `id.cloud.ru`, и `auth.iam.cloud.ru` (`/auth/system/openid/token`) отвечают 200 на `grant_type=access_key`; вопрос закрыт
 - [audit] Хост billing API и `CLOUDRU_AGREEMENT_ID`: документация хоста не называет; подтвердить
-- [audit] Публичный API цен Cloud.ru отсутствует; `internal/pricing` — оценка по зашитой карте. Для внешнего продукта нужен источник или явный disclaimer в каждом превью
+- [audit] ~~Публичный API цен Cloud.ru отсутствует; `internal/pricing` — оценка по зашитой карте. Для внешнего продукта нужен источник или явный disclaimer в каждом превью~~ **Пересмотрено (16.10, api-probe #4)**: `POST /api/v1/projects/{project_id}/price-calculation` из спецификации compute отвечает 200 ключу тестового проекта; в ответе сверх спецификации есть `mkp_image` и `custom_image_size`. Перевести превью на него с откатом на карту — см. [images]
 - [06] Жёсткие ожидания в MCP и deployplan: poll 5 с, 8 с, 10 с, `time.Sleep(5s)` · internal/mcp/tools.go:1687, internal/mcp/tools_stack.go:494, internal/mcp/captainkeys.go:79, internal/deployplan/apply.go:17,252 · текущие тесты эти пути не проходят; внедрить, когда появятся тесты
 - ~~[06] `go test -race` тратит ≈1 с на каждый пакет: race-рантайм спит `atexit_sleep_ms=1000` при выходе · все пакеты · с ростом числа пакетов с тестами упрёмся в 10 с; тогда `GORACE=atexit_sleep_ms=0` в CI и документацию для разработчика~~ **Сделано (15.10)**: `GORACE=atexit_sleep_ms=0` в шаге тестов CI и совет в README «Сборка из исходников»
 - [01] ~~Compute API 401/403 даёт `API_ERROR` (код 5), а не код 2 · internal/provision/adapter.go `doWithRetry`, ветка default · в adapter.go этап 1 меняет только http.Client: параллельно идёт этап 6~~ — **сделано в QA (qa-engine)**
@@ -117,3 +117,57 @@
     - I3, I4, P1–P3;
     - W2–W7 — wget без `--https-only`, cosign stderr, не-https без cosign, ID в публичном логе e2e, очистка e2e отдельным job, pyyaml без хэша.
   - **info:** M8–M12, C11, C12, P4, W8–W13.
+- [cli-brand] Фирменный акцент в выводе CLI. Решение владельца 16.10.2026: если делаем, то цвет консоли (зелёный), токены из snack-uikit. В `@snack-uikit/figma-tokens-nachos@19.0.5` (`build/scss/brand.scss`):
+  - Primary — фиолетовый бренд: `--sys-primary-accent-default` `#794ed3` в светлой теме, `#997adc` в тёмной;
+  - зелёный есть только в семействе green: `--sys-green-accent-default` `#57b762` / `#69b56f`. Это же семейство Snack использует для «успеха».
+
+  Консоль перекрашивает Primary в зелёный в своём проекте (custom colors в snack-uikit-template). Точные значения — у фронтенда консоли.
+
+  Развилка: если взять green из пакета, акцент совпадёт с «успехом». Тогда «успех» нужно отличать символом (✓) или вести через ANSI.
+
+  Где ставить акцент: маркер шага `==>`, заголовки `--help`, имена команд в примерах. Смысловые цвета не трогать. Обязательно: truecolor с откатом на 256 и 16 цветов, `NO_COLOR`, не-TTY без цвета.
+
+  Ждёт ревью r5 и решения «делаем или нет».
+- [command-model] Находки матрицы команд (`docs/internal/command-model.md`, разделы 5–6, 16.10.2026; проверены по коду выборочно). Утечка в шаге vm стека исправлена сразу. Остальное — до сведения трёх путей создания ВМ к одному ядру (v1.1):
+  - **medium:**
+    - `deploy_apply` пишет state только после ожидания ВМ и SSH (kill в это время — ВМ без записи);
+    - `provision` теряет ID FIP, привязанного после загрузки;
+    - правила `open_ports` нигде не учитываются;
+    - `deploy` подхватывает запись `provision`/`vm create` и ставит туда Docker;
+    - `destroy vm_id` на удалённую в консоли ВМ отвечает «no VM matching», запись остаётся, `stack_destroy` — `destroy_failed` (это же R11);
+    - нет сверки state с облаком.
+  - **low:**
+    - три схемы имени FIP при поиске «своего»;
+    - разные статусы записи при ошибке и таймауте, их нет в списке `state/types.go`;
+    - разный логин по умолчанию (`ubuntu`/`user1`);
+    - `provision` всегда шлёт тип диска SSD;
+    - разный выбор сети и SG;
+    - `--force` значит разное у deploy и destroy;
+    - `deploy_plan` помечен read-only, но пишет план и ключ;
+    - SSH-ключи, планы и job стека на диске никто не чистит.
+  - **Инварианты для теста:** №3 (у создающего инструмента есть удаляющий) и №4–6 сейчас не проходят — документ, раздел 8.
+- [cloud-readonly] Первый прогон job `readonly` (cloud-e2e #23, 16.10.2026): обязательные проверки прошли, read-only инструментов без аргументов — 28 из 40. Разобрать:
+  - `kafka_list`, `kafka_specs`, `redis_list`, `redis_specs` — API_ERROR, хотя `*_versions` тех же сервисов отвечают;
+  - `k8s_nodepools` без `cluster_id` (по описанию это необязательный фильтр) — API_ERROR;
+  - `org_projects` — NOT_FOUND (код 4) для ключа уровня проекта, `project list` в той же ситуации отвечает пояснением (C3).
+
+  Ожидаемо: `billing_*` (хост не подтверждён, [audit]), `audit_events` (401 у тестового ключа), `s3_buckets` (нет ключей S3), `vm_get`/`pg_get` (USAGE без ID). С следующего прогона в строках warn печатается HTTP-статус.
+- [qa-r4] Остатки отчёта QA r4 (PR #66, `docs/internal/qa-r4.md` в ветке `claude/qa-fable-r4`) после #67:
+  - **Q11 (low):** `evo configure` без терминала и без `--key-id`/`--secret-stdin` при существующем профиле отвечает rc 0 «Профиль сохранён», хотя ключ не менялся. В CI это маскирует ошибку. Нужно отвечать ошибкой «нужны Key ID и секрет», как без профиля.
+  - **Q12 (info):** частичное окружение (`CLOUDRU_SECRET` без `CLOUDRU_KEY_ID`) заменяет профиль целиком и даёт AUTH_REQUIRED. Так задумано (`internal/config/config.go:233`); описать в `docs/troubleshooting.md` рядом с AUTH_FAILED.
+  - **Подтверждены остатки r3:** R14, C4, C5, C6, C7, C12, I2 — см. [qa-r3].
+- [images] Проба каталога образов (api-probe #2–#4, 16.10.2026; дизайн — PR #65, `docs/internal/design-images.md`):
+  - **Каталог:** 86 образов, все без `project_id`: 60 `marketplace`, 26 `public`. Отечественные ОС — только `marketplace`, во всех трёх зонах:
+    - Astra Linux — 7 образов (Смоленск 1.8.1/1.8.2/1.8.3, в том числе KES; «Усиленный» и «Базовый» 1.7.7);
+    - Альт — 7;
+    - РЕД ОС — 3;
+    - SberLinux — 1.
+
+    Отдельного признака семейства и версии нет: имена разнобойные (`AstraLinuxSmolensk1.8.3KES`, `astra_1.8.1`, `alse-base-1-7-7`). Резолвер «семейство → последняя версия» по имени для них не сработает.
+  - **Мусор в общем каталоге:** среди `public` есть тестовые и сломанные образы, видные всем клиентам (`*-test*`, `debian-11_error`, `img-nester-*`). Это вопрос к команде compute. evo стоит прятать их по умолчанию: `enabled=true` оставляет 78 из 86, но уходят ли именно тестовые — не проверено.
+  - **Поиск на сервере работает:** `name=` и `display_name=` ищут по подстроке без учёта регистра (`name=ubuntu` — 17, `display_name=Astra` — 7). Своя индексация не нужна.
+  - **Поля продуктов:** у Astra, Альт и РЕД ОС тот же набор, что у Ubuntu (`name`/`linux_login`, `public_key`, `linux_password`, `hostname`, флаги `vmm_enabled`/`guest_agent_ready`). evo заполняет его уже сейчас, поэтому `evo vm create <имя> --image-id <ID из list-images>` для Astra должен работать (вживую не проверено). Исключения:
+    - у `redos_7.3_image` и `REDOS7.3-sert` есть обязательное `fqdn` типа `hostname`. evo заполняет поля по имени, а не по `field_type`, — вероятен 422;
+    - `mandatory_group` бывает с пробелом (`" authentication"`), по-русски («Метод аутентификации») и `null`; `guest_agent_ready` у одного образа типа `text`.
+  - **Цена:** `price-calculation` у всех образов, включая Astra KES, даёт `image` = 0 и `mkp_image` = 0. Два образа Astra (`alse-smolensk-1-8-3-mkp`, `alse-adv-1-7-7`) отвечают 422 `sku_list[1]: sku_identifier cannot be blank` — в биллинге у них нет SKU. Вопрос к маркетплейсу: создаются ли они вообще и как тарифицируется лицензия Astra.
+  - **`deploy` на Astra/Альт/РЕД ОС:** Docker ставится через `get.docker.com` (`internal/bootstrap/install.sh:54`), а он эти ОС не знает (по памяти, не проверено). ВМ будет создана и оплачена, затем `docker_failed`. До поддержки — отказ до создания ВМ ([cli-practice], дизайн §4.2).

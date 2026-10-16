@@ -3691,6 +3691,19 @@ evo tools list [flags]
 
 Проверить, отвечает ли приложение (код 1 — не отвечает, 4 — ничего не развёрнуто)
 
+### Synopsis
+
+```text
+Проверить развёрнутое приложение: TCP-соединение с каждым портом, который
+публикует compose-файл, затем HTTP (или HTTPS). Ответ HTTP 2xx или 3xx —
+работает; порт, который принимает соединения, но не говорит по HTTP (база
+данных, кэш), — тоже.
+
+С --json — массив, по объекту на порт, с ключами port, status_code (0 без
+ответа HTTP), healthy, latency_ms, error (только если проверка не прошла) и
+protocol ("http", "https", "tcp" или "", если ничего не ответило).
+```
+
 ```
 evo verify [flags]
 ```
@@ -3700,6 +3713,7 @@ evo verify [flags]
 ```
   evo verify
   evo deploy --yes && evo verify
+  evo verify --json | jq -r '.[] | select(.healthy | not) | .port'
 ```
 
 ### Options

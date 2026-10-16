@@ -228,13 +228,14 @@ type ErrorBody struct {
 	// language of the CLI: scripts match on it, not on Message.
 	Reason  string `json:"reason"`
 	Message string `json:"message"`
-	Hint    string `json:"hint"`
+	// Hint is left out when the error has none, not printed as "".
+	Hint string `json:"hint,omitempty"`
 }
 
 // JSONError writes
 // {"error": {"code": N, "reason": "...", "message": "...", "hint": "..."}}
 // to the error writer. code is the process exit code, reason the symbolic
-// code of the error.
+// code of the error; without a hint the "hint" key is left out.
 func (p *Printer) JSONError(code int, reason, message, hint string) error {
 	enc := json.NewEncoder(p.errOut)
 	return enc.Encode(struct {

@@ -11,11 +11,12 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
-// The MCP server reports the same version string in initialize.serverInfo,
-// so the fallback is applied to the variables themselves, before main runs.
-func init() {
+// setBuildIdentity sets the build identity Main got from cmd/evo, with the
+// fallback to the module and VCS data applied to the variables themselves:
+// the MCP server reports the same version string in initialize.serverInfo.
+func setBuildIdentity(v, c, d string) {
 	info, _ := debug.ReadBuildInfo()
-	version, commit, date = resolveVersion(version, commit, date, info)
+	version, commit, date = resolveVersion(v, c, d, info)
 }
 
 // resolveVersion keeps values set through -ldflags and replaces the defaults

@@ -1,0 +1,64 @@
+name: grok-review
+
+# Сигнал Grok начать ревью PR сразу, не дожидаясь его часового обхода, по
+# команде `/grok review` в комментарии к PR. Grok работает через
+# GitHub-приложение Cursor и оставляет ревью сам; этот workflow только
+# посылает POST на его вебхук. Запустить может только владелец репозитория
+# (репозиторий публичный: иначе будить Grok мог бы любой комментатор).
+#
+# Тело — {"repo","pr","by"}; кода, diff и токенов GitHub нет. Значения из
+# события идут через env и jq, а не подстановкой в shell. Адрес вебхука и
+# ответ в лог не печатаются.
+#
+# Секреты (Settings → Secrets and variables → Actions):
+#   GROK_WEBHOOK_URL — адрес вебхука; GROK_WEBHOOK_KEY — Bearer-токен.
+#   Без них — notice, job не падает.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: grok-review-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.author_association == 'OWNER' &&
+      startsWith(github.event.comment.body, '/grok review')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Сигнал Grok
+        env:
+          URL: ${{ secrets.GROK_WEBHOOK_URL }}
+          KEY: ${{ secrets.GROK_WEBHOOK_KEY }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          BY: ${{ github.event.comment.user.login }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::notice::нет секретов GROK_WEBHOOK_URL/GROK_WEBHOOK_KEY — сигнал не отправлен; Grok посмотрит PR при часовом обходе"
+            exit 0
+          fi
+          body=$(jq -cn --arg repo "$REPO" --argjson pr "$PR" --arg by "$BY" '{repo: $repo, pr: $pr, by: $by}')
+          # Только HTTP-код (или код ошибки curl): ни адреса, ни тела ответа.
+          set +e
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 --retry 2 -X POST "$URL" \
+            -H "Authorization: Bearer $KEY" \
+            -H "Content-Type: application/json" \
+            -d "$body")
+          rc=$?
+          set -e
+          if [ "$rc" != 0 ]; then
+            echo "::error::вебхук Grok недоступен: ошибка curl $rc (6 — имя не разрешается, 7 — отказ соединения, 28 — тайм-аут, 35/60 — TLS)"
+            exit 1
+          fi
+          case "$code" in
+            2??) echo "сигнал Grok отправлен: PR #$PR, HTTP $code" ;;
+            *) echo "::error::вебхук Grok ответил HTTP $code (401/403 — ключ, 404 — адрес, 400/422 — формат тела)"; exit 1 ;;
+          esac

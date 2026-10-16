@@ -2,7 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"debug/buildinfo"
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -89,5 +94,60 @@ func TestPrintVersion_JSON(t *testing.T) {
 func TestRun_VersionExitsZero(t *testing.T) {
 	if got := run([]string{"version", "--json"}); got != 0 {
 		t.Errorf("run(version --json) = %d, want 0", got)
+	}
+}
+
+func TestSetBuildIdentity_KeepsLdflags(t *testing.T) {
+	v, c, d := version, commit, date
+	t.Cleanup(func() { version, commit, date = v, c, d })
+	setBuildIdentity("1.0.0-rc.4", "abc123", "2026-10-16T00:00:00Z")
+	if version != "1.0.0-rc.4" || commit != "abc123" || date != "2026-10-16T00:00:00Z" {
+		t.Errorf("got %q %q %q", version, commit, date)
+	}
+}
+
+// docs/install.md: "go build ./cmd/evo" from a checkout reports the commit
+// of the VCS data; Main used to overwrite it with "none" (QA r4 Q4, T-V1).
+func TestBuiltBinaryReportsVCSCommit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the binary")
+	}
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("no go in PATH")
+	}
+	name := "evo"
+	if runtime.GOOS == "windows" {
+		name += ".exe" // exec does not find a binary without it there
+	}
+	bin := filepath.Join(t.TempDir(), name)
+	if out, err := exec.Command(goBin, "build", "-o", bin, "../../cmd/evo").CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	info, err := buildinfo.ReadFile(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var revision string
+	for _, s := range info.Settings {
+		if s.Key == "vcs.revision" {
+			revision = s.Value
+		}
+	}
+	if revision == "" {
+		t.Skip("built without VCS data (not a checkout)")
+	}
+	cmd := exec.Command(bin, "version", "--json")
+	cmd.Env = append(os.Environ(), "EVO_LANG=en")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got versionInfo
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("%v: %q", err, out)
+	}
+	if got.Commit != revision || got.Date == "unknown" || got.Version == "dev" {
+		t.Errorf("version --json = %s; want commit %s, the VCS time and the module version", out, revision)
 	}
 }

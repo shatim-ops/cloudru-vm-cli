@@ -3,6 +3,7 @@ package verify
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -11,17 +12,30 @@ import (
 	"time"
 )
 
-// ProbeResult holds the outcome of a single health check.
+// ProbeResult holds the outcome of a single health check. Its JSON is the
+// output of "evo verify --json", and its keys are a contract
+// (docs/exit-codes.md): snake_case like the rest of the CLI's JSON.
 type ProbeResult struct {
-	Port       int
-	StatusCode int
-	Healthy    bool
-	Latency    time.Duration
-	Error      string // non-empty if probe failed
+	Port       int  `json:"port"`
+	StatusCode int  `json:"status_code"` // 0 without an HTTP answer
+	Healthy    bool `json:"healthy"`
+	// Latency is "latency_ms" in JSON, whole milliseconds (MarshalJSON).
+	Latency time.Duration `json:"-"`
+	Error   string        `json:"error,omitempty"` // non-empty if probe failed
 	// Protocol is how the port answered: "http", "https", or "tcp" for a
 	// service that accepts connections but does not speak HTTP (a database,
 	// a cache). Empty when nothing answered.
-	Protocol string
+	Protocol string `json:"protocol"`
+}
+
+// MarshalJSON adds Latency as latency_ms: a number of milliseconds, not the
+// nanoseconds of a bare time.Duration.
+func (r ProbeResult) MarshalJSON() ([]byte, error) {
+	type fields ProbeResult // without the method
+	return json.Marshal(struct {
+		fields
+		LatencyMS int64 `json:"latency_ms"`
+	}{fields(r), r.Latency.Milliseconds()})
 }
 
 // Check probes each port of ip: a TCP connect, then HTTP (or HTTPS). An HTTP
