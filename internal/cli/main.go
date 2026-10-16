@@ -450,6 +450,11 @@ func handleError(p *output.Printer, err error) {
 		return
 	}
 	p.Errorf("%s", message)
+	// --verbose: the underlying cause too (SSH exit status, HTTP error),
+	// which the message and hint summarise (QA r4 Q14).
+	if flagVerbose && cliErr != nil && cliErr.Err != nil {
+		p.Errorf(i18n.T("cause: %s", "причина: %s"), cliErr.Err)
+	}
 	if hint != "" {
 		p.Hint(hint)
 	}

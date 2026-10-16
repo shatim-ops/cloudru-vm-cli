@@ -126,6 +126,11 @@ func TestDeploy_DockerTimeoutMarksStateAndRerunRetries(t *testing.T) {
 	if !stderrors.As(err, &cliErr) || cliErr.Code != clerrors.CodeSSHTimeout || !strings.Contains(cliErr.Message, "Docker is not ready") {
 		t.Fatalf("err = %v, want SSH_TIMEOUT 'Docker is not ready'", err)
 	}
+	// The install printed nothing: the hint names how the last attempt
+	// ended, or there is nothing to diagnose (QA r4 Q14, run #24).
+	if !strings.Contains(cliErr.Hint, "Last attempt ended with: curl: (6) Could not resolve host") {
+		t.Errorf("hint lacks the last attempt's error:\n%s", cliErr.Hint)
+	}
 	if a := readActive(t, dir); a == nil || a.Status != "docker_failed" {
 		t.Fatalf("state = %+v, want status docker_failed", a)
 	}

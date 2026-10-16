@@ -36,6 +36,9 @@ type Config struct {
 	ImageID       string `yaml:"image_id" json:"image_id"` // boot image UUID
 	DiskSize      int    `yaml:"disk_size" json:"disk_size"`
 	Timeout       int    `yaml:"timeout" json:"timeout"` // seconds deploy waits for the VM to become active
+	// SecurityGroup is the group (name or UUID) deploy puts the VM in and
+	// opens the compose ports in; empty — chosen by resolveNetwork.
+	SecurityGroup string `yaml:"security_group" json:"security_group,omitempty"`
 
 	// Output
 	JSON    bool `yaml:"-" json:"-"` // --json flag only

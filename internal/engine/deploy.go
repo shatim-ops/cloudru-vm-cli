@@ -89,6 +89,9 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	// Skip only a deployment that finished: after an SSH or Docker failure the
 	// hash is already recorded, and a plain re-run must retry.
 	if !isNewDeploy && existing.ComposeHash == project.Hash && existing.Status == "running" && !opts.Force {
+		if e.Printer.IsJSON() {
+			return e.Printer.JSON(map[string]any{"status": "unchanged", "vm_id": existing.VMID, "vm_ip": existing.VMIP})
+		}
 		e.Printer.Success(i18n.T("No changes detected in compose file (hash unchanged). Nothing to deploy.",
 			"Compose-файл не изменился (хеш тот же), развёртывать нечего."))
 		e.Printer.Hint(i18n.T("Use --force to redeploy anyway.", "Развернуть заново всё равно: --force."))
@@ -201,7 +204,15 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 
 	if err := e.waitForSSH(ctx, rec.VMIP, sshUserForConnect, rec.SSHHostKeyFingerprint, maxRetries); err != nil {
+		// The status says which: a refused key or a changed host key is
+		// not a timeout, and a re-run will not fix it (QA r4 Q7).
 		rec.Status = "ssh_timeout"
+		switch clerrors.Reason(err) {
+		case clerrors.CodeSSHAuthFailed:
+			rec.Status = "ssh_auth_failed"
+		case clerrors.CodeSSHHostKeyChanged:
+			rec.Status = "ssh_host_key_changed"
+		}
 		rec.UpdatedAt = time.Now()
 		stateFile.UpsertDeployment(rec)
 		_ = state.Write(statePath, stateFile)
@@ -272,6 +283,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 
 	// Step 5: Verify.
+	var results []verify.ProbeResult
 	e.Printer.Step(5, totalSteps, i18n.T("Verifying health...", "Проверка работоспособности..."))
 	if len(project.Ports) > 0 {
 		// Give containers a moment to start.
@@ -285,12 +297,21 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		if probe == nil {
 			probe = verify.Check
 		}
-		results := probe(ctx, rec.VMIP, project.Ports, t.VerifyTimeout)
+		results = probe(ctx, rec.VMIP, project.Ports, t.VerifyTimeout)
 		e.printVerifyResults(results, rec.VMIP)
 	} else {
 		e.Printer.StepDone(i18n.T("No exposed ports to verify", "Открытых портов нет, проверять нечего"))
 	}
 
+	// --json: the result on stdout, as destroy and status give it (QA r4
+	// Q1: "evo deploy --yes --json > deploy.json" in docs/exit-codes.md).
+	if e.Printer.IsJSON() {
+		return e.Printer.JSON(map[string]any{
+			"status": "deployed", "vm_id": rec.VMID, "vm_ip": rec.VMIP,
+			"project_id": e.projectOf(&rec), "region": rec.Region, "flavor": rec.VMFlavor,
+			"ports": rec.ExposedPorts, "verify": results,
+		})
+	}
 	e.Printer.Success(i18n.Tf("\nDeployment complete! VM IP: %s", "\nГотово! IP ВМ: %s", rec.VMIP))
 	return nil
 }
@@ -676,6 +697,12 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				return rec, nil
 			}
 			if provision.VMFailed(updated.Status) {
+				// The record says so too: status showed "creating" for a
+				// VM in error_creating (QA r4 Q6). destroy deletes it.
+				rec.Status = "error"
+				rec.UpdatedAt = time.Now()
+				stateFile.UpsertDeployment(rec)
+				_ = state.Write(statePath, stateFile)
 				return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
 					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", vm.ID, updated.Status),
 					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru."))
@@ -1006,12 +1033,20 @@ func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRec
 // waitForSSH retries SSH connection until the VM is reachable.
 func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, maxRetries int) error {
 	var lastErr error
+	start, lastReport := time.Now(), time.Now()
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		err := e.Deployer.Connect(ctx, ip, 22, user, e.SSHKeyPEM, knownHostKey)
 		if err == nil {
 			return nil
 		}
 		lastErr = err
+		// A fresh VM's sshd can take minutes: say so once a minute, as the
+		// wait for an active VM does, so it does not look hung (QA r4 Q13).
+		if time.Since(lastReport) >= time.Minute {
+			e.Printer.StepDone(i18n.Tf("waiting for SSH on %s (%s elapsed: %s)", "ожидание SSH на %s (прошло %s: %s)",
+				ip, time.Since(start).Round(time.Second), errLine(err)))
+			lastReport = time.Now()
+		}
 
 		// Don't retry on auth failures or host key mismatches.
 		if cliErr, ok := err.(*clerrors.CLIError); ok {
@@ -1080,9 +1115,9 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		if !time.Now().Before(deadline) {
 			break
 		}
-		e.Printer.Warning(i18n.Tf("Docker not ready yet (attempt %d, %s elapsed), retrying...",
-			"Docker ещё не готов (попытка %d, прошло %s), повтор...",
-			attempt, time.Since(start).Round(time.Second)))
+		e.Printer.Warning(i18n.Tf("Docker not ready yet (attempt %d, %s elapsed: %s), retrying...",
+			"Docker ещё не готов (попытка %d, прошло %s: %s), повтор...",
+			attempt, time.Since(start).Round(time.Second), errLine(err)))
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -1100,16 +1135,34 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	}
 
 	hint := i18n.T("Check that the VM resolves names (the subnet's DNS) and reaches its apt mirror and get.docker.com, "+
-		"then re-run 'evo deploy'. \"Temporary failure in name resolution\" above means no DNS inside the VM: a network problem of the zone or subnet, not of the compose project; if it repeats, destroy and deploy in another zone.",
+		"then re-run 'evo deploy'. \"Temporary failure in name resolution\" in the install output means no DNS inside the VM: a network problem of the zone or subnet, not of the compose project; if it repeats, destroy and deploy in another zone.",
 		"Проверьте, что ВМ разрешает имена (DNS подсети) и достаёт до своего apt-зеркала и get.docker.com, "+
-			"затем повторите 'evo deploy'. \"Temporary failure in name resolution\" выше означает, что внутри ВМ нет DNS: "+
+			"затем повторите 'evo deploy'. \"Temporary failure in name resolution\" в выводе установки означает, что внутри ВМ нет DNS: "+
 			"это проблема сети зоны или подсети, а не compose-проекта; если повторится, удалите ВМ (destroy) и разверните в другой зоне.")
+	// The install's own output, and always how the last attempt ended: with
+	// an empty output (a dropped session, sudo refused, a timeout) the
+	// reason is all there is to tell "no DNS" from the rest (QA r4 Q14).
+	reason := i18n.Tf("Last attempt ended with: %s", "Последняя попытка завершилась так: %s", errLine(lastErr))
 	if tail := lastLines(lastOut, 15); tail != "" {
-		hint = i18n.T("Last output of the Docker install:\n", "Последние строки установки Docker:\n") + tail + "\n" + hint
+		hint = i18n.T("Last output of the Docker install:\n", "Последние строки установки Docker:\n") + tail + "\n" + reason + "\n" + hint
+	} else {
+		hint = reason + i18n.T(" (the install printed nothing)\n", " (установка ничего не вывела)\n") + hint
 	}
 	return clerrors.Wrap(clerrors.CodeSSHTimeout,
 		i18n.Tf("Docker is not ready on VM %s after %s", "Docker на ВМ %s не готов за %s", ip, t.DockerWaitTimeout),
 		hint, lastErr)
+}
+
+// errLine is an error on one short line for progress and hints.
+func errLine(err error) string {
+	if err == nil {
+		return i18n.T("no error reported", "ошибка не сообщается")
+	}
+	s := strings.Join(strings.Fields(err.Error()), " ")
+	if r := []rune(s); len(r) > 200 {
+		s = string(r[:200]) + "…"
+	}
+	return s
 }
 
 // reconnect opens a fresh SSH connection to the VM.
