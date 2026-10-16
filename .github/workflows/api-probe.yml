@@ -117,6 +117,17 @@ jobs:
           probe images_private_proj   "$C/images?$P&type=private&limit=100" "{total, ru_os: ([.items[] | select(((.name // \"\") + \" \" + (.display_name // \"\")) | test(\"$ru\"; \"i\"))] | length)}"
           probe images_project_types  "$C/images?$P&limit=100" '{total, types: ([.items[].type] | group_by(.) | map({(.[0]): length}) | add)}'
 
+          # Создание ВМ из AstraLinuxSmolensk1.8.3KES и redos_7.3_image по имени
+          # дало 422 wrong_image (cloud-e2e #31): проекту, видимо, доступна
+          # только часть общего каталога. Имена — публичные имена каталога.
+          echo "== образы: какие из общего каталога видны проекту"
+          shared=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/images?limit=100" | jq -c '[.items[] | select(.project_id == null) | {name, type}]' || echo '[]')
+          inproj=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/images?$P&limit=100" | jq -c '[.items[] | select(.project_id == null) | .name]' || echo '[]')
+          jq -n --argjson s "$shared" --argjson p "$inproj" '{shared: ($s|length), visible_in_project: ($p|length), not_in_project: [$s[] | select(.name as $n | $p | index($n) | not) | "\(.type):\(.name)"]}'
+          for n in AstraLinuxSmolensk1.8.3KES redos_7.3_image astra_1.8.1 alt_8_sp_9 ubuntu-22.04; do
+            probe "proj_name_$n" "$C/images?$P&name=$n&limit=100" '{total, names: [.items[].name]}'
+          done
+
           echo "== образы: фильтры name/display_name (точное совпадение или подстрока, регистр)"
           probe name_exact            "$C/images?name=Ubuntu-24.04&limit=100" '{total, names: [.items[].name]}'
           probe name_lower            "$C/images?name=ubuntu-24.04&limit=100" '{total, names: [.items[].name]}'
