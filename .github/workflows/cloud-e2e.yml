@@ -30,6 +30,10 @@ on:
         description: "Also create VMs from domestic OS images by name (Astra Linux, RED OS): vm create --image → SSH → os-release → delete"
         type: boolean
         default: false
+      cleanup_only:
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs, evo: rules for ports 80/8080)"
+        type: boolean
+        default: false
   push:
     branches: ["e2e/**"]
 
@@ -46,6 +50,7 @@ jobs:
   # --allow-project, 401 без токена). Идёт параллельно с e2e; в лог — только
   # имена, коды и счётчики (.github/scripts/cloud-readonly.sh).
   readonly:
+    if: ${{ !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -77,6 +82,7 @@ jobs:
         run: .github/scripts/cloud-readonly.sh
 
   e2e:
+    if: ${{ !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -262,7 +268,7 @@ jobs:
   # IP и ID ВМ в лог не попадают (маскируются), os-release — только ID и
   # версия.
   os-smoke:
-    if: inputs.os_smoke
+    if: ${{ inputs.os_smoke && !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -414,3 +420,93 @@ jobs:
           done
           echo "::error::после vm delete осталось правило «evo:» для порта 8080"
           exit 1
+
+  # Остатки прошлых прогонов (16.10.2026: отменённый прогон оставил ВМ
+  # evo-e2e-app, её FIP и правило порта 80, следующий deploy упал на 409).
+  # Ничего не создаёт. Правила «evo:» для 80/8080 удаляются, только когда
+  # ВМ evo-e2e-* в проекте не осталось. ID и IP маскируются.
+  cleanup:
+    if: ${{ inputs.cleanup_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Сборка
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      - name: ВМ evo-e2e-*
+        run: |
+          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g"; }
+          vms() { evo tools call vm_list --json | jq -c '[.vms[]? | select((.name // "") | startswith("evo-e2e-")) | {id, name, state: (.state // .status)}]'; }
+          for i in $(seq 1 15); do
+            list=$(vms)
+            for id in $(jq -r '.[].id' <<<"$list"); do echo "::add-mask::$id"; done
+            jq -c '[.[] | {name, state}]' <<<"$list"
+            [ "$(jq length <<<"$list")" = 0 ] && { echo "ВМ evo-e2e-* нет"; exit 0; }
+            for id in $(jq -r '.[].id' <<<"$list"); do
+              evo tools call destroy --arg vm_id="$id" --arg confirmed=true --json 2>&1 |
+                jq -c '{status, error: ((.error // null) | if . == null then null else tostring | .[0:300] end), message: ((.message // null) | if . == null then null else tostring | .[0:200] end)}' 2>/dev/null | redact || true
+            done
+            echo "попытка $i: жду 60 с"
+            sleep 60
+          done
+          echo "::error::ВМ evo-e2e-* не удалились за 15 минут"
+          exit 1
+
+      - name: Floating IP fip-evo-e2e-*
+        if: always()
+        run: |
+          for id in $(evo tools call list_floating_ips --json |
+            jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-")) and .available) | .id'); do
+            echo "::add-mask::$id"
+            echo "освобождаю floating IP"
+            evo tools call release_floating_ip --arg id="$id" --arg confirmed=true --json | jq -c '{status}' || true
+          done
+          left=$(evo tools call list_floating_ips --json | jq '[.floating_ips[]? | select((.name // "") | startswith("fip-evo-e2e-"))] | length')
+          echo "FIP fip-evo-e2e-* осталось: $left"
+          [ "$left" = 0 ] || { echo "::error::остались FIP fip-evo-e2e-*"; exit 1; }
+
+      # Правила удаляет API напрямую: в evo нет команды удаления правила.
+      - name: Правила «evo:» для 80 и 8080
+        if: always()
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+        run: |
+          n=$(evo tools call vm_list --json | jq '[.vms[]? | select((.name // "") | startswith("evo-e2e-"))] | length')
+          [ "$n" = 0 ] || { echo "::error::ВМ evo-e2e-* ещё есть ($n) — правила не трогаю"; exit 1; }
+          evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg.json"
+          rules=$(jq -r '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and (.port_range == "80:80" or .port_range == "8080:8080") and ((.description // "") | startswith("evo:"))) | "\($g) \(.id) \(.port_range)"' "$RUNNER_TEMP/sg.json")
+          [ -n "$rules" ] || { echo "правил «evo:» для 80/8080 нет"; exit 0; }
+          TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
+            jq -r '.access_token // .accessToken // empty')
+          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          while read -r g r port; do
+            echo "::add-mask::$g"; echo "::add-mask::$r"
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
+              "https://compute.api.cloud.ru/api/v1/security-groups/$g/rules/$r")
+            echo "правило $port: DELETE http=$code"
+          done <<<"$rules"
