@@ -62,6 +62,12 @@ func QuoteVM(ctx context.Context, cloud provision.CloudAPI, in PriceInput) (pric
 	if err != nil {
 		return pricing.Estimate{}, priceError(ctx, err)
 	}
+	// A 200 with a zero total is not a price (the API answers 0 for what
+	// it cannot price, e.g. image licences): fall back to the rate card
+	// with the reason (ревью Fable на #80).
+	if pc.TotalPriceMonth <= 0 && pc.TotalPriceHour <= 0 {
+		return pricing.Estimate{}, fmt.Errorf("%s", i18n.T("the API answered a zero price", "API ответил нулевой ценой"))
+	}
 	return pricing.FromCalculation(*pc), nil
 }
 

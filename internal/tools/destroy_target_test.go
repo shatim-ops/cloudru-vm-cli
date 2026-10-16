@@ -200,3 +200,30 @@ func TestDestroyTargeted_GetFailsKeepsRecord(t *testing.T) {
 		t.Errorf("record changed: %+v", a)
 	}
 }
+
+// Запись ВМ другого проекта: 404 на GET /vms/{id} не доказывает, что ВМ нет
+// — ничего не удаляется, запись остаётся (ревью Fable на #81).
+func TestDestroyTargeted_RecordOfAnotherProject(t *testing.T) {
+	cloud := &goneCloud{}
+	r, dir := targetRegistry(t, cloud)
+	path := state.DefaultPath(dir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range sf.Deployments {
+		sf.Deployments[i].ProjectID = "p-other"
+	}
+	if err := state.Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-1", "confirmed": true})
+	if !isErr || !strings.Contains(text, "another project") || !strings.Contains(text, `"reason": "CONFIG_INVALID"`) ||
+		cloud.getCalls != 0 || cloud.releasedFIP != "" {
+		t.Fatalf("answer %s, GET calls %d, released %q", text, cloud.getCalls, cloud.releasedFIP)
+	}
+	sf, _ = state.Read(path)
+	if a := sf.ActiveDeployment(); a == nil || a.VMID != "vm-1" {
+		t.Errorf("record dropped: %+v", sf.Deployments)
+	}
+}

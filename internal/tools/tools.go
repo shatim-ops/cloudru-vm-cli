@@ -1982,7 +1982,7 @@ func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string,
 		Follow:  false,
 	}
 	if err := eng.Logs(ctx, opts); err != nil {
-		return buf.String() + "\n" + err.Error(), true
+		return errAnswer(err, map[string]any{"log": buf.String()}), true
 	}
 	return buf.String(), false
 }
@@ -2052,7 +2052,18 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	// a delete; "no VM matching" left the record for status to show forever.
 	alreadyGone := false
 	if target == nil {
-		if vmID != "" && recordedVM(statePath, vmID) {
+		recorded, recProject := false, ""
+		if vmID != "" {
+			recorded, recProject = recordedVM(statePath, vmID)
+		}
+		// A record of another project: GET /vms/{id} carries no project, so
+		// its 404 does not prove the VM is gone (ревью Fable на #81).
+		if recorded && recProject != "" && eng.Config.ProjectID != "" && recProject != eng.Config.ProjectID {
+			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("VM %s is recorded for another project than the active one; nothing was deleted and its record is kept", vmID),
+				"Switch to the record's project ('evo project use <id>' or CLOUDRU_PROJECT_ID) and call destroy again.")), true
+		}
+		if recorded {
 			_, gerr := eng.Cloud.GetVM(ctx, vmID)
 			var ce *clierrors.CLIError
 			switch {
@@ -2209,17 +2220,19 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 }
 
 // recordedVM reports whether the local state has a deployment of vmID.
-func recordedVM(statePath, vmID string) bool {
+// recordedVM reports whether the state records the VM, and the project of
+// its record ("" when the record has none).
+func recordedVM(statePath, vmID string) (bool, string) {
 	sf, err := state.Read(statePath)
 	if err != nil {
-		return false
+		return false, ""
 	}
 	for _, d := range sf.Deployments {
 		if d.VMID == vmID {
-			return true
+			return true, d.ProjectID
 		}
 	}
-	return false
+	return false, ""
 }
 
 func (s *Registry) handleListZones(ctx context.Context, args map[string]any) (string, bool) {
