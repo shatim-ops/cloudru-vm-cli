@@ -185,6 +185,9 @@ func TestDeploy_DockerTimeoutKeepsLastFailedAttemptOutput(t *testing.T) {
 	if !strings.Contains(cliErr.Hint, "Output of the last attempt that failed on its own") || !strings.Contains(cliErr.Hint, "E: Failed to fetch") {
 		t.Errorf("hint lacks the failed attempt's apt error:\n%s", cliErr.Hint)
 	}
+	if !strings.Contains(cliErr.Hint, "Diagnosis: apt cannot download packages") {
+		t.Errorf("hint lacks the diagnosis:\n%s", cliErr.Hint)
+	}
 	if !strings.Contains(out.String(), "Last line of the install: E: Failed to fetch") {
 		t.Errorf("warning lacks the attempt's last line:\n%s", out.String())
 	}
