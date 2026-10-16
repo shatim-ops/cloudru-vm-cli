@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,5 +74,36 @@ func TestTrimNewline(t *testing.T) {
 		if got := trimNewline(in); got != want {
 			t.Errorf("%q → %q, want %q", in, got, want)
 		}
+	}
+}
+
+// --meta поле=- в терминале: значение читается одной строкой без эха и с
+// подсказкой, а не молчаливым ожиданием Ctrl-D с паролем на экране (ревью
+// на #77).
+func TestPairsArg_StdinTerminalReadsWithoutEcho(t *testing.T) {
+	oldTTY, oldPass, oldSave := stdinIsTerminal, readPassword, saveTerminal
+	t.Cleanup(func() { stdinIsTerminal, readPassword, saveTerminal = oldTTY, oldPass, oldSave })
+	stdinIsTerminal = func() bool { return true }
+	saveTerminal = func() func() { return func() {} }
+	reads := 0
+	readPassword = func() ([]byte, error) { reads++; return []byte("s3cret-from-tty"), nil }
+
+	var prompt bytes.Buffer
+	m, err := pairsArg(context.Background(), os.Stdin, &prompt, "meta", []string{"admin_password=-", "hostname=web-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m["admin_password"] != "s3cret-from-tty" || m["hostname"] != "web-1" || reads != 1 {
+		t.Errorf("values = %v, reads = %d", m, reads)
+	}
+	if !strings.Contains(prompt.String(), "admin_password") || strings.Contains(prompt.String(), "s3cret") {
+		t.Errorf("prompt = %q: must name the field and not echo the value", prompt.String())
+	}
+
+	// Не терминал (pipe) — как раньше, весь stdin.
+	stdinIsTerminal = func() bool { return false }
+	m, err = pairsArg(context.Background(), strings.NewReader("piped\n"), &prompt, "meta", []string{"admin_password=-"})
+	if err != nil || m["admin_password"] != "piped" {
+		t.Errorf("pipe: %v %v", m, err)
 	}
 }

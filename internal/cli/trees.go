@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -399,7 +400,7 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 		}
 		if c.Pairs[p.Name] {
 			vals, _ := cmd.Flags().GetStringArray(name)
-			m, err := pairsArg(cmd.InOrStdin(), name, vals)
+			m, err := pairsArg(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), name, vals)
 			if err != nil {
 				return nil, err
 			}
@@ -439,7 +440,7 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 // a trailing newline is trimmed from both. A secret given so stays out of
 // argv and the shell history; a literal value that starts with "@" (or is
 // "-") goes through a file.
-func pairsArg(stdin io.Reader, flag string, vals []string) (map[string]any, error) {
+func pairsArg(ctx context.Context, stdin io.Reader, prompt io.Writer, flag string, vals []string) (map[string]any, error) {
 	out := make(map[string]any, len(vals))
 	fromStdin := ""
 	for _, v := range vals {
@@ -464,6 +465,20 @@ func pairsArg(stdin io.Reader, flag string, vals []string) (map[string]any, erro
 						"stdin читает только одно поле; остальные — из файлов: --%s %s=@<файл>.", flag, k))
 			}
 			fromStdin = k
+			if f, ok := stdin.(*os.File); ok && f == os.Stdin && stdinIsTerminal() {
+				// A terminal: one line, not echoed, with a prompt — not a
+				// silent wait for Ctrl-D with the password on the screen.
+				if ctx == nil {
+					ctx = context.Background()
+				}
+				v, err := newConsole(os.Stdin, prompt, true).askSecret(ctx,
+					i18n.Tf("Value of %s (not echoed): ", "Значение поля %s (не отображается): ", k))
+				if err != nil {
+					return nil, err
+				}
+				val = v
+				break
+			}
 			b, err := io.ReadAll(stdin)
 			if err != nil {
 				return nil, clerrors.New(clerrors.CodeUsage,
