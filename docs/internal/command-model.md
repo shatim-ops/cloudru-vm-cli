@@ -279,7 +279,7 @@ deploy/vm/stack не пишет ни state, ни job.
 | snat | `snat_create`/`snat_delete` | шлюз SNAT | нет (job стека) | нет | `snat_delete`, `stack_destroy` |
 | disk | `disk_create` (с `attach_to`), `disk_attach`, `disk_detach`, `disk_resize`, `disk_delete` | диск, привязка | нет | нет | `disk_delete`; `destroy` диски, кроме загрузочного, не трогает |
 | k8s | `k8s_create`/`k8s_delete`, `k8s_add_nodepool` | кластер, группа узлов | нет (кластер — job стека) | только в стеке | `k8s_delete`, `stack_destroy`; удаления группы узлов нет |
-| k8s | `k8s_add_addon` | плагин кластера (`POST /v3/clusterAddons`; вживую — cert-manager, 16.10.2026) | нет | нет | удаления нет (в спецификации — `DELETE /v3/clusterAddons/{id}`); по-видимому, уходит с кластером |
+| k8s | `k8s_add_addon` | плагин кластера (`POST /v3/clusterAddons`; вживую — cert-manager, 16.10.2026) | нет | нет | удаления в evo нет (в спецификации — `DELETE /v3/clusterAddons/{id}`): в консоли; кластер с плагином удаляется вживую (k8s-smoke 16.10.2026) — плагин уходит с ним |
 | k8s | `k8s_kubectl`, `k8s_apply`, `k8s_helm` | объекты внутри кластера | нет | — | пользователь (kubectl/helm) |
 | pg | `pg_create`/`pg_delete` | кластер PostgreSQL | нет (job стека) | только в стеке | `pg_delete`, `stack_destroy` |
 | pg | `pg_db_*`, `pg_user_*`, `pg_backup_create` | база, пользователь, резервная копия | нет | нет | `pg_db_delete`, `pg_user_delete`; удаления копии нет |

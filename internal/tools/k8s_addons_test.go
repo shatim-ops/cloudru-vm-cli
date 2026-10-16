@@ -270,7 +270,7 @@ func TestK8sAddAddon_InstallsWithConfig(t *testing.T) {
 	if isErr || m["status"] != "installing" || m["operation_id"] != "op-1" || m["cluster_addon_id"] != "ca-1" || m["namespace"] != "cert-manager" {
 		t.Fatalf("confirmed: %s", text)
 	}
-	if note, _ := m["note"].(string); !strings.Contains(note, `k8s_kubectl args="get pods -n cert-manager"`) {
+	if note, _ := m["note"].(string); !strings.Contains(note, `k8s_kubectl args="get pods -n cert-manager"`) || !strings.Contains(note, "remove it in the Cloud.ru console") {
 		t.Errorf("note: %s", note)
 	}
 	if len(f.posts) != 1 {

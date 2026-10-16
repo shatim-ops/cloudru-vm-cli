@@ -543,7 +543,8 @@ func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (
 		"version": r.AppVersion, "requirements": requirements,
 		"note": "Installation is async. Next: check the addon's pods with k8s_kubectl args=\"" + check + "\" (CLI: evo k8s kubectl " + clusterID + " " + check + ") " +
 			"until they are Running and Ready=True; pods of a Job (e.g. cert-manager-startupapicheck) end Completed. " +
-			"Pods stuck in ImagePullBackOff may mean the cluster has no internet egress: Cloud.ru needs a public SNAT gateway in the nodes' zone (" + snatDocURL + ").",
+			"Pods stuck in ImagePullBackOff may mean the cluster has no internet egress: Cloud.ru needs a public SNAT gateway in the nodes' zone (" + snatDocURL + "). " +
+			"evo has no command to remove an addon: remove it in the Cloud.ru console; it also goes with the cluster (k8s_delete).",
 	}
 	if r.AddonNamespace != "" {
 		out["namespace"] = r.AddonNamespace
