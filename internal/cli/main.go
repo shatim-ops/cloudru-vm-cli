@@ -63,7 +63,7 @@ var commandStarted bool
 // cmd/cloudru-vm ("go build ./cmd/cloudru-vm" in existing scripts) builds
 // the same program until v1.1.
 func Main(buildVersion, buildCommit, buildDate string) {
-	version, commit, date = buildVersion, buildCommit, buildDate
+	setBuildIdentity(buildVersion, buildCommit, buildDate)
 	if isLegacyAlias(os.Args[0]) {
 		printAliasNotice(os.Stderr, os.Args[1:])
 	}
