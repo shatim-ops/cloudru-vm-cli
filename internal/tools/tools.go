@@ -110,8 +110,8 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "list_images",
-			Description: "Alias of image_list, kept for compatibility: the same arguments and the same compact answer.",
-			InputSchema: imageListSchema(),
+			Description: "List available Cloud.ru VM boot images (UUID + name). Use an image UUID as the 'image_id' argument for deploy or provision. Prefer image_list: it searches by name and answers compact rows.",
+			InputSchema: objSchema(nil),
 		},
 		{
 			Name: "image_create",
@@ -1237,7 +1237,7 @@ func (s *Registry) registerTools() {
 		"destroy":              s.handleDestroy,
 		"list_zones":           s.handleListZones,
 		"image_list":           s.handleImageList,
-		"list_images":          s.handleImageList,
+		"list_images":          s.handleListImages,
 		"image_create":         s.handleImageCreate,
 		"image_get":            s.handleImageGet,
 		"fip_attach":           s.handleFipAttach,

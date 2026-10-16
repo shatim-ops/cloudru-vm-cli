@@ -87,7 +87,7 @@ func callNamed(t *testing.T, r *Registry, name string, args map[string]any) (map
 // шаблона и объектов зон; зоны — короткими именами.
 func TestImageList_CompactForMCP(t *testing.T) {
 	r := catalogRegistry()
-	for _, name := range []string{"image_list", "list_images"} {
+	for _, name := range []string{"image_list"} {
 		m, text, isErr := callNamed(t, r, name, map[string]any{"query": "astra"})
 		if isErr {
 			t.Fatalf("%s: %s", name, text)
@@ -106,9 +106,15 @@ func TestImageList_CompactForMCP(t *testing.T) {
 			t.Errorf("%s row: %v", name, first)
 		}
 	}
+	// list_images keeps its pre-image_list answer (MCP contract): full
+	// image objects, zones included, no query argument.
 	tl, _ := r.Lookup("list_images")
 	if tl.Group != "image" || tl.Mutating {
 		t.Errorf("list_images: group %q mutating %v", tl.Group, tl.Mutating)
+	}
+	m, text, isErr := callNamed(t, r, "list_images", nil)
+	if rows, _ := m["images"].([]any); isErr || len(rows) == 0 || !strings.Contains(text, "availability_zones") {
+		t.Errorf("list_images changed its answer: %s", text)
 	}
 
 	if m, _, isErr := callNamed(t, r, "image_list", map[string]any{"type": "gold"}); !isErr || m["error"] == nil || !strings.HasPrefix(m["error"].(string), clierrors.CodeUsage) {

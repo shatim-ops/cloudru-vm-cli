@@ -225,3 +225,42 @@ func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (str
 	}
 	return toJSON(out), false
 }
+
+// handleListImages is list_images as it was before image_list: the full
+// image objects of the shared catalogue plus the project's own, no
+// arguments. Its answer is part of the MCP contract, so it stays; new
+// callers should use image_list.
+func (s *Registry) handleListImages(ctx context.Context, args map[string]any) (string, bool) {
+	eng, err := s.newEngine(nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	tok, err := eng.Auth.Token(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	eng.Cloud.SetToken(tok.Value)
+
+	images, err := eng.Cloud.ListImages(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	// The shared catalogue does not contain images built inside the project, so
+	// they are fetched separately and merged — otherwise a freshly built image
+	// is missing from the very list used to find it.
+	seen := make(map[string]bool, len(images))
+	for _, img := range images {
+		seen[img.ID] = true
+	}
+	own, ownErr := eng.Cloud.ListImagesInProject(ctx, eng.Config.ProjectID)
+	for _, img := range own {
+		if !seen[img.ID] {
+			images = append(images, img)
+		}
+	}
+	res := map[string]any{"images": images}
+	if ownErr != nil {
+		res["warning"] = "не удалось получить образы проекта: " + ownErr.Error()
+	}
+	return toJSON(res), false
+}

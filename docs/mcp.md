@@ -133,8 +133,8 @@ disk, image, vpc, k8s, pg, s3, secret, stack и другие. `--toolsets all` �
   регистра; компактные строки `{id, name, display_name, type, zones_ready,
   min_disk_gb}` без иконки, шаблона cloud-init и объектов зон, плюс `shown`,
   `total`, `hidden`. Образы, не готовые ни в одной зоне, скрыты без
-  `all=true`. `list_images` — прежнее имя того же инструмента, с тем же
-  ответом.
+  `all=true`. `list_images` остаётся как был: без аргументов, полные
+  объекты образов каталога и проекта; для поиска лучше `image_list`.
 - `image_get` (`image` — имя, отображаемое имя или UUID; `image_id` — как
   раньше; `full`) — карточка: `ready`, `zones_ready`, `fields[]` с
   `filled_by` (`evo`, `default`, `user`, `none`, `status`), `fields_required`
