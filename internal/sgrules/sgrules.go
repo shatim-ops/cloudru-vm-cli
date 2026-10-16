@@ -19,6 +19,7 @@ import (
 	"time"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -37,6 +38,40 @@ func splitKey(key string) (proto string, port int) {
 	p, proto, _ := strings.Cut(key, "/")
 	port, _ = strconv.Atoi(p)
 	return proto, port
+}
+
+// ParsePorts reads port specs as people write them: "80", "8080/tcp",
+// "53/udp". Duplicates are dropped; a bad spec is a USAGE error.
+func ParsePorts(specs []string) (tcp, udp []int, err error) {
+	seen := map[string]bool{}
+	for _, raw := range specs {
+		spec := strings.ToLower(strings.TrimSpace(raw))
+		if spec == "" {
+			continue
+		}
+		num, proto, hasProto := strings.Cut(spec, "/")
+		if !hasProto {
+			proto = "tcp"
+		}
+		port, perr := strconv.Atoi(strings.TrimSpace(num))
+		if perr != nil || port < 1 || port > 65535 || (proto != "tcp" && proto != "udp") {
+			return nil, nil, clerrors.New(clerrors.CodeUsage,
+				i18n.Tf("bad port %q", "неверный порт %q", raw),
+				i18n.T("A port is 1-65535, optionally with /tcp or /udp: 80, 8080/tcp, 53/udp.",
+					"Порт — число 1–65535, можно с /tcp или /udp: 80, 8080/tcp, 53/udp."))
+		}
+		key := PortKey(proto, port)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if proto == "udp" {
+			udp = append(udp, port)
+		} else {
+			tcp = append(tcp, port)
+		}
+	}
+	return tcp, udp, nil
 }
 
 // OpenResult says what Open did, by port label.

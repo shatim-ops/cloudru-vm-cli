@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -36,6 +37,10 @@ type Params struct {
 	DiskType string
 	Login    string
 	SSHKey   string // explicit public key (full "ssh-ed25519 AAAA... comment")
+	// Meta are explicit values of the image's metadata fields
+	// (image_metadata): the mandatory ones evo cannot fill. They are kept
+	// in the plan file (0600, next to the deploy key) until apply.
+	Meta map[string]string `json:"meta,omitempty"`
 }
 
 // Resolve performs all read-only discovery and returns a costed plan. It never
@@ -80,6 +85,14 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	image, err := selectImage(ctx, cloud, projectID, p.Image)
 	if err != nil {
 		return nil, err
+	}
+	// A compose deploy installs Docker through get.docker.com, which knows
+	// no domestic distributions: no plan, so deploy_apply does not bill a
+	// VM Docker cannot go on (as for a missing metadata field).
+	if p.ComposeFile != "" {
+		if family := images.NoDockerFamily(image.Name, image.DisplayName, image.OS); family != "" {
+			return nil, images.NoDockerError(clierrors.CodeUsage, image.Name, family)
+		}
 	}
 
 	// --- Disk type ---
@@ -140,7 +153,12 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	}
 
 	// --- Access: image metadata fields + SSH model ---
-	metaFields, metaStatic, login, keyName, sErr := resolveAccess(ctx, cloud, image.ID, name, p)
+	metaFields, metaStatic, login, keyName, sErr, refuse := resolveAccess(ctx, cloud, image.ID, name, p)
+	if refuse != nil {
+		// A value the image does not take, or a mandatory field nobody
+		// filled: no plan, so deploy_apply cannot create the VM.
+		return nil, refuse
+	}
 	if sErr != nil {
 		warnings = append(warnings, "could not read image metadata template: "+sErr.Error())
 	}
@@ -262,14 +280,30 @@ func selectFlavor(flavors []*provision.Flavor, p Params) (provision.Flavor, []st
 // The default branch deliberately stays on the shared catalogue: it guesses a
 // base OS, and a project's own product images have no business being guessed.
 func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want string) (provision.Image, error) {
+	img, own, err := pickImage(ctx, cloud, projectID, want)
+	if err != nil {
+		return img, err
+	}
+	// A shared image the project cannot use: the create call would answer
+	// 422 wrong_image after the plan is approved — refuse the plan.
+	if !own && (images.Catalog{Cloud: cloud, ProjectID: projectID}).MissingFromProject(ctx, img.ID, img.Name) {
+		return provision.Image{}, images.NotInProjectError(img.Name)
+	}
+	return img, nil
+}
+
+// pickImage is the image of the plan: by exact name or UUID in the shared
+// catalogue, then among the project's own (the bool is true for those); by
+// default Ubuntu 24.04.
+func pickImage(ctx context.Context, cloud provision.CloudAPI, projectID, want string) (provision.Image, bool, error) {
 	images, err := cloud.ListImages(ctx)
 	if err != nil {
-		return provision.Image{}, fmt.Errorf("list images: %w", err)
+		return provision.Image{}, false, fmt.Errorf("list images: %w", err)
 	}
 	if want != "" {
 		for _, img := range images {
 			if img.Name == want || img.ID == want {
-				return *img, nil
+				return *img, false, nil
 			}
 		}
 		// Ошибка выборки по проекту глотается намеренно: у токена может не быть
@@ -278,11 +312,11 @@ func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want 
 		if own, e := cloud.ListImagesInProject(ctx, projectID); e == nil {
 			for _, img := range own {
 				if img.Name == want || img.ID == want {
-					return *img, nil
+					return *img, true, nil
 				}
 			}
 		}
-		return provision.Image{}, fmt.Errorf(
+		return provision.Image{}, false, fmt.Errorf(
 			"image %q not found in the shared catalogue or in project %s (use the list_images tool to see options)",
 			want, projectID)
 	}
@@ -290,13 +324,13 @@ func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want 
 	for _, img := range images {
 		n := strings.ToLower(img.Name)
 		if strings.Contains(n, "ubuntu") && strings.Contains(n, "24.04") && !strings.Contains(n, "gpu") {
-			return *img, nil
+			return *img, false, nil
 		}
 	}
 	if len(images) > 0 {
-		return *images[0], nil
+		return *images[0], false, nil
 	}
-	return provision.Image{}, fmt.Errorf("no images available")
+	return provision.Image{}, false, fmt.Errorf("no images available")
 }
 
 // resolveAccess fills the image's metadata by its declared fields
@@ -307,9 +341,12 @@ func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want 
 //   - static:  every other field, sent verbatim (the key, the hostname, the
 //     login, the image's defaults — the API rejects the request with
 //     image_metadata_fields_missing if these are omitted);
-//   - login and a human label for the SSH model.
-func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostname string, p Params) ([]string, map[string]string, string, string, error) {
-	login := firstNonEmpty(p.Login, "user1")
+//   - login and a human label for the SSH model;
+//   - readErr: the image could not be read (a warning, defaults are used);
+//   - refuse: a value the image does not take, or mandatory fields no value
+//     was found for — no plan is made.
+func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostname string, p Params) (fields []string, static map[string]string, login, keyName string, readErr, refuse error) {
+	login = firstNonEmpty(p.Login, "user1")
 
 	detail, err := cloud.GetImage(ctx, imageID)
 	if err != nil {
@@ -320,25 +357,34 @@ func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostn
 			fields = append(fields, "public_key")
 			key = "user-key"
 		}
-		return fields, map[string]string{}, login, key, err
+		static := map[string]string{}
+		for k, v := range p.Meta {
+			static[k] = v
+		}
+		return fields, static, login, key, err, nil
 	}
 
 	static, filled, err := images.FillMetadata(detail.MetadataFields, images.Inputs{
 		PublicKey: p.SSHKey, // empty: no key field is sent (an empty public_key triggers a 500)
 		Hostname:  hostname,
 		Login:     login,
+		Values:    p.Meta,
 	})
 	if err != nil {
-		return nil, map[string]string{}, login, "generated-password", err
+		return nil, nil, login, "", nil, err
+	}
+	if len(filled.Missing) > 0 {
+		return nil, nil, login, "", nil, images.MissingError(clierrors.CodeUsage, filled.Missing,
+			`image_metadata {"%s": "<value>"} in deploy_plan`)
 	}
 
-	keyName := "generated-password"
+	keyName = "generated-password"
 	if p.SSHKey != "" {
 		keyName = "ssh-key (deploy)"
 	} else if len(filled.PasswordFields) == 0 {
 		keyName = "image-default"
 	}
-	return filled.PasswordFields, static, login, keyName, nil
+	return filled.PasswordFields, static, login, keyName, nil, nil
 }
 
 // pickSubnet matches by zone ID, then by a name containing the zone name

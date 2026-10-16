@@ -371,24 +371,25 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				"Задайте переменную CLOUDRU_PROJECT_ID или project_id в файле настроек ('evo configure'). ID проекта — в https://console.cloud.ru"))
 	}
 
-	imageID := e.Config.ImageID
-	if imageID == "" {
-		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
-			i18n.T("CLOUDRU_IMAGE_ID is required", "не задан CLOUDRU_IMAGE_ID"),
-			i18n.T("Set CLOUDRU_IMAGE_ID environment variable or image_id in config file. Find available images in Cloud.ru console.",
-				"Задайте переменную CLOUDRU_IMAGE_ID или image_id в .evo.yaml ('evo init' выберет образ сам; список — 'evo list-images')."))
-	}
-
 	projectName := e.Config.ProjectName
 	if projectName == "" {
 		projectName = filepath.Base(e.StateDir)
 	}
 	vmName := vmNameFor(projectName)
 
-	// Fetch image details to discover required metadata field names.
-	imgDetail, err := e.Cloud.GetImage(ctx, imageID)
+	// The image with its metadata fields: image_id by UUID, image by name
+	// (images.Resolve). Not found or ambiguous stops here, before anything
+	// is created.
+	imgDetail, err := e.BootImage(ctx, projectID)
 	if err != nil {
-		return state.DeploymentRecord{}, fmt.Errorf(i18n.T("get image details: %w", "сведения об образе: %w"), err)
+		return state.DeploymentRecord{}, err
+	}
+	imageID := imgDetail.ID
+	// Docker goes on through get.docker.com, which knows no domestic
+	// distributions: refuse before the VM is billed, not after an SSH
+	// session fails on it.
+	if family := images.NoDockerFamily(imgDetail.Name, imgDetail.DisplayName, imgDetail.OS); family != "" {
+		return state.DeploymentRecord{}, images.NoDockerError(clerrors.CodeConfigInvalid, imgDetail.Name, family)
 	}
 	diskSize, diskNote := provision.BootDiskGB(e.Config.DiskSize, imgDetail.MinDisk)
 	if diskNote != "" {
@@ -397,17 +398,25 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 
 	// image_metadata by the image's declared fields (internal/images, the
 	// same rules as MCP provision and deploy_apply). The key is made only
-	// after consent, so its fields are filled again then. linux_password is
-	// set as well: without it the VM never leaves "creating" (seen live
-	// 2026-10-14). Login is by SSH key: the password is random and not kept.
+	// after consent, so its fields are filled again then (KeyLater). Values
+	// the image needs and evo cannot make come from image_metadata: in
+	// .evo.yaml. linux_password is set as well: without it the VM never
+	// leaves "creating" (seen live 2026-10-14). Login is by SSH key: the
+	// password is random and not kept.
 	imgMeta, filled, err := images.FillMetadata(imgDetail.MetadataFields, images.Inputs{
 		PublicKey:   e.SSHPubKey,
+		KeyLater:    true,
 		Hostname:    vmName,
 		Login:       "ubuntu",
 		GenPassword: func() string { return randomPassword(16) },
+		Values:      e.Config.ImageMetadata,
 	})
 	if err != nil {
-		return state.DeploymentRecord{}, err
+		return state.DeploymentRecord{}, inProjectFile(err)
+	}
+	if len(filled.Missing) > 0 {
+		return state.DeploymentRecord{}, images.MissingError(clerrors.CodeConfigInvalid, filled.Missing,
+			i18n.T("image_metadata: {%s: <value>} in .evo.yaml", "image_metadata: {%s: <значение>} в .evo.yaml"))
 	}
 	keyFields := filled.KeyFields // filled with the SSH public key after consent
 
@@ -1041,7 +1050,11 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	e.Printer.StepDone(i18n.T("Preparing Docker on the VM (a fresh VM takes a few minutes)...",
 		"Подготовка Docker на ВМ (на новой ВМ — несколько минут)..."))
 	var lastErr error
-	var lastOut string
+	// lastOut is the last attempt's output; failOut that of the last one
+	// that failed on its own, before the deadline. The last attempt is
+	// usually cut by the deadline with a line or two printed, and an
+	// earlier one holds the apt or DNS error (cloud-e2e 16.10.2026).
+	var lastOut, failOut string
 	for attempt := 1; ; attempt++ {
 		var out bytes.Buffer
 		attemptCtx, cancel := context.WithDeadline(ctx, deadline)
@@ -1068,9 +1081,16 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		if !time.Now().Before(deadline) {
 			break
 		}
-		e.Printer.Warning(i18n.Tf("Docker not ready yet (attempt %d, %s elapsed: %s), retrying...",
+		if strings.TrimSpace(lastOut) != "" {
+			failOut = lastOut
+		}
+		msg := i18n.Tf("Docker not ready yet (attempt %d, %s elapsed: %s), retrying...",
 			"Docker ещё не готов (попытка %d, прошло %s: %s), повтор...",
-			attempt, time.Since(start).Round(time.Second), errLine(err)))
+			attempt, time.Since(start).Round(time.Second), errLine(err))
+		if l := lastLines(lastOut, 1); l != "" {
+			msg += i18n.Tf(" Last line of the install: %s", " Последняя строка установки: %s", clipLine(l))
+		}
+		e.Printer.Warning(msg)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -1101,6 +1121,10 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	} else {
 		hint = reason + i18n.T(" (the install printed nothing)\n", " (установка ничего не вывела)\n") + hint
 	}
+	if failOut != "" && failOut != lastOut {
+		hint = i18n.T("Output of the last attempt that failed on its own:\n", "Вывод последней попытки, завершившейся ошибкой:\n") +
+			lastLines(failOut, 15) + "\n" + hint
+	}
 	return clerrors.Wrap(clerrors.CodeSSHTimeout,
 		i18n.Tf("Docker is not ready on VM %s after %s", "Docker на ВМ %s не готов за %s", ip, t.DockerWaitTimeout),
 		hint, lastErr)
@@ -1111,7 +1135,12 @@ func errLine(err error) string {
 	if err == nil {
 		return i18n.T("no error reported", "ошибка не сообщается")
 	}
-	s := strings.Join(strings.Fields(err.Error()), " ")
+	return clipLine(err.Error())
+}
+
+// clipLine is s on one line, at most 200 characters.
+func clipLine(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > 200 {
 		s = string(r[:200]) + "…"
 	}

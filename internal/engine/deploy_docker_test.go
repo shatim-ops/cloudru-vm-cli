@@ -145,6 +145,51 @@ func TestDeploy_DockerTimeoutMarksStateAndRerunRetries(t *testing.T) {
 	}
 }
 
+// The last attempt is cut by the deadline with a line or two printed; the
+// apt error of an earlier attempt that failed on its own goes into the
+// warning and the hint, not lost (cloud-e2e 16.10.2026).
+func TestDeploy_DockerTimeoutKeepsLastFailedAttemptOutput(t *testing.T) {
+	dep := newMockDeployer()
+	n := 0
+	dep.streamOut = func(cmd string) string {
+		if !strings.Contains(cmd, "base64 -d") {
+			return ""
+		}
+		n++
+		if n == 1 {
+			return "# Executing docker install script\nE: Failed to fetch http://mirror.example.test/ubuntu/pool/x.deb  Connection timed out\n"
+		}
+		return "# Executing docker install script\n"
+	}
+	dep.streamHook = func(ctx context.Context, cmd string) error {
+		if !strings.Contains(cmd, "base64 -d") {
+			return nil
+		}
+		if n == 1 {
+			return stderrors.New("Process exited with status 100")
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	var out bytes.Buffer
+	eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
+	eng.Printer = output.NewWithWriter(&out, output.ModePlain, false)
+	eng.Timings.DockerWaitTimeout = 300 * time.Millisecond
+	eng.Timings.DockerPollInterval = time.Millisecond
+
+	err := eng.Deploy(context.Background(), newDeployOpts(t, dir))
+	var cliErr *clerrors.CLIError
+	if !stderrors.As(err, &cliErr) || cliErr.Code != clerrors.CodeSSHTimeout {
+		t.Fatalf("err = %v, want SSH_TIMEOUT", err)
+	}
+	if !strings.Contains(cliErr.Hint, "Output of the last attempt that failed on its own") || !strings.Contains(cliErr.Hint, "E: Failed to fetch") {
+		t.Errorf("hint lacks the failed attempt's apt error:\n%s", cliErr.Hint)
+	}
+	if !strings.Contains(out.String(), "Last line of the install: E: Failed to fetch") {
+		t.Errorf("warning lacks the attempt's last line:\n%s", out.String())
+	}
+}
+
 func TestDeploy_DiskTypeMatchedByNameCaseInsensitive(t *testing.T) {
 	cloud := &mockCloudAPI{listDiskTypesFn: func(context.Context, string) ([]*provision.DiskType, error) {
 		return []*provision.DiskType{{ID: "hdd-id", Name: "HDD"}, {ID: "ssd-id", Name: "ssd"}}, nil

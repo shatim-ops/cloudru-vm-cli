@@ -32,12 +32,14 @@ func TestListImages_FilterAndFields(t *testing.T) {
 	on, off := true, false
 	imgs, err := a.ListImages(context.Background(), ImageFilter{
 		Name: "astra", Type: ImageTypeMarketplace, Enabled: &on, NeedGPU: &off, AvailabilityZoneID: "z1",
+		ProjectID: "00000000-0000-0000-0000-0000000000f1",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	q := queries[0]
-	for k, want := range map[string]string{"name": "astra", "type": "marketplace", "enabled": "true", "need_gpu": "false", "availability_zone_id": "z1"} {
+	for k, want := range map[string]string{"name": "astra", "type": "marketplace", "enabled": "true", "need_gpu": "false", "availability_zone_id": "z1",
+		"project_id": "00000000-0000-0000-0000-0000000000f1"} {
 		if q.Get(k) != want {
 			t.Errorf("query %s = %q, want %q (%v)", k, q.Get(k), want, q)
 		}
@@ -57,7 +59,7 @@ func TestListImages_FilterAndFields(t *testing.T) {
 	if _, err := a.ListImages(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"name", "display_name", "type", "enabled", "need_gpu", "availability_zone_id"} {
+	for _, k := range []string{"name", "display_name", "type", "enabled", "need_gpu", "availability_zone_id", "project_id"} {
 		if queries[1].Has(k) {
 			t.Errorf("bare call sent %s: %v", k, queries[1])
 		}

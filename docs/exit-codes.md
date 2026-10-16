@@ -23,9 +23,27 @@
   отверг аргументы до обращения к облаку; `2` — креды, в том числе нет
   ключей Object Storage). Ошибка без кода: `4`, если инструмент ответил, что
   объект не найден, иначе `5` (`API_ERROR`).
-- Образ по имени (`evo image get`, `image_get`): несколько совпадений — `1`
-  (`USAGE`, в сообщении до 10 кандидатов), ни одного — `4` (`NOT_FOUND`,
-  подсказка `evo image list <запрос>`).
+- Образ по имени (`evo image get`, `evo vm create --image`, `evo deploy
+  --image`, `image:` в `.evo.yaml`, `evo init --image`, `image_get`,
+  `provision`): несколько совпадений — `1` (`USAGE`, в сообщении до 10
+  кандидатов), ни одного — `4` (`NOT_FOUND`, подсказка
+  `evo image list <запрос>`).
+- Образ есть в общем каталоге Cloud.ru, но недоступен проекту (его нет в
+  каталоге, каким его видит проект — `project_id`): `evo vm create`,
+  `evo deploy`, `evo init --image`, `provision`, `deploy`, `deploy_plan` —
+  `4` (`NOT_FOUND`, «образ … есть в каталоге Cloud.ru, но недоступен
+  проекту»), до вопроса и до создания ВМ и floating IP; иначе API ответил бы
+  422 `wrong_image`. Если и ОС без Docker, `deploy` называет сначала
+  недоступность. `evo image get` такого образа — `0`, карточка с пометкой.
+  MCP `provision` проверяет это при вызове с `confirmed=true`: превью в
+  облако не ходит.
+- Поля образа: у `evo vm create` / `provision` неизвестное поле в `--meta`
+  (`image_metadata`) или незаполненное обязательное поле — `1` (`USAGE`); у
+  `deploy` то же из `image_metadata:` в `.evo.yaml` — `2`
+  (`CONFIG_INVALID`). Отказ всегда до создания ВМ и floating IP.
+- `deploy` на образе Astra Linux, Альт или РЕД ОС — `2` (`CONFIG_INVALID`,
+  до создания ВМ; `evo init --image` с таким образом — `1`, `USAGE`).
+  `image` и `image_id` в одном слое настроек — `2` (`CONFIG_INVALID`).
 - Нет развёртывания в каталоге: `status` и `destroy` — `0` (сообщают, что
   нечего показывать или удалять), `logs` и `verify` — `4`: им нечего
   проверять, и «нечего» не значит «здорово».

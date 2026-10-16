@@ -416,3 +416,32 @@ func resolveConfig(opts Options) (Config, error) {
 	cfg, _, err := resolve(opts)
 	return cfg, err
 }
+
+// image и image_id — одна настройка: побеждает слой выше, оба в одном
+// слое — ошибка. image_metadata читается из файла проекта.
+func TestResolve_ImageAndImageID(t *testing.T) {
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{ImageID: "img-profile"})
+	project := filepath.Join(t.TempDir(), ".evo.yaml")
+	writeFile(t, project, "image: Ubuntu-24.04\nimage_metadata:\n  admin_email: ops@example.test\n  port: 8080\n")
+	cfg, _, err := ResolveWithSources(Options{ProjectFile: project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Image != "Ubuntu-24.04" || cfg.ImageID != "" {
+		t.Errorf("image %q, image_id %q: файл проекта должен побеждать профиль", cfg.Image, cfg.ImageID)
+	}
+	if cfg.ImageMetadata["admin_email"] != "ops@example.test" || cfg.ImageMetadata["port"] != "8080" {
+		t.Errorf("image_metadata = %v", cfg.ImageMetadata)
+	}
+
+	cfg, _, err = ResolveWithSources(Options{ProjectFile: project, Flags: map[string]any{"ImageID": "img-flag"}})
+	if err != nil || cfg.ImageID != "img-flag" || cfg.Image != "" {
+		t.Errorf("флаг: image %q, image_id %q, %v", cfg.Image, cfg.ImageID, err)
+	}
+
+	writeFile(t, project, "image: Ubuntu-24.04\nimage_id: img-project\n")
+	if _, _, err := ResolveWithSources(Options{ProjectFile: project}); err == nil || !strings.Contains(err.Error(), "image_id") {
+		t.Errorf("оба в одном файле: %v", err)
+	}
+}

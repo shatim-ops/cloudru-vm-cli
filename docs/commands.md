@@ -576,6 +576,7 @@ evo deploy [flags]
       --flavor string         Flavor ВМ (по умолчанию auto — подбор по сервисам)
       --force                 Развернуть заново, даже если compose-файл не изменился
   -h, --help                  Справка по deploy
+      --image string          Загрузочный образ: имя из 'evo image list' или UUID (Ubuntu или Debian)
       --image-id string       UUID загрузочного образа
       --non-interactive       Никогда не спрашивать; тогда для создания ВМ нужен --yes
       --project-id string     UUID проекта Cloud.ru
@@ -1097,7 +1098,7 @@ evo image [flags]
 Вызывает инструмент image_get (подробнее: 'evo tools describe image_get').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with candidates[]). Returns the image, ready and zones_ready, and fields[]: each image_metadata field with filled_by — evo (SSH key, VM name, login, random password), default, user (mandatory, evo cannot fill it) or none — plus create{cli, tool, args}. The icon and the cloud-init user_data_template only with full=true. Read-only. Also the way to poll an image build until ready=true.
+Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with candidates[]). Returns the image, ready and zones_ready, and fields[]: each image_metadata field with filled_by — evo (SSH key, VM name, login, random password), default, user (mandatory, evo cannot fill it) or none — plus create{cli, tool, args}. An image the project cannot use comes with available_in_project=false, a note and no create. The icon and the cloud-init user_data_template only with full=true. Read-only. Also the way to poll an image build until ready=true.
 ```
 
 ```
@@ -1147,7 +1148,7 @@ evo image get <image-id|image> [flags]
 Вызывает инструмент image_list (подробнее: 'evo tools describe image_list').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Search the VM image catalogue: OS images (type public), Cloud.ru Marketplace products (marketplace) and the project's own images (private). query matches a substring of the name or display_name, case-insensitive. Images ready in no zone are hidden unless all=true. Compact rows {id, name, display_name, type, zones_ready, min_disk_gb}, public first; total counts the matches before hiding. Next: image_get for the fields a VM from the image needs; the id goes to provision or deploy as image_id.
+Search the VM image catalogue: OS images (type public), Cloud.ru Marketplace products (marketplace) and the project's own images (private). query matches a substring of the name or display_name, case-insensitive. Images ready in no zone and images of the shared catalogue the project cannot use are hidden unless all=true (then the latter carry available_in_project=false; hidden_not_in_project counts the hidden ones). Compact rows {id, name, display_name, type, zones_ready, min_disk_gb}, public first; total counts the matches before hiding. Next: image_get for the fields a VM from the image needs; the id goes to provision or deploy as image_id.
 ```
 
 ```
@@ -1165,7 +1166,7 @@ evo image list [query] [flags]
 ### Options
 
 ```
-      --all           Also show catalogue images ready in no zone (hidden by default: the shared catalogue carries test and broken images).
+      --all           Also show catalogue images ready in no zone and those the project cannot use (hidden by default: the shared catalogue carries test and broken images, and images a VM of this project cannot be created from — these come with available_in_project=false).
   -h, --help          Справка по list
       --type string   Only this type: public (OS images), marketplace (products of the Cloud.ru Marketplace) or private (images of the project). Default: all three.
       --zone string   Only images ready in this availability zone: name ('ru.AZ-1', 'AZ-1') or UUID.
@@ -1202,7 +1203,10 @@ evo image list [query] [flags]
 первой и выбрана по умолчанию (15.10.2026 в ru.AZ-1 ВМ не создавались); с
 --non-interactive или без терминала берутся ru.AZ-2 (если её нет — первая
 зона) и самый новый обычный образ Ubuntu (если его нет — Debian), выбор
-печатается.
+печатается. --image задаёт образ по имени (регистр не важен) или UUID: имя
+пишется в .evo.yaml так, как в каталоге (image:), UUID — как image_id:.
+deploy нужен Ubuntu или Debian: образы Astra Linux, Альт и РЕД ОС
+отклоняются (ВМ из них создаёт evo vm create).
 ```
 
 ```
@@ -1214,12 +1218,14 @@ evo init [flags]
 ```
   evo init
   evo init --non-interactive
+  evo init --image debian-12
 ```
 
 ### Options
 
 ```
   -h, --help              Справка по init
+      --image string      Загрузочный образ по имени или UUID (evo image list) вместо самого нового Ubuntu
       --non-interactive   Без вопросов взять ru.AZ-2 (если её нет — первую зону) и предпочтительный образ
 ```
 
@@ -3908,7 +3914,7 @@ evo vm [flags]
 Вызывает инструмент provision (подробнее: 'evo tools describe provision').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only.
+Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works, Astra Linux, Alt and RED OS included; an image of the shared catalogue the project cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. evo fills the image's metadata fields itself (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else the call is refused before anything is created. ports opens inbound rules in the VM's security group after boot (destroy closes them). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3921,7 +3927,10 @@ evo vm create <name> [flags]
 
 ```
   evo vm create my-vm --dry-run
-  evo vm create my-vm --flavor lowcost10-2-4
+  evo vm create my-vm --image Ubuntu-24.04 --flavor lowcost10-2-4 --port 80 --port 443
+  evo vm create astra-1 --image 'Astra Linux SE 1.8'
+  evo vm create dash-1 --image OpensearchDashboards --meta opensearch_host=10.0.0.5 --meta opensearch_password=@./opensearch.pass
+  pass show opensearch | evo vm create dash-2 --image OpensearchDashboards --meta opensearch_host=10.0.0.5 --meta opensearch_password=- --yes
   evo vm create worker-1 --no-public-ip --yes
 ```
 
@@ -3931,8 +3940,11 @@ evo vm create <name> [flags]
       --disk-size int      Boot disk size in GB (default: 10, raised to the image's min_disk).
       --flavor string      VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier).
   -h, --help               Справка по create
+      --image string       Boot image by exact name, display name or UUID (see image_list, image_get), e.g. 'Ubuntu-24.04'. Use it or image_id, not both.
       --image-id string    Boot image UUID (see image_list, image_get).
+      --meta stringArray   Values of the image's metadata fields by name, e.g. {"admin_password": "…"} — the mandatory ones evo cannot fill (image_get: fields_required). They override what evo fills. A field the image does not declare is refused. (key=value, repeatable; the value may contain '='. key=- reads the value from stdin (one field at most), key=@file from a file, its trailing newline trimmed: use these for passwords, so the value stays out of the command line and the shell history)
       --no-public-ip       Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes.
+      --port stringArray   Inbound ports to open in the VM's security group from 0.0.0.0/0, e.g. ["80", "8080/tcp", "53/udp"] (tcp by default). The group is shared by the zone's VMs; destroy deletes the rules evo created. (repeatable, or comma-separated)
       --subnet-id string   Subnet UUID for the interface (default: a subnet in the target zone).
 ```
 

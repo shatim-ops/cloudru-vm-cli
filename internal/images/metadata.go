@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -45,9 +47,13 @@ type Inputs struct {
 	// fields are listed in Result.PasswordFields and left out of meta, for a
 	// caller that must not keep the value (a saved deploy plan).
 	GenPassword func() string
-	// Values are explicit values by field name (a future --meta). They win
-	// over everything evo fills itself and may set any field except the
-	// status flags.
+	// KeyLater says the key is made after consent (the CLI deploy): with an
+	// empty PublicKey the key fields count as filled for Missing but are
+	// left out of meta, for the caller to fill.
+	KeyLater bool
+	// Values are explicit values by field name (--meta, image_metadata).
+	// They win over everything evo fills itself and may set any field
+	// except the status flags.
 	Values map[string]string
 }
 
@@ -199,11 +205,17 @@ func FillMetadata(fields []provision.ImageMetadataField, in Inputs) (map[string]
 	for _, k := range userKeys {
 		switch {
 		case statusFields[k]:
-			return nil, res, fmt.Errorf("image metadata field %q is a read-only status flag and cannot be set", k)
+			return nil, res, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("image metadata field %q is a read-only status flag and cannot be set", "поле метаданных образа %q — служебный флаг состояния, задавать его нельзя", k),
+				fieldsHint(fields))
 		case !declared[k]:
-			return nil, res, fmt.Errorf("the image declares no metadata field %q", k)
+			return nil, res, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("the image declares no metadata field %q", "в образе нет поля метаданных %q", k),
+				fieldsHint(fields))
 		case strings.TrimSpace(in.Values[k]) == "":
-			return nil, res, fmt.Errorf("image metadata field %q: empty value", k)
+			return nil, res, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("image metadata field %q: empty value", "поле метаданных образа %q: пустое значение", k),
+				fieldsHint(fields))
 		}
 	}
 
@@ -216,7 +228,7 @@ func FillMetadata(fields []provision.ImageMetadataField, in Inputs) (map[string]
 		login = d
 	}
 	meta := map[string]string{}
-	pending := map[string]bool{} // password fields left to the caller
+	pending := map[string]bool{} // password (and KeyLater key) fields left to the caller
 	loginFrom := map[string]bool{}
 	for i, f := range fields {
 		if kinds[i] == kindStatus {
@@ -232,9 +244,12 @@ func FillMetadata(fields []provision.ImageMetadataField, in Inputs) (map[string]
 		switch kinds[i] {
 		case kindKey:
 			res.KeyFields = append(res.KeyFields, f.Name)
-			if in.PublicKey != "" {
+			switch {
+			case in.PublicKey != "":
 				meta[f.Name] = in.PublicKey
 				res.KeyUsed = true
+			case in.KeyLater:
+				pending[f.Name] = true
 			}
 		case kindHostname:
 			if in.Hostname != "" {
@@ -339,4 +354,53 @@ func FillMetadata(fields []provision.ImageMetadataField, in Inputs) (map[string]
 		res.Missing = nil
 	}
 	return meta, res, nil
+}
+
+// settable are the fields a caller may give a value: all but the status
+// flags.
+func settable(fields []provision.ImageMetadataField) []string {
+	var out []string
+	for _, f := range fields {
+		if !statusFields[f.Name] {
+			out = append(out, f.Name)
+		}
+	}
+	return out
+}
+
+func fieldsHint(fields []provision.ImageMetadataField) string {
+	names := settable(fields)
+	if len(names) == 0 {
+		return i18n.T("The image has no metadata fields to set.", "У образа нет полей метаданных, которые можно задать.")
+	}
+	return i18n.Tf("Fields of the image: %s.", "Поля образа: %s.", strings.Join(names, ", "))
+}
+
+// MissingError is the refusal to create a VM whose image has mandatory
+// groups no value was found for, before anything is created. code is USAGE
+// for a call (--meta, image_metadata) or CONFIG_INVALID for a project file;
+// howTo shows how to pass one value and is formatted with the first field
+// name ("--meta %s=<value>").
+func MissingError(code string, missing []MissingGroup, howTo string) error {
+	groups := make([]string, 0, len(missing))
+	first := ""
+	for _, m := range missing {
+		names := make([]string, 0, len(m.Fields))
+		for _, f := range m.Fields {
+			names = append(names, f.Name)
+			if first == "" {
+				first = f.Name
+			}
+		}
+		label := m.Group
+		if m.DisplayName != "" && m.DisplayName != m.Group {
+			label += " (" + m.DisplayName + ")"
+		}
+		groups = append(groups, label+": "+strings.Join(names, " | "))
+	}
+	return clierrors.New(code,
+		i18n.Tf("the image needs values evo cannot fill: %s", "образу нужны значения, которые evo не заполнит сам: %s", strings.Join(groups, "; ")),
+		i18n.Tf("Give one field of each group (a | b: either): %s. The fields: evo image get <image>.",
+			"Задайте по одному полю из каждой группы (a | b — любое из них): %s. Поля образа: evo image get <образ>.",
+			fmt.Sprintf(howTo, first)))
 }

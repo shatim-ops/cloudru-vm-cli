@@ -3,7 +3,9 @@ name: cloud-e2e
 # Сквозная проверка на настоящем Cloud.ru: init → deploy → verify → logs -f →
 # destroy → правило порта 80 удалено из группы безопасности. Создаёт платную ВМ и floating IP, поэтому запускается только
 # вручную или пушем в ветку e2e/** — и всегда удаляет за собой ресурсы.
-# Job readonly рядом проверяет чтения API и MCP, ничего не создавая.
+# Job readonly рядом проверяет чтения API и MCP, ничего не создавая. Job
+# os-smoke (вход os_smoke) создаёт ВМ из образов Astra Linux и РЕД ОС по
+# имени, заходит по SSH и удаляет их.
 #
 # Секреты репозитория (Settings → Secrets and variables → Actions):
 #   CLOUDRU_KEY_ID, CLOUDRU_SECRET — ключ тестового сервисного аккаунта
@@ -24,6 +26,14 @@ on:
       timeout:
         description: "Seconds deploy waits for the VM to become active (CLOUDRU_TIMEOUT; ru.AZ-1 took over 10 min on 15.10.2026)"
         default: "1200"
+      os_smoke:
+        description: "Also create VMs from domestic OS images by name (Astra Linux, RED OS): vm create --image → SSH → os-release → delete"
+        type: boolean
+        default: false
+      cleanup_only:
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; evo: rules for e2e ports 80/8080/8081/8082 when no evo-* VM is left)"
+        type: boolean
+        default: false
   push:
     branches: ["e2e/**"]
 
@@ -40,6 +50,7 @@ jobs:
   # --allow-project, 401 без токена). Идёт параллельно с e2e; в лог — только
   # имена, коды и счётчики (.github/scripts/cloud-readonly.sh).
   readonly:
+    if: ${{ !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -71,6 +82,7 @@ jobs:
         run: .github/scripts/cloud-readonly.sh
 
   e2e:
+    if: ${{ !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -79,6 +91,11 @@ jobs:
       IMAGE: ${{ inputs.image || 'ubuntu-22.04' }}
       CLOUDRU_TIMEOUT: ${{ inputs.timeout || '1200' }}
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    # Лог публичный: вывод evo с UUID и IP идёт через redact (UUID → <id>,
+    # IPv4 → <ip>), найденные значения ещё и маскируются.
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -143,7 +160,7 @@ jobs:
       - name: deploy --dry-run (ничего не создаёт)
         working-directory: e2e-app
         run: |
-          evo deploy --dry-run
+          evo deploy --dry-run 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g"
           [ ! -s .evo/state.json ] || ! jq -e '.deployments | length > 0' .evo/state.json
 
       # Группа безопасности зоны общая: правило для порта 80 могло быть в
@@ -154,7 +171,8 @@ jobs:
 
       - name: deploy --yes
         working-directory: e2e-app
-        run: evo deploy --yes
+        run: |
+          evo deploy --yes 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g"
 
       - name: Группа и правила deploy в state
         # и после упавшего deploy: ВМ и правила могли создаться, проверка
@@ -164,13 +182,16 @@ jobs:
         run: |
           sg=$(jq -r '.deployments[0].security_group_id // empty' .evo/state.json)
           printf '%s' "$sg" | grep -Eq '^[A-Za-z0-9-]{1,64}$' || { echo "::error::нет security_group_id в state"; exit 1; }
+          echo "::add-mask::$sg"
+          ip=$(jq -r '.deployments[0].vm_ip // empty' .evo/state.json)
+          [ -z "$ip" ] || echo "::add-mask::$ip"
           echo "SG_ID=$sg" >> "$GITHUB_ENV"
-          jq '.deployments[0] | {security_group_id, security_group_ports, opened_rules}' .evo/state.json
+          jq '.deployments[0] | {security_group_ports, opened_rules: (.opened_rules | length)}' .evo/state.json
 
       - name: verify и HTTP снаружи
         working-directory: e2e-app
         run: |
-          evo verify
+          evo verify 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g"
           ip=$(jq -r '.deployments[0].vm_ip' .evo/state.json)
           curl -fsS --max-time 15 "http://$ip/" | grep -qi nginx
 
@@ -181,7 +202,7 @@ jobs:
           timeout --preserve-status -s INT 150 evo logs -f > logs.txt 2>&1
           rc=$?
           set -e
-          tail -5 logs.txt
+          tail -5 logs.txt | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g"
           [ "$rc" = 130 ] || { echo "::error::logs -f: код $rc, ожидался 130"; exit 1; }
 
       - name: destroy --yes (всегда)
@@ -189,7 +210,7 @@ jobs:
         run: |
           cd e2e-app 2>/dev/null && [ -f .evo/state.json ] || { echo "нечего удалять"; exit 0; }
           # destroy сам ждёт до 10 мин, пока ВМ в creating станет удаляемой.
-          for i in 1 2; do evo destroy --yes && break; sleep 30; done
+          for _ in 1 2; do evo destroy --yes 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g" && break; sleep 30; done
           jq -e '.deployments | length == 0' .evo/state.json
 
       # Страховка: ВМ evo-e2e-app и её floating IP («fip-evo-e2e-app-…») не
@@ -205,16 +226,18 @@ jobs:
           for i in 1 2 3 4 5 6; do
             ids=$(vms)
             [ -z "$ids" ] && break
-            echo "осталась ВМ evo-e2e-app: $ids — удаляю (попытка $i)"
+            for id in $ids; do echo "::add-mask::$id"; done
+            echo "осталась ВМ evo-e2e-app — удаляю (попытка $i)"
             for id in $ids; do
-              evo tools call destroy --arg vm_id="$id" --arg confirmed=true --json >/dev/null 2>&1 || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
             done
             sleep 60
           done
           for id in $(evo tools call list_floating_ips --json |
             jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-app-")) and .available) | .id'); do
-            echo "освобождаю floating IP $id"
-            evo tools call release_floating_ip --arg id="$id" --arg confirmed=true --json >/dev/null 2>&1 || true
+            echo "::add-mask::$id"
+            echo "освобождаю floating IP"
+            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
           done
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ evo-e2e-app ($left) — удалите её в консоли Cloud.ru"; exit 1; }
@@ -236,5 +259,291 @@ jobs:
             [ "$left" = 0 ] && { echo "правило для 80 удалено"; exit 0; }
             sleep 10
           done
-          echo "::error::после destroy в группе $SG_ID осталось правило «evo:» для порта 80"
+          echo "::error::после destroy в группе deploy осталось правило «evo:» для порта 80"
           exit 1
+
+  # Отечественные ОС по имени образа (шаг E, docs/internal/design-images.md):
+  # init --image отказывает (Docker на них не ставится), vm create --image
+  # создаёт ВМ, к ней заходит SSH, порт 8080 открыт и после удаления закрыт.
+  # IP и ID ВМ в лог не попадают (маскируются), os-release — только ID и
+  # версия.
+  os-smoke:
+    if: ${{ inputs.os_smoke && !inputs.cleanup_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Отечественные ОС тестовому проекту 16.10.2026 недоступны (BACKLOG
+          # [images]): тогда проверяется отказ evo до создания (код 4), а
+          # ВМ создаётся, когда образ станет доступен.
+          - image: AstraLinuxSmolensk1.8.3KES
+            vm: evo-e2e-os-astra
+            os_id: astra
+            port: "8080"
+            no_docker: true
+          # обязательное поле fqdn типа hostname (BACKLOG [images])
+          - image: redos_7.3_image
+            vm: evo-e2e-os-redos
+            os_id: redos
+            port: "8081"
+            no_docker: true
+          # продукт маркетплейса, доступный проекту: vm create --image по имени
+          - image: nginx-ubuntu-22.04
+            vm: evo-e2e-os-nginx
+            os_id: ubuntu
+            port: "8082"
+            no_docker: false
+    env:
+      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      FLAVOR: ${{ inputs.flavor || 'lowcost10-2-4' }}
+      IMAGE: ${{ matrix.image }}
+      VM: ${{ matrix.vm }}
+      OS_ID: ${{ matrix.os_id }}
+      # Записи матрицы идут параллельно и открывают порт в одной общей
+      # группе зоны: у каждой свой порт, иначе вторая получит already_open,
+      # а проверка «правило удалено» одной увидит правило другой.
+      PORT: ${{ matrix.port }}
+      NO_DOCKER: ${{ matrix.no_docker }}
+      CLOUDRU_TIMEOUT: ${{ inputs.timeout || '1200' }}
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Проверка входов
+        run: |
+          for v in "$ZONE" "$FLAVOR"; do
+            printf '%s' "$v" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' ||
+              { echo "::error::недопустимое значение входа: $v"; exit 1; }
+          done
+          printf '%s' "$CLOUDRU_TIMEOUT" | grep -Eq '^[0-9]{2,5}$' ||
+            { echo "::error::timeout — число секунд"; exit 1; }
+
+      - name: Сборка
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      - name: image get по имени, init --image (ничего не создаёт)
+        run: |
+          evo image get "$IMAGE" --json > "$RUNNER_TEMP/card.json"
+          jq '{name: .image.name, ready, available_in_project, fields_required, filled: [.fields[] | {name, filled_by}]}' "$RUNNER_TEMP/card.json"
+          avail=$(jq -r 'if .available_in_project == false then "false" else "true" end' "$RUNNER_TEMP/card.json")
+          echo "AVAILABLE=$avail" >> "$GITHUB_ENV"
+          [ "$avail" = true ] || echo "::warning::образ $IMAGE недоступен проекту — проверяется отказ evo, ВМ не создаётся"
+          if [ "$avail" = true ] && [ "$NO_DOCKER" != true ]; then exit 0; fi
+          mkdir -p os-app
+          printf 'services:\n  web:\n    image: nginx:alpine\n' > os-app/docker-compose.yml
+          set +e
+          (cd os-app && evo init --non-interactive --image "$IMAGE" > init.txt 2>&1)
+          rc=$?
+          set -e
+          tail -3 os-app/init.txt
+          if [ "$avail" != true ]; then
+            [ "$rc" = 4 ] || { echo "::error::init --image $IMAGE: код $rc, ждали 4 (образ недоступен проекту)"; exit 1; }
+          elif [ "$rc" = 0 ] || ! grep -q "get.docker.com" os-app/init.txt; then
+            echo "::error::init --image $IMAGE: код $rc, ждали отказ про get.docker.com"; exit 1
+          fi
+
+      - name: Правила групп безопасности до создания
+        run: evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg-before.json"
+
+      # vm create кладёт ключ SSH и state в .evo/ рабочего каталога: create,
+      # SSH и delete идут из одного каталога.
+      - name: vm create --image по имени и --port
+        run: |
+          mkdir -p os-vm && cd os-vm
+          zone_id=$(evo list-zones --json | jq -r --arg n "$ZONE" '.[] | select(.name==$n) | .id')
+          [ -n "$zone_id" ] && [ "$zone_id" != null ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
+          set +e
+          evo --json --yes vm create "$VM" --image "$IMAGE" --flavor "$FLAVOR" --region "$zone_id" \
+            --port "$PORT" > "$RUNNER_TEMP/vm.json"
+          rc=$?
+          set -e
+          id=$(jq -r '.vm_id // empty' "$RUNNER_TEMP/vm.json")
+          ip=$(jq -r '.vm_ip // empty' "$RUNNER_TEMP/vm.json")
+          if [ -n "$id" ]; then echo "::add-mask::$id"; echo "VM_ID=$id" >> "$GITHUB_ENV"; fi
+          if [ -n "$ip" ]; then echo "::add-mask::$ip"; fi
+          jq '{status, ssh_user, disk_gb, ports: (.ports.opened // null), warning, error}' "$RUNNER_TEMP/vm.json"
+          if [ "$AVAILABLE" != true ]; then
+            # отказ до создания: код 4, ВМ нет
+            [ "$rc" = 4 ] && [ -z "$id" ] || { echo "::error::vm create с недоступным образом: код $rc, ждали 4 без ВМ"; exit 1; }
+            echo "отказ до создания: код 4"
+            exit 0
+          fi
+          if [ "$rc" != 0 ] || [ -z "$ip" ]; then echo "::error::vm create: код $rc"; exit 1; fi
+          echo "VM_IP=$ip" >> "$GITHUB_ENV"
+          echo "SSH_USER=$(jq -r .ssh_user "$RUNNER_TEMP/vm.json")" >> "$GITHUB_ENV"
+          jq -e '.ports.opened | length == 1' "$RUNNER_TEMP/vm.json" >/dev/null ||
+            jq -e '.ports.already_open | length == 1' "$RUNNER_TEMP/vm.json" >/dev/null ||
+            { echo "::error::порт $PORT не открыт"; exit 1; }
+
+      - name: SSH и os-release
+        if: env.VM_ID != ''
+        working-directory: os-vm
+        run: |
+          for _ in $(seq 1 40); do
+            if ssh -i .evo/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 \
+                "$SSH_USER@$VM_IP" 'cat /etc/os-release' > "$RUNNER_TEMP/os-release" 2>/dev/null; then
+              grep -E '^(ID|VERSION_ID|PRETTY_NAME)=' "$RUNNER_TEMP/os-release"
+              grep -Eiq "^ID=\"?$OS_ID" "$RUNNER_TEMP/os-release" ||
+                { echo "::error::в os-release не $OS_ID"; exit 1; }
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::SSH к ВМ не поднялся за 10 минут"
+          exit 1
+
+      - name: vm delete (всегда)
+        if: always() && env.VM_ID != ''
+        working-directory: os-vm
+        run: |
+          for _ in 1 2; do evo --yes vm delete "$VM_ID" && break; sleep 30; done
+
+      - name: Сирот нет (всегда)
+        if: always()
+        run: |
+          vms() { evo tools call vm_list --json | jq -r --arg n "$VM" '[.vms[]? | select(.name==$n) | .id] | join(" ")'; }
+          for i in 1 2 3 4 5 6; do
+            ids=$(vms)
+            [ -z "$ids" ] && break
+            for id in $ids; do echo "::add-mask::$id"; done
+            echo "осталась ВМ $VM — удаляю (попытка $i)"
+            for id in $ids; do
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
+            done
+            sleep 60
+          done
+          for id in $(evo tools call list_floating_ips --json |
+            jq -r --arg p "fip-$VM-" '.floating_ips[]? | select(((.name // "") | startswith($p)) and .available) | .id'); do
+            echo "::add-mask::$id"
+            echo "освобождаю floating IP"
+            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
+          done
+          left=$(vms)
+          [ -z "$left" ] || { echo "::error::после прогона осталась ВМ $VM — удалите её в консоли Cloud.ru"; exit 1; }
+
+      - name: Правило порта удалено после delete
+        if: always() && env.VM_ID != ''
+        run: |
+          # $pr — переменная jq, не shell
+          # shellcheck disable=SC2016
+          rule='[.security_groups[] | .rules[]? | select(.direction=="ingress" and .port_range==$pr and ((.description // "") | startswith("evo:")))] | length'
+          had=$(jq --arg pr "$PORT:$PORT" "$rule" "$RUNNER_TEMP/sg-before.json")
+          if [ "$had" != 0 ]; then echo "правило для $PORT было до создания — проверка пропущена"; exit 0; fi
+          for _ in 1 2 3 4 5 6; do
+            left=$(evo tools call list_security_groups --arg rules=true --json | jq --arg pr "$PORT:$PORT" "$rule")
+            [ "$left" = 0 ] && { echo "правило для $PORT удалено"; exit 0; }
+            sleep 10
+          done
+          echo "::error::после vm delete осталось правило «evo:» для порта $PORT"
+          exit 1
+
+  # Остатки прошлых прогонов (16.10.2026: отменённый прогон оставил ВМ
+  # evo-e2e-app, её FIP и правило порта 80, следующий deploy упал на 409).
+  # Ничего не создаёт. Правила «evo:» для 80/8080/8081/8082 (порты e2e)
+  # удаляются, только когда в проекте нет ни одной ВМ с именем evo-*:
+  # описание «evo: …» ставит любой evo deploy/vm create, и чужое правило
+  # иначе не отличить. Допущение: проект тестовый, evo в нём запускает только
+  # e2e. ID и IP маскируются.
+  cleanup:
+    if: ${{ inputs.cleanup_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Сборка
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      - name: ВМ evo-e2e-*
+        run: |
+          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g"; }
+          vms() { evo tools call vm_list --json | jq -c '[.vms[]? | select((.name // "") | startswith("evo-e2e-")) | {id, name, state: (.state // .status)}]'; }
+          for i in $(seq 1 15); do
+            list=$(vms)
+            for id in $(jq -r '.[].id' <<<"$list"); do echo "::add-mask::$id"; done
+            jq -c '[.[] | {name, state}]' <<<"$list"
+            [ "$(jq length <<<"$list")" = 0 ] && { echo "ВМ evo-e2e-* нет"; exit 0; }
+            for id in $(jq -r '.[].id' <<<"$list"); do
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 |
+                jq -c '{status, error: ((.error // null) | if . == null then null else tostring | .[0:300] end), message: ((.message // null) | if . == null then null else tostring | .[0:200] end)}' 2>/dev/null | redact || true
+            done
+            echo "попытка $i: жду 60 с"
+            sleep 60
+          done
+          echo "::error::ВМ evo-e2e-* не удалились за 15 минут"
+          exit 1
+
+      - name: Floating IP fip-evo-e2e-*
+        if: always()
+        run: |
+          for id in $(evo tools call list_floating_ips --json |
+            jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-")) and .available) | .id'); do
+            echo "::add-mask::$id"
+            echo "освобождаю floating IP"
+            evo --yes tools call release_floating_ip --arg id="$id" --json | jq -c '{status}' || true
+          done
+          left=$(evo tools call list_floating_ips --json | jq '[.floating_ips[]? | select((.name // "") | startswith("fip-evo-e2e-"))] | length')
+          echo "FIP fip-evo-e2e-* осталось: $left"
+          [ "$left" = 0 ] || { echo "::error::остались FIP fip-evo-e2e-*"; exit 1; }
+
+      # Правила удаляет API напрямую: в evo нет команды удаления правила.
+      - name: Правила «evo:» для портов e2e
+        if: always()
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+        run: |
+          n=$(evo tools call vm_list --json | jq '[.vms[]? | select((.name // "") | startswith("evo-"))] | length')
+          [ "$n" = 0 ] || { echo "::error::в проекте есть ВМ evo-* ($n) — правила «evo:» не трогаю"; exit 1; }
+          evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg.json"
+          rules=$(jq -r '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and (.port_range == "80:80" or .port_range == "8080:8080" or .port_range == "8081:8081" or .port_range == "8082:8082") and ((.description // "") | startswith("evo:"))) | "\($g) \(.id) \(.port_range)"' "$RUNNER_TEMP/sg.json")
+          [ -n "$rules" ] || { echo "правил «evo:» для 80/8080/8081/8082 нет"; exit 0; }
+          TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
+            jq -r '.access_token // .accessToken // empty')
+          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          while read -r g r port; do
+            echo "::add-mask::$g"; echo "::add-mask::$r"
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
+              "https://compute.api.cloud.ru/api/v1/security-groups/$g/rules/$r")
+            echo "правило $port: DELETE http=$code"
+          done <<<"$rules"

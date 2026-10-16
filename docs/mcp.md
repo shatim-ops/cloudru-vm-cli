@@ -132,17 +132,63 @@ disk, image, vpc, k8s, pg, s3, secret, stack и другие. `--toolsets all` �
   `zone`, `all`) — поиск по подстроке имени или отображаемого имени без учёта
   регистра; компактные строки `{id, name, display_name, type, zones_ready,
   min_disk_gb}` без иконки, шаблона cloud-init и объектов зон, плюс `shown`,
-  `total`, `hidden`. Образы, не готовые ни в одной зоне, скрыты без
-  `all=true`. `list_images` остаётся как был: без аргументов, полные
-  объекты образов каталога и проекта; для поиска лучше `image_list`.
+  `total`, `hidden`. Образы, не готовые ни в одной зоне, и образы общего
+  каталога, недоступные проекту, скрыты без `all=true`; вторые считает
+  `hidden_not_in_project`, а с `all=true` их строки несут
+  `available_in_project: false`, и в ответе есть `note` с объяснением.
+  `list_images` остаётся как был: без аргументов, полные объекты образов
+  каталога и проекта (без проверки доступности); для поиска лучше
+  `image_list`.
 - `image_get` (`image` — имя, отображаемое имя или UUID; `image_id` — как
   раньше; `full`) — карточка: `ready`, `zones_ready`, `fields[]` с
   `filled_by` (`evo`, `default`, `user`, `none`, `status`), `fields_required`
   и `create{cli, tool, args}`. Иконка, `user_data_template` и исходные
   `image_metadata` — только с `full=true`. Несколько совпадений — ошибка `USAGE` с `candidates[]`, ни
-  одного — `NOT_FOUND`.
+  одного — `NOT_FOUND`. Образ, недоступный проекту, `image_get` всё равно
+  отдаёт — с `available_in_project: false`, `note` и без `create`.
 
-UUID из ответа передаётся в `provision` и `deploy` как `image_id`.
+Доступность проекту. Общий каталог (`GET /images` без `project_id`) шире
+того, что видит проект (`project_id=<проект>`): 16.10.2026 в общем каталоге
+было 86 образов, проекту из них были видны 63 (плюс 20 своих). Невидимые
+проекту — все Astra Linux, Альт, РЕД ОС и SberLinux, Windows 11 VDI, Ubuntu
+24.04 Desktop, NGFW — API в ВМ не превращает: 422
+`[{"message":"Image with this id is not found","code":"wrong_image"}]`.
+evo сверяет каждый поиск с каталогом проекта (тот же запрос с
+`project_id`), а образ по UUID — списком проекта с `name=<имя образа>`.
+Если каталог проекта не прочитан, ничего не помечается, в ответе
+`image_list` — `warning`. Почему образ не виден проекту, не проверено:
+вероятно, продукт маркетплейса нужно сначала подключить к проекту.
+
+Образ передаётся в `provision` и `deploy` как `image` — имя, отображаемое
+имя или UUID (разрешается так же, как в `image_get`: неоднозначно — `USAGE`
+с кандидатами в сообщении, не найдено — `NOT_FOUND`), или по-старому как
+`image_id` (UUID); оба сразу — `USAGE`.
+
+`provision` дополнительно принимает:
+
+- `image_metadata` — объект `{поле: значение}`: значения полей образа, в
+  первую очередь обязательных, которые evo сам не заполнит (`image_get`:
+  `fields_required`). Если такое поле не задано, вызов отклоняется (`USAGE`)
+  **до** резервирования floating IP и создания ВМ; поле, которого у образа
+  нет, — тоже `USAGE` со списком полей. В превью без `confirmed` —
+  только имена полей (`will_create.image_metadata_fields`), не значения.
+- `ports` — `["80", "8080/tcp", "53/udp"]` (можно числами): после загрузки
+  ВМ evo открывает их для `0.0.0.0/0` в её группе безопасности (группа
+  общая для всех ВМ в ней), в ответе — `ports{opened, already_open, failed}`;
+  `destroy` закрывает созданные правила.
+
+`provision` создаёт ВМ из любого доступного проекту образа, включая Astra
+Linux, Альт и РЕД ОС. Образ, недоступный проекту, `provision`, `deploy` и
+`deploy_plan` отклоняют с `NOT_FOUND` («… is in the Cloud.ru catalogue but
+not available to the project») до резервирования floating IP и создания ВМ;
+`provision` и `deploy` проверяют это в вызове с `confirmed=true` (превью без
+подтверждения в облако не ходит), `deploy_plan` — при построении плана.
+`deploy` на Astra Linux, Альт и РЕД ОС отказывает до создания ВМ и тогда,
+когда образ доступен: Docker ставится через get.docker.com, который их не
+поддерживает; `deploy_plan` с `compose_file` на таком образе плана не
+строит (`USAGE`), без `compose_file` — строит обычную ВМ. `deploy_plan` тоже
+принимает `image_metadata` и без обязательных полей не строит план; значения хранятся
+в локальном файле плана (`.evo/plans`, права `0600`) до `deploy_apply`.
 
 ## stdio
 

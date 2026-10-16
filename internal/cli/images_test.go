@@ -24,11 +24,15 @@ const (
 func imgID(n int) string { return fmt.Sprintf("00000000-0000-0000-0000-%012d", n) }
 
 // imageCloud — каталог, который ищет как сервер (подстрока без учёта
-// регистра в name= и display_name=, type=).
+// регистра в name= и display_name=, type=). С project_id= — каталог, каким
+// его видит проект: без образов hidden (по id); projErr — ошибка такого
+// вызова.
 type imageCloud struct {
 	provision.CloudAPI
-	shared []*provision.Image
-	detail map[string]*provision.ImageDetail
+	shared  []*provision.Image
+	detail  map[string]*provision.ImageDetail
+	hidden  map[string]bool
+	projErr *error
 }
 
 func (imageCloud) SetToken(string) {}
@@ -40,8 +44,14 @@ func (c imageCloud) ListImages(_ context.Context, filter ...provision.ImageFilte
 	if len(filter) > 0 {
 		f = filter[0]
 	}
+	if f.ProjectID != "" && c.projErr != nil && *c.projErr != nil {
+		return nil, *c.projErr
+	}
 	var out []*provision.Image
 	for _, img := range c.shared {
+		if f.ProjectID != "" && c.hidden[img.ID] {
+			continue
+		}
 		if f.Name != "" && !strings.Contains(strings.ToLower(img.Name), strings.ToLower(f.Name)) ||
 			f.DisplayName != "" && !strings.Contains(strings.ToLower(img.DisplayName), strings.ToLower(f.DisplayName)) ||
 			f.Type != "" && img.Type != f.Type {
@@ -95,7 +105,9 @@ func newImageCloud() imageCloud {
 			{ID: imgID(4), Name: "Ubuntu-24.04", DisplayName: "Ubuntu 24.04", Type: "public", MinDisk: 10, AvailZones: azs("created", "created", "created")},
 			{ID: imgID(5), Name: "OpensearchDashboards", DisplayName: "OpenSearch Dashboards", Type: "marketplace", MinDisk: 40, AvailZones: azs("", "created", "")},
 		},
-		detail: map[string]*provision.ImageDetail{},
+		detail:  map[string]*provision.ImageDetail{},
+		hidden:  map[string]bool{},
+		projErr: new(error),
 	}
 	c.detail[imgID(1)] = &provision.ImageDetail{
 		ID: imgID(1), Name: "AstraLinuxSmolensk1.8.3KES", DisplayName: "Astra Linux Смоленск 1.8.3 KES", Type: "marketplace",
@@ -113,7 +125,7 @@ func newImageCloud() imageCloud {
 	return c
 }
 
-func withImageCloud(t *testing.T) {
+func withImageCloud(t *testing.T) imageCloud {
 	t.Helper()
 	t.Setenv("CLOUDRU_PROJECT_ID", pvProject)
 	t.Setenv("CLOUDRU_REGION", "")
@@ -128,6 +140,7 @@ func withImageCloud(t *testing.T) {
 		return e, nil
 	}
 	t.Cleanup(func() { toolEngine = old })
+	return cloud
 }
 
 func TestImageList_RussianTable(t *testing.T) {
@@ -225,7 +238,7 @@ func TestImageGet_RussianCard(t *testing.T) {
 		"  linux_password  linux_password  да            evo: случайный пароль\n",
 		"  hostname        hostname        да            evo: имя ВМ\n",
 		"  vmm_enabled     flag                          служебный флаг, не передаётся\n",
-		"Создать ВМ:\n  evo vm create <имя-вм> --image-id " + imgID(1) + "\n",
+		"Создать ВМ:\n  evo vm create <имя-вм> --image AstraLinuxSmolensk1.8.3KES\n",
 		"flavor — не меньше минимума выше",
 	})
 	for _, bad := range []string{"<svg", "cloud-config", "\x00", "probe"} {
@@ -242,7 +255,8 @@ func TestImageGet_RussianCard(t *testing.T) {
 	assertHas(t, out, []string{
 		"  opensearch_host      text            да            ВЫ: обязательное, evo его не заполнит\n",
 		"  opensearch_password  plain_password                значение образа по умолчанию\n",
-		"Нужны значения, которые evo пока не умеет передать: opensearch_host",
+		"Нужны значения, которых evo сам не знает: opensearch_host — передайте их: --meta поле=значение.\n",
+		"  evo vm create <имя-вм> --image OpensearchDashboards --meta opensearch_host=<значение>\n",
 	})
 	if strings.Contains(out, "not-shown-default") {
 		t.Errorf("a secret default is shown:\n%s", out)
@@ -270,7 +284,7 @@ func TestImageGet_JSONAndErrors(t *testing.T) {
 		t.Errorf("answer: %v", got)
 	}
 	create, _ := got["create"].(map[string]any)
-	if create["cli"] != "evo vm create <vm-name> --image-id "+imgID(1) || create["tool"] != "provision" {
+	if create["cli"] != "evo vm create <vm-name> --image AstraLinuxSmolensk1.8.3KES" || create["tool"] != "provision" {
 		t.Errorf("create: %v", create)
 	}
 	fields, _ := got["fields"].([]any)

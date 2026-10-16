@@ -90,7 +90,7 @@ type Plan struct {
 	// Internal fields needed by Apply (persisted, no secrets).
 	ComposeFile  string            `json:"compose_file,omitempty"`
 	MetaFields   []string          `json:"meta_fields,omitempty"`   // image_metadata password fields generated at apply (older plans: also name/hostname/public_key)
-	MetaStatic   map[string]string `json:"meta_static,omitempty"`   // image_metadata fields sent verbatim (no secrets)
+	MetaStatic   map[string]string `json:"meta_static,omitempty"`   // image_metadata fields sent verbatim (no generated password; the caller's image_metadata values as given)
 	PublicKey    string            `json:"public_key,omitempty"`    // user public key (safe to persist)
 	SourceParams Params            `json:"source_params,omitempty"` // the request that produced this plan (for patch/re-plan)
 }

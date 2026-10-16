@@ -34,8 +34,17 @@ type Config struct {
 	Region        string `yaml:"region" json:"region"` // availability_zone_id UUID
 	Flavor        string `yaml:"flavor" json:"flavor"`
 	ImageID       string `yaml:"image_id" json:"image_id"` // boot image UUID
-	DiskSize      int    `yaml:"disk_size" json:"disk_size"`
-	Timeout       int    `yaml:"timeout" json:"timeout"` // seconds deploy waits for the VM to become active
+	// Image is the boot image by catalogue reference: a name, a display
+	// name or a UUID, resolved by images.Resolve (image: in .evo.yaml,
+	// --image). With ImageID the one from the higher layer wins; both in
+	// one layer is an error.
+	Image string `yaml:"image" json:"image,omitempty"`
+	// ImageMetadata are explicit values of the image's metadata fields
+	// (image_metadata: in .evo.yaml): what the image needs and evo cannot
+	// fill itself. Project file only.
+	ImageMetadata map[string]string `yaml:"image_metadata" json:"-"`
+	DiskSize      int               `yaml:"disk_size" json:"disk_size"`
+	Timeout       int               `yaml:"timeout" json:"timeout"` // seconds deploy waits for the VM to become active
 	// SecurityGroup is the group (name or UUID) deploy puts the VM in and
 	// opens the compose ports in; empty — chosen by resolveNetwork.
 	SecurityGroup string `yaml:"security_group" json:"security_group,omitempty"`
@@ -216,8 +225,39 @@ func resolve(opts Options) (Config, map[string]string, error) {
 		origins[key] = OriginFlag
 	}
 	cfg.ProjectOrigin = origins["ProjectID"]
+	if err := pickImage(&cfg, origins); err != nil {
+		return Config{}, nil, err
+	}
 
 	return cfg, origins, nil
+}
+
+// originRank orders the layers: a higher one overrides a lower one.
+var originRank = map[string]int{OriginDefault: 0, OriginProfile: 1, OriginProject: 2, OriginEnv: 3, OriginFlag: 4}
+
+// pickImage keeps one of image_id and image, the two ways to name the boot
+// image: the one set in the higher layer (image: in .evo.yaml overrides the
+// profile's image_id, --image-id overrides image:). Both in the same layer
+// would leave the choice to evo, so that is an error.
+func pickImage(cfg *Config, origins map[string]string) error {
+	if cfg.ImageID == "" || cfg.Image == "" {
+		return nil
+	}
+	idRank, refRank := originRank[origins["ImageID"]], originRank[origins["Image"]]
+	switch {
+	case idRank > refRank:
+		cfg.Image = ""
+		delete(origins, "Image")
+	case refRank > idRank:
+		cfg.ImageID = ""
+		delete(origins, "ImageID")
+	default:
+		return clerrors.New(clerrors.CodeConfigInvalid,
+			i18n.Tf("both image_id (%s) and image (%s) are set", "заданы и image_id (%s), и image (%s)", cfg.ImageID, cfg.Image),
+			i18n.T("Keep one of them: image takes a name or a UUID, image_id a UUID.",
+				"Оставьте одно: image — имя или UUID образа, image_id — только UUID."))
+	}
+	return nil
 }
 
 // applyEnvCredentials takes the key pair from the environment. The pair is
@@ -380,6 +420,11 @@ func applyProjectFile(cfg *Config, path string, origins map[string]string) error
 	mergeString(&cfg.Region, fileCfg.Region, "Region")
 	mergeString(&cfg.Flavor, fileCfg.Flavor, "Flavor")
 	mergeString(&cfg.ImageID, fileCfg.ImageID, "ImageID")
+	mergeString(&cfg.Image, strings.TrimSpace(fileCfg.Image), "Image")
+	if len(fileCfg.ImageMetadata) > 0 {
+		cfg.ImageMetadata = fileCfg.ImageMetadata
+		origins["ImageMetadata"] = OriginProject
+	}
 	mergeString(&cfg.ComposeFile, fileCfg.ComposeFile, "ComposeFile")
 	mergeString(&cfg.ProjectName, fileCfg.ProjectName, "ProjectName")
 	if fileCfg.DiskSize != 0 {
@@ -417,6 +462,8 @@ func setFieldAny(cfg *Config, field string, val any) error {
 		cfg.Flavor = toString(val)
 	case "ImageID":
 		cfg.ImageID = toString(val)
+	case "Image":
+		cfg.Image = strings.TrimSpace(toString(val))
 	case "DiskSize":
 		n, err := toInt(val)
 		if err != nil {
@@ -519,6 +566,7 @@ func buildSources(cfg *Config, origins map[string]string) []Source {
 		{"Region", cfg.Region},
 		{"Flavor", cfg.Flavor},
 		{"ImageID", cfg.ImageID},
+		{"Image", cfg.Image},
 		{"DiskSize", cfg.DiskSize},
 		{"Timeout", cfg.Timeout},
 		{"ComposeFile", cfg.ComposeFile},

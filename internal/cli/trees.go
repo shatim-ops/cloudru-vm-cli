@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -38,11 +40,14 @@ type treeGroup struct {
 //	"args..."     the rest of the command line, joined with spaces
 //	"vm_id|name"  required; goes to vm_id when it is a UUID, to name otherwise
 type treeCmd struct {
-	Verb    string
-	Tool    string
-	Args    []string
-	Rename  map[string]string // tool argument → flag name, when the default clashes
-	Columns []string          // table columns for a list answer (default: picked from the rows)
+	Verb   string
+	Tool   string
+	Args   []string
+	Rename map[string]string // tool argument → flag name, when the default clashes or reads badly
+	// Pairs are object arguments given as a repeatable key=value flag
+	// (--meta admin_password=…) instead of one JSON object.
+	Pairs   map[string]bool
+	Columns []string // table columns for a list answer (default: picked from the rows)
 	// Render shows the answer instead of the generic table (image list,
 	// image get); --json still prints the tool's answer as is.
 	Render func(p *output.Printer, w io.Writer, text string) error
@@ -52,7 +57,9 @@ var treeGroups = []treeGroup{
 	{Name: "vm", Short: "Virtual machines", Cmds: []treeCmd{
 		{Verb: "list", Tool: "vm_list", Columns: []string{"id", "name", "state", "zone", "created_time"}},
 		{Verb: "get", Tool: "vm_get", Args: []string{"vm_id|name"}},
-		{Verb: "create", Tool: "provision", Args: []string{"name"}},
+		{Verb: "create", Tool: "provision", Args: []string{"name"},
+			Rename: map[string]string{"image_metadata": "meta", "ports": "port"},
+			Pairs:  map[string]bool{"image_metadata": true}},
 		{Verb: "delete", Tool: "destroy", Args: []string{"vm_id|name"}},
 		{Verb: "zones", Tool: "list_zones"},
 		{Verb: "flavors", Tool: "list_flavors"},
@@ -281,6 +288,12 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	flagArgs := c.flagArgs(t)
 	for _, p := range flagArgs {
 		name := c.flagName(p.Name)
+		if c.Pairs[p.Name] {
+			cmd.Flags().StringArray(name, nil, p.Description+" (key=value, repeatable; the value may contain '='. "+
+				"key=- reads the value from stdin (one field at most), key=@file from a file, its trailing newline trimmed: "+
+				"use these for passwords, so the value stays out of the command line and the shell history)")
+			continue
+		}
 		switch p.Type {
 		case "integer":
 			cmd.Flags().Int(name, 0, p.Description)
@@ -385,6 +398,15 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 		if !cmd.Flags().Changed(name) {
 			continue
 		}
+		if c.Pairs[p.Name] {
+			vals, _ := cmd.Flags().GetStringArray(name)
+			m, err := pairsArg(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), name, vals)
+			if err != nil {
+				return nil, err
+			}
+			out[p.Name] = m
+			continue
+		}
 		var raw string
 		if p.Type == "array" {
 			vals, _ := cmd.Flags().GetStringArray(name)
@@ -410,6 +432,82 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 			helpHint(cmd))
 	}
 	return out, nil
+}
+
+// pairsArg turns repeated key=value flags into an object. The value is
+// everything after the first "=", so it may contain "=" itself. A value
+// that is "-" is read from stdin (one key at most), "@path" from a file;
+// a trailing newline is trimmed from both. A secret given so stays out of
+// argv and the shell history; a literal value that starts with "@" (or is
+// "-") goes through a file.
+func pairsArg(ctx context.Context, stdin io.Reader, prompt io.Writer, flag string, vals []string) (map[string]any, error) {
+	out := make(map[string]any, len(vals))
+	fromStdin := ""
+	for _, v := range vals {
+		k, val, ok := strings.Cut(v, "=")
+		k = strings.TrimSpace(k)
+		if !ok || k == "" {
+			return nil, clerrors.New(clerrors.CodeUsage,
+				i18n.Tf("--%s %q: want key=value", "--%s %q: нужно поле=значение", flag, v),
+				i18n.Tf("Example: --%[1]s hostname=web-01; a password from a file or stdin: --%[1]s admin_password=@./admin.pass or --%[1]s admin_password=-; the fields of an image: evo image get <image>.",
+					"Пример: --%[1]s hostname=web-01; пароль — из файла или stdin: --%[1]s admin_password=@./admin.pass или --%[1]s admin_password=-; поля образа — evo image get <образ>.", flag))
+		}
+		if _, dup := out[k]; dup {
+			return nil, clerrors.New(clerrors.CodeUsage,
+				i18n.Tf("--%s %s is given twice", "--%s %s задан дважды", flag, k), "")
+		}
+		switch {
+		case val == "-":
+			if fromStdin != "" {
+				return nil, clerrors.New(clerrors.CodeUsage,
+					i18n.Tf("--%s: %s and %s both read stdin", "--%s: %s и %s оба читают stdin", flag, fromStdin, k),
+					i18n.Tf("Only one field may read stdin; give the others from files: --%s %s=@<file>.",
+						"stdin читает только одно поле; остальные — из файлов: --%s %s=@<файл>.", flag, k))
+			}
+			fromStdin = k
+			if f, ok := stdin.(*os.File); ok && f == os.Stdin && stdinIsTerminal() {
+				// A terminal: one line, not echoed, with a prompt — not a
+				// silent wait for Ctrl-D with the password on the screen.
+				if ctx == nil {
+					ctx = context.Background()
+				}
+				v, err := newConsole(os.Stdin, prompt, true).askSecret(ctx,
+					i18n.Tf("Value of %s (not echoed): ", "Значение поля %s (не отображается): ", k))
+				if err != nil {
+					return nil, err
+				}
+				val = v
+				break
+			}
+			b, err := io.ReadAll(stdin)
+			if err != nil {
+				return nil, clerrors.New(clerrors.CodeUsage,
+					i18n.Tf("--%s %s=-: stdin was not read: %v", "--%s %s=-: stdin не прочитан: %v", flag, k, err), "")
+			}
+			val = trimNewline(string(b))
+		case strings.HasPrefix(val, "@"):
+			path := val[1:]
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return nil, clerrors.New(clerrors.CodeUsage,
+					i18n.Tf("--%s %s=@%s: the file was not read: %v", "--%s %s=@%s: файл не прочитан: %v", flag, k, path, err),
+					i18n.T("A value that starts with @ is a file name; a literal one goes through a file too.",
+						"Значение, которое начинается с @, — имя файла; такое значение буквально тоже передаётся через файл."))
+			}
+			val = trimNewline(string(b))
+		}
+		out[k] = val
+	}
+	return out, nil
+}
+
+// trimNewline drops one trailing newline ("\n" or "\r\n"): the one an
+// editor or echo adds.
+func trimNewline(s string) string {
+	if t, ok := strings.CutSuffix(s, "\r\n"); ok {
+		return t
+	}
+	return strings.TrimSuffix(s, "\n")
 }
 
 func helpHint(cmd *cobra.Command) string {

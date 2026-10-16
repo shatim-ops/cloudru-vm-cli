@@ -11,6 +11,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -124,8 +125,10 @@ const previewLookupTimeout = 20 * time.Second
 // reach the cloud (the MCP preview of provision never does): the configured
 // project, zone names, the flavor auto picks with its size, the image name
 // and the boot disk it needs, then the price. Lookups are best effort: what
-// cannot be read stays as it is.
-func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) {
+// cannot be read stays as it is. The one error is a refusal: the VM's image
+// is in the catalogue but the project cannot use it
+// (images.NotInProjectError) — the call would be refused after consent.
+func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 	if p.ProjectID == "" && p.Resource != ResourceS3Bucket && !contains(p.Missing, "project_id") {
 		p.ProjectID, p.ProjectFrom = e.Config.ProjectID, e.Config.ProjectOrigin
 		if p.ProjectID == "" {
@@ -139,13 +142,13 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) {
 	}
 	needZone := zone != nil && zone.ID != "" && (zone.Name == "" || zone.Name == zone.ID)
 	if (!needZone && p.VM == nil) || e.Auth == nil || e.Cloud == nil {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, previewLookupTimeout)
 	defer cancel()
 	tok, err := e.Auth.Token(ctx)
 	if err != nil {
-		return
+		return nil
 	}
 	e.Cloud.SetToken(tok.Value)
 	if needZone {
@@ -159,7 +162,7 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) {
 		}
 	}
 	if p.VM == nil {
-		return
+		return nil
 	}
 	vm := p.VM
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
@@ -172,14 +175,32 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) {
 			}
 		}
 	}
+	cat := images.Catalog{Cloud: e.Cloud, ProjectID: p.ProjectID}
+	checked := false
+	if vm.Image.ID == "" && vm.Image.Name != "" {
+		// image by name: the call resolves it the same way.
+		if img, err := cat.Resolve(ctx, vm.Image.Name); err == nil {
+			if img.NotInProject {
+				return images.NotInProjectError(img.Name)
+			}
+			vm.Image.ID, vm.Image.Name, checked = img.ID, img.Name, true
+		}
+	}
 	if vm.Image.ID != "" {
 		if img, err := e.Cloud.GetImage(ctx, vm.Image.ID); err == nil {
+			if !checked {
+				cat.MarkInProject(ctx, img)
+				if img.NotInProject {
+					return images.NotInProjectError(img.Name)
+				}
+			}
 			if img.Name != "" {
 				vm.Image.Name = img.Name
 			}
 			vm.Disk.SizeGB, _ = provision.BootDiskGB(vm.Disk.SizeGB, img.MinDisk)
 		}
 	}
+	return nil
 }
 
 // PickVMFlavor is the flavor provision creates a VM with: a name or UUID
@@ -303,6 +324,19 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 		}
 		if p.PublicIP != nil {
 			lines = append(lines, publicIPLine(*p.PublicIP))
+		}
+		for _, prm := range p.Params {
+			v := paramValue(prm.Value)
+			switch {
+			case v == "":
+			case prm.Key == "ports":
+				lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to 0.0.0.0/0 in the VM's security group (shared by every VM in it); destroy closes them",
+					"%s открываются для 0.0.0.0/0 в группе безопасности ВМ (она общая для всех ВМ в ней); destroy их закроет", v))
+			case prm.Key == "image_metadata":
+				lines = append(lines, previewLabel("fields", "поля")+i18n.Tf("%s of the image, as given", "%s — поля образа с заданными значениями", v))
+			default:
+				lines = append(lines, paramLine(prm))
+			}
 		}
 	} else {
 		if zoneName != "" {
@@ -433,7 +467,7 @@ func missingText(m string) string {
 	case "project_id":
 		return i18n.T("project (--project-id or CLOUDRU_PROJECT_ID)", "проект (--project-id или CLOUDRU_PROJECT_ID)")
 	case "image_id":
-		return i18n.T("image (--image-id or CLOUDRU_IMAGE_ID)", "образ (--image-id или CLOUDRU_IMAGE_ID)")
+		return i18n.T("image (--image, --image-id or CLOUDRU_IMAGE_ID)", "образ (--image, --image-id или CLOUDRU_IMAGE_ID)")
 	case "region":
 		return i18n.T("zone (--region or CLOUDRU_REGION)", "зона (--region или CLOUDRU_REGION)")
 	}
