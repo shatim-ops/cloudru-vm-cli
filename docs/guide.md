@@ -225,6 +225,19 @@ evo vm create dash-1 --image OpensearchDashboards --meta opensearch_host=10.0.0.
 `--meta` перекрывает и то, что evo заполняет сам (например,
 `--meta hostname=web-01`).
 
+Пароль и другие секреты не пишите в командную строку: она остаётся в
+истории оболочки и видна в списке процессов. `--meta поле=@файл` берёт
+значение из файла, `--meta поле=-` — из stdin (так — только одно поле; без
+терминала нужен `--yes`); завершающий перевод строки отрезается. Значение,
+которое само начинается с `@` или равно `-`, тоже передаётся через файл.
+
+```sh
+evo vm create dash-1 --image OpensearchDashboards --meta opensearch_host=10.0.0.5 \
+  --meta opensearch_password=@./opensearch.pass
+pass show opensearch | evo vm create dash-2 --image OpensearchDashboards \
+  --meta opensearch_host=10.0.0.5 --meta opensearch_password=- --yes
+```
+
 `--port` открывает входящие порты для `0.0.0.0/0` в группе безопасности ВМ
 после её загрузки: `80`, `8080/tcp`, `53/udp`, можно через запятую. Группа
 общая для всех ВМ в ней; `evo vm delete` (`destroy`) закрывает правила,

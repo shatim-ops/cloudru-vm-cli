@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -287,7 +288,9 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	for _, p := range flagArgs {
 		name := c.flagName(p.Name)
 		if c.Pairs[p.Name] {
-			cmd.Flags().StringArray(name, nil, p.Description+" (key=value, repeatable; the value may contain '=')")
+			cmd.Flags().StringArray(name, nil, p.Description+" (key=value, repeatable; the value may contain '='. "+
+				"key=- reads the value from stdin (one field at most), key=@file from a file, its trailing newline trimmed: "+
+				"use these for passwords, so the value stays out of the command line and the shell history)")
 			continue
 		}
 		switch p.Type {
@@ -396,7 +399,7 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 		}
 		if c.Pairs[p.Name] {
 			vals, _ := cmd.Flags().GetStringArray(name)
-			m, err := pairsArg(name, vals)
+			m, err := pairsArg(cmd.InOrStdin(), name, vals)
 			if err != nil {
 				return nil, err
 			}
@@ -431,25 +434,65 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 }
 
 // pairsArg turns repeated key=value flags into an object. The value is
-// everything after the first "=", so it may contain "=" itself.
-func pairsArg(flag string, vals []string) (map[string]any, error) {
+// everything after the first "=", so it may contain "=" itself. A value
+// that is "-" is read from stdin (one key at most), "@path" from a file;
+// a trailing newline is trimmed from both. A secret given so stays out of
+// argv and the shell history; a literal value that starts with "@" (or is
+// "-") goes through a file.
+func pairsArg(stdin io.Reader, flag string, vals []string) (map[string]any, error) {
 	out := make(map[string]any, len(vals))
+	fromStdin := ""
 	for _, v := range vals {
 		k, val, ok := strings.Cut(v, "=")
 		k = strings.TrimSpace(k)
 		if !ok || k == "" {
 			return nil, clerrors.New(clerrors.CodeUsage,
 				i18n.Tf("--%s %q: want key=value", "--%s %q: нужно поле=значение", flag, v),
-				i18n.Tf("Example: --%s admin_password=secret; the fields of an image: evo image get <image>.",
-					"Пример: --%s admin_password=secret; поля образа — evo image get <образ>.", flag))
+				i18n.Tf("Example: --%[1]s hostname=web-01; a password from a file or stdin: --%[1]s admin_password=@./admin.pass or --%[1]s admin_password=-; the fields of an image: evo image get <image>.",
+					"Пример: --%[1]s hostname=web-01; пароль — из файла или stdin: --%[1]s admin_password=@./admin.pass или --%[1]s admin_password=-; поля образа — evo image get <образ>.", flag))
 		}
 		if _, dup := out[k]; dup {
 			return nil, clerrors.New(clerrors.CodeUsage,
 				i18n.Tf("--%s %s is given twice", "--%s %s задан дважды", flag, k), "")
 		}
+		switch {
+		case val == "-":
+			if fromStdin != "" {
+				return nil, clerrors.New(clerrors.CodeUsage,
+					i18n.Tf("--%s: %s and %s both read stdin", "--%s: %s и %s оба читают stdin", flag, fromStdin, k),
+					i18n.Tf("Only one field may read stdin; give the others from files: --%s %s=@<file>.",
+						"stdin читает только одно поле; остальные — из файлов: --%s %s=@<файл>.", flag, k))
+			}
+			fromStdin = k
+			b, err := io.ReadAll(stdin)
+			if err != nil {
+				return nil, clerrors.New(clerrors.CodeUsage,
+					i18n.Tf("--%s %s=-: stdin was not read: %v", "--%s %s=-: stdin не прочитан: %v", flag, k, err), "")
+			}
+			val = trimNewline(string(b))
+		case strings.HasPrefix(val, "@"):
+			path := val[1:]
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return nil, clerrors.New(clerrors.CodeUsage,
+					i18n.Tf("--%s %s=@%s: the file was not read: %v", "--%s %s=@%s: файл не прочитан: %v", flag, k, path, err),
+					i18n.T("A value that starts with @ is a file name; a literal one goes through a file too.",
+						"Значение, которое начинается с @, — имя файла; такое значение буквально тоже передаётся через файл."))
+			}
+			val = trimNewline(string(b))
+		}
 		out[k] = val
 	}
 	return out, nil
+}
+
+// trimNewline drops one trailing newline ("\n" or "\r\n"): the one an
+// editor or echo adds.
+func trimNewline(s string) string {
+	if t, ok := strings.CutSuffix(s, "\r\n"); ok {
+		return t
+	}
+	return strings.TrimSuffix(s, "\n")
 }
 
 func helpHint(cmd *cobra.Command) string {

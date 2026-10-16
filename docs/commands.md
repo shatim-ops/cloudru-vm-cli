@@ -3929,7 +3929,8 @@ evo vm create <name> [flags]
   evo vm create my-vm --dry-run
   evo vm create my-vm --image Ubuntu-24.04 --flavor lowcost10-2-4 --port 80 --port 443
   evo vm create astra-1 --image 'Astra Linux SE 1.8'
-  evo vm create dash-1 --image OpensearchDashboards --meta opensearch_host=10.0.0.5
+  evo vm create dash-1 --image OpensearchDashboards --meta opensearch_host=10.0.0.5 --meta opensearch_password=@./opensearch.pass
+  pass show opensearch | evo vm create dash-2 --image OpensearchDashboards --meta opensearch_host=10.0.0.5 --meta opensearch_password=- --yes
   evo vm create worker-1 --no-public-ip --yes
 ```
 
@@ -3941,7 +3942,7 @@ evo vm create <name> [flags]
   -h, --help               Справка по create
       --image string       Boot image by exact name, display name or UUID (see image_list, image_get), e.g. 'Ubuntu-24.04'. Use it or image_id, not both.
       --image-id string    Boot image UUID (see image_list, image_get).
-      --meta stringArray   Values of the image's metadata fields by name, e.g. {"admin_password": "…"} — the mandatory ones evo cannot fill (image_get: fields_required). They override what evo fills. A field the image does not declare is refused. (key=value, repeatable; the value may contain '=')
+      --meta stringArray   Values of the image's metadata fields by name, e.g. {"admin_password": "…"} — the mandatory ones evo cannot fill (image_get: fields_required). They override what evo fills. A field the image does not declare is refused. (key=value, repeatable; the value may contain '='. key=- reads the value from stdin (one field at most), key=@file from a file, its trailing newline trimmed: use these for passwords, so the value stays out of the command line and the shell history)
       --no-public-ip       Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes.
       --port stringArray   Inbound ports to open in the VM's security group from 0.0.0.0/0, e.g. ["80", "8080/tcp", "53/udp"] (tcp by default). The group is shared by the zone's VMs; destroy deletes the rules evo created. (repeatable, or comma-separated)
       --subnet-id string   Subnet UUID for the interface (default: a subnet in the target zone).
