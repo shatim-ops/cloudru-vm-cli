@@ -4,12 +4,13 @@ name: api-probe
 # спецификациями (docs/internal/api-contract.md) не смогла решить по
 # документации, — форму ответов IAM и аудита, поведение limit=200, имена
 # параметров camelCase/snake_case, вложенные поля зоны и IP, каталог образов,
-# расчёт цены, каталог плагинов mk8s, списки и спецификации Kafka/Redis и
-# группы узлов mk8s. Ничего не создаёт и не удаляет: всё —
+# расчёт цены, каталог плагинов mk8s, списки и спецификации Kafka/Redis,
+# группы узлов mk8s, диски evo без ВМ, признаки подсетей, SNAT-шлюзы и их
+# адреса, имена claims токена. Ничего не создаёт и не удаляет: всё —
 # GET, кроме POST price-calculation, который только считает стоимость.
 #
 # Репозиторий публичный, лог виден всем: печатаются только коды HTTP, имена
-# полей и количества — никаких значений, ID, адресов и токенов. Исключение —
+# полей, количества и признаки — никаких значений, ID, адресов и токенов. Исключение —
 # имена образов общего каталога Cloud.ru: они публичны (видны любому
 # клиенту); образы проекта — только счётчики. И ещё текст ошибки API
 # (message, grpc-message) — до 160 символов, ID в нём замаскированы.
@@ -110,6 +111,32 @@ jobs:
               egress_metadata: any($r[]; .direction == "egress" and ((.remote_ip_prefix // "0.0.0.0/0") | test("^(0\\.0\\.0\\.0/0|169\\.254\\.169\\.254/32)$")))}' 2>/dev/null || echo 'не JSON')"
           done
 
+          # Реестр CMP-11 / P-D1: удаляет ли destroy (DELETE ВМ без тела)
+          # загрузочный диск. Только признаки и счётчики, без имён и ID.
+          echo "== диски: остались ли без ВМ диски evo (evo-…, …-boot)"
+          probe disks_by_attachment   "$C/disks?$P&limit=100" '[.[] | arrays | .[] | {evo: ((.name // "") | startswith("evo-")), boot_name: ((.name // "") | endswith("-boot")), bootable: .bootable, attached: (((.vms // .attachments // []) | length) > 0), state}] | group_by(.) | map(.[0] + {n: length})'
+          probe disks_evo_detached    "$C/disks?$P&limit=100" '{total: (.total // null), evo_detached: ([.[] | arrays | .[] | select(((.name // "") | startswith("evo-")) and (((.vms // .attachments // []) | length) == 0))] | length)}'
+
+          # Выбор подсети evo (default → routed_network) и предупреждение о
+          # подсети без DNS (реестр NET-5, OPS-3; P-D4). Имена зон публичны.
+          echo "== подсети: признаки default, routed_network, dns_servers по зонам"
+          probe subnet_flags          "$C/subnets?$P&limit=100" '[.[] | arrays | .[] | {zone: (.availability_zone.name // "?"), has_default: has("default"), default: .default, has_routed: has("routed_network"), routed: .routed_network, has_dns: has("dns_servers"), dns_n: ((.dns_servers // []) | length), type: (.type // null), state: (.state // null), default_name: ((.name // "") | test("^Default"))}] | group_by(.) | map(.[0] + {n: length})'
+
+          # Адрес SNAT-шлюза в списке FIP (реестр NET-6, P-D5) и шлюзы по зонам
+          # (compute /api/v1/nat-gateways — SNAT Evolution, документация «Шлюзы»).
+          echo "== SNAT: шлюзы по зонам и их адреса в списке floating IP"
+          probe nat_by_zone           "$C/nat-gateways?$P&limit=100" '{total: (.total // null), zones: ([.[] | arrays | .[] | (.availability_zone.name // "?")] | group_by(.) | map({(.[0]): length}) | add), types: ([.[] | arrays | .[] | (.nat_type // "?")] | unique), states: ([.[] | arrays | .[] | (.state // "?")] | unique), with_fip: ([.[] | arrays | .[] | select(.floating_ip != null)] | length)}'
+          probe fip_nat_flags         "$C/floating-ips?$P&limit=100" '[.[] | arrays | .[] | {state, has_nat_key: has("nat_gateway"), nat: (.nat_gateway != null), iface: (.interface != null), vm: (.vm != null)}] | group_by(.) | map(.[0] + {n: length})'
+
+          # Есть ли в токене SA claims project_id и customer_id (платформа H1):
+          # только имена ключей и признаки, без значений.
+          echo "== токен: имена claims (без значений)"
+          p=$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
+          while [ $(( ${#p} % 4 )) -ne 0 ]; do p="$p="; done
+          claims=$(printf '%s' "$p" | base64 -d 2>/dev/null || true)
+          echo "token_claims: $(printf '%s' "$claims" | jq -c --arg p "$PROJECT" '{keys: keys, project_id_matches: (.project_id == $p), has_customer_id: has("customer_id"), ttl_s: (if (.exp | type) == "number" and (.iat | type) == "number" then .exp - .iat else null end)}' 2>/dev/null || echo 'не JWT')"
+          unset p claims
+
           echo "== grpc-gateway: projectId (спецификация) против project_id (сейчас)"
           probe vpc_snake             "https://vpc.api.cloud.ru/v1/vpcs?project_id=$PROJECT" "$shape"
           probe vpc_camel             "https://vpc.api.cloud.ru/v1/vpcs?projectId=$PROJECT" "$shape"
@@ -121,6 +148,8 @@ jobs:
           end=$(date -u +%Y-%m-%dT%H:%M:%SZ); start=$(date -u -d '-3 hours' +%Y-%m-%dT%H:%M:%SZ)
           probe audit_limit           "https://audit.api.cloud.ru/events/list/$PROJECT?start=$start&end=$end&limit=5" "$shape"
           probe audit_pagesize        "https://audit.api.cloud.ru/events/list/$PROJECT?start=$start&end=$end&pageSize=5" "$shape"
+          # evo шлёт limit (по умолчанию 100) и на 401 отвечает «аудит не включён».
+          probe audit_limit100        "https://audit.api.cloud.ru/events/list/$PROJECT?start=$start&end=$end&limit=100" '{top: (if type == "object" then keys else type end), code: (.code // null), message: ((.message // null) | if . == null then null else tostring | .[0:160] end)}'
 
           echo "== IAM и Organization"
           probe iam_service_accounts  "https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId=$PROJECT" "$shape"
