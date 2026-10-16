@@ -323,8 +323,8 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_nodepools",
-			Description: "List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only.",
-			InputSchema: objSchema(map[string]any{"cluster_id": strProp("Cluster UUID (filter).")}),
+			Description: "List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only. The API has no list across clusters: get cluster_id from k8s_list.",
+			InputSchema: objSchema(map[string]any{"cluster_id": strProp("Cluster UUID (from k8s_list). Required.")}, "cluster_id"),
 		},
 		{
 			Name:        "k8s_add_nodepool",

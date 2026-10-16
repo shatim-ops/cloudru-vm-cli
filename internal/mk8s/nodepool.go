@@ -3,8 +3,10 @@ package mk8s
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 // --- Node pool types (v3) ---
@@ -69,24 +71,44 @@ func (c *Client) CreateNodePool(ctx context.Context, req CreateNodePoolReq) (*Op
 	return &op, nil
 }
 
-// ListNodePools lists node pools (optionally filtered by clusterId via query).
+// ListNodePools lists the node pools of a cluster, following
+// nextPageToken. clusterId is required by the API (openapi-v3.yaml of
+// mk8s, NodePoolService_List): without it the call fails, so an empty
+// clusterID is refused here.
 func (c *Client) ListNodePools(ctx context.Context, clusterID string) ([]map[string]any, error) {
-	q := url.Values{}
-	if clusterID != "" {
+	if clusterID == "" {
+		return nil, errors.New("mk8s: node pools need a cluster ID")
+	}
+	var out []map[string]any
+	seen := map[string]bool{}
+	token := ""
+	for i := 0; i < maxAddonPages; i++ {
+		q := url.Values{}
 		q.Set("clusterId", clusterID)
+		q.Set("pageSize", strconv.Itoa(addonPageSize))
+		if token != "" {
+			q.Set("pageToken", token)
+		}
+		data, st, err := c.do(ctx, http.MethodGet, "/v3/nodePools", q, nil)
+		if err != nil {
+			return nil, err
+		}
+		if st != 200 {
+			return nil, apiError(st, data)
+		}
+		var r struct {
+			NodePools     []map[string]any `json:"nodePools"`
+			NextPageToken string           `json:"nextPageToken"`
+		}
+		if err := json.Unmarshal(data, &r); err != nil {
+			return nil, err
+		}
+		out = append(out, r.NodePools...)
+		if r.NextPageToken == "" || seen[r.NextPageToken] {
+			break
+		}
+		seen[r.NextPageToken] = true
+		token = r.NextPageToken
 	}
-	data, st, err := c.do(ctx, http.MethodGet, "/v3/nodePools", q, nil)
-	if err != nil {
-		return nil, err
-	}
-	if st != 200 {
-		return nil, apiError(st, data)
-	}
-	var r struct {
-		NodePools []map[string]any `json:"nodePools"`
-	}
-	if err := json.Unmarshal(data, &r); err != nil {
-		return nil, err
-	}
-	return r.NodePools, nil
+	return out, nil
 }

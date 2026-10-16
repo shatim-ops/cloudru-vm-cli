@@ -439,3 +439,21 @@ func TestK8sAddAddon_FailedOperationKeepsID(t *testing.T) {
 		t.Fatalf("answer: %s", text)
 	}
 }
+
+// k8s_nodepools без cluster_id: USAGE с подсказкой k8s_list, без запроса
+// к API (GET /v3/nodePools требует clusterId; раньше — API_ERROR,
+// cloud-e2e readonly #23).
+func TestK8sNodePools_ClusterRequired(t *testing.T) {
+	r := addonRegistry(t, &fakeMK8s{})
+	m, text, isErr := callNamed(t, r, "k8s_nodepools", nil)
+	if !isErr || m["reason"] != "USAGE" {
+		t.Fatalf("want USAGE, got %s", text)
+	}
+	if h, _ := m["hint"].(string); !strings.Contains(h, "k8s_list") || !strings.Contains(h, "evo k8s list") {
+		t.Errorf("hint %q does not name k8s_list / evo k8s list", h)
+	}
+	tl, _ := r.Lookup("k8s_nodepools")
+	if req, _ := tl.InputSchema["required"].([]string); len(req) != 1 || req[0] != "cluster_id" {
+		t.Errorf("schema required = %v, want [cluster_id]", tl.InputSchema["required"])
+	}
+}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/mk8s"
 )
 
@@ -373,13 +374,20 @@ func (s *Registry) handleK8sDelete(ctx context.Context, args map[string]any) (st
 	return toJSON(map[string]any{"status": "deleting", "cluster_id": id, "operation_id": op.ID}), false
 }
 
-// handleK8sNodePools lists node pools of a cluster.
+// handleK8sNodePools lists node pools of a cluster. The API has no list
+// across clusters: GET /v3/nodePools requires clusterId (the tool used to
+// call it without one and got API_ERROR, cloud-e2e readonly #23).
 func (s *Registry) handleK8sNodePools(ctx context.Context, args map[string]any) (string, bool) {
+	clusterID := stringArg(args, "cluster_id")
+	if clusterID == "" {
+		return errResult(clierrors.New(clierrors.CodeUsage, "cluster_id is required: the API lists node pools of one cluster",
+			"Find the cluster ID with k8s_list (evo k8s list).")), true
+	}
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
 		return errResult(err), true
 	}
-	nps, err := cli.ListNodePools(ctx, stringArg(args, "cluster_id"))
+	nps, err := cli.ListNodePools(ctx, clusterID)
 	if err != nil {
 		return errResult(err), true
 	}

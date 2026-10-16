@@ -1895,7 +1895,7 @@ evo k8s list [flags]
 Вызывает инструмент k8s_nodepools (подробнее: 'evo tools describe k8s_nodepools').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only.
+List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only. The API has no list across clusters: get cluster_id from k8s_list.
 ```
 
 ```
