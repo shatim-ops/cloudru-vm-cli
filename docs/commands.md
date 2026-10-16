@@ -3736,6 +3736,20 @@ evo secret value <path> [flags]
 
 Состояние текущего развёртывания
 
+### Synopsis
+
+```text
+Показать развёртывание этого каталога по локальному state и живое состояние
+ВМ — одним запросом к Cloud.ru (не дольше 8 с). ВМ, удалённая вне evo (в
+консоли), показывается как не найденная в облаке: 'evo destroy' уберёт её
+запись. Если облако спросить не удалось (нет ключа, сети, ошибка API),
+status всё равно показывает локальное состояние и пишет, почему облако не
+проверено. state команда не меняет.
+
+--no-refresh — только локальный state, без запроса. С --json в ответе
+добавляются cloud_checked, cloud_state, not_found_in_cloud и cloud_error.
+```
+
 ```
 evo status [flags]
 ```
@@ -3750,7 +3764,8 @@ evo status [flags]
 ### Options
 
 ```
-  -h, --help   Справка по status
+  -h, --help         Справка по status
+      --no-refresh   Только локальный state: не спрашивать Cloud.ru о живом состоянии ВМ
 ```
 
 ### Options inherited from parent commands

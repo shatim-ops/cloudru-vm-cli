@@ -576,21 +576,40 @@ compose file changed (with --force, even if it did not).`, `Развернуть
 // --- status ---
 
 func newStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	var noRefresh bool
+	cmd := &cobra.Command{
 		Use:   "status",
 		Args:  cobra.NoArgs,
 		Short: i18n.T("Show current deployment status", "Состояние текущего развёртывания"),
+		Long: i18n.T(`Show this directory's deployment from the local state, and the VM's live
+state from one request to Cloud.ru (at most 8 s). A VM deleted outside evo
+(in the console) shows as not found in the cloud: 'evo destroy' removes its
+record. If the cloud cannot be asked (no key, network, API error), status
+still shows the local state and says why the cloud was not checked. status
+never changes the state.
+
+--no-refresh: the local state only, no request. With --json the answer adds
+cloud_checked, cloud_state, not_found_in_cloud and cloud_error.`,
+			`Показать развёртывание этого каталога по локальному state и живое состояние
+ВМ — одним запросом к Cloud.ru (не дольше 8 с). ВМ, удалённая вне evo (в
+консоли), показывается как не найденная в облаке: 'evo destroy' уберёт её
+запись. Если облако спросить не удалось (нет ключа, сети, ошибка API),
+status всё равно показывает локальное состояние и пишет, почему облако не
+проверено. state команда не меняет.
+
+--no-refresh — только локальный state, без запроса. С --json в ответе
+добавляются cloud_checked, cloud_state, not_found_in_cloud и cloud_error.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
 				return err
 			}
-			if err := eng.Status(cmd.Context()); err != nil {
-				return err
-			}
-			return nil
+			return eng.Status(cmd.Context(), engine.StatusOptions{NoRefresh: noRefresh})
 		},
 	}
+	cmd.Flags().BoolVar(&noRefresh, "no-refresh", false, i18n.T("Local state only: do not ask Cloud.ru for the VM's live state",
+		"Только локальный state: не спрашивать Cloud.ru о живом состоянии ВМ"))
+	return cmd
 }
 
 // --- logs ---

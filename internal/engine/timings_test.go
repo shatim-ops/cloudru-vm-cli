@@ -38,6 +38,8 @@ func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 
 		DeletableWaitTimeout:  10 * time.Minute,
 		DeletablePollInterval: 10 * time.Second,
+
+		StatusRefreshTimeout: 8 * time.Second,
 	}
 	if got != want {
 		t.Errorf("defaults changed:\n got  %+v\n want %+v", got, want)

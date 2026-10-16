@@ -18,8 +18,9 @@ const (
 	destroyPollTimeout    = 30 * time.Second
 	deletableWaitTimeout  = 10 * time.Minute // a VM still "creating" cannot be deleted yet
 	deletablePollInterval = 10 * time.Second
-	ifaceMaxAttempts      = 24 // × ifacePollInterval ≈ 2 minutes
-	ifaceFallbackAttempt  = 12 // after this, accept a primary interface in any state
+	statusRefreshTimeout  = 8 * time.Second // status answers even when Cloud.ru does not
+	ifaceMaxAttempts      = 24              // × ifacePollInterval ≈ 2 minutes
+	ifaceFallbackAttempt  = 12              // after this, accept a primary interface in any state
 )
 
 // Timings holds the waits Deploy and Destroy use between polls and retries. A zero field
@@ -42,6 +43,8 @@ type Timings struct {
 
 	DeletableWaitTimeout  time.Duration // destroy: how long to retry while the VM cannot be deleted yet
 	DeletablePollInterval time.Duration // destroy: between those retries
+
+	StatusRefreshTimeout time.Duration // status: the whole GET of the VM, authentication included
 }
 
 // withDefaults fills zero fields with the production defaults.
@@ -65,6 +68,7 @@ func (t Timings) withDefaults() Timings {
 	def(&t.DestroyPollTimeout, destroyPollTimeout)
 	def(&t.DeletableWaitTimeout, deletableWaitTimeout)
 	def(&t.DeletablePollInterval, deletablePollInterval)
+	def(&t.StatusRefreshTimeout, statusRefreshTimeout)
 	return t
 }
 
