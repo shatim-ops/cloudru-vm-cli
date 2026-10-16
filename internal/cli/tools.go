@@ -105,6 +105,14 @@ func newToolsListCmd() *cobra.Command {
 				}
 				list = append(list, toolInfo{Name: t.Name, Group: t.Group, Mutating: t.Mutating, Description: t.Description})
 			}
+			// Registration order scatters a group over the list; by group,
+			// then by name, a group reads as one block.
+			sort.Slice(list, func(i, j int) bool {
+				if list[i].Group != list[j].Group {
+					return list[i].Group < list[j].Group
+				}
+				return list[i].Name < list[j].Name
+			})
 			if p.IsJSON() {
 				return p.JSON(list)
 			}
@@ -133,10 +141,24 @@ func knownGroup(g string) bool {
 	return false
 }
 
+// abbreviations end with a dot that does not end the sentence.
+var abbreviations = []string{"e.g", "i.e", "incl", "etc"}
+
+// endsWithAbbreviation reports whether s ends with one of abbreviations as
+// a whole word ("incl", not "…pincl").
+func endsWithAbbreviation(s string) bool {
+	for _, a := range abbreviations {
+		if rest, ok := strings.CutSuffix(s, a); ok && (rest == "" || strings.ContainsAny(rest[len(rest)-1:], " ([")) {
+			return true
+		}
+	}
+	return false
+}
+
 // summary returns the first sentence of s, cut to max runes.
 func summary(s string, max int) string {
 	for i := 0; i+1 < len(s); i++ {
-		if s[i] == '.' && s[i+1] == ' ' && !strings.HasSuffix(s[:i], "e.g") && !strings.HasSuffix(s[:i], "i.e") {
+		if s[i] == '.' && s[i+1] == ' ' && !endsWithAbbreviation(s[:i]) {
 			s = s[:i+1]
 			break
 		}
