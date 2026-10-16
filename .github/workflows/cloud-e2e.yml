@@ -3,6 +3,7 @@ name: cloud-e2e
 # Сквозная проверка на настоящем Cloud.ru: init → deploy → verify → logs -f →
 # destroy → правило порта 80 удалено из группы безопасности. Создаёт платную ВМ и floating IP, поэтому запускается только
 # вручную или пушем в ветку e2e/** — и всегда удаляет за собой ресурсы.
+# Job readonly рядом проверяет чтения API и MCP, ничего не создавая.
 #
 # Секреты репозитория (Settings → Secrets and variables → Actions):
 #   CLOUDRU_KEY_ID, CLOUDRU_SECRET — ключ тестового сервисного аккаунта
@@ -34,6 +35,41 @@ permissions:
   contents: read
 
 jobs:
+  # Без платных ресурсов: чтения API через CLI, все инструменты только для
+  # чтения без аргументов, MCP по stdio и HTTP (гейт подтверждения,
+  # --allow-project, 401 без токена). Идёт параллельно с e2e; в лог — только
+  # имена, коды и счётчики (.github/scripts/cloud-readonly.sh).
+  readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Сборка
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      - name: Чтения CLI, инструменты, MCP stdio и HTTP
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: .github/scripts/cloud-readonly.sh
+
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 60
