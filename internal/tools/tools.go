@@ -359,7 +359,7 @@ func (s *Registry) registerTools() {
 				"name":         strProp("Addon name from k8s_addons."),
 				"version":      strProp("Release version (appVersion from k8s_addon_versions; addon_version is accepted too). Default: newest ACTIVE."),
 				"config":       map[string]any{"type": "object", "description": "Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}} and {{clusterName}} in it. Default: the addon's defaults."},
-				"resolve_mode": strProp("What to do with objects of the addon already in the cluster: NONE, OVERWRITE or PRESERVE (default: the API's)."),
+				"resolve_mode": strProp("What to do with objects of the addon already in the cluster (installed by hand): NONE keeps them, the install may then fail; OVERWRITE resets them to the recommended values. Default NONE."),
 				"confirmed":    confirmedProp(),
 			}, "cluster_id", "name"),
 		},

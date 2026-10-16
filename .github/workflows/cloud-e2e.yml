@@ -676,8 +676,10 @@ jobs:
           jq -c '{status, version: (.version // .app_version), namespace}' "$RUNNER_TEMP/addon.json"
           start=$(date +%s)
           while :; do
-            pods=$(evo k8s kubectl "$CLUSTER_ID" get pods -n "$ADDON_NS" -o json 2>/dev/null |
-              jq -c '[.items[]? | {name: .metadata.name, phase: .status.phase}]' || echo '[]')
+            # Поды ищутся по имени во всех namespace: addonNamespace релиза в
+            # каталоге 16.10 был похож на версию, а не на namespace.
+            pods=$(evo k8s kubectl "$CLUSTER_ID" get pods -A -o json 2>/dev/null |
+              jq -c --arg a "$ADDON" '[.items[]? | select(.metadata.name | startswith($a)) | {ns: .metadata.namespace, name: .metadata.name, phase: .status.phase}]' || echo '[]')
             echo "$(( ($(date +%s) - start) / 60 )) мин: $pods"
             if [ "$(jq 'length > 0 and all(.phase == "Running")' <<<"$pods")" = true ]; then break; fi
             [ $(( $(date +%s) - start )) -lt 900 ] || { echo "::error::поды $ADDON не Running за 15 мин"; exit 1; }

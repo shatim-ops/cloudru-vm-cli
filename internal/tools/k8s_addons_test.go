@@ -269,7 +269,7 @@ func TestK8sAddAddon_InstallsWithConfig(t *testing.T) {
 	var body map[string]any
 	_ = json.Unmarshal([]byte(f.posts[0]), &body)
 	if body["clusterId"] != addonCluster || body["name"] != "cert-manager" || body["appVersion"] != "v1.13.0" ||
-		body["resolveMode"] != "RESOLVE_MODE_OVERWRITE" || body["addonConfiguration"] != `{"clusterName":"{{clusterName}}","replicas":2}` {
+		body["resolveMode"] != "RESOLVE_CONFLICTS_MODE_OVERWRITE" || body["addonConfiguration"] != `{"clusterName":"{{clusterName}}","replicas":2}` {
 		t.Errorf("body: %s", f.posts[0])
 	}
 }

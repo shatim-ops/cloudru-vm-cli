@@ -153,7 +153,7 @@ func TestCreateClusterAddon(t *testing.T) {
 		_, _ = io.WriteString(w, answer)
 	})
 	req := CreateClusterAddonReq{ClusterID: fakeCluster, Name: "cert-manager", AppVersion: "v1.14.0",
-		AddonConfiguration: `{"replicas":2,"name":"{{clusterName}}"}`, ResolveMode: "RESOLVE_MODE_NONE"}
+		AddonConfiguration: `{"replicas":2,"name":"{{clusterName}}"}`, ResolveMode: "RESOLVE_CONFLICTS_MODE_NONE"}
 	res, err := cli.CreateClusterAddon(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -166,7 +166,7 @@ func TestCreateClusterAddon(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]any{"clusterId": fakeCluster, "name": "cert-manager", "appVersion": "v1.14.0",
-		"addonConfiguration": `{"replicas":2,"name":"{{clusterName}}"}`, "resolveMode": "RESOLVE_MODE_NONE"}
+		"addonConfiguration": `{"replicas":2,"name":"{{clusterName}}"}`, "resolveMode": "RESOLVE_CONFLICTS_MODE_NONE"}
 	for k, v := range want {
 		if body[k] != v {
 			t.Errorf("body[%s] = %v, want %v", k, body[k], v)
@@ -181,8 +181,10 @@ func TestCreateClusterAddon(t *testing.T) {
 	if err != nil || res.ID != "ca-2" || res.OperationID != "" || res.Status != "CLUSTER_ADDON_STATUS_INSTALLING" {
 		t.Errorf("cluster addon answer: %+v, %v", res, err)
 	}
-	if strings.Contains(rec.body[1], "addonConfiguration") || strings.Contains(rec.body[1], "resolveMode") {
-		t.Errorf("empty fields sent: %s", rec.body[1])
+	// resolveMode обязателен (живой API 16.10: 400 «must be specified»):
+	// без него уходит NONE; пустая конфигурация не уходит.
+	if strings.Contains(rec.body[1], "addonConfiguration") || !strings.Contains(rec.body[1], `"resolveMode":"RESOLVE_CONFLICTS_MODE_NONE"`) {
+		t.Errorf("body: %s", rec.body[1])
 	}
 
 	answer = `{"id":"op-3","done":true,"error":{"code":9,"message":"no ready workers"}}`

@@ -467,11 +467,10 @@ func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return usageResult(err), true
 	}
-	resolveMode := ""
-	if m := stringArg(args, "resolve_mode"); m != "" {
-		if resolveMode, err = mk8s.ResolveModeValue(m); err != nil {
-			return usageResult(err), true
-		}
+	// Always sent: the API requires it (default NONE).
+	resolveMode, err := mk8s.ResolveModeValue(stringArg(args, "resolve_mode"))
+	if err != nil {
+		return usageResult(err), true
 	}
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {

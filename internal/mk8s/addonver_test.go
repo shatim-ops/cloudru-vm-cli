@@ -108,13 +108,19 @@ func TestCheckKubeVersion(t *testing.T) {
 }
 
 func TestResolveModeValue(t *testing.T) {
-	for in, want := range map[string]string{"overwrite": "RESOLVE_MODE_OVERWRITE", "PRESERVE": "RESOLVE_MODE_PRESERVE", "RESOLVE_MODE_NONE": "RESOLVE_MODE_NONE"} {
+	for in, want := range map[string]string{
+		"overwrite": "RESOLVE_CONFLICTS_MODE_OVERWRITE", "": "RESOLVE_CONFLICTS_MODE_NONE",
+		"RESOLVE_CONFLICTS_MODE_NONE": "RESOLVE_CONFLICTS_MODE_NONE", "none": "RESOLVE_CONFLICTS_MODE_NONE",
+	} {
 		if got, err := ResolveModeValue(in); err != nil || got != want {
 			t.Errorf("ResolveModeValue(%q) = %q, %v", in, got, err)
 		}
 	}
-	if _, err := ResolveModeValue("merge"); err == nil {
-		t.Error("an unknown resolve mode accepted")
+	// PRESERVE к добавлению плагина неприменим (спецификация).
+	for _, bad := range []string{"merge", "preserve"} {
+		if _, err := ResolveModeValue(bad); err == nil {
+			t.Errorf("resolve mode %q accepted", bad)
+		}
 	}
 }
 

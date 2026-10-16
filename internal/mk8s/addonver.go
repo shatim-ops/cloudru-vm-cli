@@ -298,16 +298,18 @@ func checkComparator(c string, v semver) (bool, bool) {
 }
 
 // ResolveModeValue turns a resolve mode as a person writes it ("overwrite")
-// into the value sent to the API. The spec lists NONE, OVERWRITE and
-// PRESERVE, but it lists release modes bare too, and the live API answers
-// them with a prefix (SUPPORT_MODE_ACTIVE): the enum is taken to be
-// RESOLVE_MODE_*. Not live-verified.
+// into the value sent to the API: RESOLVE_CONFLICTS_MODE_* (mk8s
+// openapi-v3, CreateClusterAddonRequest.resolveMode). "" is the default,
+// NONE.
 func ResolveModeValue(m string) (string, error) {
 	m = strings.ToUpper(strings.TrimSpace(m))
-	m = strings.TrimPrefix(m, "RESOLVE_MODE_")
+	if m == "" {
+		return DefaultResolveMode, nil
+	}
+	m = strings.TrimPrefix(strings.TrimPrefix(m, "RESOLVE_CONFLICTS_MODE_"), "RESOLVE_MODE_")
 	for _, known := range ResolveModes {
 		if m == known {
-			return "RESOLVE_MODE_" + m, nil
+			return "RESOLVE_CONFLICTS_MODE_" + m, nil
 		}
 	}
 	return "", fmt.Errorf("resolve_mode must be one of %s, got %q", strings.Join(ResolveModes, ", "), m)

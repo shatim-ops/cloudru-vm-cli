@@ -159,7 +159,14 @@ func (c *Client) pages(ctx context.Context, path string, extra url.Values, page 
 
 // Resolve modes of CreateClusterAddonReq: what the installation does with
 // objects of the addon already in the cluster.
-var ResolveModes = []string{"NONE", "OVERWRITE", "PRESERVE"}
+// The spec says PRESERVE does not apply to adding an addon, so only
+// these two are accepted when installing.
+var ResolveModes = []string{"NONE", "OVERWRITE"}
+
+// DefaultResolveMode is sent when none is given: resolveMode is required
+// (live API 16.10.2026: 400 "resolveMode: must be specified"), and NONE
+// leaves manifests the user installed by hand as they are.
+const DefaultResolveMode = "RESOLVE_CONFLICTS_MODE_NONE"
 
 // CreateClusterAddonReq is the body of POST /v3/clusterAddons (v3 spec, not
 // live-verified).
@@ -170,7 +177,7 @@ type CreateClusterAddonReq struct {
 	// AddonConfiguration is a JSON document as a string; the server
 	// substitutes {{clusterID}} and {{clusterName}} in it.
 	AddonConfiguration string `json:"addonConfiguration,omitempty"`
-	ResolveMode        string `json:"resolveMode,omitempty"`
+	ResolveMode        string `json:"resolveMode"`
 }
 
 // ClusterAddonResult is the answer of CreateClusterAddon. Other mk8s
@@ -185,6 +192,9 @@ type ClusterAddonResult struct {
 
 // CreateClusterAddon installs an addon release into a cluster.
 func (c *Client) CreateClusterAddon(ctx context.Context, req CreateClusterAddonReq) (*ClusterAddonResult, error) {
+	if req.ResolveMode == "" {
+		req.ResolveMode = DefaultResolveMode
+	}
 	data, st, err := c.do(ctx, http.MethodPost, "/v3/clusterAddons", c.projectQuery(), req)
 	if err != nil {
 		return nil, err
