@@ -279,3 +279,38 @@ func TestRenderAnswer_NotesAndSections(t *testing.T) {
 		t.Errorf("status + list is not a plain list:\n%s", got)
 	}
 }
+
+// С --json ошибка инструмента — только {"error":…} в stderr: тело ответа
+// инструмента в stdout было бы вторым, лишним объектом ошибки для jq.
+// Превью подтверждения и --dry-run по-прежнему идут в stdout.
+func TestTrees_JSONToolErrorNotOnStdout(t *testing.T) {
+	setupCLI(t)
+	cases := []struct {
+		args   []string
+		code   int
+		stdout string // "" — stdout must be empty, else the status it must carry
+	}{
+		{[]string{"vm", "list", "--json"}, clerrors.ExitAuth, ""},
+		{[]string{"disk", "delete", "d-1", "--json"}, clerrors.ExitConfirmationRequired, "confirmation_required"},
+		{[]string{"disk", "delete", "d-1", "--dry-run", "--json"}, clerrors.ExitOK, "dry_run"},
+	}
+	for _, c := range cases {
+		newProcess()
+		code, stdout, stderr := runCLI(t, "", c.args...)
+		if code != c.code {
+			t.Errorf("%v: exit %d, want %d (%s)", c.args, code, c.code, stderr)
+		}
+		if c.stdout == "" {
+			if strings.TrimSpace(stdout) != "" {
+				t.Errorf("%v: stdout %q, want empty", c.args, stdout)
+			}
+			if !strings.Contains(stderr, `"error"`) {
+				t.Errorf("%v: no JSON error on stderr: %q", c.args, stderr)
+			}
+			continue
+		}
+		if !strings.Contains(stdout, `"status": "`+c.stdout+`"`) && !strings.Contains(stdout, `"status":"`+c.stdout+`"`) {
+			t.Errorf("%v: stdout %q, want status %s", c.args, stdout, c.stdout)
+		}
+	}
+}

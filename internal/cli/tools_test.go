@@ -63,6 +63,42 @@ func TestToolsList_JSONHasEveryTool(t *testing.T) {
 	}
 }
 
+// The list goes by group, then by name: in registration order a group was
+// scattered over 38 runs.
+func TestToolsList_SortedByGroupThenName(t *testing.T) {
+	out, _, code := execCLI(t, "tools", "list", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	var list []toolInfo
+	if err := json.Unmarshal([]byte(out), &list); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	for i := 1; i < len(list); i++ {
+		a, b := list[i-1], list[i]
+		if a.Group > b.Group || (a.Group == b.Group && a.Name >= b.Name) {
+			t.Fatalf("%s/%s before %s/%s", a.Group, a.Name, b.Group, b.Name)
+		}
+	}
+}
+
+// The first sentence does not end at an abbreviation's dot: k8s_get was
+// cut to "… (full details incl.".
+func TestSummary_SkipsAbbreviations(t *testing.T) {
+	for in, want := range map[string]string{
+		"Get a cluster (full details incl. status). Read-only.": "Get a cluster (full details incl. status).",
+		"Disks, NICs etc. are kept. Then more.":                 "Disks, NICs etc. are kept.",
+		"Pass a flavor, e.g. low-1-2. Optional.":                "Pass a flavor, e.g. low-1-2.",
+		"That is, i.e. this. Next.":                             "That is, i.e. this.",
+		"One. Two.":                                             "One.",
+		"Ends with pincl. Next.":                                "Ends with pincl.",
+	} {
+		if got := summary(in, 200); got != want {
+			t.Errorf("summary(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestToolsList_Group(t *testing.T) {
 	out, _, code := execCLI(t, "tools", "list", "--group", "disk")
 	if code != 0 {

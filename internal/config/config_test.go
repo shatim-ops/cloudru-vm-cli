@@ -55,7 +55,7 @@ func TestDefaults(t *testing.T) {
 
 func TestResolve_NothingConfigured(t *testing.T) {
 	isolate(t)
-	cfg, err := Resolve(Options{})
+	cfg, err := resolveConfig(Options{})
 	if err != nil {
 		t.Fatalf("no files and no env must not be an error: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestResolve_EnvCredentialsOverrideProfileAsAPair(t *testing.T) {
 	saveFakeProfile(t, "default", Profile{})
 
 	t.Setenv("CLOUDRU_KEY_ID", "env-key")
-	cfg, err := Resolve(Options{})
+	cfg, err := resolveConfig(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestResolve_EnvCredentialsOverrideProfileAsAPair(t *testing.T) {
 	}
 
 	t.Setenv("CLOUDRU_SECRET", "env-secret")
-	cfg, err = Resolve(Options{})
+	cfg, err = resolveConfig(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestResolve_EnvCredentialsOverrideProfileAsAPair(t *testing.T) {
 func TestResolve_DeprecatedAPIKey(t *testing.T) {
 	isolate(t)
 	t.Setenv("CLOUDRU_API_KEY", "legacy-id:legacy-secret")
-	cfg, err := Resolve(Options{})
+	cfg, err := resolveConfig(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestResolve_DeprecatedAPIKey(t *testing.T) {
 	// The proper variables win and silence the warning.
 	t.Setenv("CLOUDRU_KEY_ID", "new-id")
 	t.Setenv("CLOUDRU_SECRET", "new-secret")
-	cfg, err = Resolve(Options{})
+	cfg, err = resolveConfig(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestResolve_DeprecatedAPIKey(t *testing.T) {
 func TestResolve_MalformedAPIKeyIsAuthError(t *testing.T) {
 	isolate(t)
 	t.Setenv("CLOUDRU_API_KEY", "no-colon-here")
-	_, err := Resolve(Options{})
+	_, err := resolveConfig(Options{})
 	if exitCode(err) != clerrors.ExitAuth {
 		t.Errorf("exit code %d for %v, want %d", exitCode(err), err, clerrors.ExitAuth)
 	}
@@ -176,18 +176,18 @@ func TestResolve_ProfileSelection(t *testing.T) {
 	saveFakeProfile(t, "default", Profile{ProjectID: "proj-default"})
 	saveFakeProfile(t, "staging", Profile{ProjectID: "proj-staging"})
 
-	cfg, err := Resolve(Options{Profile: "staging"})
+	cfg, err := resolveConfig(Options{Profile: "staging"})
 	if err != nil || cfg.ProjectID != "proj-staging" || cfg.KeyID != "fake-key-id-staging" {
 		t.Fatalf("flag: %+v %v", cfg, err)
 	}
 
 	t.Setenv("CLOUDRU_PROFILE", "staging")
-	cfg, err = Resolve(Options{})
+	cfg, err = resolveConfig(Options{})
 	if err != nil || cfg.Profile != "staging" || cfg.ProjectID != "proj-staging" {
 		t.Fatalf("env: %+v %v", cfg, err)
 	}
 	// The flag beats the env.
-	cfg, err = Resolve(Options{Profile: "default"})
+	cfg, err = resolveConfig(Options{Profile: "default"})
 	if err != nil || cfg.ProjectID != "proj-default" {
 		t.Fatalf("flag over env: %+v %v", cfg, err)
 	}
@@ -196,7 +196,7 @@ func TestResolve_ProfileSelection(t *testing.T) {
 func TestResolve_UnknownExplicitProfile(t *testing.T) {
 	isolate(t)
 	saveFakeProfile(t, "default", Profile{})
-	_, err := Resolve(Options{Profile: "nosuch"})
+	_, err := resolveConfig(Options{Profile: "nosuch"})
 	if exitCode(err) != clerrors.ExitAuth {
 		t.Fatalf("exit code %d for %v, want %d", exitCode(err), err, clerrors.ExitAuth)
 	}
@@ -205,7 +205,7 @@ func TestResolve_UnknownExplicitProfile(t *testing.T) {
 		t.Errorf("hint does not say how to create the profile: %v", err)
 	}
 
-	if _, err := Resolve(Options{Profile: "../etc"}); exitCode(err) != clerrors.ExitAuth {
+	if _, err := resolveConfig(Options{Profile: "../etc"}); exitCode(err) != clerrors.ExitAuth {
 		t.Errorf("path-like profile name accepted: %v", err)
 	}
 }
@@ -214,7 +214,7 @@ func TestResolve_ProjectFileSecretsIgnored(t *testing.T) {
 	isolate(t)
 	project := filepath.Join(t.TempDir(), ".evo.yaml")
 	writeFile(t, project, "project_id: p1\nkey_id: leaked-id\nsecret: leaked-secret\n")
-	cfg, err := Resolve(Options{ProjectFile: project})
+	cfg, err := resolveConfig(Options{ProjectFile: project})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestResolve_S3SectionAndEnvOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := Resolve(Options{})
+	cfg, err := resolveConfig(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestResolve_S3SectionAndEnvOverride(t *testing.T) {
 		t.Errorf("s3 section not read: %+v", cfg.S3)
 	}
 	t.Setenv("CLOUDRU_S3_ACCESS_KEY", "s3-env-ak")
-	cfg, err = Resolve(Options{})
+	cfg, err = resolveConfig(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,23 +256,23 @@ func TestResolve_InvalidInputs(t *testing.T) {
 	isolate(t)
 	project := filepath.Join(t.TempDir(), ".evo.yaml")
 	writeFile(t, project, "region: [invalid yaml\n")
-	if _, err := Resolve(Options{ProjectFile: project}); exitCode(err) != clerrors.ExitAuth {
+	if _, err := resolveConfig(Options{ProjectFile: project}); exitCode(err) != clerrors.ExitAuth {
 		t.Errorf("invalid YAML: %v", err)
 	}
 	t.Setenv("CLOUDRU_TIMEOUT", "not-a-number")
-	if _, err := Resolve(Options{}); err == nil {
+	if _, err := resolveConfig(Options{}); err == nil {
 		t.Error("non-integer CLOUDRU_TIMEOUT accepted")
 	}
 	t.Setenv("CLOUDRU_TIMEOUT", "")
 	writeFile(t, CredentialsPath(), "profiles: [broken\n")
-	if _, err := Resolve(Options{}); exitCode(err) != clerrors.ExitAuth {
+	if _, err := resolveConfig(Options{}); exitCode(err) != clerrors.ExitAuth {
 		t.Errorf("broken credentials.yaml: %v", err)
 	}
 }
 
 func TestResolve_MissingProjectFile(t *testing.T) {
 	isolate(t)
-	cfg, err := Resolve(Options{ProjectFile: filepath.Join(t.TempDir(), "nonexistent.yaml"), Flags: map[string]any{"Verbose": true}})
+	cfg, err := resolveConfig(Options{ProjectFile: filepath.Join(t.TempDir(), "nonexistent.yaml"), Flags: map[string]any{"Verbose": true}})
 	if err != nil || !cfg.Verbose || cfg.Flavor != "auto" {
 		t.Errorf("got %+v, %v", cfg, err)
 	}
@@ -314,7 +314,7 @@ func TestReadCredentials_WarnsOnLooseMode(t *testing.T) {
 	if err := os.Chmod(CredentialsPath(), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := Resolve(Options{})
+	cfg, err := resolveConfig(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,4 +408,11 @@ func TestResolve_WarnsWhenProjectOverridesProfile(t *testing.T) {
 	if warned(cfg, "proj-profile") {
 		t.Errorf("same project warned: %q", cfg.Warnings)
 	}
+}
+
+// resolveConfig merges all configuration layers without the sources; the
+// commands use ResolveWithSources.
+func resolveConfig(opts Options) (Config, error) {
+	cfg, _, err := resolve(opts)
+	return cfg, err
 }

@@ -92,6 +92,26 @@ func TestRegistry_Mutating(t *testing.T) {
 
 // Wrap reaches every caller, including the in-process calls of the stack
 // orchestrator (callTool), not only the transport's dispatch.
+// Every confirmed argument has the one description (with a note where a
+// tool asks only for some verbs): agents read the same rule everywhere.
+func TestRegistry_ConfirmedHasOneDescription(t *testing.T) {
+	n := 0
+	for _, tl := range New(nilFactory).Tools() {
+		props, _ := tl.InputSchema["properties"].(map[string]any)
+		p, ok := props["confirmed"].(map[string]any)
+		if !ok {
+			continue
+		}
+		n++
+		if d, _ := p["description"].(string); !strings.HasSuffix(d, confirmedDesc) {
+			t.Errorf("%s: confirmed is %q, want confirmedProp()", tl.Name, d)
+		}
+	}
+	if n < 60 {
+		t.Errorf("only %d tools take confirmed", n)
+	}
+}
+
 func TestRegistry_WrapReachesInProcessCalls(t *testing.T) {
 	r := newTestServer()
 	ok := r.Wrap("cert_private_key", func(Handler) Handler {

@@ -33,15 +33,6 @@ func Label(key string) string {
 	return strings.TrimSuffix(key, "/tcp")
 }
 
-// Labels maps Label over keys.
-func Labels(keys []string) []string {
-	out := make([]string, len(keys))
-	for i, k := range keys {
-		out[i] = Label(k)
-	}
-	return out
-}
-
 func splitKey(key string) (proto string, port int) {
 	p, proto, _ := strings.Cut(key, "/")
 	port, _ = strconv.Atoi(p)

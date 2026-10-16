@@ -401,6 +401,16 @@ func TestDoctor(t *testing.T) {
 	if code != clerrors.ExitAuth {
 		t.Errorf("no credentials: exit %d, want %d\n%s", code, clerrors.ExitAuth, stdout)
 	}
+	// Without a key the config line is not "ok": it says the key is missing.
+	var noKey struct {
+		Checks []doctorCheck `json:"checks"`
+	}
+	_ = json.Unmarshal([]byte(stdout), &noKey)
+	for _, c := range noKey.Checks {
+		if c.Name == "config" && (c.Status != checkWarn || !strings.Contains(c.Detail, "access key not set")) {
+			t.Errorf("no credentials: config check %q %q, want a warning about the key", c.Status, c.Detail)
+		}
+	}
 
 	saveProfile(t, "default", "p-1")
 	newProcess()

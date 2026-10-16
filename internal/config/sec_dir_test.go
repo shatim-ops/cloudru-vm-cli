@@ -21,7 +21,7 @@ func TestReadCredentials_WarnsOnWritableDir(t *testing.T) {
 	if err := os.Chmod(dir, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := Resolve(Options{})
+	cfg, err := resolveConfig(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestReadCredentials_WarnsOnWritableDir(t *testing.T) {
 func TestReadCredentials_PrivateDirNoWarning(t *testing.T) {
 	isolate(t)
 	saveFakeProfile(t, "default", Profile{})
-	cfg, err := Resolve(Options{})
+	cfg, err := resolveConfig(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

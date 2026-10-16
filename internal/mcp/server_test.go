@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // nilFactory is an EngineFactory that fails — used for tests that must not
@@ -139,6 +140,64 @@ func TestToolsList(t *testing.T) {
 	first := tools[0].(map[string]any)
 	if _, ok := first["inputSchema"]; !ok {
 		t.Errorf("tool missing inputSchema key: %v", first)
+	}
+}
+
+// Every tool carries MCP annotations: readOnlyHint is the opposite of
+// Mutating, every *_delete and the listed destroying tools are destructive,
+// a read is idempotent and never destructive.
+func TestToolsList_Annotations(t *testing.T) {
+	s := newTestServer()
+	resp := roundTrip(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	listed := resp["result"].(map[string]any)["tools"].([]any)
+	mutating := map[string]bool{}
+	for _, tl := range tools.New(nil).Tools() {
+		mutating[tl.Name] = tl.Mutating
+	}
+	destructive := map[string]bool{"destroy": true, "stack_destroy": true, "release_floating_ip": true,
+		"s3_rm": true, "s3_put": true, "k8s_kubectl": true, "k8s_apply": true, "k8s_helm": true}
+	seen := map[string]bool{}
+	for _, raw := range listed {
+		tl := raw.(map[string]any)
+		name := tl["name"].(string)
+		seen[name] = true
+		a, ok := tl["annotations"].(map[string]any)
+		if !ok {
+			t.Errorf("%s: no annotations", name)
+			continue
+		}
+		// hint reads a hint; a missing one has its default from the spec.
+		hint := func(k string, def bool) bool {
+			if v, ok := a[k].(bool); ok {
+				return v
+			}
+			return def
+		}
+		if hint("readOnlyHint", false) != !mutating[name] {
+			t.Errorf("%s: readOnlyHint=%v, Mutating=%v", name, a["readOnlyHint"], mutating[name])
+		}
+		if mutating[name] {
+			// The default is true: a mutation must say it explicitly.
+			if _, ok := a["destructiveHint"].(bool); !ok {
+				t.Errorf("%s: mutation without destructiveHint", name)
+			}
+			want := strings.HasSuffix(name, "_delete") || destructive[name]
+			if hint("destructiveHint", true) != want {
+				t.Errorf("%s: destructiveHint=%v, want %v", name, a["destructiveHint"], want)
+			}
+		}
+		if hint("idempotentHint", false) != !mutating[name] {
+			t.Errorf("%s: idempotentHint=%v, want %v", name, a["idempotentHint"], !mutating[name])
+		}
+		// The default (true) is what every evo tool is; false would be wrong.
+		if !hint("openWorldHint", true) {
+			t.Errorf("%s: openWorldHint=%v, want the default true", name, a["openWorldHint"])
+		}
+	}
+	for name := range destructive {
+		if !seen[name] || !mutating[name] {
+			t.Errorf("destructive tool %q is not a mutating tool of the registry (renamed?)", name)
+		}
 	}
 }
 

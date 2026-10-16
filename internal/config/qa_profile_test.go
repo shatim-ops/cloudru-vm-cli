@@ -103,7 +103,7 @@ func TestResolve_EnvCredentialsAreTrimmed(t *testing.T) {
 	isolate(t)
 	t.Setenv("CLOUDRU_KEY_ID", " key-id\r")
 	t.Setenv("CLOUDRU_SECRET", "secret\r\n")
-	cfg, err := Resolve(Options{})
+	cfg, err := resolveConfig(Options{})
 	if err != nil || cfg.KeyID != "key-id" || cfg.Secret != "secret" {
 		t.Errorf("got %q %q %v", cfg.KeyID, cfg.Secret, err)
 	}
@@ -112,14 +112,14 @@ func TestResolve_EnvCredentialsAreTrimmed(t *testing.T) {
 	t.Setenv("CLOUDRU_SECRET", "")
 	for _, v := range []string{" id:sec\r", "id : sec", "id:sec\n"} {
 		t.Setenv("CLOUDRU_API_KEY", v)
-		cfg, err := Resolve(Options{})
+		cfg, err := resolveConfig(Options{})
 		if err != nil || cfg.KeyID != "id" || cfg.Secret != "sec" {
 			t.Errorf("CLOUDRU_API_KEY=%q: got %q %q %v", v, cfg.KeyID, cfg.Secret, err)
 		}
 	}
 	for _, v := range []string{"id:", ":sec", " : ", "nocolon"} {
 		t.Setenv("CLOUDRU_API_KEY", v)
-		if _, err := Resolve(Options{}); exitCode(err) != clerrors.ExitAuth {
+		if _, err := resolveConfig(Options{}); exitCode(err) != clerrors.ExitAuth {
 			t.Errorf("CLOUDRU_API_KEY=%q: %v, want exit 2", v, err)
 		}
 	}
@@ -154,7 +154,7 @@ func FuzzProfileFiles(f *testing.F) {
 		if err := os.WriteFile(filepath.Join(dir, credentialsName), []byte(creds), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Resolve(Options{Profile: profile}); err != nil && exitCode(err) != clerrors.ExitAuth {
+		if _, err := resolveConfig(Options{Profile: profile}); err != nil && exitCode(err) != clerrors.ExitAuth {
 			t.Fatalf("Resolve: exit %d for %v", exitCode(err), err)
 		}
 		if _, err := Profiles(); err != nil && exitCode(err) != clerrors.ExitAuth {

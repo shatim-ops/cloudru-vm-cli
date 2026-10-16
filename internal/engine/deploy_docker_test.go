@@ -179,7 +179,7 @@ func assertInterruptedWithVMHint(t *testing.T, err error, out string) {
 		t.Fatalf("exit code = %d (err %v), want %d", got, err, clerrors.ExitInterrupted)
 	}
 	var cliErr *clerrors.CLIError
-	if !stderrors.As(err, &cliErr) || !strings.Contains(cliErr.Hint, "vm-123") || !strings.Contains(cliErr.Hint, "evo destroy --force") {
+	if !stderrors.As(err, &cliErr) || !strings.Contains(cliErr.Hint, "vm-123") || !strings.Contains(cliErr.Hint, "evo destroy --yes") {
 		t.Errorf("hint must name the VM and how to delete it: %v", err)
 	}
 	if !strings.Contains(out, "VM vm-123 left running") {
@@ -241,7 +241,7 @@ func TestDeploy_InterruptOnExistingVM_NotWrapped(t *testing.T) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 	var cliErr *clerrors.CLIError
-	if stderrors.As(err, &cliErr) && strings.Contains(cliErr.Hint, "destroy --force") {
+	if stderrors.As(err, &cliErr) && strings.Contains(cliErr.Hint, "destroy --yes") {
 		t.Errorf("existing VM must not get the 'left running' hint: %v", err)
 	}
 }

@@ -19,7 +19,7 @@ import (
 // ru.AZ-1 took about 5, 15.10.2026).
 const DefaultPollTimeout = 10 * time.Minute
 
-// pollInterval is how often Apply asks for the VM state (a variable for tests).
+// pollInterval is how often ApplyWithTimeout asks for the VM state (a variable for tests).
 var pollInterval = 10 * time.Second
 
 // ApplyResult is the compact result returned to the agent after a deploy.
@@ -41,14 +41,10 @@ type ApplyResult struct {
 	Ports state.DeploymentRecord `json:"-"`
 }
 
-// Apply executes a resolved plan. It is idempotent: if a VM with the plan's name
-// already exists, it adopts that VM instead of creating a duplicate.
-func Apply(ctx context.Context, cloud provision.CloudAPI, plan *Plan) (*ApplyResult, error) {
-	return ApplyWithTimeout(ctx, cloud, plan, DefaultPollTimeout)
-}
-
-// ApplyWithTimeout is Apply waiting at most pollTimeout for the VM to run
-// (CLOUDRU_TIMEOUT through the engine's timings; zero means the default).
+// ApplyWithTimeout executes a resolved plan, waiting at most pollTimeout for
+// the VM to run (CLOUDRU_TIMEOUT through the engine's timings; zero means
+// the default). It is idempotent: if a VM with the plan's name already
+// exists, it adopts that VM instead of creating a duplicate.
 func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan, pollTimeout time.Duration) (*ApplyResult, error) {
 	if pollTimeout <= 0 {
 		pollTimeout = DefaultPollTimeout

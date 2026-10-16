@@ -155,7 +155,7 @@ func TestWindowsReadCredentialsWarnsOnForeignACL(t *testing.T) {
 		windows.DACL_SECURITY_INFORMATION|windows.UNPROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := Resolve(Options{})
+	cfg, err := resolveConfig(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

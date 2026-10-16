@@ -45,7 +45,7 @@ func TestRussian_RootHelp(t *testing.T) {
 			t.Errorf("root help lacks %q:\n%s", want, stdout)
 		}
 	}
-	for _, en := range []string{"Usage:", "Available Commands:", "Flags:", "Deploy docker-compose projects", "help for"} {
+	for _, en := range []string{"Usage:", "Available Commands:", "Flags:", "CLI and MCP server", "help for"} {
 		if strings.Contains(stdout, en) {
 			t.Errorf("root help still has %q:\n%s", en, stdout)
 		}

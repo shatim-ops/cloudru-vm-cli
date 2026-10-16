@@ -32,6 +32,15 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 		e.Printer.Warning(opts.Path + i18n.T(" already exists. Skipping.", " уже существует, файл не изменён."))
 		return nil
 	}
+	// deploy reads this compose file; without it the first deploy fails
+	// after the setup is done, so say it now. A warning: the file may come
+	// later.
+	if f := e.Config.ComposeFile; f != "" {
+		if _, err := os.Stat(f); os.IsNotExist(err) {
+			e.Printer.Warning(i18n.Tf("%s not found: 'evo deploy' needs it (another file: compose_file in %s or 'evo deploy -f')",
+				"%s не найден: он нужен 'evo deploy' (другой файл — compose_file в %s или 'evo deploy -f')", f, opts.Path))
+		}
+	}
 
 	tok, err := e.Auth.Token(ctx)
 	if err != nil {

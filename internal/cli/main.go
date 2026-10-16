@@ -187,11 +187,15 @@ func asGroup(cmd *cobra.Command) *cobra.Command {
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "evo",
-		Short: i18n.T("Deploy docker-compose projects to Cloud.ru VMs", "Развёртывание docker-compose проектов на ВМ Cloud.ru"),
-		Long: i18n.T("Deploy docker-compose projects to Cloud.ru VMs.",
-			"Развёртывание docker-compose проектов на ВМ Cloud.ru и управление ресурсами\n"+
-				"облака: ВМ, диски, сети, Kubernetes, PostgreSQL, Object Storage, секреты.\n\n"+
+		Use: "evo",
+		Short: i18n.T("CLI and MCP server for Cloud.ru Evolution: VMs, networks, k8s, PostgreSQL and deploy of compose projects",
+			"CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов"),
+		Long: i18n.T("CLI and MCP server for Cloud.ru Evolution: deploy of docker-compose projects\n"+
+			"to VMs and management of cloud resources: VMs, disks, networks, Kubernetes,\n"+
+			"PostgreSQL, Object Storage, secrets.",
+			"CLI и MCP-сервер для Cloud.ru Evolution: развёртывание docker-compose проектов\n"+
+				"на ВМ и управление ресурсами облака: ВМ, диски, сети, Kubernetes, PostgreSQL,\n"+
+				"Object Storage, секреты.\n\n"+
 				"Сообщения по-английски: EVO_LANG=en.") + "\n\n" +
 			clerrors.ExitCodesHelp(),
 		// Errors are printed once, by run(): as text or, with --json, as
@@ -478,7 +482,14 @@ func newDeployCmd() *cobra.Command {
 		Use:   "deploy",
 		Args:  cobra.NoArgs,
 		Short: i18n.T("Deploy a docker-compose project to a Cloud.ru VM", "Развернуть docker-compose проект на ВМ Cloud.ru"),
-		Long: i18n.T("", `Развернуть docker-compose проект на ВМ Cloud.ru.
+		Long: i18n.T(`Deploy a docker-compose project to a Cloud.ru VM.
+
+The first run creates a VM with a floating IP, opens the compose file's ports
+in the zone's security group, installs Docker, uploads the compose file and
+runs 'docker compose up -d'. Before the VM is created it shows a preview with
+a price estimate and asks for confirmation: a question on the terminal, --yes
+to agree in advance, --dry-run for the preview only. A repeated run updates
+the same VM if the compose file changed (with --force, even if it did not).`, `Развернуть docker-compose проект на ВМ Cloud.ru.
 
 Первый запуск создаёт ВМ с floating IP, открывает порты из compose-файла в
 группе безопасности зоны, ставит Docker, загружает compose-файл и выполняет
@@ -486,7 +497,9 @@ func newDeployCmd() *cobra.Command {
 и запрашивается подтверждение: вопрос на терминале, --yes — согласие заранее,
 --dry-run — только превью. Повторный запуск обновляет ту же ВМ, если
 compose-файл изменился (с --force — и без изменений).`),
-		Example: i18n.T("", `  evo deploy --dry-run
+		Example: i18n.T(`  evo deploy --dry-run
+  evo deploy --yes
+  evo deploy -f compose.prod.yml --flavor lowcost10-2-4`, `  evo deploy --dry-run
   evo deploy --yes
   evo deploy -f compose.prod.yml --flavor lowcost10-2-4`),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -580,7 +593,9 @@ func newLogsCmd() *cobra.Command {
 		Use:   "logs",
 		Args:  cobra.NoArgs,
 		Short: i18n.T("View container logs from the deployed VM", "Журналы контейнеров на развёрнутой ВМ"),
-		Example: i18n.T("", `  evo logs
+		Example: i18n.T(`  evo logs
+  evo logs -s web -n 50
+  evo logs -f`, `  evo logs
   evo logs -s web -n 50
   evo logs -f`),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -618,13 +633,22 @@ func newDestroyCmd() *cobra.Command {
 		Use:   "destroy",
 		Args:  cobra.NoArgs,
 		Short: i18n.T("Delete the deployed VM and clean up resources", "Удалить развёрнутую ВМ и связанные ресурсы"),
-		Long: i18n.T("", `Удалить ВМ развёртывания из этого каталога, освободить её floating IP и
+		Long: i18n.T(`Delete this directory's deployment VM, release its floating IP and
+remove the security group rules deploy created.
+
+Before deleting it shows a preview and asks for confirmation: a question on
+the terminal, --yes to agree in advance, --dry-run for the preview only. Data
+on the VM's disks is lost.`, `Удалить ВМ развёртывания из этого каталога, освободить её floating IP и
 удалить правила группы безопасности, которые создал deploy.
 
 Перед удалением показывается превью и запрашивается подтверждение: вопрос на
-терминале, --yes (или --force) — согласие заранее, --dry-run — только превью.
+терминале, --yes — согласие заранее, --dry-run — только превью.
 Данные на дисках ВМ теряются.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if force {
+				cmdPrinter(cmd).Warning(i18n.T("destroy --force is deprecated: use --yes",
+					"destroy --force устарел: используйте --yes"))
+			}
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
 				return err
@@ -638,7 +662,11 @@ func newDestroyCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Skip confirmation prompt (same as --yes)", "Не спрашивать подтверждения (то же, что --yes)"))
+	// --force meant the same as --yes here, while deploy --force redeploys
+	// an unchanged project: one word, two meanings. It keeps working for old
+	// scripts, hidden from help, with a warning.
+	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Deprecated: use --yes", "Устарел: используйте --yes"))
+	_ = cmd.Flags().MarkHidden("force")
 
 	return cmd
 }

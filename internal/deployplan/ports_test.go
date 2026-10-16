@@ -40,7 +40,7 @@ func TestApply_ReturnsCreatedRules(t *testing.T) {
 
 	cloud := &portsCloud{existing: []*provision.SGRule{{ID: "theirs", Direction: "ingress", IPProtocol: "tcp", PortRange: "443:443"}}}
 	plan := &Plan{Product: "wiki", VM: VMSpec{Name: "wiki-1"}, Network: NetworkSpec{SecurityGroupID: "sg-1"}, Ports: []int{80, 443}}
-	res, err := Apply(context.Background(), cloud, plan)
+	res, err := ApplyWithTimeout(context.Background(), cloud, plan, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

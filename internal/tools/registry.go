@@ -207,6 +207,27 @@ var mutatingOverride = map[string]bool{
 	"cert_private_key": false,
 }
 
+// destructiveTools are the mutating tools, besides *_delete, that may delete
+// or overwrite data: they get destructiveHint in MCP, so a client asks the
+// person every time. kubectl, apply and helm run whatever they are given
+// (delete, uninstall); s3_put overwrites an existing key.
+var destructiveTools = map[string]bool{
+	"destroy":             true,
+	"stack_destroy":       true,
+	"release_floating_ip": true,
+	"s3_rm":               true,
+	"s3_put":              true,
+	"k8s_kubectl":         true,
+	"k8s_apply":           true,
+	"k8s_helm":            true,
+}
+
+// IsDestructive reports whether a mutating tool may delete or overwrite
+// data; the other mutating tools only add or change in place.
+func IsDestructive(t Tool) bool {
+	return t.Mutating && (strings.HasSuffix(t.Name, "_delete") || destructiveTools[t.Name])
+}
+
 // isMutating reports whether the tool changes state in the cloud.
 func isMutating(t Tool) bool {
 	if v, ok := mutatingOverride[t.Name]; ok {

@@ -208,6 +208,13 @@ func configChecks(cfg config.Config, sources []config.Source) []doctorCheck {
 		Detail: i18n.Tf("profile %s; key_id from %s; project_id from %s", "профиль %s; key_id из %s; project_id из %s",
 			cfg.Profile, sourceOrigin(sources, "KeyID"), sourceOrigin(sources, "ProjectID")),
 	}}
+	// Without a key "ok config … key_id from default" above a failed
+	// credentials check read as a contradiction: say the key is missing.
+	if cfg.KeyID == "" || cfg.Secret == "" {
+		checks[0].Status = checkWarn
+		checks[0].Detail = i18n.Tf("profile %s; access key not set; project_id from %s",
+			"профиль %s; ключ доступа не задан; project_id из %s", cfg.Profile, sourceOrigin(sources, "ProjectID"))
+	}
 	if cfg.ProjectID == "" {
 		checks = append(checks, doctorCheck{Name: "project_id", Status: checkWarn,
 			Detail: i18n.T("not set: run 'evo configure' or set CLOUDRU_PROJECT_ID",

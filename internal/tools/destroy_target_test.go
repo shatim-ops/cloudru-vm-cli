@@ -107,3 +107,61 @@ func TestDestroyTargeted_NotDeletableYet(t *testing.T) {
 		t.Errorf("FIP touched while the VM still exists")
 	}
 }
+
+// goneCloud: the VM was deleted outside evo — not in the list, 404 on GET;
+// its FIP is free to release.
+type goneCloud struct {
+	targetCloud
+	getCalls int
+}
+
+func (*goneCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	return nil, nil
+}
+func (c *goneCloud) GetVM(context.Context, string) (*provision.VM, error) {
+	c.getCalls++
+	return nil, clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
+}
+func (c *goneCloud) DeleteVMInProject(context.Context, string, string) error {
+	panic("the VM is gone: nothing to delete")
+}
+func (c *goneCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
+	c.releasedFIP = id
+	return nil
+}
+
+// destroy vm_id=… for a VM deleted outside evo: the record goes (and its
+// FIP is released), the answer says "already deleted". It used to answer
+// "no VM matching" and keep the record, so status showed it forever.
+func TestDestroyTargeted_AlreadyGoneCleansState(t *testing.T) {
+	cloud := &goneCloud{}
+	r, dir := targetRegistry(t, cloud)
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-1", "confirmed": true})
+	if isErr || !strings.Contains(text, `"status": "already_deleted"`) || !strings.Contains(text, "already deleted") {
+		t.Fatalf("answer = %s", text)
+	}
+	if cloud.releasedFIP != "fip-1" {
+		t.Errorf("released FIP %q, want fip-1", cloud.releasedFIP)
+	}
+	sf, err := state.Read(state.DefaultPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range sf.Deployments {
+		if d.VMID == "vm-1" && d.Status != "destroyed" {
+			t.Errorf("record kept: %+v", d)
+		}
+	}
+	if a := sf.ActiveDeployment(); a != nil {
+		t.Errorf("active deployment left: %+v", a)
+	}
+
+	// A VM this directory never recorded: still "no VM matching", and the
+	// cloud is not asked.
+	cloud = &goneCloud{}
+	r, _ = targetRegistry(t, cloud)
+	text, isErr = r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-other", "confirmed": true})
+	if !isErr || !strings.Contains(text, "no VM matching") || cloud.getCalls != 0 {
+		t.Errorf("unrecorded VM: answer %s, GET calls %d", text, cloud.getCalls)
+	}
+}

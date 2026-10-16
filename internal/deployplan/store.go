@@ -1,6 +1,6 @@
 // Package deployplan implements the two-phase deploy used by the MCP wizard:
 // Resolve() turns a request (auto or manual) into a fully-resolved, costed Plan
-// without creating anything, and Apply() executes a previously-saved Plan.
+// without creating anything, and ApplyWithTimeout() executes a previously-saved Plan.
 //
 // Plans are persisted to disk so deploy_plan and deploy_apply survive across
 // separate MCP tool calls (and even an MCP server restart). Plans never contain
