@@ -33,7 +33,7 @@ func (s *Registry) registerTools() {
 				"image_id":     strProp("Boot image UUID (see list_images)."),
 				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
 				"force":        boolProp("Redeploy even if the compose hash is unchanged."),
-				"confirmed":    boolProp("Must be true — set only after the user approved. Omit for a preview."),
+				"confirmed":    confirmedProp(),
 			}),
 		},
 		{
@@ -48,7 +48,7 @@ func (s *Registry) registerTools() {
 				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
 				"subnet_id":    strProp("Subnet UUID for the interface (default: a subnet in the target zone)."),
 				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
-				"confirmed":    boolProp("Must be true — set only after the user approved. Omit for a preview."),
+				"confirmed":    confirmedProp(),
 			}),
 		},
 		{
@@ -88,7 +88,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"vm_id":      strProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
 				"name":       strProp("Delete a specific VM by name (alternative to vm_id). Requires confirmed=true."),
-				"confirmed":  boolProp("Must be true for ANY destroy — set only after the user approves."),
+				"confirmed":  confirmedProp(),
 				"release_ip": boolProp("Also release the VM's floating IP (default: true)."),
 			}),
 		},
@@ -125,7 +125,7 @@ func (s *Registry) registerTools() {
 						"Each entry: {name, display_name, display_position, field_type, default_value, sensitive, mandatory_group} — display_name and display_position are REQUIRED, and 'id'/'is_required' are rejected (the write schema differs from what image_get returns). " +
 						"field_type uses the platform's typed values (public_key, linux_password, linux_login, hostname, flag); put public_key and linux_password in the same mandatory_group ('authentication') so either satisfies access.",
 				},
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "name", "disk_id"),
 		},
 		{
@@ -134,7 +134,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"fip":       strProp("Floating IP address (e.g. '213.171.24.210') or its UUID, from list_floating_ips."),
 				"vm":        strProp("VM name or UUID to attach it to."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "fip", "vm"),
 		},
 		{
@@ -149,7 +149,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete a VM image. Running VMs keep working, but no new VM can be created from it. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"image_id":  strProp("Image UUID (from list_images)."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "image_id"),
 		},
 		{
@@ -179,7 +179,7 @@ func (s *Registry) registerTools() {
 			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: if a VM with the plan's name already exists it is adopted, not duplicated. Returns vm_id, public_ip, ssh and (once) the generated password.",
 			InputSchema: objSchema(map[string]any{
 				"plan_id":   strProp("The plan_id returned by deploy_plan."),
-				"confirmed": boolProp("Must be true — set only after the user approved the plan."),
+				"confirmed": confirmedProp(),
 			}, "plan_id"),
 		},
 		{
@@ -217,7 +217,7 @@ func (s *Registry) registerTools() {
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
 				"protocol":       strProp("Protocol: tcp (default) or udp."),
 				"cidr":           strProp("Source CIDR (default 0.0.0.0/0 = anywhere)."),
-				"confirmed":      boolProp("Must be true — set only after the user approved opening these ports."),
+				"confirmed":      confirmedProp(),
 			}, "security_group"),
 		},
 		{
@@ -262,7 +262,7 @@ func (s *Registry) registerTools() {
 				"master_count": intProp("1, 3 or 5."), "zone": strProp("Zone name."),
 				"subnet_id": strProp("Control-plane VIP subnet UUID."), "cluster_sa_id": strProp("Cluster service-account UUID."),
 				"kube_api_internet": boolProp("Publish kube-apiserver to internet."),
-				"confirmed":         boolProp("Must be true — set only after the user approved."),
+				"confirmed":         confirmedProp(),
 			}),
 		},
 		{
@@ -279,7 +279,7 @@ func (s *Registry) registerTools() {
 			Description: "Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the user approves. Async.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
-				"confirmed":  boolProp("Must be true — set only after the user approved."),
+				"confirmed":  confirmedProp(),
 			}, "cluster_id"),
 		},
 		{
@@ -301,7 +301,7 @@ func (s *Registry) registerTools() {
 				"zone":              strProp("Zone name (default from productConfiguration)."),
 				"nodes_subnet_id":   strProp("Subnet UUID for worker nodes (default auto zone-matched)."),
 				"security_group_id": strProp("Security group UUID for nodes (default auto zone-matched SSH-access)."),
-				"confirmed":         boolProp("Must be true — set only after the user approved."),
+				"confirmed":         confirmedProp(),
 			}, "cluster_id"),
 		},
 		{
@@ -310,7 +310,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"args":       strProp("kubectl arguments as a single string, e.g. \"get pods -A -o wide\"."),
-				"confirmed":  boolProp("Required only for mutating verbs — set true after the user approves. Read verbs need no confirmation."),
+				"confirmed":  confirmedPropNote("Only for mutating verbs; read verbs need none."),
 			}, "cluster_id", "args"),
 		},
 		{
@@ -320,7 +320,7 @@ func (s *Registry) registerTools() {
 				"cluster_id": strProp("Cluster UUID."),
 				"manifest":   strProp("The manifest YAML/JSON to apply (multi-doc allowed)."),
 				"namespace":  strProp("Namespace to apply into (optional; manifests may set their own)."),
-				"confirmed":  boolProp("Must be true — set only after the user approved."),
+				"confirmed":  confirmedProp(),
 			}, "cluster_id", "manifest"),
 		},
 		{
@@ -336,7 +336,7 @@ func (s *Registry) registerTools() {
 				"version":    strProp("Chart version (optional; default latest)."),
 				"values":     strProp("Inline values.yaml content (optional)."),
 				"set":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Array of 'key=value' Helm --set overrides (optional)."},
-				"confirmed":  boolProp("Must be true for install/upgrade/uninstall — set only after the user approved."),
+				"confirmed":  confirmedPropNote("Only for install/upgrade/uninstall."),
 			}, "cluster_id", "action"),
 		},
 		{
@@ -353,7 +353,7 @@ func (s *Registry) registerTools() {
 				"disk_type": strProp("Disk type name (e.g. from list_disk_types) or UUID. Default: an SSD type."),
 				"attach_to": strProp("VM name or UUID to create-in-zone and auto-attach to (e.g. 'vm-712c44')."),
 				"zone":      strProp("Availability zone name or UUID (alternative to attach_to; default: configured region)."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "name", "size_gb"),
 		},
 		{
@@ -362,7 +362,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   strProp("Disk UUID (from disk_list)."),
 				"vm":        strProp("VM name or UUID."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "disk_id", "vm"),
 		},
 		{
@@ -371,7 +371,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   strProp("Disk UUID (from disk_list)."),
 				"vm":        strProp("VM name or UUID the disk is attached to."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "disk_id", "vm"),
 		},
 		{
@@ -380,7 +380,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   strProp("Disk UUID (from disk_list)."),
 				"size_gb":   intProp("New size in GB (must be larger than current; max 65536)."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "disk_id", "size_gb"),
 		},
 		{
@@ -388,7 +388,7 @@ func (s *Registry) registerTools() {
 			Description: "Permanently delete a disk and all its data (irreversible). Detach it first if attached. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   strProp("Disk UUID (from disk_list)."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "disk_id"),
 		},
 		{
@@ -415,13 +415,13 @@ func (s *Registry) registerTools() {
 				"max_instances": intProp("Maximum instances (default 1)."),
 				"env":           map[string]any{"type": "object", "description": "Environment variables as a name→value object.", "additionalProperties": map[string]any{"type": "string"}},
 				"description":   strProp("Optional description."),
-				"confirmed":     boolProp("Must be true — set only after the user approved."),
+				"confirmed":     confirmedProp(),
 			}, "name", "image"),
 		},
 		{
 			Name:        "ca_delete",
 			Description: "Delete a Container App by name. REQUIRES confirmed=true after the user approves. Async.",
-			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": boolProp("Must be true.")}, "name"),
+			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": confirmedProp()}, "name"),
 		},
 		{
 			Name:        "ca_logs",
@@ -431,12 +431,12 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "ca_start",
 			Description: "Start a stopped Container App (it is billed while running). Mutation: requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": boolProp("Must be true — set only after the user approved.")}, "name"),
+			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": confirmedProp()}, "name"),
 		},
 		{
 			Name:        "ca_stop",
 			Description: "Stop a running Container App (it stops serving requests). Mutation: requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": boolProp("Must be true — set only after the user approved.")}, "name"),
+			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": confirmedProp()}, "name"),
 		},
 		{
 			Name:        "iam_service_accounts",
@@ -459,7 +459,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"id":         strProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required."),
 				"ip_address": strProp("Floating IP address, e.g. '213.171.25.19' (alternative to id)."),
-				"confirmed":  boolProp("Must be true — set only after the user approved releasing this IP."),
+				"confirmed":  confirmedProp(),
 			}),
 		},
 		{
@@ -474,7 +474,7 @@ func (s *Registry) registerTools() {
 				"name":                 strProp("Name for the SNAT gateway (required)."),
 				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-2'). Optional; resolved to a UUID. Defaults to the configured region."),
 				"availability_zone_id": strProp("Availability-zone UUID (alternative to 'zone')."),
-				"confirmed":            boolProp("Must be true to actually create — set only after the user approved. Omit for a preview."),
+				"confirmed":            confirmedProp(),
 			}),
 		},
 		{
@@ -482,7 +482,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete a SNAT gateway by id (from snat_list). Nodes in that zone lose outbound internet. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("SNAT gateway UUID (from snat_list). Required."),
-				"confirmed": boolProp("Must be true — set only after the user approved deleting this gateway."),
+				"confirmed": confirmedProp(),
 			}),
 		},
 		{
@@ -527,7 +527,7 @@ func (s *Registry) registerTools() {
 				"no_backup":             boolProp("Disable automatic backups. Backups are ENABLED by default and CANNOT be toggled after creation; a cluster without backups rejects pg_backup_create/pg_backups with 'backup disabled'."),
 				"backup_schedule":       strProp("CRON schedule for automatic backups (default '0 3 * * 0' = weekly Sun 03:00; min once per 6h)."),
 				"backup_retention_days": intProp("Retention for automatic backups in days (default 14, max 30)."),
-				"confirmed":             boolProp("Must be true to actually create — set only after the user approved. Omit for a preview."),
+				"confirmed":             confirmedProp(),
 			}, "name"),
 		},
 		{
@@ -536,7 +536,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"id":         strProp("Cluster UUID (from pg_list). Required (alias: cluster_id)."),
 				"cluster_id": strProp("Alias for id."),
-				"confirmed":  boolProp("Must be true — set only after the user approved deleting this cluster."),
+				"confirmed":  confirmedProp(),
 			}),
 		},
 		{
@@ -580,7 +580,7 @@ func (s *Registry) registerTools() {
 				"brokers":          intProp("Broker count. Optional; default = spec minimum."),
 				"ui_enabled":       boolProp("Enable the Kafka UI (default false)."),
 				"description":      strProp("Optional description."),
-				"confirmed":        boolProp("Must be true to create — set only after the user approved. Omit for preview."),
+				"confirmed":        confirmedProp(),
 			}, "name"),
 		},
 		{
@@ -588,7 +588,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete a Managed Kafka cluster by id AND its data. Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID (from kafka_list). Required."),
-				"confirmed":  boolProp("Must be true — set only after the user approved."),
+				"confirmed":  confirmedProp(),
 			}, "cluster_id"),
 		},
 		{
@@ -630,7 +630,7 @@ func (s *Registry) registerTools() {
 				"replicas":         intProp("Replica count (default 0)."),
 				"type":             strProp("STANDALONE (default) or MASTER_REPLICA."),
 				"description":      strProp("Optional description."),
-				"confirmed":        boolProp("Must be true to create — set only after the user approved. Omit for preview."),
+				"confirmed":        confirmedProp(),
 			}, "name"),
 		},
 		{
@@ -638,7 +638,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete a Managed Redis cluster by id AND its data. Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID (from redis_list). Required."),
-				"confirmed":  boolProp("Must be true — set only after the user approved."),
+				"confirmed":  confirmedProp(),
 			}, "cluster_id"),
 		},
 		{
@@ -662,7 +662,7 @@ func (s *Registry) registerTools() {
 				"owner":      strProp("Owning user (from pg_users). Required."),
 				"lc_collate": strProp("Collation locale (optional, default C)."),
 				"lc_ctype":   strProp("Character-set locale (optional, default C)."),
-				"confirmed":  boolProp("Must be true — set only after the user approved."),
+				"confirmed":  confirmedProp(),
 			}, "cluster_id", "name", "owner"),
 		},
 		{
@@ -671,7 +671,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("Database name. Required."),
-				"confirmed":  boolProp("Must be true — set only after the user approved."),
+				"confirmed":  confirmedProp(),
 			}, "cluster_id", "name"),
 		},
 		{
@@ -688,7 +688,7 @@ func (s *Registry) registerTools() {
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),
 				"password":   strProp("User password. Required."),
-				"confirmed":  boolProp("Must be true — set only after the user approved."),
+				"confirmed":  confirmedProp(),
 			}, "cluster_id", "name", "password"),
 		},
 		{
@@ -697,7 +697,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),
-				"confirmed":  boolProp("Must be true — set only after the user approved."),
+				"confirmed":  confirmedProp(),
 			}, "cluster_id", "name"),
 		},
 		{
@@ -713,7 +713,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("Backup name (letters/digits/hyphens/dots; not starting/ending with - or .). Required."),
-				"confirmed":  boolProp("Must be true — set only after the user approved."),
+				"confirmed":  confirmedProp(),
 			}, "cluster_id", "name"),
 		},
 		{
@@ -749,13 +749,13 @@ func (s *Registry) registerTools() {
 				"vm_id":        strProp("VM UUID for a single target. The interface is auto-resolved."),
 				"interface_id": strProp("Optional: network interface UUID (auto-resolved from the VM if omitted)."),
 				"targets":      map[string]any{"type": "array", "description": "Multiple targets: array of {id} (interface_id optional, auto-resolved).", "items": map[string]any{"type": "object"}},
-				"confirmed":    boolProp("Must be true — set only after the user approved."),
+				"confirmed":    confirmedProp(),
 			}, "name"),
 		},
 		{
 			Name:        "tg_delete",
 			Description: "Delete a target group by id (from tg_list). Mutation (async): requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Target group UUID. Required."), "confirmed": boolProp("Must be true — set only after the user approved.")}, "id"),
+			InputSchema: objSchema(map[string]any{"id": strProp("Target group UUID. Required."), "confirmed": confirmedProp()}, "id"),
 		},
 		{
 			Name:        "lb_create",
@@ -769,13 +769,13 @@ func (s *Registry) registerTools() {
 				"external":        boolProp("Allocate a public IP (default true). Set false for an internal-only balancer."),
 				"vpc_id":          strProp("VPC UUID. Optional; default = the target group's VPC."),
 				"subnet_id":       strProp("Subnet UUID for the balancer's AZ. Optional; default = first project subnet."),
-				"confirmed":       boolProp("Must be true to actually create — set only after the user approved. Omit for a preview."),
+				"confirmed":       confirmedProp(),
 			}, "name", "target_group_id", "port"),
 		},
 		{
 			Name:        "lb_delete",
 			Description: "Delete a load balancer by id (from lb_list). Mutation (async): requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Load balancer UUID. Required."), "confirmed": boolProp("Must be true — set only after the user approved.")}, "id"),
+			InputSchema: objSchema(map[string]any{"id": strProp("Load balancer UUID. Required."), "confirmed": confirmedProp()}, "id"),
 		},
 		{
 			Name:        "vpc_list",
@@ -793,7 +793,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("VPC name. Required."),
 				"description": strProp("Optional description."),
-				"confirmed":   boolProp("Must be true — set only after the user approved."),
+				"confirmed":   confirmedProp(),
 			}, "name"),
 		},
 		{
@@ -801,7 +801,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("VPC UUID (from vpc_list). Required."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "id"),
 		},
 		{
@@ -826,7 +826,7 @@ func (s *Registry) registerTools() {
 				"next_hop_magic_router_id": strProp("Magic Router UUID for a Magic-Router next hop (with next_hop_az)."),
 				"next_hop_az":              strProp("Availability zone name (e.g. 'ru.AZ-1') for a Magic-Router next hop."),
 				"description":              strProp("Optional route description."),
-				"confirmed":                boolProp("Must be true — set only after the user approved."),
+				"confirmed":                confirmedProp(),
 			}, "vpc_id", "subnet"),
 		},
 		{
@@ -835,7 +835,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"vpc_id":    strProp("VPC UUID. Required."),
 				"route_id":  strProp("Static route UUID (from vpc_routes). Required."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "vpc_id", "route_id"),
 		},
 		{
@@ -858,7 +858,7 @@ func (s *Registry) registerTools() {
 				"domain":      strProp("Zone FQDN, e.g. 'example.com.' (required)."),
 				"type":        strProp("Zone visibility: 'public' (default) or 'private'."),
 				"description": strProp("Optional zone description."),
-				"confirmed":   boolProp("Must be true — set only after the user approved."),
+				"confirmed":   confirmedProp(),
 			}, "domain"),
 		},
 		{
@@ -867,7 +867,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("Zone UUID (from dns_zones). Required."),
 				"type":      strProp("Zone visibility: 'public' (default) or 'private' — must match the zone."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "id"),
 		},
 		{
@@ -902,7 +902,7 @@ func (s *Registry) registerTools() {
 				"values":      map[string]any{"type": "array", "description": "Multiple record values.", "items": map[string]any{"type": "string"}},
 				"ttl":         intProp("TTL seconds (default 300)."),
 				"type":        strProp("Zone visibility: 'public' (default) or 'private'."),
-				"confirmed":   boolProp("Must be true — set only after the user approved."),
+				"confirmed":   confirmedProp(),
 			}, "zone_id", "name", "record_type"),
 		},
 		{
@@ -911,7 +911,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"record_id": strProp("Record UUID (from dns_records). Required."),
 				"type":      strProp("Zone visibility: 'public' (default) or 'private'."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "record_id"),
 		},
 		{
@@ -940,7 +940,7 @@ func (s *Registry) registerTools() {
 				"value":       strProp("Secret value (plaintext; stored encrypted). Required."),
 				"description": strProp("Optional description."),
 				"kms_key_id":  strProp("Optional KMS key id for encryption."),
-				"confirmed":   boolProp("Must be true — set only after the user approved."),
+				"confirmed":   confirmedProp(),
 			}, "path", "value"),
 		},
 		{
@@ -949,7 +949,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
 				"value":     strProp("New secret value (plaintext). Required."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "path", "value"),
 		},
 		{
@@ -958,7 +958,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
 				"force":     boolProp("Delete even if the secret is in use by other resources."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "path"),
 		},
 		{
@@ -979,7 +979,7 @@ func (s *Registry) registerTools() {
 				"registry_type": strProp("Registry type: DOCKER (default), DEBIAN, RPM, GENERIC, PYPI."),
 				"public":        boolProp("Make the registry public (default false)."),
 				"tariff":        strProp("Tariff: BASIC (default) or PREMIUM."),
-				"confirmed":     boolProp("Must be true — set only after the user approved."),
+				"confirmed":     confirmedProp(),
 			}, "name"),
 		},
 		{
@@ -987,7 +987,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete an Artifact Registry registry by id (from ar_list) AND its artifacts (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("Registry UUID (from ar_list). Required."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "id"),
 		},
 		{
@@ -1065,7 +1065,7 @@ func (s *Registry) registerTools() {
 				"name":        strProp("Display name for the certificate. Required."),
 				"dns_names":   strProp("Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"] (array or comma-separated). Required."),
 				"description": strProp("Optional description."),
-				"confirmed":   boolProp("Must be true — set only after the user approved."),
+				"confirmed":   confirmedProp(),
 			}, "name", "dns_names"),
 		},
 		{
@@ -1077,20 +1077,20 @@ func (s *Registry) registerTools() {
 				"private_key":              strProp("Private key, Base64-encoded PEM. Required."),
 				"intermediate_certificate": strProp("Intermediate chain, Base64-encoded PEM (optional)."),
 				"description":              strProp("Optional description."),
-				"confirmed":                boolProp("Must be true — set only after the user approved."),
+				"confirmed":                confirmedProp(),
 			}, "name", "server_certificate", "private_key"),
 		},
 		{
 			Name:        "cert_renew",
 			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Mutation: requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": boolProp("Must be true — set only after the user approved.")}, "certificate_id"),
+			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": confirmedProp()}, "certificate_id"),
 		},
 		{
 			Name:        "cert_delete",
 			Description: "Certificate Manager — permanently delete a certificate. Gated: requires confirmed=true. If bound to a load balancer, deletion can break HTTPS (use force=true to delete anyway).",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("Certificate id. Required."),
-				"confirmed": boolProp("Must be true — set only after the user approves."),
+				"confirmed": confirmedProp(),
 				"force":     boolProp("Delete even if the certificate is in use by other services (default false)."),
 			}, "id"),
 		},
@@ -1110,7 +1110,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"certificate_id": strProp("Certificate id. Required."),
 				"version_id":     intProp("Version number; 0 or omitted = latest version."),
-				"confirmed":      boolProp("Must be true — returns the plaintext private key."),
+				"confirmed":      confirmedPropNote("The answer holds the plaintext private key."),
 			}, "certificate_id"),
 		},
 		{
@@ -1149,7 +1149,7 @@ func (s *Registry) registerTools() {
 				"content":        strProp("Inline text content to upload."),
 				"content_base64": strProp("Base64-encoded binary content (alternative to content)."),
 				"content_type":   strProp("MIME type (default application/octet-stream)."),
-				"confirmed":      boolProp("Must be true — set only after the user approved."),
+				"confirmed":      confirmedProp(),
 			}, "bucket", "key"),
 		},
 		{
@@ -1158,7 +1158,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("Bucket name. Required."),
 				"key":       strProp("Object key. Required."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "bucket", "key"),
 		},
 		{
@@ -1167,7 +1167,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("New bucket name (globally-unique, lowercase). Required."),
 				"region":    strProp("Region (optional; defaults to the configured S3 region, e.g. ru-central-1)."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "bucket"),
 		},
 		{
@@ -1175,7 +1175,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete an EMPTY S3 bucket. Destructive mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("Bucket name. Required."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "bucket"),
 		},
 		{
@@ -1190,7 +1190,7 @@ func (s *Registry) registerTools() {
 			Description: "Apply a planned stack (from stack_plan). BILLABLE mutation: requires confirmed=true after the user approved the cost. Returns immediately with a compact status; the engine runs the deploy across cranks — poll stack_status(job_id) until status=done. You do NOT orchestrate the resources yourself.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id from stack_plan. Required."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "job_id"),
 		},
 		{
@@ -1206,7 +1206,7 @@ func (s *Registry) registerTools() {
 			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the user approved.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id. Required."),
-				"confirmed": boolProp("Must be true — set only after the user approved."),
+				"confirmed": confirmedProp(),
 			}, "job_id"),
 		},
 	}
@@ -2239,6 +2239,18 @@ func strProp(desc string) map[string]any {
 func intProp(desc string) map[string]any {
 	return map[string]any{"type": "integer", "description": desc}
 }
+
+// confirmedDesc describes the confirmed argument of every gated tool. One
+// text for all of them (there were 15 wordings of the same rule), so the
+// schema says the same thing everywhere; the gate itself is in each handler.
+const confirmedDesc = "Must be true — set only after the user approved."
+
+// confirmedProp is the confirmed argument of a gated tool.
+func confirmedProp() map[string]any { return boolProp(confirmedDesc) }
+
+// confirmedPropNote is confirmedProp with a sentence on when or why the
+// tool asks: for some verbs only, or because the answer holds a secret.
+func confirmedPropNote(note string) map[string]any { return boolProp(note + " " + confirmedDesc) }
 
 func boolProp(desc string) map[string]any {
 	return map[string]any{"type": "boolean", "description": desc}
