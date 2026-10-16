@@ -314,6 +314,9 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 	if err != nil {
 		return nil, err
 	}
+	// Newest first: with several releases of one appVersion FindRelease
+	// takes the newest addonVersion, not whichever the API listed first.
+	mk8s.SortReleases(rels)
 	p := &addonPlan{addon: addon}
 	if version != "" {
 		rel, ok := mk8s.FindRelease(rels, version)

@@ -117,3 +117,18 @@ func TestResolveModeValue(t *testing.T) {
 		t.Error("an unknown resolve mode accepted")
 	}
 }
+
+// Два релиза одной appVersion: после SortReleases FindRelease берёт новый
+// addonVersion, а не первый в порядке API (ревью Qwen на #78).
+func TestFindRelease_SameAppVersionTakesNewestAddonVersion(t *testing.T) {
+	rs := []AddonRelease{
+		{AppVersion: "1.14.0", AddonVersion: "1.14.0-1"},
+		{AppVersion: "1.14.0", AddonVersion: "1.14.0-3"},
+		{AppVersion: "1.13.0", AddonVersion: "1.13.0-2"},
+	}
+	SortReleases(rs)
+	r, ok := FindRelease(rs, "v1.14.0")
+	if !ok || r.AddonVersion != "1.14.0-3" {
+		t.Fatalf("FindRelease = %+v, %v; want addon 1.14.0-3", r, ok)
+	}
+}

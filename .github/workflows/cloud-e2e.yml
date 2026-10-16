@@ -578,7 +578,9 @@ jobs:
   k8s-smoke:
     if: ${{ inputs.k8s_smoke && !inputs.cleanup_only }}
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Шаги ждут до 40 + 30 + 15 мин, удаление — до 30: запас, чтобы job не
+    # оборвался по таймауту до удаления кластера.
+    timeout-minutes: 180
     env:
       ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
       CLUSTER: evo-e2e-k8s
