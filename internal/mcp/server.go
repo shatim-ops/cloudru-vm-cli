@@ -69,21 +69,21 @@ type Tool struct {
 //
 // destructiveHint means something only for a mutation and defaults to true,
 // so a mutation always carries it (false for one that only adds or changes
-// in place) and a read leaves it out; idempotentHint defaults to false and
-// is written only when true. tools/list goes to every session: no bytes for
-// what the defaults already say.
+// in place) and a read leaves it out; readOnlyHint and idempotentHint
+// default to false and are written only when true; openWorldHint defaults
+// to true, which is what every evo tool is (cloud or state outside the
+// conversation), so it is not written. tools/list goes to every session: no
+// bytes for what the defaults already say.
 type Annotations struct {
-	ReadOnlyHint    bool  `json:"readOnlyHint"`
+	ReadOnlyHint    bool  `json:"readOnlyHint,omitempty"`
 	DestructiveHint *bool `json:"destructiveHint,omitempty"`
 	IdempotentHint  bool  `json:"idempotentHint,omitempty"`
-	OpenWorldHint   bool  `json:"openWorldHint"`
 }
 
-// annotations derives the hints from the registry: a read is idempotent, a
-// mutation is destructive by tools.IsDestructive; every tool talks to the
-// cloud or reads state outside the conversation (open world).
+// annotations derives the hints from the registry: a read is read-only and
+// idempotent, a mutation is destructive by tools.IsDestructive.
 func annotations(t tools.Tool) Annotations {
-	a := Annotations{ReadOnlyHint: !t.Mutating, IdempotentHint: !t.Mutating, OpenWorldHint: true}
+	a := Annotations{ReadOnlyHint: !t.Mutating, IdempotentHint: !t.Mutating}
 	if t.Mutating {
 		d := tools.IsDestructive(t)
 		a.DestructiveHint = &d

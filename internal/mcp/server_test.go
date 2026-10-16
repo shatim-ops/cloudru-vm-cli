@@ -173,7 +173,7 @@ func TestToolsList_Annotations(t *testing.T) {
 			}
 			return def
 		}
-		if ro, ok := a["readOnlyHint"].(bool); !ok || ro != !mutating[name] {
+		if hint("readOnlyHint", false) != !mutating[name] {
 			t.Errorf("%s: readOnlyHint=%v, Mutating=%v", name, a["readOnlyHint"], mutating[name])
 		}
 		if mutating[name] {
@@ -189,8 +189,9 @@ func TestToolsList_Annotations(t *testing.T) {
 		if hint("idempotentHint", false) != !mutating[name] {
 			t.Errorf("%s: idempotentHint=%v, want %v", name, a["idempotentHint"], !mutating[name])
 		}
-		if ow, ok := a["openWorldHint"].(bool); !ok || !ow {
-			t.Errorf("%s: openWorldHint=%v, want true", name, a["openWorldHint"])
+		// The default (true) is what every evo tool is; false would be wrong.
+		if !hint("openWorldHint", true) {
+			t.Errorf("%s: openWorldHint=%v, want the default true", name, a["openWorldHint"])
 		}
 	}
 	for name := range destructive {
