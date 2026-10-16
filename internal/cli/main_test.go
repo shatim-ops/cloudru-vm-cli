@@ -77,14 +77,14 @@ func TestHandleError_JSON(t *testing.T) {
 func TestHandleError_InterruptedKeepsHint(t *testing.T) {
 	// As run() sees a deploy interrupted after the VM was created.
 	inner := clerrors.Wrap(clerrors.CodeVMProvisionFailed, "deployment interrupted",
-		"VM vm-1 was created and is still running. Use 'evo destroy --force' to delete it.", context.Canceled)
+		"VM vm-1 was created and is still running. Use 'evo destroy --yes' to delete it.", context.Canceled)
 	err := fmt.Errorf("%w: %w", context.Canceled, inner)
 
 	var buf bytes.Buffer
 	handleError(output.NewWithWriter(&buf, output.ModeJSON, false), err)
 
 	if !strings.Contains(buf.String(), `"code":130`) || !strings.Contains(buf.String(), "vm-1") ||
-		!strings.Contains(buf.String(), "destroy --force") {
+		!strings.Contains(buf.String(), "destroy --yes") {
 		t.Errorf("interrupt must keep the VM hint: %q", buf.String())
 	}
 }
@@ -148,6 +148,33 @@ func TestRun_DestroyConfirmationFlags(t *testing.T) {
 	after, _ := state.Read(state.DefaultPath(dir))
 	if a := after.ActiveDeployment(); a == nil || a.VMID != "vm-1" {
 		t.Fatalf("deployment changed: %+v", a)
+	}
+}
+
+// destroy --force still agrees in advance, like --yes, but is hidden from
+// help and warns: deploy --force means something else.
+func TestRun_DestroyForceIsDeprecatedYes(t *testing.T) {
+	setupCLI(t)
+	sf := &state.File{Version: 1}
+	sf.UpsertDeployment(state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", Status: "running"})
+	if err := state.Write(state.DefaultPath("."), sf); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := runCLI(t, "", "destroy", "--force")
+	if code != clerrors.ExitAuth { // past the gate, no credentials
+		t.Errorf("destroy --force: exit %d, want %d\n%s", code, clerrors.ExitAuth, stderr)
+	}
+	if !strings.Contains(stderr, "destroy --force is deprecated: use --yes") {
+		t.Errorf("no deprecation warning:\n%s", stderr)
+	}
+	newProcess()
+	_, stdout, _ := runCLI(t, "", "destroy", "--help")
+	if strings.Contains(stdout, "--force") {
+		t.Errorf("--force still in destroy --help:\n%s", stdout)
+	}
+	newProcess()
+	if _, stdout, _ := runCLI(t, "", "deploy", "--help"); !strings.Contains(stdout, "--force") {
+		t.Errorf("deploy --force must stay:\n%s", stdout)
 	}
 }
 

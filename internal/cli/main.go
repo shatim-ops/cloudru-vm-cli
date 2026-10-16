@@ -637,14 +637,18 @@ func newDestroyCmd() *cobra.Command {
 remove the security group rules deploy created.
 
 Before deleting it shows a preview and asks for confirmation: a question on
-the terminal, --yes (or --force) to agree in advance, --dry-run for the
-preview only. Data on the VM's disks is lost.`, `Удалить ВМ развёртывания из этого каталога, освободить её floating IP и
+the terminal, --yes to agree in advance, --dry-run for the preview only. Data
+on the VM's disks is lost.`, `Удалить ВМ развёртывания из этого каталога, освободить её floating IP и
 удалить правила группы безопасности, которые создал deploy.
 
 Перед удалением показывается превью и запрашивается подтверждение: вопрос на
-терминале, --yes (или --force) — согласие заранее, --dry-run — только превью.
+терминале, --yes — согласие заранее, --dry-run — только превью.
 Данные на дисках ВМ теряются.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if force {
+				cmdPrinter(cmd).Warning(i18n.T("destroy --force is deprecated: use --yes",
+					"destroy --force устарел: используйте --yes"))
+			}
 			eng, err := buildEngine(map[string]any{})
 			if err != nil {
 				return err
@@ -658,7 +662,11 @@ preview only. Data on the VM's disks is lost.`, `Удалить ВМ развё�
 		},
 	}
 
-	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Skip confirmation prompt (same as --yes)", "Не спрашивать подтверждения (то же, что --yes)"))
+	// --force meant the same as --yes here, while deploy --force redeploys
+	// an unchanged project: one word, two meanings. It keeps working for old
+	// scripts, hidden from help, with a warning.
+	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Deprecated: use --yes", "Устарел: используйте --yes"))
+	_ = cmd.Flags().MarkHidden("force")
 
 	return cmd
 }

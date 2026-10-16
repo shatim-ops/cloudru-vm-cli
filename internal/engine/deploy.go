@@ -1252,8 +1252,8 @@ func deployInterrupted() string {
 }
 
 func vmStillRunningHint(vmID string) string {
-	return i18n.Tf("VM %s was created and is still running. Use 'evo destroy --force' to delete it.",
-		"ВМ %s создана и работает. Удалить её: 'evo destroy --force'.", vmID)
+	return i18n.Tf("VM %s was created and is still running. Use 'evo destroy --yes' to delete it.",
+		"ВМ %s создана и работает. Удалить её: 'evo destroy --yes'.", vmID)
 }
 
 // handleInterrupt handles SIGINT/SIGTERM (or a cancelled context) after VM

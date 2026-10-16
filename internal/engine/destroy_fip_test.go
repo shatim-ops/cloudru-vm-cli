@@ -118,7 +118,7 @@ func TestDestroy_FloatingIPReleaseFailureKeepsRecordForRetry(t *testing.T) {
 		t.Fatalf("exit code = %d (err %v), want %d", got, err, clerrors.ExitAPI)
 	}
 	var cliErr *clerrors.CLIError
-	if !stderrors.As(err, &cliErr) || !strings.Contains(cliErr.Message, "fip-9") || !strings.Contains(cliErr.Hint, "destroy --force") {
+	if !stderrors.As(err, &cliErr) || !strings.Contains(cliErr.Message, "fip-9") || !strings.Contains(cliErr.Hint, "destroy --yes") {
 		t.Errorf("error must name the FIP and how to retry: %v", err)
 	}
 	if len(cloud.deletedFIPs) != fipReleaseAttempts {

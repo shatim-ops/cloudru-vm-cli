@@ -258,8 +258,8 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		if err != nil {
 			return clerrors.Wrap(clerrors.CodeAPIError,
 				i18n.Tf("cannot look up floating IP %s", "не удалось найти floating IP %s", fipLabel(rec.VMIP, fipName(rec.VMID))),
-				i18n.T("The VM is deleted. Re-run 'evo destroy --force' to release the floating IP, or release it in the Cloud.ru console.",
-					"ВМ удалена. Чтобы освободить floating IP, повторите 'evo destroy --force' или освободите его в консоли Cloud.ru."),
+				i18n.T("The VM is deleted. Re-run 'evo destroy --yes' to release the floating IP, or release it in the Cloud.ru console.",
+					"ВМ удалена. Чтобы освободить floating IP, повторите 'evo destroy --yes' или освободите его в консоли Cloud.ru."),
 				err)
 		}
 		for _, f := range fips {
@@ -298,8 +298,8 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 	}
 	return clerrors.Wrap(clerrors.CodeAPIError,
 		i18n.Tf("VM deleted, but floating IP %s was not released", "ВМ удалена, но floating IP %s не освобождён", fipLabel(rec.VMIP, fipID)),
-		i18n.T("The floating IP is still billed. Re-run 'evo destroy --force' or release it in the Cloud.ru console.",
-			"Floating IP по-прежнему тарифицируется. Повторите 'evo destroy --force' или освободите его в консоли Cloud.ru."),
+		i18n.T("The floating IP is still billed. Re-run 'evo destroy --yes' or release it in the Cloud.ru console.",
+			"Floating IP по-прежнему тарифицируется. Повторите 'evo destroy --yes' или освободите его в консоли Cloud.ru."),
 		lastErr)
 }
 
