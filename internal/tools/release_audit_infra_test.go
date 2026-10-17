@@ -545,3 +545,44 @@ func TestK8sAddNodePool_ClusterZoneSubnet(t *testing.T) {
 		t.Error("refused call sent a POST")
 	}
 }
+
+// Ревью Grok по #89: явный subnet_id другой VPC уходил в API как есть и
+// получал 400 без имени поля; теперь CONFIG_INVALID до запроса.
+func TestLbCreate_SubnetOfAnotherVPCRefused(t *testing.T) {
+	f := &raAPI{targetVMs: `{"id":"vm-1","interface_id":"if-1","vpc_id":"vpc-1","zone_id":"` + raAZ1 + `","zone_name":"ru.AZ-1"}`}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	m, text, isErr := callNamed(t, r, "lb_create", map[string]any{"name": "web", "target_group_id": "tg-1", "port": float64(80),
+		"subnet_id": "sn-other-vpc", "confirmed": true})
+	if !isErr {
+		t.Fatalf("subnet of another VPC accepted: %s", text)
+	}
+	wantReason(t, "subnet of another VPC", m, text, "CONFIG_INVALID")
+	if f.postCount() != 0 {
+		t.Error("refused call sent a POST")
+	}
+}
+
+// Ревью Grok по #89: форма Redis (replicas=3 — прежнее документированное
+// умолчание) проверялась только на шаге redis — после того как vpc, pg,
+// kafka и k8s уже созданы. Теперь — USAGE на stack_plan.
+func TestStackPlan_RedisShapeCheckedAtPlan(t *testing.T) {
+	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+	for _, c := range []struct {
+		label    string
+		manifest map[string]any
+	}{
+		{"redis.replicas=3", map[string]any{"name": "s1", "redis": map[string]any{"name": "r1", "replicas": float64(3)}}},
+		{"redis.type=FOO", map[string]any{"name": "s1", "redis": map[string]any{"name": "r1", "type": "FOO"}}},
+		{"kafka.brokers<0", map[string]any{"name": "s1", "kafka": map[string]any{"name": "k1", "brokers": float64(-1)}}},
+	} {
+		m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": c.manifest})
+		if !isErr {
+			t.Errorf("%s: planned: %s", c.label, text)
+			continue
+		}
+		wantReason(t, c.label, m, text, "USAGE")
+		if m["job_id"] != nil {
+			t.Errorf("%s: job created: %s", c.label, text)
+		}
+	}
+}

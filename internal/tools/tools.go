@@ -1102,7 +1102,7 @@ func (s *Registry) registerTools() {
 			Description: "Service Monitoring — read a metric's history over a recent window (read-only). Prefer THIS over polling vm_get/k8s_get to answer 'is the service healthy / how's CPU/load'. Returns time series {metric labels, values, timestamps}. NB: the metric only returns data if the project has a monitoring tenant provisioned; otherwise the API says 'tenant not found'.",
 			InputSchema: objSchema(map[string]any{
 				"match": strProp("Metric name / PromQL name selector (e.g. cpu_usage, node_load1). Required."),
-				"since": strProp("Look-back window: 30m, 1h, 6h, 1d or minutes as a number (default 1h; at most 24h — the API's limit, longer is refused)."),
+				"since": strProp("Look-back window: 30m, 1h, 6h, 1d or a number of minutes as a string, e.g. \"90\" (default 1h; at most 24h — the API's limit, longer is refused)."),
 			}, "match"),
 		},
 		{
@@ -1116,7 +1116,7 @@ func (s *Registry) registerTools() {
 			Name:        "audit_events",
 			Description: "Audit Logging — who did what in the project (read-only): control-plane events (create/delete/modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource, time. Use to answer 'what happened on the stand / who deleted X / recent changes'. Paginated via next_page_token. NB: access to audit logs is enabled by Cloud.ru support; until then the API answers 401 and the tool says audit is not enabled for the project.",
 			InputSchema: objSchema(map[string]any{
-				"since":      strProp("Look-back window: 30m, 1h, 3h, 1d or minutes as a number (default 1h; keep short — API recommends ≤30min for chatty projects)."),
+				"since":      strProp("Look-back window: 30m, 1h, 3h, 1d or a number of minutes as a string, e.g. \"90\" (default 1h; keep short — API recommends ≤30min for chatty projects)."),
 				"page_size":  intProp("Max events per page (default 100, at most 500)."),
 				"page_token": strProp("Continuation token from a previous call's next_page_token (optional)."),
 			}),

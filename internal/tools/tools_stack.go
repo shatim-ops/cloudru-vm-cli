@@ -462,6 +462,28 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 			return errResult(err), true
 		}
 	}
+	// Redis shape and Kafka brokers fail at plan time, like the VM: a stack
+	// with redis.replicas=3 (the old documented default) used to plan and
+	// then stop at the redis step with vpc, pg, kafka and k8s already live
+	// (Grok review of PR #89).
+	if r := m.Redis; r != nil {
+		ra := map[string]any{}
+		if r.Type != "" {
+			ra["type"] = r.Type
+		}
+		if r.Shards != 0 {
+			ra["shards"] = r.Shards
+		}
+		if r.Replicas != 0 {
+			ra["replicas"] = r.Replicas
+		}
+		if _, _, _, err := redisShape(ra); err != nil {
+			return usageResult(fmt.Errorf("manifest.redis: %w", err)), true
+		}
+	}
+	if m.Kafka != nil && m.Kafka.Brokers < 0 {
+		return usageResult(fmt.Errorf("manifest.kafka.brokers %d: must be 1 or more (or omitted)", m.Kafka.Brokers)), true
+	}
 	if m.K8s != nil && m.K8s.MasterCount != 0 {
 		if err := k8sArgsError(map[string]any{"master_count": m.K8s.MasterCount}); err != nil {
 			return errResult(err), true

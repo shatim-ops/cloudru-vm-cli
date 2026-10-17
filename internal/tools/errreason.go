@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"net"
 	"net/http"
@@ -62,6 +63,15 @@ func uncodedReason(err error, fields map[string]any) string {
 		}
 		return clierrors.CodeAPIError
 	}
+	// A service client could not read the API's answer ("parse vpcs: …",
+	// "parse certmanager response: invalid character '<'" — a gateway's
+	// HTML page): the cloud answered wrong, not the call (Grok review of
+	// PR #89).
+	var syntaxErr *json.SyntaxError
+	var typeErr *json.UnmarshalTypeError
+	if (stderrors.As(err, &syntaxErr) || stderrors.As(err, &typeErr)) && parseAnswerRE.MatchString(answer) {
+		return clierrors.CodeAPIError
+	}
 	if _, ok := fields["vm_id"]; ok {
 		return clierrors.CodeVMProvisionFailed
 	}
@@ -75,6 +85,10 @@ func uncodedReason(err error, fields map[string]any) string {
 // error: "vpc API 404: …", "HTTP 502: …", "HTTP: 502", "OIDC token HTTP
 // 401: …", "API returned status 422" (and its Russian text).
 var apiStatusRE = regexp.MustCompile(`\b(?:API|HTTP):? ([1-5][0-9]{2})\b|\b(?:API returned status|API вернул статус) ([1-5][0-9]{2})\b`)
+
+// parseAnswerRE is how the service clients wrap a JSON error of the API's
+// answer: "parse <what>: …" (a local manifest says "invalid manifest").
+var parseAnswerRE = regexp.MustCompile(`\bparse [a-z ]+: `)
 
 // operationFailedRE is an asynchronous operation the cloud reported failed.
 var operationFailedRE = regexp.MustCompile(`\boperation\b[^"]*\bfailed\b`)

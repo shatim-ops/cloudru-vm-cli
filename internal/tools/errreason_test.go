@@ -61,6 +61,8 @@ func TestUncodedReason(t *testing.T) {
 		// Локальные ошибки: в облако ничего не уходило.
 		{"job_id", fmt.Errorf("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)", "../../etc/passwd"), nil, clierrors.CodeUsage, 1},
 		{"манифест", fmt.Errorf("invalid manifest: %w", &json.SyntaxError{}), nil, clierrors.CodeUsage, 1},
+		{"ответ API не JSON", fmt.Errorf("cert_versions: parse certmanager response: %w", &json.SyntaxError{}), nil, clierrors.CodeAPIError, 5},
+		{"ответ API не той формы", fmt.Errorf("parse vpcs: %w", &json.UnmarshalTypeError{Value: "string"}), nil, clierrors.CodeAPIError, 5},
 		{"план не найден", errors.New("plan p-1 not found or expired"), nil, clierrors.CodeNotFound, 4},
 		{"подбор", errors.New("no matching node flavor (cpu>=64 ram>=512); see k8s_options"), nil, clierrors.CodeUsage, 1},
 	} {

@@ -423,6 +423,13 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	}
 
 	if subnet != nil {
+		// A subnet of another VPC went to the API as is and got a 400
+		// without the field (Grok review of PR #89, the class of L-26).
+		if subnet.VPCID != "" && vpcID != "" && subnet.VPCID != vpcID {
+			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("subnet %s is not in VPC %s of the target group; nothing was created", subnetID, vpcID),
+				"Pass a subnet of that VPC (vpc_subnets), or omit subnet_id.")
+		}
 		if from != "subnet_id" && !provision.SubnetInZone(subnet, zone.ID, zone.Name) {
 			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
 				fmt.Sprintf("subnet %s is not in zone %s; nothing was created", subnetID, firstNonEmptyStr(zone.Name, zone.ID)),
