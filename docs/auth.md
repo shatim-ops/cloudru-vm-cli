@@ -172,7 +172,8 @@ profiles:
 5. значения по умолчанию.
 
 Ключ берётся парой целиком: если задана хотя бы одна из `CLOUDRU_KEY_ID` /
-`CLOUDRU_SECRET`, ключ профиля не используется. `evo doctor` показывает,
+`CLOUDRU_SECRET` (или `CLOUDRU_KEY_SECRET`, или пара `EVOLUTION_*` — см.
+[раздел 7](#7-переменные-окружения)), ключ профиля не используется. `evo doctor` показывает,
 откуда взята каждая настройка (`flag`, `env`, `project`, `profile`,
 `default`).
 
@@ -188,7 +189,9 @@ profiles:
 |---|---|---|
 | `CLOUDRU_KEY_ID` | Key ID ключа доступа | `credentials.yaml: key_id` |
 | `CLOUDRU_SECRET` | Key Secret ключа доступа | `credentials.yaml: secret` |
-| `CLOUDRU_API_KEY` | **устарела**: пара `keyId:secret` одной строкой; читается, только если не заданы две переменные выше, и печатает предупреждение | — |
+| `CLOUDRU_KEY_SECRET` | то же, что `CLOUDRU_SECRET` (имя из [MCP-гайда Cloud.ru](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__mcp-server)); читается, если `CLOUDRU_SECRET` не задана | — |
+| `EVOLUTION_SERVICE_ACCOUNT_KEY_ID`, `EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET` | ключ, который AI Agents передаёт MCP-серверу ([переменные MCP-сервера](https://cloud.ru/docs/ai-agents/ug/topics/concepts__variables-mcp-server)); читаются, только если не задана ни одна `CLOUDRU_KEY_ID` / `CLOUDRU_SECRET` / `CLOUDRU_KEY_SECRET` | — |
+| `CLOUDRU_API_KEY` | **устарела**: пара `keyId:secret` одной строкой; читается, только если не задана ни одна из переменных ключа выше, и печатает предупреждение | — |
 | `CLOUDRU_PROFILE` | профиль вместо `default` | `--profile` |
 | `CLOUDRU_CONFIG_DIR` | каталог конфигурации вместо стандартного; кэш токена — в его подкаталоге `cache/` (одна переменная изолирует всё: CI, тесты, несколько окружений) | — |
 
@@ -197,6 +200,7 @@ profiles:
 | Переменная | Что задаёт | Флаг / ключ в `.evo.yaml` и профиле |
 |---|---|---|
 | `CLOUDRU_PROJECT_ID` | UUID проекта (обязателен для команд, создающих ресурсы) | `--project-id` / `project_id` |
+| `EVOLUTION_PROJECT_ID` | то же (имя AI Agents); `CLOUDRU_PROJECT_ID` важнее | — |
 | `CLOUDRU_REGION` | UUID зоны доступности (`evo list-zones`) | `--region` / `region` |
 | `CLOUDRU_IMAGE_ID` | UUID загрузочного образа для `deploy` (`evo image list`, `evo image get <имя>`) | `deploy --image-id` / `image_id` (по имени или UUID — `deploy --image` / `image:`) |
 | `CLOUDRU_FLAVOR` | конфигурация ВМ, например `lowcost10-2-4`; `auto` — подобрать (по умолчанию) | `deploy --flavor` / `flavor` |

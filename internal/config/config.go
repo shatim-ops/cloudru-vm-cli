@@ -24,6 +24,10 @@ type Config struct {
 	// credentials.yaml or the environment only.
 	KeyID  string `yaml:"-" json:"key_id"`
 	Secret string `yaml:"-" json:"-"`
+	// KeyEnv names the variables the key came from when they are not
+	// CLOUDRU_KEY_ID / CLOUDRU_SECRET (CLOUDRU_KEY_SECRET, EVOLUTION_*):
+	// evo doctor shows them, so it is clear which key went to IAM.
+	KeyEnv string `yaml:"-" json:"-"`
 
 	// Deploy
 	ProjectID string `yaml:"project_id" json:"project_id"` // required UUID
@@ -143,6 +147,9 @@ var envMapping = []struct {
 	envVar string
 	field  string
 }{
+	// AI Agents passes the project as EVOLUTION_PROJECT_ID (docs «Переменные
+	// MCP-сервера»); CLOUDRU_PROJECT_ID, applied later, wins.
+	{"EVOLUTION_PROJECT_ID", "ProjectID"},
 	{"CLOUDRU_PROJECT_ID", "ProjectID"},
 	{"CLOUDRU_REGION", "Region"},
 	{"CLOUDRU_FLAVOR", "Flavor"},
@@ -208,6 +215,9 @@ func resolve(opts Options) (Config, map[string]string, error) {
 		from := ProjectFileName
 		if origins["ProjectID"] == OriginEnv {
 			from = "CLOUDRU_PROJECT_ID"
+			if os.Getenv("CLOUDRU_PROJECT_ID") == "" {
+				from = "EVOLUTION_PROJECT_ID"
+			}
 		}
 		if _, flagged := opts.Flags["ProjectID"]; !flagged {
 			cfg.Warnings = append(cfg.Warnings, i18n.Tf(
@@ -225,6 +235,7 @@ func resolve(opts Options) (Config, map[string]string, error) {
 		origins[key] = OriginFlag
 	}
 	cfg.ProjectOrigin = origins["ProjectID"]
+	warnAgentProject(&cfg, origins)
 	if err := pickImage(&cfg, origins); err != nil {
 		return Config{}, nil, err
 	}
@@ -262,12 +273,29 @@ func pickImage(cfg *Config, origins map[string]string) error {
 
 // applyEnvCredentials takes the key pair from the environment. The pair is
 // taken as a whole: mixing an env key ID with a profile secret would only
-// produce a confusing IAM rejection.
+// produce a confusing IAM rejection. The secret is CLOUDRU_SECRET, else
+// CLOUDRU_KEY_SECRET — the name of the Cloud.ru MCP guide (Container Apps,
+// guides__mcp-server), whose env block colleagues copy. Without either
+// CLOUDRU_ variable the pair AI Agents passes to an MCP server is taken:
+// EVOLUTION_SERVICE_ACCOUNT_KEY_ID and _SECRET.
 func applyEnvCredentials(cfg *Config, origins map[string]string) error {
 	// Values pasted from a .env file often carry "\r" or spaces; IAM would
 	// reject the key with no hint why.
 	keyID := strings.TrimSpace(os.Getenv("CLOUDRU_KEY_ID"))
 	secret := strings.TrimSpace(os.Getenv("CLOUDRU_SECRET"))
+	if secret == "" {
+		secret = strings.TrimSpace(os.Getenv("CLOUDRU_KEY_SECRET"))
+	}
+	switch {
+	case keyID == "" && secret == "":
+		keyID = strings.TrimSpace(os.Getenv("EVOLUTION_SERVICE_ACCOUNT_KEY_ID"))
+		secret = strings.TrimSpace(os.Getenv("EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET"))
+		if keyID != "" || secret != "" {
+			cfg.KeyEnv = "EVOLUTION_SERVICE_ACCOUNT_KEY_ID, EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET"
+		}
+	case secret != "" && strings.TrimSpace(os.Getenv("CLOUDRU_SECRET")) == "":
+		cfg.KeyEnv = "CLOUDRU_KEY_ID, CLOUDRU_KEY_SECRET"
+	}
 	if keyID != "" || secret != "" {
 		cfg.KeyID, cfg.Secret = keyID, secret
 		origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
@@ -290,6 +318,31 @@ func applyEnvCredentials(cfg *Config, origins map[string]string) error {
 		i18n.T("CLOUDRU_API_KEY=keyId:secret is deprecated: set CLOUDRU_KEY_ID and CLOUDRU_SECRET, or run 'evo configure'",
 			"CLOUDRU_API_KEY=keyId:secret устарел: задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET или выполните 'evo configure'"))
 	return nil
+}
+
+// warnAgentProject: the key of an AI Agents service account
+// (EVOLUTION_SERVICE_ACCOUNT_KEY_*) with a project other than the one the
+// platform passed (EVOLUTION_PROJECT_ID) — a flag, CLOUDRU_PROJECT_ID,
+// .evo.yaml or the profile — lands resources in a project the agent did
+// not expect, or answers 403. Say where the project came from.
+func warnAgentProject(cfg *Config, origins map[string]string) {
+	agentProject := strings.TrimSpace(os.Getenv("EVOLUTION_PROJECT_ID"))
+	if !strings.HasPrefix(cfg.KeyEnv, "EVOLUTION_") || agentProject == "" || cfg.ProjectID == agentProject {
+		return
+	}
+	from := origins["ProjectID"]
+	switch from {
+	case OriginEnv:
+		from = "CLOUDRU_PROJECT_ID"
+	case OriginProject:
+		from = ProjectFileName
+	case OriginFlag:
+		from = "--project-id"
+	}
+	cfg.Warnings = append(cfg.Warnings, i18n.Tf(
+		"the key is from EVOLUTION_SERVICE_ACCOUNT_KEY_*, the project %s from %s, not EVOLUTION_PROJECT_ID (%s)",
+		"ключ — из EVOLUTION_SERVICE_ACCOUNT_KEY_*, а проект %s — из %s, не из EVOLUTION_PROJECT_ID (%s)",
+		cfg.ProjectID, from, agentProject))
 }
 
 func splitLegacyKey(v string) (keyID, secret string, ok bool) {
@@ -581,6 +634,9 @@ func buildSources(cfg *Config, origins map[string]string) []Source {
 		origin := origins[f.key]
 		if origin == "" {
 			origin = OriginDefault
+		}
+		if (f.key == "KeyID" || f.key == "Secret") && origin == OriginEnv && cfg.KeyEnv != "" {
+			origin += " (" + cfg.KeyEnv + ")"
 		}
 		sources = append(sources, Source{Key: f.key, Value: f.val, Origin: origin})
 	}

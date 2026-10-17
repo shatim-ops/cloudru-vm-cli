@@ -17,7 +17,7 @@ import (
 func isolate(t *testing.T) string {
 	t.Helper()
 	for _, kv := range os.Environ() {
-		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "CLOUDRU_") {
+		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "CLOUDRU_") || strings.HasPrefix(k, "EVOLUTION_") {
 			t.Setenv(k, "")
 		}
 	}
@@ -132,6 +132,96 @@ func TestResolve_EnvCredentialsOverrideProfileAsAPair(t *testing.T) {
 	}
 	if cfg.KeyID != "env-key" || cfg.Secret != "env-secret" {
 		t.Errorf("env pair not used: %q", cfg.KeyID)
+	}
+}
+
+// Блок env из MCP-гайда Cloud.ru (CLOUDRU_KEY_SECRET) и переменные, которые
+// AI Agents передаёт MCP-серверу (EVOLUTION_*): ключ и проект берутся;
+// CLOUDRU_SECRET и CLOUDRU_PROJECT_ID важнее.
+func TestResolve_CloudRuEnvAliases(t *testing.T) {
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{})
+	t.Setenv("CLOUDRU_KEY_ID", "env-key")
+	t.Setenv("CLOUDRU_KEY_SECRET", "guide-secret")
+	cfg, err := resolveConfig(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KeyID != "env-key" || cfg.Secret != "guide-secret" {
+		t.Errorf("CLOUDRU_KEY_SECRET not taken: key %q", cfg.KeyID)
+	}
+	t.Setenv("CLOUDRU_SECRET", "main-secret")
+	if cfg, _ = resolveConfig(Options{}); cfg.Secret != "main-secret" {
+		t.Error("CLOUDRU_SECRET must win over CLOUDRU_KEY_SECRET")
+	}
+
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{})
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_ID", "agent-key")
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET", "agent-secret")
+	t.Setenv("EVOLUTION_PROJECT_ID", "00000000-0000-0000-0000-0000000000e1")
+	cfg, err = resolveConfig(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KeyID != "agent-key" || cfg.Secret != "agent-secret" || cfg.ProjectID != "00000000-0000-0000-0000-0000000000e1" {
+		t.Errorf("EVOLUTION_* not taken: key %q project %q", cfg.KeyID, cfg.ProjectID)
+	}
+	t.Setenv("CLOUDRU_KEY_ID", "env-key")
+	t.Setenv("CLOUDRU_PROJECT_ID", "00000000-0000-0000-0000-0000000000c1")
+	if cfg, _ = resolveConfig(Options{}); cfg.KeyID != "env-key" || cfg.Secret != "" || cfg.ProjectID != "00000000-0000-0000-0000-0000000000c1" {
+		t.Errorf("CLOUDRU_* must win, as a pair: key %q secret set=%v project %q", cfg.KeyID, cfg.Secret != "", cfg.ProjectID)
+	}
+}
+
+// Ревью Grok на #84: CLOUDRU_KEY_SECRET рядом с парой EVOLUTION_* — берётся
+// CLOUDRU_* (без смешивания); doctor называет переменные ключа; проект из
+// EVOLUTION_PROJECT_ID против профиля — предупреждение с этим именем; ключ
+// агента с проектом из другого источника — предупреждение.
+func TestResolve_CloudRuEnvAliasSources(t *testing.T) {
+	const agentProject = "00000000-0000-0000-0000-0000000000e1"
+	const profileProject = "00000000-0000-0000-0000-0000000000a1"
+
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{})
+	t.Setenv("CLOUDRU_KEY_SECRET", "guide-secret")
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_ID", "agent-key")
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET", "agent-secret")
+	_, sources, err := ResolveWithSources(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range sources {
+		if s.Key == "KeyID" && (s.Value != "" || s.Origin != "env (CLOUDRU_KEY_ID, CLOUDRU_KEY_SECRET)") {
+			t.Errorf("KeyID %q from %q: CLOUDRU_* must win as a pair", s.Value, s.Origin)
+		}
+	}
+
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{ProjectID: profileProject})
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_ID", "agent-key")
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET", "agent-secret")
+	t.Setenv("EVOLUTION_PROJECT_ID", agentProject)
+	cfg, sources, err := ResolveWithSources(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProjectID != agentProject || len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "EVOLUTION_PROJECT_ID") {
+		t.Errorf("project %q, warnings %q", cfg.ProjectID, cfg.Warnings)
+	}
+	for _, s := range sources {
+		if s.Key == "Secret" && s.Origin != "env (EVOLUTION_SERVICE_ACCOUNT_KEY_ID, EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET)" {
+			t.Errorf("Secret origin %q", s.Origin)
+		}
+	}
+
+	// Ключ агента, проект — из флага: предупреждение называет флаг.
+	cfg, err = resolveConfig(Options{Flags: map[string]any{"ProjectID": profileProject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "--project-id") || !strings.Contains(cfg.Warnings[0], agentProject) {
+		t.Errorf("warnings %q", cfg.Warnings)
 	}
 }
 

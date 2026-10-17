@@ -45,6 +45,13 @@ func TestList_SendsLimit(t *testing.T) {
 	if !strings.Contains(got, "limit=500") || strings.Contains(got, "pageSize") {
 		t.Errorf("query %q, want limit=500 and no pageSize", got)
 	}
+	// Меньше предела — уходит как есть (ревью Qwen на #83).
+	if _, err := New("tok", "p", srv.URL).List(context.Background(), ListOptions{PageSize: 50}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "limit=50") || strings.Contains(got, "limit=500") {
+		t.Errorf("query %q, want limit=50", got)
+	}
 }
 
 // 401 при действующем токене — аудит не включён (обращение в поддержку,
