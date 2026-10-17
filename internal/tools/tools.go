@@ -1508,6 +1508,21 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 	return toJSON(result), false
 }
 
+// subnetNamesOtherZone: a subnet the API gave without its zone whose name
+// carries another zone's name ("Default_ru.AZ-1" for a VM in ru.AZ-3) — the
+// same name rule as provision.PickSubnet (review Grok on #86).
+func subnetNamesOtherZone(s *provision.Subnet, zoneID string, zones []*provision.AvailabilityZone) bool {
+	if s.AvailabilityZoneID != "" {
+		return false
+	}
+	for _, z := range zones {
+		if z.ID != zoneID && z.Name != "" && strings.Contains(s.Name, z.Name) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (string, bool) {
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
@@ -1655,7 +1670,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// the VM are billed, so a zone without them is refused here, before
 	// anything is created — CONFIG_INVALID, as deploy.
 	zoneName := ""
-	if zones, e := eng.Cloud.ListAvailabilityZones(ctx); e == nil {
+	var zones []*provision.AvailabilityZone
+	if zs, e := eng.Cloud.ListAvailabilityZones(ctx); e == nil {
+		zones = zs
 		for _, z := range zones {
 			if z.ID == region {
 				zoneName = z.Name
@@ -1693,7 +1710,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				fmt.Sprintf("subnet %s is not in the project", subnetID),
 				"Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet is taken.")), true
 		}
-		if subnet.AvailabilityZoneID != "" && subnet.AvailabilityZoneID != region {
+		if subnet.AvailabilityZoneID != "" && subnet.AvailabilityZoneID != region || subnetNamesOtherZone(subnet, region, zones) {
 			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
 				fmt.Sprintf("subnet %s is not in zone %s", subnet.Name, firstNonEmptyStr(zoneName, region)),
 				"Take a subnet of this zone (vpc_subnets), or omit subnet_id: the zone's main subnet is taken.")), true

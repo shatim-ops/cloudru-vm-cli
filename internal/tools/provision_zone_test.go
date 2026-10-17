@@ -143,6 +143,7 @@ func TestProvision_ExplicitSubnetZoneNameAndGroupListRefused(t *testing.T) {
 	subnets := []*provision.Subnet{
 		{ID: "sn-1", Name: "Default_ru.AZ-1", AvailabilityZoneID: "z1", Default: true},
 		{ID: "sn-3", Name: "Default_ru.AZ-3", AvailabilityZoneID: "z", Default: true},
+		{ID: "sn-n", Name: "Default_ru.AZ-1-legacy"},
 	}
 	groups := []*provision.SecurityGroup{{ID: "sg-3", Name: "SSH-access_ru.AZ-3", AvailabilityZoneID: "z", Default: true}}
 	for name, tc := range map[string]struct {
@@ -150,10 +151,11 @@ func TestProvision_ExplicitSubnetZoneNameAndGroupListRefused(t *testing.T) {
 		sgErr error
 		want  string
 	}{
-		"subnet_id не из проекта":  {map[string]any{"subnet_id": "sn-x"}, nil, "subnet sn-x is not in the project"},
-		"subnet_id другой зоны":    {map[string]any{"subnet_id": "sn-1"}, nil, "subnet Default_ru.AZ-1 is not in zone ru.AZ-3"},
-		"имя зоны в region":        {map[string]any{"_region": "ru.AZ-3"}, nil, "zone name"},
-		"список групп не прочитан": {nil, errors.New("connection reset"), "list security groups"},
+		"subnet_id не из проекта":       {map[string]any{"subnet_id": "sn-x"}, nil, "subnet sn-x is not in the project"},
+		"subnet_id другой зоны":         {map[string]any{"subnet_id": "sn-1"}, nil, "subnet Default_ru.AZ-1 is not in zone ru.AZ-3"},
+		"имя зоны в region":             {map[string]any{"_region": "ru.AZ-3"}, nil, "zone name"},
+		"список групп не прочитан":      {nil, errors.New("connection reset"), "list security groups"},
+		"subnet_id без зоны, имя чужой": {map[string]any{"subnet_id": "sn-n"}, nil, "subnet Default_ru.AZ-1-legacy is not in zone ru.AZ-3"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}}, subnets: subnets, groups: groups, sgErr: tc.sgErr}
