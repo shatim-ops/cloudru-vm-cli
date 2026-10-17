@@ -580,7 +580,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_create",
-			Description: "Create a Managed PostgreSQL cluster. Resolves version (default: latest), specification (by specification_id OR cpu+ram), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.",
+			Description: "Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":                  strProp("Cluster name (required)."),
 				"version":               strProp("PostgreSQL version (from pg_versions). Optional; default = latest."),
@@ -588,7 +588,7 @@ func (s *Registry) registerTools() {
 				"cpu":                   intProp("vCPU count — used to auto-pick a specification when specification_id is omitted."),
 				"ram":                   intProp("RAM in GB — used with cpu to auto-pick a specification."),
 				"storage_gb":            intProp("Main data disk size in GB. Optional; default = specification minimum."),
-				"instances":             intProp("Number of nodes (1-2 standard, 1-3 business). Default 1."),
+				"instances":             intProp("Number of nodes (1-2 standard, 1-3 business: checked against the spec's max_hosts). Default 1."),
 				"subnet_id":             strProp("Subnet UUID (defines the AZ). Optional; default = first project subnet."),
 				"initial_database":      strProp("Name of the default database to create. Default 'defaultdb'."),
 				"description":           strProp("Optional cluster description."),
@@ -640,7 +640,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_create",
-			Description: "Create a Managed Kafka cluster. Resolves version (latest), subnet (the main subnet of the configured zone, else of the first zone that has one, ru.AZ-2 first) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram), storage & brokers (spec minimum). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll kafka_operation.",
+			Description: "Create a Managed Kafka cluster. Refuses a name an existing cluster has (kafka_list). Resolves version (latest), subnet (the main subnet of the configured zone, else of the first zone that has one, ru.AZ-2 first) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram; none matching is a USAGE error with the list), storage (spec minimum) and brokers (spec min_brokers; the live API lists none, then 1 — no replication). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll kafka_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name (2-63 chars). Required."),
 				"version_id":       strProp("Kafka version UUID (from kafka_versions). Optional; default = latest."),
@@ -648,7 +648,7 @@ func (s *Registry) registerTools() {
 				"cpu":              intProp("vCPU — auto-picks a spec when specification_id omitted."),
 				"ram":              intProp("RAM GB — with cpu."),
 				"storage_gib":      intProp("Disk size GiB. Optional; default = spec minimum."),
-				"brokers":          intProp("Broker count. Optional; default = spec minimum."),
+				"brokers":          intProp("Broker count. Optional; default = the spec's min_brokers, else 1 (a single broker: no replication; pass 3 for a replicated cluster). Checked against the spec's min/max_brokers when it has them."),
 				"ui_enabled":       boolProp("Enable the Kafka UI (default false)."),
 				"subnet_id":        strProp("Subnet UUID (from vpc_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
 				"description":      strProp("Optional description."),
@@ -693,7 +693,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster. Resolves version (latest), subnet (as kafka_create) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram). type MASTER_REPLICA (default: a master and two replicas, all in the subnet's zone — Single-AZ; the API has rejected STANDALONE). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
+			Description: "Create a Managed Redis cluster. Refuses a name an existing cluster has (redis_list). Resolves version (latest), subnet (as kafka_create) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram; none matching is a USAGE error with the list). type MASTER_REPLICA (default: a master and two replicas per shard, all in the subnet's zone — Single-AZ; the API has rejected STANDALONE). replicas here is the replicas WITHOUT the master (the create request's field, 2); redis_get/redis_list report replicas as hosts per shard, the master included (3). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name. Required."),
 				"version_id":       strProp("Redis version UUID (from redis_versions). Optional; default = latest."),
@@ -702,8 +702,8 @@ func (s *Registry) registerTools() {
 				"ram":              intProp("RAM GB — with cpu."),
 				"storage_gb":       intProp("Disk size GB. Optional; default = spec minimum."),
 				"shards":           intProp("Shard count 1-8 (default 1)."),
-				"replicas":         intProp("Hosts per shard, the master included — the API's replicas field (default 3 = a master and two replicas; MASTER_REPLICA takes at least 3)."),
-				"type":             strProp("MASTER_REPLICA (default) or STANDALONE (rejected by the API so far)."),
+				"replicas":         intProp("Replicas per shard WITHOUT the master — the create request's replicas field. MASTER_REPLICA takes 2 (the default: a master and two replicas, 3 hosts — what redis_get then reports as replicas); STANDALONE takes 0."),
+				"type":             enumProp("MASTER_REPLICA (default) or STANDALONE (rejected by the API so far).", "MASTER_REPLICA", "STANDALONE"),
 				"subnet_id":        strProp("Subnet UUID (from vpc_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
 				"description":      strProp("Optional description."),
 				"confirmed":        confirmedProp(),
@@ -974,7 +974,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"zone_id":     strProp("Zone UUID (from dns_zones). Required."),
 				"name":        strProp("Record name/host (e.g. 'www' or '@'). Required."),
-				"record_type": strProp("Record type: a, aaaa, cname, mx, ns, spf, txt, caa, srv. Required."),
+				"record_type": enumProp("Record type: a, aaaa, cname, mx, ns, spf, txt, caa, srv (any case; sent lower-case, as the API takes it). Required.", dnsRecordTypes...),
 				"value":       strProp("Single record value (e.g. an IP for A). Use this or 'values'."),
 				"values":      map[string]any{"type": "array", "description": "Multiple record values.", "items": map[string]any{"type": "string"}},
 				"ttl":         intProp("TTL seconds (default 300)."),
@@ -1050,7 +1050,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ar_create",
-			Description: "Create an Artifact Registry registry (async). type=DOCKER (default), DEBIAN, RPM, GENERIC, or PYPI. Mutation (BILLABLE): requires confirmed=true after the user approves. Poll ar_operation; then push images via docker login to <registry>.cr.cloud.ru.",
+			Description: "Create an Artifact Registry registry (async); refuses a name an existing registry has (ar_list). type=DOCKER (default), DEBIAN, RPM, GENERIC, or PYPI. Mutation (BILLABLE): requires confirmed=true after the user approves. Poll ar_operation; then push images via docker login to <registry>.cr.cloud.ru.",
 			InputSchema: objSchema(map[string]any{
 				"name":          strProp("Registry name. Required."),
 				"registry_type": strProp("Registry type: DOCKER (default), DEBIAN, RPM, GENERIC, PYPI."),
@@ -1100,7 +1100,7 @@ func (s *Registry) registerTools() {
 			Description: "Service Monitoring — read a metric's history over a recent window (read-only). Prefer THIS over polling vm_get/k8s_get to answer 'is the service healthy / how's CPU/load'. Returns time series {metric labels, values, timestamps}. NB: the metric only returns data if the project has a monitoring tenant provisioned; otherwise the API says 'tenant not found'.",
 			InputSchema: objSchema(map[string]any{
 				"match": strProp("Metric name / PromQL name selector (e.g. cpu_usage, node_load1). Required."),
-				"since": strProp("Look-back window: 30m, 1h, 6h, 2d… (default 1h, max 7d)."),
+				"since": strProp("Look-back window: 30m, 1h, 6h, 1d or minutes as a number (default 1h; at most 24h — the API's limit, longer is refused)."),
 			}, "match"),
 		},
 		{
@@ -1114,7 +1114,7 @@ func (s *Registry) registerTools() {
 			Name:        "audit_events",
 			Description: "Audit Logging — who did what in the project (read-only): control-plane events (create/delete/modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource, time. Use to answer 'what happened on the stand / who deleted X / recent changes'. Paginated via next_page_token. NB: access to audit logs is enabled by Cloud.ru support; until then the API answers 401 and the tool says audit is not enabled for the project.",
 			InputSchema: objSchema(map[string]any{
-				"since":      strProp("Look-back window: 30m, 1h, 3h… (default 1h; keep short — API recommends ≤30min for chatty projects)."),
+				"since":      strProp("Look-back window: 30m, 1h, 3h, 1d or minutes as a number (default 1h; keep short — API recommends ≤30min for chatty projects)."),
 				"page_size":  intProp("Max events per page (default 100, at most 500)."),
 				"page_token": strProp("Continuation token from a previous call's next_page_token (optional)."),
 			}),
@@ -1178,12 +1178,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_versions",
-			Description: "Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry). Read-only.",
+			Description: "Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry), all pages. Read-only.",
 			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required.")}, "certificate_id"),
 		},
 		{
 			Name:        "cert_private_key",
-			Description: "Certificate Manager — return the SECRET private key (decoded PEM) for a version. Gated: requires confirmed=true (returns plaintext key material).",
+			Description: "Certificate Manager — return the SECRET private key for a version: privateKey is PEM text (-----BEGIN …), decoded from the API's Base64 (key_format: pem; base64 if the API's value is not a Base64 PEM). cert_import takes the key Base64-encoded. Gated: requires confirmed=true (returns plaintext key material).",
 			InputSchema: objSchema(map[string]any{
 				"certificate_id": strProp("Certificate id. Required."),
 				"version_id":     intProp("Version number; 0 or omitted = latest version."),

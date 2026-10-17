@@ -43,6 +43,9 @@ func (s *Registry) handleVpcGet(ctx context.Context, args map[string]any) (strin
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from vpc_list)")), true
 	}
+	if res := uuidArg("id", id, "vpc_list"); res != "" {
+		return res, true
+	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return errResult(err), true
@@ -136,6 +139,9 @@ func (s *Registry) handleVpcRoutes(ctx context.Context, args map[string]any) (st
 	vpcID := stringArg(args, "vpc_id")
 	if vpcID == "" {
 		return usageResult(fmt.Errorf("'vpc_id' is required (from vpc_list)")), true
+	}
+	if res := uuidArg("vpc_id", vpcID, "vpc_list"); res != "" {
+		return res, true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {

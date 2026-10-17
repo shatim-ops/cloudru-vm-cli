@@ -2434,7 +2434,7 @@ evo pg backups <cluster-id> [flags]
 Вызывает инструмент pg_create (подробнее: 'evo tools describe pg_create').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Create a Managed PostgreSQL cluster. Resolves version (default: latest), specification (by specification_id OR cpu+ram), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.
+Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -2459,7 +2459,7 @@ evo pg create <name> [flags]
       --description string          Optional cluster description.
   -h, --help                        Справка по create
       --initial-database string     Name of the default database to create. Default 'defaultdb'.
-      --instances int               Number of nodes (1-2 standard, 1-3 business). Default 1.
+      --instances int               Number of nodes (1-2 standard, 1-3 business: checked against the spec's max_hosts). Default 1.
       --no-backup                   Disable automatic backups. Backups are ENABLED by default and CANNOT be toggled after creation; a cluster without backups rejects pg_backup_create/pg_backups with 'backup disabled'.
       --ram int                     RAM in GB — used with cpu to auto-pick a specification.
       --specification-id string     Specification UUID (from pg_specs). Optional if cpu+ram given.

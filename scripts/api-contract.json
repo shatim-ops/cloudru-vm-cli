@@ -83,16 +83,16 @@
       "name": "vpc",
       "spec": "vpc/openapi.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/vpcs", "code": "internal/vpc/client.go:122", "query": ["project_id"], "reads": ["vpcs[].id", "vpcs[].name", "vpcs[].default", "vpcs[].type"],
+        {"method": "GET", "path": "/v1/vpcs", "code": "internal/vpc/client.go:129", "query": ["project_id"], "reads": ["vpcs[].id", "vpcs[].name", "vpcs[].default", "vpcs[].type"],
          "accepted": {"query-required:projectId": "grpc-gateway принимает proto-имя project_id; код шлёт его — подтвердить вживую", "query-unknown:project_id": "см. projectId"}},
-        {"method": "GET", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:140", "reads": ["id", "name"]},
-        {"method": "POST", "path": "/v1/vpcs", "code": "internal/vpc/client.go:156", "body": ["projectId", "name", "description"], "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
-        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:161", "reads": ["id", "done"]},
-        {"method": "GET", "path": "/v1/vpcs/operations/{operationId}", "code": "internal/vpc/client.go:166", "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
-        {"method": "GET", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:184", "reads": ["routes[].id", "routes[].subnet", "routes[].status"]},
-        {"method": "POST", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:202",
+        {"method": "GET", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:147", "reads": ["id", "name"]},
+        {"method": "POST", "path": "/v1/vpcs", "code": "internal/vpc/client.go:163", "body": ["projectId", "name", "description"], "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
+        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:168", "reads": ["id", "done"]},
+        {"method": "GET", "path": "/v1/vpcs/operations/{operationId}", "code": "internal/vpc/client.go:173", "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
+        {"method": "GET", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:191", "reads": ["routes[].id", "routes[].subnet", "routes[].status"]},
+        {"method": "POST", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:209",
          "body": ["vpcId", "projectId", "subnet", "nextHop.virtualMachine.virtualMachine.id", "nextHop.virtualMachine.interface.id", "nextHop.vip.vips[].id", "nextHop.magicRouter.magicRouter.id", "nextHop.magicRouter.azName"], "reads": ["id", "done"]},
-        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}/routes/static/{staticRouteId}", "code": "internal/vpc/client.go:207", "reads": ["id", "done"]}
+        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}/routes/static/{staticRouteId}", "code": "internal/vpc/client.go:214", "reads": ["id", "done"]}
       ]
     },
     {
@@ -222,7 +222,7 @@
         {"method": "GET", "path": "/v1/operations/{operation_id}", "code": "internal/dbaas/client.go:224", "reads": ["id", "resource_id", "done", "error.code", "error.message"]},
         {"method": "GET", "path": "/v1/versions", "code": "internal/dbaas/client.go:241", "query": ["product_type=kafka"], "reads": ["versions[].id", "versions[].name"]},
         {"method": "GET", "path": "/v1/specifications", "code": "internal/dbaas/client.go:255", "query": ["version_id", "availability_zone_id"],
-         "reads": ["specifications[].id", "specifications[].name", "specifications[].cpu", "specifications[].memory", "specifications[].min_storage_gigs"]}
+         "reads": ["specifications[].id", "specifications[].name", "specifications[].cpu", "specifications[].memory", "specifications[].min_storage_gigs", "specifications[].min_brokers", "specifications[].max_brokers"]}
       ]
     },
     {
@@ -295,9 +295,10 @@
         {"method": "POST", "path": "/v1/certificate/{certificateId}:renew", "code": "internal/certmanager/client.go:205", "body": [], "reads": ["id", "done"]},
         {"method": "DELETE", "path": "/v1/certificate/{id}", "code": "internal/certmanager/client.go:222", "query": ["force"]},
         {"method": "GET", "path": "/v1/certificate/{certificateId}:usage", "code": "internal/certmanager/client.go:231", "reads": ["usage"]},
-        {"method": "GET", "path": "/v1/certificate/{certificateId}/versions", "code": "internal/certmanager/client.go:244", "reads": ["versions"]},
-        {"method": "GET", "path": "/v1/certificate/{certificateId}/version/{versionId}:private_key", "code": "internal/certmanager/client.go:257", "reads": ["privateKey"]},
-        {"method": "GET", "path": "/v1/operation/{operationId}", "code": "internal/certmanager/client.go:271", "reads": ["id", "done", "error"]}
+        {"method": "GET", "path": "/v1/certificate/{certificateId}/versions", "code": "internal/certmanager/client.go:266", "query": ["pageSize=1000", "pageToken"], "paginates": true, "reads": ["versions", "nextPageToken"],
+         "_note": "pageSize в спецификации необязателен, живое API без него — 400 «PageSize: value must be inside range [1, 1000]» (release audit, L-17)"},
+        {"method": "GET", "path": "/v1/certificate/{certificateId}/version/{versionId}:private_key", "code": "internal/certmanager/client.go:289", "reads": ["privateKey"]},
+        {"method": "GET", "path": "/v1/operation/{operationId}", "code": "internal/certmanager/client.go:303", "reads": ["id", "done", "error"]}
       ]
     },
     {
@@ -321,7 +322,7 @@
       "name": "billing",
       "spec": "organization+iam/api.op_v1.v2.yaml",
       "requests": [
-        {"method": "GET", "path": "/v2/consumption", "code": "internal/billing/client.go:121", "query": ["agreement_id", "start_date", "end_date", "page_filter.page_size=1000", "page_filter.page_token"], "paginates": true,
+        {"method": "GET", "path": "/v2/consumption", "code": "internal/billing/client.go:131", "query": ["agreement_id", "start_date", "end_date", "page_filter.page_size=1000", "page_filter.page_token"], "paginates": true,
          "reads": ["consumptions[].amount", "consumptions[].amount_nds", "consumptions[].cost", "consumptions[].cost_nds", "consumptions[].servname", "consumptions[].servicename", "consumptions[].service", "consumptions[].resource_name", "consumptions[].resourcename", "next_page_token"]}
       ]
     },
@@ -329,7 +330,7 @@
       "name": "billing-balance",
       "spec": "billing/swagger.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/agreement/{agreement_id}", "code": "internal/billing/client.go:88", "reads": ["balance", "active"],
+        {"method": "GET", "path": "/v1/agreement/{agreement_id}", "code": "internal/billing/client.go:98", "reads": ["balance", "active"],
          "accepted": {"path-missing": "эндпоинт billing.api.cloud.ru/v1/agreement/{id} не опубликован ни в одной спецификации — вопрос к Cloud.ru"}}
       ]
     },

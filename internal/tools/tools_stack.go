@@ -288,6 +288,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				if !depsDone(st, job) {
 					continue
 				}
+				resumed := st.Interrupted
 				if st.Interrupted {
 					// The previous create was cut off and may have reached the
 					// cloud: adopt what it made instead of creating it twice.
@@ -340,6 +341,17 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						st.ResourceID = id
 						st.Status = "error"
 						job.Error = fmt.Sprintf("%s: %s (resource %s kept for stack_destroy)", st.Key, err.Error(), id)
+						job.Status = "error"
+						return
+					}
+					// The tool refused a name a resource already has
+					// (existing_id; release audit, L-32). On the step's first
+					// try, not resumed after a cut-off create, that resource
+					// predates the job: adopting it by name below would hand
+					// it to stack_destroy.
+					if firstStr(res, "existing_id") != "" && st.Attempts == 1 && !resumed {
+						st.Status = "error"
+						job.Error = fmt.Sprintf("%s: %s — rename it in the manifest, or remove the existing one", st.Key, err.Error())
 						job.Status = "error"
 						return
 					}
