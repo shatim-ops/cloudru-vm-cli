@@ -174,6 +174,57 @@ func TestResolve_CloudRuEnvAliases(t *testing.T) {
 	}
 }
 
+// Ревью Grok на #84: CLOUDRU_KEY_SECRET рядом с парой EVOLUTION_* — берётся
+// CLOUDRU_* (без смешивания); doctor называет переменные ключа; проект из
+// EVOLUTION_PROJECT_ID против профиля — предупреждение с этим именем; ключ
+// агента с проектом из другого источника — предупреждение.
+func TestResolve_CloudRuEnvAliasSources(t *testing.T) {
+	const agentProject = "00000000-0000-0000-0000-0000000000e1"
+	const profileProject = "00000000-0000-0000-0000-0000000000a1"
+
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{})
+	t.Setenv("CLOUDRU_KEY_SECRET", "guide-secret")
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_ID", "agent-key")
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET", "agent-secret")
+	_, sources, err := ResolveWithSources(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range sources {
+		if s.Key == "KeyID" && (s.Value != "" || s.Origin != "env (CLOUDRU_KEY_ID, CLOUDRU_KEY_SECRET)") {
+			t.Errorf("KeyID %q from %q: CLOUDRU_* must win as a pair", s.Value, s.Origin)
+		}
+	}
+
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{ProjectID: profileProject})
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_ID", "agent-key")
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET", "agent-secret")
+	t.Setenv("EVOLUTION_PROJECT_ID", agentProject)
+	cfg, sources, err := ResolveWithSources(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProjectID != agentProject || len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "EVOLUTION_PROJECT_ID") {
+		t.Errorf("project %q, warnings %q", cfg.ProjectID, cfg.Warnings)
+	}
+	for _, s := range sources {
+		if s.Key == "Secret" && s.Origin != "env (EVOLUTION_SERVICE_ACCOUNT_KEY_ID, EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET)" {
+			t.Errorf("Secret origin %q", s.Origin)
+		}
+	}
+
+	// Ключ агента, проект — из флага: предупреждение называет флаг.
+	cfg, err = resolveConfig(Options{Flags: map[string]any{"ProjectID": profileProject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "--project-id") || !strings.Contains(cfg.Warnings[0], agentProject) {
+		t.Errorf("warnings %q", cfg.Warnings)
+	}
+}
+
 func TestResolve_DeprecatedAPIKey(t *testing.T) {
 	isolate(t)
 	t.Setenv("CLOUDRU_API_KEY", "legacy-id:legacy-secret")

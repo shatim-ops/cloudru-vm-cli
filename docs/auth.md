@@ -191,7 +191,7 @@ profiles:
 | `CLOUDRU_SECRET` | Key Secret ключа доступа | `credentials.yaml: secret` |
 | `CLOUDRU_KEY_SECRET` | то же, что `CLOUDRU_SECRET` (имя из [MCP-гайда Cloud.ru](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__mcp-server)); читается, если `CLOUDRU_SECRET` не задана | — |
 | `EVOLUTION_SERVICE_ACCOUNT_KEY_ID`, `EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET` | ключ, который AI Agents передаёт MCP-серверу ([переменные MCP-сервера](https://cloud.ru/docs/ai-agents/ug/topics/concepts__variables-mcp-server)); читаются, только если не задана ни одна `CLOUDRU_KEY_ID` / `CLOUDRU_SECRET` / `CLOUDRU_KEY_SECRET` | — |
-| `CLOUDRU_API_KEY` | **устарела**: пара `keyId:secret` одной строкой; читается, только если не заданы две переменные выше, и печатает предупреждение | — |
+| `CLOUDRU_API_KEY` | **устарела**: пара `keyId:secret` одной строкой; читается, только если не задана ни одна из переменных ключа выше, и печатает предупреждение | — |
 | `CLOUDRU_PROFILE` | профиль вместо `default` | `--profile` |
 | `CLOUDRU_CONFIG_DIR` | каталог конфигурации вместо стандартного; кэш токена — в его подкаталоге `cache/` (одна переменная изолирует всё: CI, тесты, несколько окружений) | — |
 
