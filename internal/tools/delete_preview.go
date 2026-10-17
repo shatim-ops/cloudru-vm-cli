@@ -34,7 +34,7 @@ func deletePreview(message, id string, get func() (map[string]any, error)) (stri
 	// before the confirmation, not after (release audit re-run, N-09).
 	switch strings.ToUpper(status) {
 	case "DEPLOYING", "CREATING", "PROVISIONING":
-		out["warning"] = fmt.Sprintf("it is still being created (%s): Cloud.ru may refuse the delete until it is ready or failed", status)
+		out["warning"] = fmt.Sprintf("it is still being created (%s): Cloud.ru refuses the delete until it is ready", status)
 	}
 	return toJSON(out), true
 }

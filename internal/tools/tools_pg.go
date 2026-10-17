@@ -494,7 +494,7 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 				"Cloud.ru deletes a FAILED cluster only with force, which its public API does not accept: delete it in the Cloud.ru console or ask support.")), true
 		case strings.Contains(msg, "FailedPrecondition"):
 			return errResult(clierrors.New(clierrors.CodeAPIError, msg,
-				"The cluster is still being created (DEPLOYING): Cloud.ru deletes it once it is READY or FAILED. Check it with pg_get, then call pg_delete again.")), true
+				"The cluster is still being created (DEPLOYING): Cloud.ru deletes it through the API once it is READY. Check it with pg_get, then call pg_delete again; a cluster that ends FAILED is deleted only in the Cloud.ru console.")), true
 		}
 		return errResult(fmt.Errorf("delete cluster: %w", err)), true
 	}

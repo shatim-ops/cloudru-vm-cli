@@ -64,6 +64,8 @@ func TestUncodedReason(t *testing.T) {
 		{"ответ API не JSON", fmt.Errorf("cert_versions: parse certmanager response: %w", &json.SyntaxError{}), nil, clierrors.CodeAPIError, 5},
 		{"ответ mk8s не JSON", fmt.Errorf("parse cluster: %w", &json.SyntaxError{}), nil, clierrors.CodeAPIError, 5},
 		{"ответ Container Apps не JSON", fmt.Errorf("parse containers: %w", &json.SyntaxError{}), nil, clierrors.CodeAPIError, 5},
+		{"каталог плагинов mk8s не JSON", fmt.Errorf("parse addon releases: %w", &json.SyntaxError{}), nil, clierrors.CodeAPIError, 5},
+		{"ответ OIDC не JSON", fmt.Errorf("embed_token: OIDC token exchange failed: %w", fmt.Errorf("parse oidc token: %w", &json.SyntaxError{})), nil, clierrors.CodeAPIError, 5},
 		{"ответ API не той формы", fmt.Errorf("parse vpcs: %w", &json.UnmarshalTypeError{Value: "string"}), nil, clierrors.CodeAPIError, 5},
 		{"план не найден", errors.New("plan p-1 not found or expired"), nil, clierrors.CodeNotFound, 4},
 		{"подбор", errors.New("no matching node flavor (cpu>=64 ram>=512); see k8s_options"), nil, clierrors.CodeUsage, 1},
