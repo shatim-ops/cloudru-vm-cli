@@ -357,15 +357,13 @@ func (s *Registry) handleK8sDelete(ctx context.Context, args map[string]any) (st
 	if id == "" {
 		return usageResult(fmt.Errorf("cluster_id is required")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("k8s_delete permanently deletes cluster %s. Call again with confirmed=true after the user approves.", id),
-		}), true
-	}
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("k8s_delete permanently deletes cluster %s. Call again with confirmed=true after the user approves.",
+			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {

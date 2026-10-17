@@ -100,12 +100,13 @@ func (s *Registry) handleArDelete(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from ar_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("ar_delete PERMANENTLY deletes registry %s and its artifacts. Call again with confirmed=true.", id)}), true
-	}
 	cli, err := s.arClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("ar_delete PERMANENTLY deletes registry %s and its artifacts. Call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetRegistry(ctx, id) })
 	}
 	op, err := cli.DeleteRegistry(ctx, id)
 	if err != nil {

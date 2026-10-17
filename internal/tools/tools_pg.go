@@ -425,15 +425,13 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from pg_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups. Confirm, then call again with confirmed=true.", id),
-		}), true
-	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups. Confirm, then call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {

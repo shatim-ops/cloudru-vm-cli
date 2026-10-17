@@ -13,6 +13,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -31,6 +32,12 @@ func (c *sgCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, er
 	return []*provision.VM{c.vm}, nil
 }
 func (*sgCloud) DeleteVMInProject(context.Context, string, string) error { return nil }
+
+// GetVM: the deleted VM is gone at once (destroy waits for that before it
+// closes the ports).
+func (*sgCloud) GetVM(context.Context, string) (*provision.VM, error) {
+	return nil, clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
+}
 func (*sgCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
 	return []*provision.SecurityGroup{{ID: "sg-1", Name: "SSH-access_ru.AZ-1"}}, nil
 }
