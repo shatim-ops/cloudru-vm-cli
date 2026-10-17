@@ -135,6 +135,8 @@ CLI и MCP-сервер для Cloud.ru Evolution: развёртывание do
 Object Storage, секреты.
 
 Сообщения по-английски: EVO_LANG=en.
+
+Обратная связь: Telegram https://t.me/shatim, чат тестировщиков https://t.me/+SYvXziA4G9c1Y2Ni
 ```
 
 ### Options
