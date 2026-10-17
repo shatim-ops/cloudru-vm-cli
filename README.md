@@ -29,12 +29,8 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh 
 evo version
 ```
 
-До выхода `v1.0.0` стабильного релиза нет и скрипт без версии останавливается
-с «стабильного релиза пока нет»: кандидат в релиз ставится с явной версией —
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | CLOUDRU_VM_VERSION=v1.0.0-rc.4 sh
-```
+Скрипт без версии ставит последний стабильный релиз; конкретная версия —
+`CLOUDRU_VM_VERSION=v1.0.0` (см. [install.md](docs/install.md)).
 
 `v1.0.0-rc.1` вышел до переименования: бинарь в нём называется `cloudru-vm`
 (`cloudru-vm version`), и скрипт ставит его под этим именем; `evo` — с
