@@ -192,6 +192,10 @@ Object Storage, секреты.
 Как подключить скрипт — в справке подкоманды (bash, zsh, fish, powershell).
 ```
 
+```
+evo completion [flags]
+```
+
 ### Options
 
 ```

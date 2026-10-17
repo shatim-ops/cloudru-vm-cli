@@ -65,7 +65,10 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 `--server`/`-s`, `--kubeconfig`, `--token`, `--username`, `--password`,
 `--client-certificate`, `--client-key`, `--certificate-authority`,
 `--insecure-skip-tls-verify`, `--tls-server-name`. С ними даже `get` отправил
-бы токен кластера на другой сервер. Кластер выбирает `cluster_id`.
+бы токен кластера на другой сервер. Кластер выбирает `cluster_id`. Отклоняется
+и `--kuberc`: evo запускает kubectl с `KUBERC=off`, чтобы файл настроек
+kubectl (`~/.kube/kuberc`: алиасы, значения флагов по умолчанию) не менял его
+команды.
 
 Сейчас ответ `confirmation_required` приходит с `isError: true` — клиенту
 стоит различать исход по полю `status`, а не по `isError`. Без исключений:
@@ -98,8 +101,13 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 с теми же `reason` и `error`. Отказ политики HTTP (`secret_value`,
 `cert_private_key`, `k8s_kubeconfig` с токеном, путь вне рабочего каталога)
 — `USAGE`; нет `kubectl`/`helm` на сервере — `CONFIG_INVALID` с подсказкой;
-сервер занят — `API_RATE_LIMITED`. Ответ `confirmation_required` — не
-ошибка, поля `reason` у него нет.
+сервер занят (уже идут 32 вызова инструментов) — `SERVER_BUSY`: это лимит
+самого `evo mcp --http`, в Cloud.ru запрос не уходил, повторите позже. Ответ
+`confirmation_required` — не ошибка, поля `reason` у него нет.
+
+Неизвестный инструмент (и инструмент вне `--toolsets`) — ошибка протокола
+JSON-RPC `-32602` с сообщением `Unknown tool: <имя>`, как требует MCP
+2025-06-18, а не результат с `isError`.
 
 ## Цена
 
@@ -557,7 +565,7 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
   `kustomize`; флаги, читающие или пишущие файлы хоста (`-f`, `-k`,
   `--kubeconfig`, `--from-file`, `--from-env-file`, `-o …-file=…`, `--cert`,
   `--key`, `--ca-cert` у `create secret tls`, `--custom` у `debug`,
-  `--log-file`, `--output-directory`, …), и флаги, отправляющие токен кластера
+  `--log-file`, `--output-directory`, `--kuberc`, …), и флаги, отправляющие токен кластера
   на другой сервер (`--server`, `--token`, `--insecure-skip-tls-verify`, …),
   в том числе через `_` вместо `-` (`--client_key`). Флаги подробного журнала
   `-v`, `--v`, `-v=N`, `-vN`, `--vmodule` тоже отклоняются: с `-v=8` kubectl

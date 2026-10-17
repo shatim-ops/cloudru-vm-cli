@@ -266,8 +266,17 @@ func TestConfigure_RejectedKeyWritesNothing(t *testing.T) {
 	if code != clerrors.ExitAuth {
 		t.Fatalf("exit %d, want %d: %s", code, clerrors.ExitAuth, stderr)
 	}
+	// Релизный аудит, R-15: код ошибки — в reason, а не внутри текста
+	// («проверка ключа доступа: AUTH_FAILED: …»).
+	if strings.Contains(stderr, "AUTH_FAILED") || !strings.Contains(stderr, "401") {
+		t.Errorf("the message repeats the code or lost the cause: %s", stderr)
+	}
 	if _, err := os.Stat(config.CredentialsPath()); !os.IsNotExist(err) {
 		t.Error("rejected credentials were stored")
+	}
+	code, _, stderr = runCLI(t, fakeSecret+"\n", "--json", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", "p")
+	if code != clerrors.ExitAuth || !strings.Contains(stderr, `"reason":"AUTH_FAILED"`) || strings.Contains(stderr, "AUTH_FAILED:") {
+		t.Errorf("--json: exit %d: %s", code, stderr)
 	}
 }
 
