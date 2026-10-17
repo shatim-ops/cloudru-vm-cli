@@ -872,8 +872,13 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 	if (err != nil || fip == nil || fip.ID == "") && !provision.IsQuotaError(err) {
 		// The create may have reached the cloud with its answer lost: then
 		// the FIP exists under this unique name. Taken as the boot FIP, it is
-		// recorded and released like one, not left billed (QA r3 R7).
-		if fips, lerr := e.Cloud.ListFloatingIPs(ctx, projectID); lerr == nil {
+		// recorded and released like one, not left billed (QA r3 R7). The
+		// lookup outlives a Ctrl-C during the POST (ctx cancelled): the
+		// address the platform made is found and released, not lost.
+		lctx, lcancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		fips, lerr := e.Cloud.ListFloatingIPs(lctx, projectID)
+		lcancel()
+		if lerr == nil {
 			for _, f := range fips {
 				if f.Name == name && f.ID != "" {
 					return f, nil

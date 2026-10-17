@@ -55,3 +55,38 @@ func TestQAr3_Deploy_LostBootFIPAnswer(t *testing.T) {
 		t.Fatalf("FIP %q создан (ответ потерян), ВМ нет — FIP не освобождён и не записан; вывод:\n%s", cloud.fips[0].Name, out.String())
 	}
 }
+
+// Ревью Fable 17.10: Ctrl-C во время POST boot-FIP (ctx отменён), а
+// платформа адрес создала — поиск по имени идёт мимо отменённого ctx, FIP
+// находится и освобождается, а не остаётся платным без записи.
+type cancelledBootFIPCloud struct {
+	lostBootFIPCloud
+	cancel context.CancelFunc
+}
+
+func (c *cancelledBootFIPCloud) CreateFloatingIP(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	c.fips = append(c.fips, &provision.FloatingIP{ID: "fip-cancelled", Name: req.Name, IPAddress: "203.0.113.8", State: "available"})
+	c.cancel()
+	return nil, ctx.Err()
+}
+func (c *cancelledBootFIPCloud) ListFloatingIPs(ctx context.Context, _ string) ([]*provision.FloatingIP, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	return c.fips, nil
+}
+
+func TestDeploy_BootFIPFoundAfterCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cloud := &cancelledBootFIPCloud{cancel: cancel}
+	dir := t.TempDir()
+	var out bytes.Buffer
+	e := &Engine{Config: config.Config{ProjectID: "p", ImageID: "img"}, Cloud: cloud,
+		Printer: output.NewWithWriter(&out, output.ModePlain, false), StateDir: dir, Timings: fastTimings}
+	_, _ = e.provisionVM(ctx, DeployOptions{Flavor: "flavor", NonInteractive: true, Yes: true}, &state.File{Version: 1},
+		state.DefaultPath(dir), &compose.Project{Hash: "h"}, "az")
+	if len(cloud.released) != 1 || cloud.released[0] != "fip-cancelled" {
+		t.Fatalf("FIP, созданный до Ctrl-C, не освобождён: %v; вывод:\n%s", cloud.released, out.String())
+	}
+}
