@@ -1599,7 +1599,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 
 	projectID := eng.Config.ProjectID
 	if projectID == "" {
-		return usageResult(fmt.Errorf("CLOUDRU_PROJECT_ID is required")), true
+		return errResult(clierrors.ProjectRequired()), true // release audit, R-06
 	}
 
 	if eng.ImageRef() == "" {

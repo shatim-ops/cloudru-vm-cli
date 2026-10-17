@@ -17,7 +17,7 @@
 |---|---|---|---|
 | `ar_list` | нет | — | List Artifact Registry registries in the project (id, name, type, status, public, tariff). |
 | `ar_get` | нет | `id` | Get full details of one Artifact Registry registry by id (from ar_list). |
-| `ar_create` | да | `name` | Create an Artifact Registry registry (async). |
+| `ar_create` | да | `name` | Create an Artifact Registry registry (async); refuses a name an existing registry has (ar_list). |
 | `ar_delete` | удаляет | `id` | Delete an Artifact Registry registry by id (from ar_list) AND its artifacts (async). |
 | `ar_operation` | нет | `operation_id` | Poll an Artifact Registry async operation by id (from ar_create/ar_delete). |
 
@@ -58,8 +58,8 @@
 | `cert_renew` | да | `certificate_id` | Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). |
 | `cert_delete` | удаляет | `id` | Certificate Manager — permanently delete a certificate. |
 | `cert_usage` | нет | `id` | Certificate Manager — list resources (load balancers/listeners) that USE a certificate. |
-| `cert_versions` | нет | `certificate_id` | Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry). |
-| `cert_private_key` | нет | `certificate_id` | Certificate Manager — return the SECRET private key (decoded PEM) for a version. |
+| `cert_versions` | нет | `certificate_id` | Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry), all pages. |
+| `cert_private_key` | нет | `certificate_id` | Certificate Manager — return the SECRET private key for a version: privateKey is PEM text (-----BEGIN …), decoded from the API's Base64 (key_format: pem … |
 | `cert_operation` | нет | `operation_id` | Certificate Manager — poll an async operation (issue/renew) by id until done=true. |
 
 ## deploy

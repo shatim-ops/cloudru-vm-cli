@@ -78,6 +78,14 @@ func fullArgs(tl Tool) map[string]any {
 	if _, ok := args["name"]; ok {
 		args["name"] = "app1" // a name the API takes, not a UUID
 	}
+	// Values the tools' own checks accept (release audit L-28, L-34, L-14),
+	// so the call reaches the project check.
+	overrides := map[string]any{"port": float64(8080), "replicas": float64(2), "since": "1h"}
+	for k, v := range overrides {
+		if _, ok := args[k]; ok {
+			args[k] = v
+		}
+	}
 	return args
 }
 

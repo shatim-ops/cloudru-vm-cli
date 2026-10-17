@@ -379,7 +379,7 @@ func TestMetricsHistory_Since(t *testing.T) {
 	}
 	// 24h и 1d проходят проверку и доходят до движка (здесь его нет).
 	for _, since := range []string{"24h", "1d"} {
-		if m, text, _ := callNamed(t, r, "metrics_history", map[string]any{"match": "cpu", "since": since}); m["reason"] == "USAGE" {
+		if _, text, _ := callNamed(t, r, "metrics_history", map[string]any{"match": "cpu", "since": since}); strings.Contains(text, "since") {
 			t.Errorf("since=%s refused: %s", since, text)
 		}
 	}
