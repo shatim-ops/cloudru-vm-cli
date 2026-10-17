@@ -89,3 +89,19 @@ func TestZoneRefError(t *testing.T) {
 		t.Errorf("empty list: %v", err)
 	}
 }
+
+// Имя по шаблону compute (^[a-zA-Z][a-zA-Z0-9.\-_]*$, 1–64) — до создания
+// (релизный QA, C-api 4).
+func TestValidName(t *testing.T) {
+	for _, ok := range []string{"web", "evo-app", "a.b_c-1", strings.Repeat("a", 64)} {
+		if err := ValidName("VM", ok); err != nil {
+			t.Errorf("%q: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "1web", "-web", "веб", "my app", "a/b", strings.Repeat("a", 65)} {
+		var ce *clierrors.CLIError
+		if err := ValidName("VM", bad); !asCLI(err, &ce) || ce.Code != clierrors.CodeUsage {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+}

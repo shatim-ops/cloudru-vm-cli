@@ -69,6 +69,9 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	if name == "" {
 		return usageResult(fmt.Errorf("'name' is required")), true
 	}
+	if err := provision.ValidName("SNAT gateway", name); err != nil {
+		return errResult(err), true
+	}
 	zoneID, err := s.resolveSnatZone(ctx, args)
 	if err != nil {
 		return errResult(err), true

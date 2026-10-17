@@ -31,27 +31,8 @@ type CreateNATGatewayRequest struct {
 
 // ListNATGateways lists SNAT gateways in a project.
 func (a *CloudRuAdapter) ListNATGateways(ctx context.Context, projectID string) ([]map[string]any, error) {
-	q := url.Values{}
-	if projectID != "" {
-		q.Set("project_id", projectID)
-	}
-	path := "/api/v1/nat-gateways"
-	if enc := q.Encode(); enc != "" {
-		path += "?" + enc
-	}
-	resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var r struct {
-		Items []map[string]any `json:"items"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return nil, err
-	}
-	return r.Items, nil
+	// Every page, as ListDisks.
+	return listRaw(a, ctx, "/api/v1/nat-gateways", projectID)
 }
 
 // CreateNATGateway creates a SNAT gateway and returns the raw API object (its

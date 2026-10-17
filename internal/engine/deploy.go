@@ -971,7 +971,12 @@ func (e *Engine) waitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmI
 	}
 	for _, iface := range detail.Interfaces {
 		if iface.Primary {
-			if _, err := e.Cloud.AttachFloatingIP(ctx, fip.ID, projectID, iface.ID, ""); err != nil {
+			// The API rejects an empty name (minLength 1): keep the FIP's own.
+			name := fip.Name
+			if name == "" {
+				name = provision.FitName("fip-"+vmID, "")
+			}
+			if _, err := e.Cloud.AttachFloatingIP(ctx, fip.ID, projectID, iface.ID, name); err != nil {
 				return fip.IPAddress, fip.ID, fmt.Errorf(i18n.T("attach floating IP %s: %w", "привязка floating IP %s: %w"), fip.IPAddress, err)
 			}
 			return fip.IPAddress, fip.ID, nil

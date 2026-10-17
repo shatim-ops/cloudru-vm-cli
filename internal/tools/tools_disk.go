@@ -79,6 +79,9 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	if name == "" || sizeGB <= 0 {
 		return usageResult(fmt.Errorf("'name' and 'size_gb' (>0) are required")), true
 	}
+	if err := provision.ValidName("disk", name); err != nil {
+		return errResult(err), true
+	}
 	if sizeGB > provision.MaxDiskGB {
 		return usageResult(fmt.Errorf("size_gb %d is over the disk maximum of %d GB", sizeGB, provision.MaxDiskGB)), true
 	}

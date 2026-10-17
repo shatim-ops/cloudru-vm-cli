@@ -1525,6 +1525,11 @@ func subnetNamesOtherZone(s *provision.Subnet, zoneID string, zones []*provision
 }
 
 func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (string, bool) {
+	if name := stringArg(args, "name"); name != "" {
+		if err := provision.ValidName("VM", name); err != nil {
+			return errResult(err), true
+		}
+	}
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
 		"flavor":     "Flavor",
