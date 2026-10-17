@@ -35,6 +35,11 @@ const (
 type raCloud struct {
 	provision.CloudAPI
 	subnets []*provision.Subnet
+	sgs     []*provision.SecurityGroup
+}
+
+func (c raCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return c.sgs, nil
 }
 
 func (raCloud) SetToken(string) {}
@@ -602,6 +607,33 @@ func TestK8sAddNodePool_ClusterZoneUnknownRefused(t *testing.T) {
 	}
 	if f.postCount() != 0 {
 		t.Error("refused call sent a POST")
+	}
+}
+
+// Финальный аудит, этап 2: без security_group_id и без группы в зоне
+// кластера пул уходил без securityGroupId (спецификация это принимает).
+// Теперь CONFIG_INVALID до POST; группа зоны подставляется сама.
+func TestK8sAddNodePool_NoSecurityGroupInZoneRefused(t *testing.T) {
+	f := &raAPI{}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets(),
+		sgs: []*provision.SecurityGroup{{ID: "sg-az2", Name: "SSH-access_ru.AZ-2", AvailabilityZoneID: raAZ2}}}, nil)
+	m, text, isErr := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "confirmed": true})
+	if !isErr {
+		t.Fatalf("pool without a security group created: %s", text)
+	}
+	wantReason(t, "no SG in the cluster's zone", m, text, "CONFIG_INVALID")
+	if f.postCount() != 0 {
+		t.Error("refused call sent a POST")
+	}
+
+	r = raRegistry(t, f, raCloud{subnets: raSubnets(),
+		sgs: []*provision.SecurityGroup{{ID: "sg-az1", Name: "SSH-access_ru.AZ-1", AvailabilityZoneID: raAZ1}}}, nil)
+	if _, text, isErr := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "confirmed": true}); isErr {
+		t.Fatalf("k8s_add_nodepool: %s", text)
+	}
+	nc, _ := f.post("/v3/nodePools")["networkConfiguration"].(map[string]any)
+	if nc["securityGroupId"] != "sg-az1" {
+		t.Errorf("securityGroupId = %v, want the cluster zone's group", nc["securityGroupId"])
 	}
 }
 

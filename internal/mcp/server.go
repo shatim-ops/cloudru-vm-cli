@@ -3,8 +3,10 @@
 // stdio (newline-delimited JSON, Run) or over Streamable HTTP (http.go).
 //
 // IMPORTANT: in stdio mode stdout is reserved for the JSON-RPC channel. Nothing else may be
-// written to it or the protocol stream is corrupted. All engine output is
-// redirected to in-memory buffers (see internal/tools); diagnostics go to stderr.
+// written to it or the protocol stream is corrupted. The engine of every
+// tool call prints to stderr (internal/cli mcpEngineFactory); tools that
+// return the progress in their answer capture it in a buffer
+// (internal/tools); diagnostics go to stderr.
 package mcp
 
 import (

@@ -218,7 +218,14 @@ func TestCancel_StackStepInterruptedReconcilesByName(t *testing.T) {
 		cancel()
 		return errResult(context.Canceled), true
 	}
-	r.handlers["pg_list"] = fakeOK(map[string]any{"clusters": []any{map[string]any{"name": "p", "id": "pg-1"}}})
+	// Кластер появляется в списке только после create (до него имя
+	// свободно: занятое имя до первого create — чужой ресурс).
+	r.handlers["pg_list"] = func(context.Context, map[string]any) (string, bool) {
+		if creates == 0 {
+			return toJSON(map[string]any{"clusters": []any{}}), false
+		}
+		return toJSON(map[string]any{"clusters": []any{map[string]any{"name": "p", "id": "pg-1"}}}), false
+	}
 	r.handlers["pg_get"] = fakeOK(map[string]any{"status": "CREATING"})
 	r.handleStackApply(ctx, map[string]any{"job_id": j.ID, "confirmed": true})
 	r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})

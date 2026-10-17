@@ -90,6 +90,10 @@ func (s *Registry) findIDByName(ctx context.Context, tool, field, name string, e
 	arr, _ := res[field].([]any)
 	for _, it := range arr {
 		if m, ok := it.(map[string]any); ok {
+			// A deleted namesake is not the step's resource (as takenName).
+			if st := strings.ToUpper(fmt.Sprint(m["status"])); strings.Contains(st, "DELETED") || strings.Contains(st, "ERASED") {
+				continue
+			}
 			if n, _ := m["name"].(string); n == name {
 				id, _ := m["id"].(string)
 				return id
@@ -97,6 +101,39 @@ func (s *Registry) findIDByName(ctx context.Context, tool, field, name string, e
 		}
 	}
 	return ""
+}
+
+// takenByName is the id of a live resource named as the step's, from its
+// list tool; an error when the list could not be read (then nothing is
+// known and nothing may be created yet).
+func (s *Registry) takenByName(ctx context.Context, st *stack.Step) (string, error) {
+	args := map[string]any{}
+	for k, v := range st.FindArgs {
+		args[k] = v
+	}
+	res, err := s.callTool(ctx, st.FindTool, args)
+	if err != nil {
+		return "", err
+	}
+	arr, ok := res[st.FindField].([]any)
+	if !ok {
+		return "", fmt.Errorf("%s answered without %q", st.FindTool, st.FindField)
+	}
+	for _, it := range arr {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		if n, _ := m["name"].(string); n != st.FindName {
+			continue
+		}
+		if status := strings.ToUpper(fmt.Sprint(m["status"])); strings.Contains(status, "DELETED") || strings.Contains(status, "ERASED") {
+			continue
+		}
+		id, _ := m["id"].(string)
+		return firstNonEmptyStr(id, st.FindName), nil
+	}
+	return "", nil
 }
 
 // vmClockSkew is how much earlier than the step's start a VM's creation time
@@ -317,6 +354,26 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						continue
 					}
 				}
+				if st.StartedAt.IsZero() && !resumed && st.Tool != "provision" && st.FindTool != "" && st.FindName != "" {
+					// Before the step's first create: a resource with its
+					// name now is not the job's. Without this, a retry after
+					// an attempt that failed before its create found it by
+					// name below and adopted it — stack_destroy would delete
+					// a user's cluster (final audit, stage 1). Whatever the
+					// name finds after this point the step made itself. A
+					// VM is matched by its creation time instead.
+					id, err := s.takenByName(ctx, st)
+					if err != nil {
+						st.Detail = "check the name is free: " + err.Error()
+						continue // pending: the next pass checks again
+					}
+					if id != "" {
+						st.Status = "error"
+						job.Error = fmt.Sprintf("%s: %q is already taken by an existing resource (%s) — rename it in the manifest, or remove the existing one", st.Key, st.FindName, id)
+						job.Status = "error"
+						return
+					}
+				}
 				if st.StartedAt.IsZero() {
 					st.StartedAt = time.Now()
 				}
@@ -348,13 +405,19 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						return
 					}
 					// The tool refused a name a resource already has
-					// (existing_id; release audit, L-32). On the step's first
-					// try, not resumed after a cut-off create, that resource
-					// predates the job: adopting it by name below would hand
-					// it to stack_destroy.
-					if firstStr(res, "existing_id") != "" && st.Attempts == 1 && !resumed {
+					// (existing_id; release audit, L-32). Unless the step
+					// resumes after a cut-off create, that resource is not
+					// known to be the job's: adopting it by name below would
+					// hand it to stack_destroy. Only on the first try it was
+					// refused; a retry after an attempt that failed before
+					// its create adopted a user's cluster the same way
+					// (final audit, stage 1). An attempt whose create did go
+					// through with its answer lost leaves its resource
+					// named here, for the user to keep or delete.
+					if ex := firstStr(res, "existing_id"); ex != "" && !resumed {
 						st.Status = "error"
-						job.Error = fmt.Sprintf("%s: %s — rename it in the manifest, or remove the existing one", st.Key, err.Error())
+						job.Error = fmt.Sprintf("%s: %s — rename it in the manifest, or remove the existing one (%s); "+
+							"if an earlier attempt of this step created it, delete it or keep it: the stack does not adopt it by name", st.Key, err.Error(), ex)
 						job.Status = "error"
 						return
 					}

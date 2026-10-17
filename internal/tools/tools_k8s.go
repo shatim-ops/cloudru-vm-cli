@@ -489,11 +489,21 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		if e != nil {
 			return errResult(e), true
 		}
-		if sgs, se := eng.Cloud.ListSecurityGroups(ctx, pid); se == nil {
-			if i := provision.PickSecurityGroup(sgs, zone.computeID, zone.name); i >= 0 {
-				sgID = sgs[i].ID
-			}
+		// No group found (or the list failed) sent the pool without
+		// securityGroupId — the spec takes that — while the description
+		// promises a zone-matched SSH-access group; provision refuses the
+		// same case (final audit, stage 2).
+		sgs, se := eng.Cloud.ListSecurityGroups(ctx, pid)
+		if se != nil {
+			return errResult(fmt.Errorf("list security groups: %w (or pass security_group_id)", se)), true
 		}
+		i := provision.PickSecurityGroup(sgs, zone.computeID, zone.name)
+		if i < 0 {
+			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("no security group of the project in zone %s for the node pool; nothing was created", zone.name),
+				"Pass security_group_id (list_security_groups), or create a group in this zone in the Cloud.ru console.")), true
+		}
+		sgID = sgs[i].ID
 	}
 
 	count := intArg(args, "count", 2)

@@ -108,6 +108,21 @@ func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown s
 // without a region the first zone with a subnet, ru.AZ-2 first (as evo
 // init). Returns the subnet, the zone UUID and the zone to show.
 func dbaasSubnet(ctx context.Context, eng *engine.Engine, subnetArg string) (subnetID, zoneID, zoneShown string, err error) {
+	zones, _ := eng.Cloud.ListAvailabilityZones(ctx)
+	subnetID, zoneID, zoneShown, err = pickDBaaSSubnet(ctx, eng, subnetArg, zones)
+	if err != nil {
+		return "", "", "", err
+	}
+	// A cluster in a zone closed for new resources never comes up and, for
+	// PostgreSQL, ends FAILED, which the API does not delete (register
+	// DB-21, OPS-10; final audit, N-06).
+	if cerr := provision.ClosedZoneError(zones, zoneID); cerr != nil {
+		return "", "", "", cerr
+	}
+	return subnetID, zoneID, zoneShown, nil
+}
+
+func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, zones []*provision.AvailabilityZone) (subnetID, zoneID, zoneShown string, err error) {
 	subs, err := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
 	if err != nil || len(subs) == 0 {
 		if subnetArg == "" {
@@ -115,7 +130,6 @@ func dbaasSubnet(ctx context.Context, eng *engine.Engine, subnetArg string) (sub
 		}
 		subs = nil
 	}
-	zones, _ := eng.Cloud.ListAvailabilityZones(ctx)
 	zoneName := func(id string) string {
 		for _, z := range zones {
 			if z.ID == id && z.Name != "" {
@@ -147,7 +161,7 @@ func dbaasSubnet(ctx context.Context, eng *engine.Engine, subnetArg string) (sub
 		return "", "", "", clierrors.New(clierrors.CodeUsage, fmt.Sprintf("no subnet of the project in zone %s", shown),
 			"Pass subnet_id, or create a subnet in this zone in the Cloud.ru console.")
 	default:
-		for _, z := range engine.PreferredZoneFirst(zones) {
+		for _, z := range engine.PreferredZoneFirst(provision.OpenZones(zones)) {
 			if i := provision.PickSubnet(subs, z.ID, z.Name); i >= 0 && provision.SubnetInZone(subs[i], z.ID, z.Name) {
 				return subs[i].ID, z.ID, z.Name, nil
 			}

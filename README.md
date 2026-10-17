@@ -14,7 +14,8 @@ Storage, Secret Manager — и развёртывание `docker-compose`-пр�
   `evo k8s kubeconfig …`; у каждой команды есть `--json` и
   [стабильные коды выхода](docs/exit-codes.md).
 - **MCP-сервер для AI-агентов** (Claude Code, Cursor и др.): `evo mcp`
-  по stdio или Streamable HTTP, в том числе из Docker-образа. Те же
+  по stdio или Streamable HTTP, в том числе в Docker (образ собирается из
+  `Dockerfile`, см. [docs/mcp.md](docs/mcp.md#docker-образ)). Те же
   инструменты доступны из CLI: `evo tools list|describe|call`.
 - **Ничего платного без согласия**: создание ресурсов и удаление данных
   показывают превью (с ценой, где она есть) и ждут подтверждения —

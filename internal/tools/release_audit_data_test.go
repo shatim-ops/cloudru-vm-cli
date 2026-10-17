@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -325,13 +326,47 @@ func TestStack_TakenNameIsNotAdopted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "error" || !strings.Contains(got.Error, "already exists") {
+	if got.Status != "error" || !strings.Contains(got.Error, "already") || !strings.Contains(got.Error, "foreign") {
 		t.Errorf("job %s: %s", got.Status, got.Error)
 	}
 	for _, st := range got.Steps {
 		if st.ResourceID == "foreign" {
 			t.Errorf("step %s adopted the foreign cluster", st.Key)
 		}
+	}
+}
+
+// Финальный аудит, этап 1: первая попытка шага падает до create (сбой
+// списка), вторая получает existing_id — это тоже чужой кластер, не
+// усыновлять (раньше отказ был только на первой попытке).
+func TestStack_TakenNameOnRetryIsNotAdopted(t *testing.T) {
+	stackHome(t)
+	r := newTestServer()
+	j := planJob(t, `{"name":"s","kafka":{"name":"k"}}`)
+	calls := 0
+	r.handlers["kafka_create"] = func(context.Context, map[string]any) (string, bool) {
+		calls++
+		if calls == 1 {
+			return errResult(fmt.Errorf("check the name is free: list clusters: API 503: unavailable")), true
+		}
+		return nameTakenResult("kafka_create", "Kafka cluster", "k", "foreign", "READY", "kafka_get cluster_id=foreign")
+	}
+	r.handlers["kafka_list"] = fakeOK(map[string]any{"clusters": []any{map[string]any{"id": "foreign", "name": "k", "status": "READY"}}})
+	r.handlers["kafka_get"] = fakeOK(map[string]any{"status": "READY"})
+	for i := 0; i < 3; i++ {
+		_, _ = r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	}
+	got, err := stack.LoadJob(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range got.Steps {
+		if st.ResourceID == "foreign" || got.Outputs[st.Key] == "foreign" {
+			t.Fatalf("step %s adopted the foreign cluster (job %s: %s)", st.Key, got.Status, got.Error)
+		}
+	}
+	if got.Status != "error" || !strings.Contains(got.Error, "foreign") {
+		t.Errorf("job %s: %s", got.Status, got.Error)
 	}
 }
 

@@ -397,17 +397,13 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		backupSpec = map[string]any{"schedule": schedule, "retention_policy_days": retention}
 	}
 
-	// Resolve subnet (defines the AZ). Explicit subnet_id wins; else first project subnet.
-	subnetID := stringArg(args, "subnet_id")
-	if subnetID == "" {
-		subs, e := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
-		if e != nil {
-			return errResult(fmt.Errorf("resolve subnet: %w", e)), true
-		}
-		if len(subs) == 0 {
-			return errResult(fmt.Errorf("no subnets in project — pass subnet_id explicitly")), true
-		}
-		subnetID = subs[0].ID
+	// The subnet defines the zone: explicit subnet_id, else the configured
+	// region's, else a subnet of an open zone (ru.AZ-2 first) — as Kafka
+	// and Redis. It was the project's first subnet of any zone, a closed
+	// one included (final audit, N-06).
+	subnetID, _, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
+	if err != nil {
+		return errResult(err), true
 	}
 
 	willCreate := map[string]any{
@@ -420,6 +416,7 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		"storage_gb":       storageGB,
 		"instances":        instances,
 		"subnet_id":        subnetID,
+		"zone":             zone,
 		"initial_database": initialDB,
 		"backup_enabled":   backupEnabled,
 	}
