@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/kubetools"
 )
 
 // kubectl and helm run on the MCP server's host. Over HTTP their arguments
@@ -50,42 +52,6 @@ var kubectlHTTPDeniedFlags = map[string]bool{
 // to stderr, which reaches the caller with the output.
 var kubectlHTTPVerbosityFlags = map[string]bool{"v": true, "vmodule": true}
 
-// kubectlValueShorthands are the one-letter kubectl flags that always take a
-// value: in a cluster like -Aoyaml the letters after them are the value.
-// Any other letter may be a boolean (-A, -w, -i, -t, -R, -q, -p, -f), so the
-// letter after it is read as another flag.
-const kubectlValueShorthands = "nlLcosvk"
-
-// kubectlFlag is one flag of a kubectl argument: "--name=val", "-n val",
-// or one letter of a shorthand cluster ("-it", "-Aoyaml").
-type kubectlFlag struct {
-	name, val string
-	hasVal    bool
-}
-
-// kubectlFlags splits a flag argument the way kubectl's flag parser does.
-func kubectlFlags(arg string) []kubectlFlag {
-	if strings.HasPrefix(arg, "--") {
-		name, val, hasVal := strings.Cut(strings.TrimLeft(arg, "-"), "=")
-		return []kubectlFlag{{strings.ReplaceAll(name, "_", "-"), val, hasVal}}
-	}
-	var out []kubectlFlag
-	s := arg[1:]
-	for j := 0; j < len(s); j++ {
-		c := s[j]
-		if !('a' <= c && c <= 'z' || 'A' <= c && c <= 'Z') {
-			break // "=value" of a boolean, or not a flag: kubectl rejects it
-		}
-		if strings.IndexByte(kubectlValueShorthands, c) >= 0 {
-			rest := s[j+1:]
-			out = append(out, kubectlFlag{string(c), strings.TrimPrefix(rest, "="), rest != ""})
-			break
-		}
-		out = append(out, kubectlFlag{name: string(c)})
-	}
-	return out
-}
-
 // kubectlHTTPCheck validates k8s_kubectl arguments for the HTTP transport.
 // allowSecrets also permits commands that print credentials.
 func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
@@ -117,8 +83,8 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 			}
 			continue
 		}
-		for _, fl := range kubectlFlags(f) {
-			name, val := fl.name, fl.val
+		for _, fl := range kubetools.ParseFlags(f) {
+			name, val := fl.Name, fl.Val
 			if kubectlHTTPDeniedFlags[name] || strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
 				return fmt.Errorf("k8s_kubectl over HTTP: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", f)
 			}
@@ -127,7 +93,7 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 			}
 			switch name {
 			case "o", "output":
-				if !fl.hasVal && i+1 < len(fields) {
+				if !fl.HasVal && i+1 < len(fields) {
 					i++
 					val = fields[i]
 				}

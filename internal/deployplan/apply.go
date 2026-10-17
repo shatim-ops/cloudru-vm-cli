@@ -75,13 +75,14 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		// still being made, then its floating IP, SSH and the plan's ports.
 		// Answering at once left a VM still creating without an IP and
 		// open ports (release QA, B-lifecycle 3). A stopped VM does not
-		// start by itself: it is reported as it is.
+		// start by itself: it is reported as it is, with the address it
+		// already has — a new floating IP on it would only be billed.
 		switch existing.Status {
 		case "", "running", "active", "creating", "building", "starting", "pending":
 			return finishApply(ctx, cloud, plan, existing, "", start, pollTimeout,
 				"VM already existed — adopted (idempotent), nothing recreated")
 		}
-		ip, fipID, fipNote := ensureFloatingIP(ctx, cloud, plan, existing.ID)
+		ip, fipID := attachedFloatingIP(ctx, cloud, existing.ID)
 		return &ApplyResult{
 			VMID:         existing.ID,
 			Status:       existing.Status,
@@ -89,7 +90,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			FloatingIPID: fipID,
 			SSH:          sshString(plan.SSH.Login, ip),
 			ElapsedSec:   int(time.Since(start).Seconds()),
-			Note:         joinNotes("VM already existed — adopted (idempotent), nothing recreated; it is "+existing.Status+": start it in the Cloud.ru console, then call deploy_apply again (or delete it with destroy)", fipNote),
+			Note:         "VM already existed — adopted (idempotent), nothing recreated; it is " + existing.Status + ": start it in the Cloud.ru console, then call deploy_apply again (or delete it with destroy)",
 		}, nil
 	}
 
@@ -305,16 +306,23 @@ func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration) bool 
 // new one. A free FIP of the user is never taken over: destroy releases the
 // deployment's FIP, and it used to release the user's reserved address with
 // it (QA r3 R9).
+// attachedFloatingIP is the floating IP already on the VM, if it can be read.
+func attachedFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID string) (ip, id string) {
+	detail, err := cloud.GetVMDetail(ctx, vmID)
+	if err != nil {
+		return "", ""
+	}
+	return detail.AttachedFloatingIP()
+}
+
 func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vmID string) (ip, fipID, note string) {
 	if !plan.Network.FloatingIP {
 		return "", "", ""
 	}
 	detail, err := cloud.GetVMDetail(ctx, vmID)
 	if err == nil {
-		for _, in := range detail.Interfaces {
-			if in.FloatingIP != nil && in.FloatingIP.IPAddress != "" {
-				return in.FloatingIP.IPAddress, in.FloatingIP.ID, "public IP attached"
-			}
+		if ip, id := detail.AttachedFloatingIP(); ip != "" {
+			return ip, id, "public IP attached"
 		}
 	}
 	// Plans written by older versions may name a FIP attached at creation.

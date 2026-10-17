@@ -2170,7 +2170,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	}
 	_, releaseAsked := args["release_ip"]
 	explicitRelease := releaseAsked && releaseIP
-	keptFIP := ""
+	keptFIP, keptWhy := "", "evo did not make it"
 	if fipRec.VMIP == "" {
 		addr := firstNonEmptyStr(target.FloatingIP, target.PublicIP)
 		// An address found only on a VM this directory did not record is
@@ -2178,12 +2178,14 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		// release_ip=true was asked for (release QA, B-lifecycle 5).
 		if addr != "" && !recordedHere && !explicitRelease && releaseIP {
 			evoMade := false
-			if fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID); e == nil {
-				for _, f := range fips {
-					if f.IPAddress == addr && provision.IsEvoFIPOf(f.Name, target.ID, target.Name) {
-						evoMade = true
-					}
+			fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID)
+			for _, f := range fips {
+				if f.IPAddress == addr && provision.IsEvoFIPOf(f.Name, target.ID, target.Name) {
+					evoMade = true
 				}
+			}
+			if e != nil {
+				keptWhy = fmt.Sprintf("could not check who made it (%v)", e)
 			}
 			if !evoMade {
 				keptFIP, addr = addr, ""
@@ -2238,7 +2240,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		msg = "VM already deleted (not found in the cloud); its local record is cleaned up"
 	}
 	if keptFIP != "" {
-		msg += "; floating IP " + keptFIP + " kept: evo did not make it (release it with release_floating_ip, or call destroy with release_ip=true)"
+		msg += "; floating IP " + keptFIP + " kept: " + keptWhy + " (release it with release_floating_ip, or call destroy with release_ip=true)"
 	}
 	fipLeft := false
 	if releaseIP && hasFIP {

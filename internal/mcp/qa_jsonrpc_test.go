@@ -209,6 +209,7 @@ func TestQA_NoAuthRejectsForeignHost(t *testing.T) {
 	for _, host := range []string{"127.0.0.1:" + port, "localhost:" + port, "[::1]:" + port} {
 		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
 		req.Host = host
+		req.Header.Set("Content-Type", "application/json")
 		resp, err := ts.Client().Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -233,7 +234,7 @@ func TestQA_SlowBodyTimesOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	fmt.Fprintf(conn, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 100\r\n\r\n{")
+	fmt.Fprintf(conn, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{")
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 	if err != nil {
@@ -253,4 +254,34 @@ func newServerFor(t *testing.T, h *HTTPHandler) *httptest.Server {
 		ts.Close()
 	})
 	return ts
+}
+
+// S1-app 1: страница на другом loopback-порту шлёт text/plain без
+// preflight; с --auth none такой POST доходил до обработчика. Теперь — 415,
+// а JSON с charset принимается.
+func TestQA_PostNeedsJSONContentType(t *testing.T) {
+	ts, _ := newHTTPTest(t, HTTPOptions{})
+	for _, tc := range []struct {
+		ct   string
+		want int
+	}{
+		{"text/plain", http.StatusUnsupportedMediaType},
+		{"", http.StatusUnsupportedMediaType},
+		{"application/x-www-form-urlencoded", http.StatusUnsupportedMediaType},
+		{"application/json; charset=utf-8", http.StatusOK},
+	} {
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
+		req.Header.Set("Origin", "http://localhost:5173")
+		if tc.ct != "" {
+			req.Header.Set("Content-Type", tc.ct)
+		}
+		resp, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != tc.want {
+			t.Errorf("Content-Type %q: %d, want %d", tc.ct, resp.StatusCode, tc.want)
+		}
+	}
 }

@@ -245,10 +245,23 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 			fmt.Sprintf("VM %s is in an error state: %s", res.VMID, res.Note),
 			fmt.Sprintf("Delete it with destroy (vm_id %s), then run deploy_plan again (in another zone if it repeats).", res.VMID)),
 			map[string]any{"vm_id": res.VMID}), true
-	default:
+	case "timeout":
+		// The password is made for this create and kept nowhere: the retry
+		// adopts the VM without it, so it goes out now (Grok, PR #87).
+		fields := map[string]any{"vm_id": res.VMID, "vm_status": res.Status, "plan_id": planID}
+		hint := fmt.Sprintf("Call deploy_apply again with the same plan_id %s in a few minutes: it adopts the VM and finishes it (IP, SSH, ports); it is billed meanwhile, destroy (vm_id %s) deletes it.", planID, res.VMID)
+		if res.Password != "" {
+			fields["password"] = res.Password
+			hint += " The VM password is in this answer only: give it to the user now, the retry does not show it."
+		}
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
-			fmt.Sprintf("VM %s is %s, not running yet: %s", res.VMID, res.Status, res.Note),
-			fmt.Sprintf("Call deploy_apply again with the same plan_id %s in a few minutes: it adopts the VM and finishes it (IP, SSH, ports); it is billed meanwhile, destroy (vm_id %s) deletes it.", planID, res.VMID)),
+			fmt.Sprintf("VM %s is not running yet: %s", res.VMID, res.Note), hint), fields), true
+	default:
+		// An adopted VM that is stopped (or stopping, shut off, …) does not
+		// start by itself: retrying the plan would answer the same.
+		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
+			fmt.Sprintf("VM %s is %s: %s", res.VMID, res.Status, res.Note),
+			fmt.Sprintf("Ask the user to start it in the Cloud.ru console, then call deploy_apply again with the same plan_id %s; or delete it with destroy (vm_id %s). Retrying before it runs answers the same.", planID, res.VMID)),
 			map[string]any{"vm_id": res.VMID, "vm_status": res.Status, "plan_id": planID}), true
 	}
 

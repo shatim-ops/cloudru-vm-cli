@@ -513,6 +513,17 @@ type VMDetail struct {
 	Interfaces []VMInterface `json:"interfaces"`
 }
 
+// AttachedFloatingIP is the address and ID of the first floating IP bound to
+// one of the VM's interfaces, or empty strings.
+func (d *VMDetail) AttachedFloatingIP() (ip, id string) {
+	for _, in := range d.Interfaces {
+		if in.FloatingIP != nil && in.FloatingIP.IPAddress != "" {
+			return in.FloatingIP.IPAddress, in.FloatingIP.ID
+		}
+	}
+	return "", ""
+}
+
 // VMInterface represents a network interface attached to a VM.
 //
 // The API's ip_address carries the PRIVATE (subnet-internal) address when

@@ -59,6 +59,14 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 не зависит. CLI ведёт себя так же (`--yes`, `--dry-run`, код выхода `3`, см.
 [README](../README.md#подтверждения)).
 
+`k8s_kubectl` без подтверждения выполняет только чтения (`get`, `describe`,
+`logs`, …). В любом транспорте он отклоняет (`USAGE`) флаги, которые
+подменяют кластер или учётные данные kubeconfig, написанного evo:
+`--server`/`-s`, `--kubeconfig`, `--token`, `--username`, `--password`,
+`--client-certificate`, `--client-key`, `--certificate-authority`,
+`--insecure-skip-tls-verify`, `--tls-server-name`. С ними даже `get` отправил
+бы токен кластера на другой сервер. Кластер выбирает `cluster_id`.
+
 Сейчас ответ `confirmation_required` приходит с `isError: true` — клиенту
 стоит различать исход по полю `status`, а не по `isError`. Без исключений:
 `s3_bucket_create` тоже ждёт `confirmed=true`.
@@ -432,6 +440,10 @@ evo mcp --http :8080
   (`localhost`, `127.0.0.1`, `[::1]`), иначе `403`: так страница в браузере
   не доберётся до сервера через DNS rebinding. Запросы с чужим `Origin` —
   `403` в любом режиме.
+- `POST /mcp` принимает только `Content-Type: application/json` (иначе
+  `415`): `text/plain` страница в браузере может отправить без
+  предварительного запроса CORS, а `application/json` — нет, и CORS сервер не
+  разрешает.
 - Тело запроса — до 16 МБ (больше — `413`), и прийти оно должно за 60 с
   (иначе `408`).
 - Принимаются батчи JSON-RPC (массив сообщений, по HTTP — не больше 100,

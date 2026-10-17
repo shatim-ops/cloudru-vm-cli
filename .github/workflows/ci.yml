@@ -135,11 +135,11 @@ jobs:
             localhost:8080/mcp | jq -r '[.result.protocolVersion, .result.serverInfo.name] | join(" ")')
           echo "protocolVersion, serverInfo.name: $v"; [ "$v" = "2025-06-18 evo" ]
 
-          n=$(curl -sf -H "$auth" -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' localhost:8080/mcp | jq '.result.tools | length')
+          n=$(curl -sf -H "$auth" -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' localhost:8080/mcp | jq '.result.tools | length')
           echo "tools/list: $n"; [ "$n" -gt 0 ]
 
           # kubectl в образе нет: инструмент отвечает понятной ошибкой.
-          curl -sf -H "$auth" \
+          curl -sf -H "$auth" -H 'Content-Type: application/json' \
             -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"k8s_kubectl","arguments":{"cluster_id":"x","args":"get pods"}}}' \
             localhost:8080/mcp | jq -e '.result.isError and (.result.content[0].text | contains("not available in this mode"))'
 

@@ -138,3 +138,28 @@ func TestQAB_Apply_AdoptCreatingVMWaitsThenFinishes(t *testing.T) {
 		t.Fatalf("err=%v res=%+v fip=%d rules=%d", err, res, c.fipCreates, c.rules)
 	}
 }
+
+// Ревью Grok по #87: остановленной ВМ новый floating IP не создаётся —
+// он бы только оплачивался; адрес, что уже на ней, показывается.
+type stoppedFIPCloud struct {
+	zoneCloud
+	fipCreates int
+}
+
+func (c *stoppedFIPCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, error) {
+	return &provision.VMDetail{Interfaces: []provision.VMInterface{{ID: "if-1", Primary: true,
+		FloatingIP: &provision.IfaceFloatingIP{ID: "fip-9", IPAddress: "203.0.113.9"}}}}, nil
+}
+func (c *stoppedFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	c.fipCreates++
+	return &provision.FloatingIP{ID: "fip-new"}, nil
+}
+
+func TestQAB_Apply_AdoptStoppedVMCreatesNoFIP(t *testing.T) {
+	c := &stoppedFIPCloud{zoneCloud: zoneCloud{vm: &provision.VM{ID: "vm-old", Name: "x", Status: "stopped"}}}
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"},
+		Network: NetworkSpec{FloatingIP: true}}, 0)
+	if err != nil || res.Status != "stopped" || c.fipCreates != 0 || res.PublicIP != "203.0.113.9" {
+		t.Fatalf("err=%v res=%+v fipCreates=%d", err, res, c.fipCreates)
+	}
+}

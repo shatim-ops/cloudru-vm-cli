@@ -112,3 +112,81 @@ func TestQAB_DestroyTargeted_ForeignVMFloatingIP(t *testing.T) {
 		}
 	}
 }
+
+// Ревью Grok по #87: ВМ не дошла до running к сроку — пароль, созданный
+// для неё и нигде не сохранённый, приходит в этом ответе (повтор подхватит
+// ВМ без него), план остаётся.
+type slowVMCloud struct {
+	provision.CloudAPI
+}
+
+func (*slowVMCloud) SetToken(string) {}
+func (*slowVMCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	return nil, nil
+}
+func (*slowVMCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
+	return &provision.VM{ID: "vm-slow", Status: "creating"}, nil
+}
+func (*slowVMCloud) GetVM(_ context.Context, id string) (*provision.VM, error) {
+	return &provision.VM{ID: id, Status: "creating"}, nil
+}
+
+func TestQAB_DeployApply_TimeoutGivesPassword(t *testing.T) {
+	dir := t.TempDir()
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		return &engine.Engine{
+			Config: config.Config{ProjectID: "p"}, Auth: staticToken{}, Cloud: &slowVMCloud{},
+			Printer:  output.NewWithWriter(&bytes.Buffer{}, output.ModeText, false),
+			StateDir: dir, Timings: engine.Timings{VMPollTimeout: 20 * time.Millisecond},
+		}, nil
+	})
+	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ExpiresAt: time.Now().Add(time.Hour), ProjectID: "p",
+		VM: deployplan.VMSpec{Name: "win-1"}, MetaFields: []string{"plain_password"}}
+	if err := deployplan.Save(dir, plan); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr := r.handlers["deploy_apply"](context.Background(), map[string]any{"plan_id": plan.PlanID, "confirmed": true})
+	if !isErr || !strings.Contains(text, `"password"`) || !strings.Contains(text, "give it to the user now") {
+		t.Fatalf("ответ без пароля: %s", text)
+	}
+	if _, err := deployplan.Load(dir, plan.PlanID); err != nil {
+		t.Errorf("план удалён при таймауте: %v", err)
+	}
+}
+
+// Ревью Grok по #87: подхваченная остановленная ВМ сама не запустится —
+// подсказка «запустите в консоли», а не «повторите позже».
+func TestQAB_DeployApply_StoppedVMSaysStartIt(t *testing.T) {
+	cloud := &sgCloud{vm: &provision.VM{ID: "vm-1", Name: "wiki-1", Status: "stopped"}}
+	r, dir := sgRegistry(t, cloud)
+	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ExpiresAt: time.Now().Add(time.Hour), Product: "wiki",
+		VM: deployplan.VMSpec{Name: "wiki-1"}, Network: deployplan.NetworkSpec{SecurityGroupID: "sg-1"}}
+	if err := deployplan.Save(dir, plan); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr := r.handlers["deploy_apply"](context.Background(), map[string]any{"plan_id": plan.PlanID, "confirmed": true})
+	if !isErr || !strings.Contains(text, "start it in the Cloud.ru console") || strings.Contains(text, "in a few minutes") {
+		t.Fatalf("ответ для остановленной ВМ: %s", text)
+	}
+}
+
+// Ревью Grok по #87: список floating IP не прочитан — адрес оставлен, и
+// ответ говорит, что проверить не удалось, а не «evo его не создавал».
+type fipListFailsCloud struct{ foreignVMCloud }
+
+func (*fipListFailsCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return nil, clerrors.New(clerrors.CodeAPIError, "502 bad gateway", "")
+}
+
+func TestQAB_DestroyTargeted_FIPListFailsSaysSo(t *testing.T) {
+	cloud := &fipListFailsCloud{}
+	r := qaBRegistry(t, cloud, t.TempDir())
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-9", "confirmed": true})
+	if isErr || cloud.released != "" || !strings.Contains(text, "could not check who made it") {
+		t.Fatalf("освобождён %q; ответ %s", cloud.released, text)
+	}
+}
+
+func (*sgCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, error) {
+	return &provision.VMDetail{}, nil
+}

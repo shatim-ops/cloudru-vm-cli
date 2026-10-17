@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -232,6 +233,15 @@ func LoopbackHost(hostport string) bool {
 
 // post handles one JSON-RPC message or a batch of them.
 func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
+	// A page in a browser may POST text/plain to any address without a
+	// CORS preflight, and its Origin may be another loopback port: with
+	// --auth none that reached destroy confirmed=true (security review
+	// S1-app 1). application/json makes the browser ask first, and the
+	// server answers no CORS. MCP clients send it as the spec requires.
+	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return
+	}
 	// ReadHeaderTimeout covers the headers only; without a deadline a
 	// client could trickle the body forever, holding the connection. The
 	// deadline is lifted once the body is in: a tool call may run for many

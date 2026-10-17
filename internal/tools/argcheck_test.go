@@ -48,3 +48,21 @@ func TestRegistry_DestroyUnknownArgRefused(t *testing.T) {
 		t.Errorf("destroy {vm}: %s", text)
 	}
 }
+
+// checkedArgs проверяет enum только у строк (ревью Qwen по #87): схема с
+// нестроковым enum прошла бы без проверки — такой быть не должно.
+func TestSchemas_EnumsAreStrings(t *testing.T) {
+	r := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	for _, tl := range r.Tools() {
+		props, _ := tl.InputSchema["properties"].(map[string]any)
+		for k, p := range props {
+			pm, _ := p.(map[string]any)
+			enum, _ := pm["enum"].([]any)
+			for _, e := range enum {
+				if _, ok := e.(string); !ok {
+					t.Errorf("%s.%s: enum value %v is not a string — checkedArgs checks only string enums", tl.Name, k, e)
+				}
+			}
+		}
+	}
+}
