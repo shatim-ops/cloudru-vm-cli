@@ -235,7 +235,7 @@ jobs:
             for id in $ids; do echo "::add-mask::$id"; done
             echo "осталась ВМ evo-e2e-app — удаляю (попытка $i)"
             for id in $ids; do
-              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
             done
             sleep 60
           done
@@ -243,7 +243,7 @@ jobs:
             jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-app-")) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
-            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
+            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
           done
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ evo-e2e-app ($left) — удалите её в консоли Cloud.ru"; exit 1; }
@@ -457,7 +457,7 @@ jobs:
             for id in $ids; do echo "::add-mask::$id"; done
             echo "осталась ВМ $VM — удаляю (попытка $i)"
             for id in $ids; do
-              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
             done
             sleep 60
           done
@@ -465,7 +465,7 @@ jobs:
             jq -r --arg p "fip-$VM-" '.floating_ips[]? | select(((.name // "") | startswith($p)) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
-            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
+            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
           done
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ $VM — удалите её в консоли Cloud.ru"; exit 1; }
@@ -533,8 +533,8 @@ jobs:
             jq -c '[.[] | {name, state}]' <<<"$list"
             [ "$(jq length <<<"$list")" = 0 ] && { echo "ВМ evo-e2e-* нет"; exit 0; }
             for id in $(jq -r '.[].id' <<<"$list"); do
-              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 |
-                jq -c '{status, error: ((.error // null) | if . == null then null else tostring | .[0:300] end), message: ((.message // null) | if . == null then null else tostring | .[0:200] end)}' 2>/dev/null | redact || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | redact |
+                jq -c '{status, error: ((.error // null) | if . == null then null else tostring | .[0:300] end), message: ((.message // null) | if . == null then null else tostring | .[0:200] end)}' 2>/dev/null || true
             done
             echo "попытка $i: жду 60 с"
             sleep 60
@@ -681,7 +681,7 @@ jobs:
             jq '{version, master_count, kube_api_internet, warnings}' || true
           evo --json --yes k8s create --name "$CLUSTER" --zone "$ZONE" --master-count 1 > "$RUNNER_TEMP/create.json"
           id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json")
-          [ -n "$id" ] || { jq -c '{status, error}' "$RUNNER_TEMP/create.json"; echo "::error::k8s create без cluster_id"; exit 1; }
+          [ -n "$id" ] || { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" "$RUNNER_TEMP/create.json" | jq -c '{status, error}'; echo "::error::k8s create без cluster_id"; exit 1; }
           echo "::add-mask::$id"
           echo "CLUSTER_ID=$id" >> "$GITHUB_ENV"
           jq '{status}' "$RUNNER_TEMP/create.json"
@@ -724,7 +724,7 @@ jobs:
           redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
           kubectl version --client=true 2>/dev/null | head -1 || { echo "::error::нет kubectl на раннере"; exit 1; }
           evo --json k8s kubectl "$CLUSTER_ID" get nodes -o json 2>"$RUNNER_TEMP/kerr" > "$RUNNER_TEMP/nodes.json" ||
-            { echo "::error::kubectl: $(tail -c 300 "$RUNNER_TEMP/kerr" | tr '\n' ' ' | redact)"; exit 1; }
+            { echo "::error::kubectl: $(redact < "$RUNNER_TEMP/kerr" | tail -c 300 | tr '\n' ' ')"; exit 1; }
           jq -r .output "$RUNNER_TEMP/nodes.json" | sed -n '/^{/,$p' |
             jq -e '{nodes: (.items | length), ready: ([.items[] | select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))] | length)} | ., (.nodes > 0)' ||
             { echo "::error::kubectl get nodes -o json не разобран"; exit 1; }
@@ -760,7 +760,7 @@ jobs:
               echo "$min мин: подов в кластере $total, не тянут образ: $pull, $ADDON: $pods"
             else
               pods='[]'
-              echo "$min мин: kubectl: $(tail -c 300 "$RUNNER_TEMP/kerr" | tr '\n' ' ' | redact)"
+              echo "$min мин: kubectl: $(redact < "$RUNNER_TEMP/kerr" | tail -c 300 | tr '\n' ' ')"
             fi
             if [ "$(jq 'length > 0 and all(.ready)' <<<"$pods")" = true ]; then echo "поды $ADDON готовы"; break; fi
             # Все поды плагина 8 мин не могут скачать образ — ждать дальше
@@ -777,7 +777,7 @@ jobs:
           if [ -n "${fail:-}" ]; then
             echo "События в cert-manager и у подов $ADDON (последние):"
             evo --json k8s kubectl "$CLUSTER_ID" get events -A --sort-by=.lastTimestamp 2>/dev/null | jq -r '.output // empty' |
-              grep -Ei "$ADDON|pull|image" | tail -15 | cut -c1-240 | redact || true
+              redact | grep -Ei "$ADDON|pull|image" | tail -15 | cut -c1-240 || true
             echo "::error::$fail"
             exit 1
           fi
