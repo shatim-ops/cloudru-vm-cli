@@ -169,6 +169,12 @@ jobs:
           probe images_ru_os          "$C/images?limit=100" "[.items[] | select(.project_id == null) | select(((.name // \"\") + \" \" + (.display_name // \"\")) | test(\"$ru\"; \"i\")) | {name, display_name, type, min_disk, need_gpu: ((.min_gpu // 0) > 0), zones: [.availability_zones[]? | select(.enabled) | .availability_zone_name], fields: [.image_metadata[]?.field_type]}]"
           probe images_marketplace    "$C/images?type=marketplace&limit=100" '{total, items: [.items[] | select(.project_id == null) | {name, display_name}]}'
           probe images_public         "$C/images?type=public&limit=100" '{total, names: [.items[] | select(.project_id == null) | .name]}'
+          # e2e 17.10, ru.AZ-1: создание ВМ из ubuntu-22.04 — 422 wrong_az
+          # («Availability zone with this id is not found»), floating IP той
+          # же зоны создан. Проверяем, готов ли образ в зоне и что видно у зон.
+          probe zones_items           "$C/availability-zones" '[(.items? // .)[] | {name, keys: keys}]'
+          probe images_ubuntu_zones   "$C/images?limit=200" '[.items[] | select(.project_id == null) | select((.name // "") | test("ubuntu"; "i")) | {name, zones: [.availability_zones[]? | {z: .availability_zone_name, state, enabled}]}]'
+          probe fip_e2e_states        "$C/floating-ips?$P&limit=100" '[.[] | arrays | .[] | select((.name // "") | startswith("fip-evo-e2e-")) | {state, zone: (.availability_zone.name // .availability_zone_name // null), iface: (.interface != null), keys: keys}]'
           probe images_private_proj   "$C/images?$P&type=private&limit=100" "{total, ru_os: ([.items[] | select(((.name // \"\") + \" \" + (.display_name // \"\")) | test(\"$ru\"; \"i\"))] | length)}"
           probe images_project_types  "$C/images?$P&limit=100" '{total, types: ([.items[].type] | group_by(.) | map({(.[0]): length}) | add)}'
 
