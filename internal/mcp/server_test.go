@@ -95,6 +95,11 @@ func TestInitialize(t *testing.T) {
 	if info["name"] != serverName {
 		t.Errorf("serverInfo.name: got %v, want %s", info["name"], serverName)
 	}
+	// The display name is the title; the name stays "evo" for clients
+	// that key their config on it.
+	if info["name"] != "evo" || info["title"] != "Cloud.ru Evolution CLI CREW edition" {
+		t.Errorf("serverInfo: name %v, title %v", info["name"], info["title"])
+	}
 	if _, ok := result["capabilities"].(map[string]any)["tools"]; !ok {
 		t.Errorf("capabilities.tools missing: %v", result["capabilities"])
 	}

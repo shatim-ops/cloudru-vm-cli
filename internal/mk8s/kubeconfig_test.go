@@ -7,7 +7,7 @@ kind: Config
 clusters:
 - name: pg-mon
   cluster:
-    server: https://37.44.197.231:6443
+    server: https://203.0.113.50:6443
     certificate-authority-data: LS0tLS1CRUdJTg==
 contexts:
 - name: pg-mon
@@ -39,7 +39,7 @@ func TestEmbedToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	// exec plugin must be gone; token must be present; server/CA preserved.
-	for _, must := range []string{"token: TESTTOKEN123", "server: https://37.44.197.231:6443", "certificate-authority-data"} {
+	for _, must := range []string{"token: TESTTOKEN123", "server: https://203.0.113.50:6443", "certificate-authority-data"} {
 		if !contains(out, must) {
 			t.Errorf("embedded kubeconfig missing %q\n---\n%s", must, out)
 		}

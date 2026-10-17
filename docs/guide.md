@@ -1,11 +1,11 @@
-# Руководство: evo за 20 минут
+# Руководство: Cloud.ru Evolution CLI CREW edition (evo) за 20 минут
 
 Для тех, кто запускает `evo` впервые. Здесь — как поставить, настроить и
 сделать первые полезные вещи; справочники по каждой теме — по ссылкам.
 
 ## Что такое evo
 
-`evo` — командная строка и MCP-сервер для облака
+`evo` (Cloud.ru Evolution CLI CREW edition) — командная строка и MCP-сервер для облака
 [Cloud.ru Evolution](https://cloud.ru). Две задачи:
 
 1. **Управлять ресурсами проекта из терминала и скриптов**: ВМ, диски, сети,
@@ -486,7 +486,9 @@ CLI. Изменяющий инструмент без `confirmed=true` возв�
 
 1. `evo doctor` — чаще всего он называет причину сам.
 2. [troubleshooting.md](troubleshooting.md) — типовые ошибки по кодам.
-3. Ошибка `evo` — [Issues](https://github.com/shatim-ops/evo-cli/issues);
+3. Ошибка или отзыв об `evo` — в Telegram [@shatim](https://t.me/shatim) и в
+   [чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni), ошибку можно завести и
+   в [Issues](https://github.com/shatim-ops/evo-cli/issues);
    проблемы облака (квоты, ресурс в ошибке) — поддержка Cloud.ru.
 
 К обращению приложите `evo version --json`, `evo doctor --json` (секретов там

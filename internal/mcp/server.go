@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/product"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -530,6 +531,7 @@ func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 		},
 		"serverInfo": map[string]any{
 			"name":    serverName,
+			"title":   product.Name,
 			"version": s.version,
 		},
 	}

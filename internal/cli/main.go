@@ -24,6 +24,7 @@ import (
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/product"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -188,15 +189,16 @@ func asGroup(cmd *cobra.Command) *cobra.Command {
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "evo",
-		Short: i18n.T("CLI and MCP server for Cloud.ru Evolution: VMs, networks, k8s, PostgreSQL and deploy of compose projects",
-			"CLI и MCP-сервер для Cloud.ru Evolution: ВМ, сети, k8s, PostgreSQL и deploy compose-проектов"),
-		Long: i18n.T("CLI and MCP server for Cloud.ru Evolution: deploy of docker-compose projects\n"+
+		Short: product.Name + i18n.T(": CLI and MCP server for VMs, networks, k8s, PostgreSQL and deploy of compose projects",
+			": CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов"),
+		Long: product.Name + " (evo)\n\n" + i18n.T("CLI and MCP server for Cloud.ru Evolution: deploy of docker-compose projects\n"+
 			"to VMs and management of cloud resources: VMs, disks, networks, Kubernetes,\n"+
 			"PostgreSQL, Object Storage, secrets.",
 			"CLI и MCP-сервер для Cloud.ru Evolution: развёртывание docker-compose проектов\n"+
 				"на ВМ и управление ресурсами облака: ВМ, диски, сети, Kubernetes, PostgreSQL,\n"+
 				"Object Storage, секреты.\n\n"+
-				"Сообщения по-английски: EVO_LANG=en."),
+				"Сообщения по-английски: EVO_LANG=en.") +
+			"\n\n" + i18n.T("Feedback: Telegram ", "Обратная связь: Telegram ") + product.FeedbackContact + i18n.T(", testers' chat ", ", чат тестировщиков ") + product.FeedbackChat,
 		// evo --version prints what 'evo version' prints (benchmark: every
 		// CLI there has the flag).
 		Version: currentVersion().Version,

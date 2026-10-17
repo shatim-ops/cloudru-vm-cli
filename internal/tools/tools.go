@@ -164,7 +164,7 @@ func (s *Registry) registerTools() {
 			Name:        "fip_attach",
 			Description: "Bind an existing FREE floating IP to a VM's primary interface, giving it a public address. Use when a VM has no public_ip — e.g. provisioning from a large custom image outran the wizard's wait and it returned before assigning one. Pick a free address from list_floating_ips. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
-				"fip":       strProp("Floating IP address (e.g. '213.171.24.210') or its UUID, from list_floating_ips."),
+				"fip":       strProp("Floating IP address (e.g. '203.0.113.10') or its UUID, from list_floating_ips."),
 				"vm":        strProp("VM name or UUID to attach it to."),
 				"confirmed": confirmedProp(),
 			}, "fip", "vm"),
@@ -526,7 +526,7 @@ func (s *Registry) registerTools() {
 			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: snat_delete). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":         strProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required."),
-				"ip_address": strProp("Floating IP address, e.g. '213.171.25.19' (alternative to id)."),
+				"ip_address": strProp("Floating IP address, e.g. '203.0.113.11' (alternative to id)."),
 				"confirmed":  confirmedProp(),
 			}),
 		},

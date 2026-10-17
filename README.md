@@ -1,6 +1,9 @@
-# evo
+# Cloud.ru Evolution CLI CREW edition
 
-> Раньше — `cloudru-vm`: см. [«Переименование»](#переименование).
+> Команда — `evo`. Эта редакция — для тестирования внутри Cloud.ru и сбора
+> обратной связи: в Telegram [@shatim](https://t.me/shatim) и в
+> [чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni). Раньше — `cloudru-vm`:
+> см. [«Переименование»](#переименование).
 
 Командная строка и MCP-сервер для [Cloud.ru Evolution](https://cloud.ru):
 виртуальные машины, диски, сети, Managed Kubernetes, PostgreSQL, Object
@@ -173,7 +176,9 @@ mv .cloudru-vm .evo && mv .cloudru-vm.yaml .evo.yaml
 
 ## Поддержка
 
-Ошибки и вопросы — в [Issues](https://github.com/shatim-ops/evo-cli/issues)
+Обратная связь, вопросы и ошибки — в Telegram
+[@shatim](https://t.me/shatim) и в [чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni);
+ошибки можно завести и в [Issues](https://github.com/shatim-ops/evo-cli/issues)
 этого репозитория. Приложите вывод `evo doctor --json` и
 `evo version` (секретов в них нет) — подробнее в
 [docs/troubleshooting.md](docs/troubleshooting.md#обращение-в-поддержку).

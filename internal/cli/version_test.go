@@ -11,6 +11,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
 func TestResolveVersion_LdflagsWin(t *testing.T) {
@@ -51,7 +53,7 @@ func TestResolveVersion_DevelAndNoInfoKeepDefaults(t *testing.T) {
 }
 
 var testVersion = versionInfo{
-	Version: "1.0.0-rc.1", Commit: "abc123", Date: "2026-10-14T12:00:00Z",
+	Product: product.Name, Version: "1.0.0-rc.1", Commit: "abc123", Date: "2026-10-14T12:00:00Z",
 	Go: "go1.26.9", OS: "linux", Arch: "amd64",
 }
 
@@ -61,7 +63,7 @@ func TestPrintVersion_Text(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := buf.String()
-	for _, want := range []string{"evo 1.0.0-rc.1\n", "abc123", "2026-10-14T12:00:00Z", "go1.26.9", "linux/amd64"} {
+	for _, want := range []string{"Cloud.ru Evolution CLI CREW edition (evo) 1.0.0-rc.1\n", "abc123", "2026-10-14T12:00:00Z", "go1.26.9", "linux/amd64"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
@@ -78,7 +80,7 @@ func TestPrintVersion_JSON(t *testing.T) {
 		t.Fatalf("not one JSON object: %v: %q", err, buf.String())
 	}
 	want := map[string]string{
-		"version": "1.0.0-rc.1", "commit": "abc123", "date": "2026-10-14T12:00:00Z",
+		"product": "Cloud.ru Evolution CLI CREW edition", "version": "1.0.0-rc.1", "commit": "abc123", "date": "2026-10-14T12:00:00Z",
 		"go": "go1.26.9", "os": "linux", "arch": "amd64",
 	}
 	for k, v := range want {
