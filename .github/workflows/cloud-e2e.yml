@@ -247,6 +247,31 @@ jobs:
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ evo-e2e-app ($left) — удалите её в консоли Cloud.ru"; exit 1; }
 
+      # Загрузочный диск ВМ (evo-e2e-app-boot) после destroy: DELETE ВМ идёт
+      # без delete_attachments, а документация говорит, что диски можно
+      # оставить и они оплачиваются (реестр CMP-11). Только чтение: диск не
+      # удаляется. Диск в deleting ждём до 3 мин; ошибка API — предупреждение,
+      # не провал; провал — если после destroy остался диск без ВМ.
+      - name: Дисков evo-e2e-app без ВМ нет (всегда)
+        if: always()
+        run: |
+          [ -d e2e-app ] || { echo "проект не создан"; exit 0; }
+          cd e2e-app
+          for i in 1 2 3 4 5 6 7; do
+            if ! out=$(evo tools call disk_list --json 2>/dev/null); then
+              echo "::warning::disk_list не прочитан — проверка дисков пропущена"; exit 0
+            fi
+            left=$(jq -c '[.disks[]? | select(((.name // "") | startswith("evo-e2e-app")) and (((.attached_to // []) | length) == 0)) | {name, state, size_gb}]' <<<"$out") ||
+              { echo "::warning::ответ disk_list не разобран — проверка дисков пропущена"; exit 0; }
+            [ "$left" = "[]" ] && { echo "дисков evo-e2e-app без ВМ нет"; exit 0; }
+            [ "$(jq '[.[] | select(.state != "deleting")] | length' <<<"$left")" = 0 ] || break
+            echo "диск ещё удаляется (попытка $i): $left"
+            sleep 30
+          done
+          echo "диски без ВМ: $left"
+          echo "::error::после destroy остался диск evo-e2e-app без ВМ — он оплачивается (CMP-11); удалите его в консоли Cloud.ru или 'evo disk delete'"
+          exit 1
+
       # Если правила «evo:» для 80 в группе до deploy не было, его создал
       # deploy, и после destroy его быть не должно. Удаление может идти
       # асинхронно (state=deleting) — несколько попыток. Правило со старым
@@ -545,6 +570,21 @@ jobs:
           left=$(evo tools call list_floating_ips --json | jq '[.floating_ips[]? | select((.name // "") | startswith("fip-evo-e2e-"))] | length')
           echo "FIP fip-evo-e2e-* осталось: $left"
           [ "$left" = 0 ] || { echo "::error::остались FIP fip-evo-e2e-*"; exit 1; }
+
+      # Диски evo-* без ВМ (загрузочные после destroy, реестр CMP-11):
+      # только список, ничего не удаляется и не валит job — чей диск,
+      # решает человек.
+      - name: Диски evo-* без ВМ (только отчёт)
+        if: always()
+        run: |
+          if ! out=$(evo tools call disk_list --json 2>/dev/null); then
+            echo "::warning::disk_list не прочитан"; exit 0
+          fi
+          left=$(jq -c '[.disks[]? | select(((.name // "") | startswith("evo-")) and (((.attached_to // []) | length) == 0)) | {name, state, size_gb}]' <<<"$out" 2>/dev/null) ||
+            { echo "::warning::ответ disk_list не разобран"; exit 0; }
+          if [ "$left" = "[]" ]; then echo "дисков evo-* без ВМ нет"; exit 0; fi
+          echo "диски evo-* без ВМ: $left"
+          echo "::warning::в проекте есть диски evo-* без ВМ — они оплачиваются; удалите ненужные ('evo disk delete' или консоль Cloud.ru)"
 
       # Правила удаляет API напрямую: в evo нет команды удаления правила.
       - name: Правила «evo:» для портов e2e
