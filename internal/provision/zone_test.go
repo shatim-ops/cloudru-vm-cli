@@ -58,11 +58,13 @@ func asCLI(err error, target **clierrors.CLIError) bool {
 }
 
 // FIP в error_deleting без привязки (NET-7): не свободен — его нельзя ни
-// привязать, ни удалить. Без состояния — по привязке, как раньше.
+// привязать, ни удалить. Свободен только available; без состояния — по
+// привязке, как раньше; любое другое состояние — занят (ревью Grok на #83).
 func TestFloatingIP_AvailableStates(t *testing.T) {
 	for state, want := range map[string]bool{
 		"available": true, "": true, "in_use": false, "error_deleting": false,
-		"error": false, "deleting": false, "creating": false,
+		"error": false, "deleting": false, "creating": false, "error_creating": false,
+		"attaching": false, "detaching": false, "updating": false, "unknown_new": false,
 	} {
 		if got := (FloatingIP{State: state}).Available(); got != want {
 			t.Errorf("%q: %v, want %v", state, got, want)

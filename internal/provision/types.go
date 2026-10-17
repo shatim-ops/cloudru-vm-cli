@@ -475,20 +475,21 @@ func (f FloatingIP) OnNATGateway() bool { return !isEmptyRaw(f.NATGateway) }
 // Available reports whether this floating IP can be attached to a new VM.
 // Mirrors the Python reference: state=="available", or no interface/vm bound
 // (some tenants omit the state field on the list endpoint). An address of a
-// SNAT gateway is in use whatever its state, and so is one in transition or
-// in an error state: an address stuck in error_deleting has no binding but
+// SNAT gateway is in use whatever its state. Any other state is not free
+// either (FloatingIpState: in_use, creating, attaching, detaching, updating,
+// deleting, error*): an address stuck in error_deleting has no binding but
 // can be neither attached nor deleted (cloud-e2e 17.10.2026, register NET-7).
 func (f FloatingIP) Available() bool {
 	if f.OnNATGateway() {
 		return false
 	}
-	switch {
-	case f.State == "available":
+	switch f.State {
+	case "available":
 		return true
-	case f.State == "in_use", f.State == "creating", f.State == "deleting", strings.HasPrefix(f.State, "error"):
-		return false
+	case "":
+		return isEmptyRaw(f.Interface) && isEmptyRaw(f.VM)
 	}
-	return isEmptyRaw(f.Interface) && isEmptyRaw(f.VM)
+	return false
 }
 
 func isEmptyRaw(r json.RawMessage) bool {
