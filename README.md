@@ -20,6 +20,17 @@ Storage, Secret Manager — и развёртывание `docker-compose`-пр�
   показывают превью (с ценой, где она есть) и ждут подтверждения —
   одинаково у человека и у агента ([модель подтверждений](#подтверждения)).
 
+## Что понадобится
+
+- **Ключ доступа сервисного аккаунта** (Key ID и Key Secret) и **UUID проекта**
+  Cloud.ru Evolution. Как создать сервисный аккаунт, какие роли дать и где
+  взять UUID — [docs/auth.md](docs/auth.md).
+- Для `evo deploy` — исходящий доступ с вашей машины на порт 22 создаваемой ВМ
+  (SSH).
+- Для `evo k8s kubectl/apply/helm` — установленные `kubectl` и `helm`
+  ([docs/install.md](docs/install.md#kubectl-и-helm)). Остальное работает без
+  зависимостей: бинарь статический.
+
 ## Установка
 
 Linux и macOS:
@@ -32,13 +43,15 @@ evo version
 Скрипт без версии ставит последний стабильный релиз; конкретная версия —
 `CLOUDRU_VM_VERSION=v1.0.0` (см. [install.md](docs/install.md)).
 
-`v1.0.0-rc.1` вышел до переименования: бинарь в нём называется `cloudru-vm`
-(`cloudru-vm version`), и скрипт ставит его под этим именем; `evo` — с
-`v1.0.0-rc.2`.
+Скрипт проверяет sha256 архива и, если установлен `cosign`, подпись релиза,
+и кладёт бинарь в `~/.local/bin` (под root — в `/usr/local/bin`). Обновление —
+тот же запуск.
 
-Скрипт проверяет sha256 архива и, если установлен `cosign`, подпись релиза.
-Windows, ручная установка, проверка подписи, Gatekeeper и SmartScreen —
-[docs/install.md](docs/install.md).
+Windows: скачайте `evo_<версия>_windows_amd64.zip` (или `arm64`) из
+[Releases](https://github.com/shatim-ops/evo-cli/releases), распакуйте `evo.exe`
+в каталог из `PATH` — пошагово с проверкой sha256 в
+[docs/install.md](docs/install.md#windows). Там же ручная установка, проверка
+подписи, Gatekeeper (macOS) и SmartScreen (Windows).
 
 ## Быстрый старт
 
@@ -62,9 +75,29 @@ evo logs -f            # логи контейнеров
 evo destroy            # удалить ВМ и освободить IP
 ```
 
-Для `deploy` машине, с которой он запускается, нужен исходящий доступ к
-порту 22 созданной ВМ (SSH). Зону лучше выбрать явно: подробности и другие
-известные ограничения — в [docs/troubleshooting.md](docs/troubleshooting.md).
+Зону лучше выбрать явно (`evo list-zones` показывает, какие открыты для новых
+ресурсов): подробности и другие известные ограничения — в
+[docs/troubleshooting.md](docs/troubleshooting.md).
+
+## Подключить к AI-агенту
+
+После `evo configure` агент получает те же возможности через MCP. Claude Code:
+
+```sh
+claude mcp add --transport stdio --scope project evo -- evo mcp
+```
+
+Cursor — `~/.cursor/mcp.json` (или `.cursor/mcp.json` в проекте):
+
+```json
+{ "mcpServers": { "evo": { "command": "evo", "args": ["mcp"] } } }
+```
+
+Агент не создаёт и не удаляет ничего платного без вашего согласия: изменяющий
+инструмент сначала возвращает превью ([подтверждения](#подтверждения)).
+HTTP-режим, Docker-образ, отбор групп инструментов (`--toolsets`) и ограничение
+проектов (`--allow-project`) — [docs/mcp.md](docs/mcp.md); все 152
+инструмента — [docs/tools.md](docs/tools.md).
 
 ## Что ещё умеет
 
@@ -77,7 +110,7 @@ evo destroy            # удалить ВМ и освободить IP
 | `pg` | кластеры PostgreSQL, базы, пользователи, бэкапы |
 | `s3` | бакеты и объекты Object Storage |
 | `secret` | Secret Manager |
-| `tools list` / `describe` / `call` | любой из ~150 инструментов MCP-сервера, включая DNS, балансировщики, Kafka, Redis, Artifact Registry, сертификаты, мониторинг, биллинг |
+| `tools list` / `describe` / `call` | любой из 152 инструментов MCP-сервера, включая DNS, балансировщики, Kafka, Redis, Artifact Registry, сертификаты, мониторинг, биллинг |
 | `deploy`, `status`, `logs`, `verify`, `destroy` | сценарий «compose → ВМ» |
 | `configure`, `whoami`, `doctor` | профили, проверка ключа и окружения |
 | `mcp` | MCP-сервер для агентов |
@@ -190,8 +223,10 @@ gofmt -l . && go vet ./... && go test -race ./... && govulncheck ./...
 Нужен Go из `go.mod`. `GORACE=atexit_sleep_ms=0` ускоряет `go test -race`
 в несколько раз: без неё race-рантайм ждёт секунду на выходе каждого пакета.
 CI гоняет то же на Linux, macOS и Windows
-(`.github/workflows/ci.yml`). После изменения команд или флагов обновите
-справку: `go test ./internal/cli -run TestCommandsDoc -update-docs`.
+(`.github/workflows/ci.yml`). После изменения команд, флагов или инструментов
+обновите справку: `go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc' -update-docs`
+(`docs/commands.md` и `docs/tools.md` генерируются, CI проверяет, что они
+актуальны).
 Внутренние планы и история проекта — `docs/internal/`.
 
 ## Лицензия
