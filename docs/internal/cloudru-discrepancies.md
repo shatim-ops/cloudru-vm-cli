@@ -538,19 +538,19 @@ API» — ответ неверен независимо от документа
 #### DB-10. Kafka: срок создания и минимум брокеров не указаны
 Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-14)
 - **Док:** [Terraform: `cloudru_evolution_kafka_cluster`](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_kafka_cluster) — в примере `brokers = 3`; срок создания и минимум не названы.
-- **Живое:** кластер на 1 брокер (2 vCPU / 4 ГБ, 40 GiB) создавался 37–39 мин (2 кластера, 11:28 → 12:05 и → 12:07 UTC, ru.AZ-2); в `GET /v1/specifications` поля минимального числа брокеров нет.
+- **Живое:** кластер на 1 брокер (2 vCPU / 4 ГБ, 40 GiB) создавался 37–39 мин (2 кластера, 11:28 → 12:05 и → 12:07 UTC, ru.AZ-2); в `GET /v1/specifications` поля минимального числа брокеров нет. cloud-e2e `dbaas_smoke` 17.10: 1 брокер, `DEPLOYING` → `READY` за 34 мин (20:12 → 20:46 UTC), удаление 8 мин.
 - **Просим:** указать типичный срок создания и минимум брокеров (в спецификации и в документации).
 
 #### DB-11. Redis: `replicas` в POST — реплики без мастера, в GET — число хостов
 Расхождение + ошибка API · подтверждено вживую (живой прогон 17.10, CRD-15)
 - **Док/Спека:** [Terraform: `cloudru_evolution_redis_cluster`](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_redis_cluster) — «replicas (Number) Количество реплик.»; [`openapi-redis.yaml`](https://cloud.ru/docs/api/specs/redis/ug/_specs/openapi-redis.yaml) — «Количество реплик», example 2; диапазон и связь с `type` не описаны.
-- **Живое:** `POST /v1/clusters`, `type: MASTER_REPLICA`, `shards: 1`: `replicas=1` → 400 «replicas per shard must be in range [3:3], requested - 2»; `replicas=3` → «… requested - 4»; `replicas=2` → 200 (ru.AZ-2, 3 из 3). Тело ответа пустое, причина только в заголовке `grpc-message` (DB-4). Кластер, созданный с `replicas: 2`, в `GET /v1/clusters/{id}` и в списке отдаётся с `replicas: 3` (12:40 UTC).
+- **Живое:** `POST /v1/clusters`, `type: MASTER_REPLICA`, `shards: 1`: `replicas=1` → 400 «replicas per shard must be in range [3:3], requested - 2»; `replicas=3` → «… requested - 4»; `replicas=2` → 200 (ru.AZ-2, 3 из 3). Тело ответа пустое, причина только в заголовке `grpc-message` (DB-4). Кластер, созданный с `replicas: 2`, в `GET /v1/clusters/{id}` и в списке отдаётся с `replicas: 3` (12:40 UTC; повторно — cloud-e2e `dbaas_smoke` 17.10, 20:46 UTC).
 - **Влияние:** клиент, повторяющий в `POST` прочитанное из `GET` значение, получает 400; текст ошибки говорит о хостах, а поле — о репликах. evo до v1.0 из-за этого вообще не создавал Redis.
 - **Просим:** одно значение поля в `POST` и `GET`; описать, что для `MASTER_REPLICA` `replicas` = 2 (3 хоста на шард); ошибку — в терминах поля и в теле.
 
 #### DB-12. Redis: срок создания и удаления не указан
 Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-16)
-- **Живое:** `MASTER_REPLICA`, 1 шард, 3 хоста 2 vCPU / 4 ГБ: `DEPLOYING` → `READY` ~27 мин (12:40 → 13:07 UTC), удаление ~7,5 мин (ru.AZ-2, 1 из 1).
+- **Живое:** `MASTER_REPLICA`, 1 шард, 3 хоста 2 vCPU / 4 ГБ: `DEPLOYING` → `READY` ~27 мин (12:40 → 13:07 UTC), удаление ~7,5 мин (ru.AZ-2); cloud-e2e `dbaas_smoke` 17.10: 33 мин (20:12 → 20:46 UTC), удаление 10 мин. 2 из 2.
 - **Просим:** указать типичные сроки создания и удаления.
 
 #### DB-13. Несуществующий кластер — 400 «service instance not found» вместо 404
