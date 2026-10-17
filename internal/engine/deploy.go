@@ -876,7 +876,7 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 		if f := e.findBootFIP(ctx, projectID, name); f != nil {
 			return f, nil
 		}
-		if ctx.Err() != nil && !provision.IsQuotaError(err) {
+		if ctx.Err() != nil {
 			e.Printer.Warning(i18n.Tf("reserving floating IP %s was interrupted: the platform may still create it; check 'evo vpc fips' and release it ('evo vpc fip-release') if it is there",
 				"резервирование floating IP %s прервано: платформа ещё может его создать; проверьте 'evo vpc fips' и освободите его ('evo vpc fip-release'), если он там есть", name))
 		}
@@ -909,13 +909,15 @@ func (e *Engine) findBootFIP(ctx context.Context, projectID, name string) *provi
 	attempts := 1
 	if ctx.Err() != nil {
 		attempts = 3
+		e.Printer.StepDone(i18n.Tf("Looking for floating IP %s made before the interruption...",
+			"Ищу floating IP %s, созданный до прерывания...", name))
 	}
 	for i := 0; i < attempts; i++ {
 		if i > 0 {
 			select {
 			case <-lctx.Done():
 				return nil
-			case <-time.After(e.timings().FIPRetryInterval):
+			case <-time.After(e.timings().FIPLookupInterval):
 			}
 		}
 		fips, err := e.Cloud.ListFloatingIPs(lctx, projectID)

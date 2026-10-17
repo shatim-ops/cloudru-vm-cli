@@ -391,6 +391,7 @@ var fastTimings = Timings{
 	VMPollTimeout:     5 * time.Second,
 	IfacePollInterval: time.Millisecond,
 	FIPRetryInterval:  time.Millisecond,
+	FIPLookupInterval: time.Millisecond,
 	FIPPollInterval:   time.Millisecond,
 	SSHRetryInterval:  time.Millisecond,
 	SettleDelay:       time.Millisecond,

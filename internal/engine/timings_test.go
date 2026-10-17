@@ -27,6 +27,7 @@ func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 		VMProgressInterval: 30 * time.Second,
 		IfacePollInterval:  5 * time.Second,
 		FIPRetryInterval:   10 * time.Second,
+		FIPLookupInterval:  2 * time.Second,
 		FIPPollInterval:    5 * time.Second,
 		SSHRetryInterval:   5 * time.Second,
 		SettleDelay:        2 * time.Second,

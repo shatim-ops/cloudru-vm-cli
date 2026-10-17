@@ -10,6 +10,7 @@ const (
 	vmLiveRefresh         = time.Second      // the timer of that line on a terminal
 	ifacePollInterval     = 5 * time.Second
 	fipRetryInterval      = 10 * time.Second
+	fipLookupInterval     = 2 * time.Second // after Ctrl-C: short, before a second Ctrl-C
 	fipPollInterval       = 5 * time.Second
 	sshRetryInterval      = 5 * time.Second
 	verifySettleDelay     = 2 * time.Second
@@ -36,6 +37,7 @@ type Timings struct {
 	VMProgressInterval time.Duration
 	IfacePollInterval  time.Duration // waiting for the primary interface to be "created"
 	FIPRetryInterval   time.Duration // between CreateFloatingIP attempts
+	FIPLookupInterval  time.Duration // between lookups of a boot FIP after Ctrl-C
 	FIPPollInterval    time.Duration // waiting for the floating IP to become in_use
 	SSHRetryInterval   time.Duration // between SSH connect attempts
 	SettleDelay        time.Duration // pause before health checks after compose up
@@ -64,6 +66,7 @@ func (t Timings) withDefaults() Timings {
 	def(&t.VMProgressInterval, vmProgressInterval)
 	def(&t.IfacePollInterval, ifacePollInterval)
 	def(&t.FIPRetryInterval, fipRetryInterval)
+	def(&t.FIPLookupInterval, fipLookupInterval)
 	def(&t.FIPPollInterval, fipPollInterval)
 	def(&t.SSHRetryInterval, sshRetryInterval)
 	def(&t.SettleDelay, verifySettleDelay)
