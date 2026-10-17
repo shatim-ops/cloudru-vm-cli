@@ -97,10 +97,18 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 		params.SSHKey = eng.SSHPubKey
 	}
 
-	plan, err := deployplan.Resolve(ctx, eng.Cloud, eng.Config.ProjectID, params)
+	resolved, err := planDefaults(ctx, eng, params)
 	if err != nil {
 		return errResult(err), true
 	}
+	plan, err := deployplan.Resolve(ctx, eng.Cloud, eng.Config.ProjectID, resolved)
+	if err != nil {
+		return errResult(err), true
+	}
+	// A patch (base_plan_id) starts from what the caller asked, not from
+	// the defaults filled in: "cpu: 4" on top of a configured flavor must
+	// size anew.
+	plan.SourceParams = params
 	if err := deployplan.Save(eng.StateDir, plan); err != nil {
 		return errResult(err), true
 	}
@@ -120,6 +128,30 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 		"next":             "Show this plan and its monthly cost to the user. On explicit approval, call deploy_apply with this plan_id and confirmed=true.",
 	}
 	return toJSON(view), false
+}
+
+// planDefaults fills what the call left out from the configuration
+// (profile, .evo.yaml, CLOUDRU_*), as deploy does: the zone from region,
+// the flavor (unless the call sizes by cpu/ram), the image by image_id or
+// image. deploy_plan ignored them and planned ru.AZ-2 while 'evo deploy'
+// used the configured zone (release audit, A-002). Arguments of the call win.
+func planDefaults(ctx context.Context, eng *engine.Engine, p deployplan.Params) (deployplan.Params, error) {
+	cfg := eng.Config
+	if p.Zone == "" {
+		p.Zone = cfg.Region
+	}
+	if p.Flavor == "" && p.CPU == 0 && p.RAMGB == 0 && cfg.Flavor != "" && cfg.Flavor != "auto" {
+		p.Flavor = cfg.Flavor
+	}
+	if p.Image == "" && eng.ImageRef() != "" {
+		// By name, display name or UUID, as deploy resolves it.
+		img, err := eng.BootImage(ctx, cfg.ProjectID)
+		if err != nil {
+			return p, err
+		}
+		p.Image = img.ID
+	}
+	return p, nil
 }
 
 // overlayString sets *dst from args[key] only if the key is present.
