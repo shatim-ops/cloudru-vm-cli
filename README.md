@@ -1,6 +1,7 @@
-# evo
+# Cloud.ru Evolution CLI CREW edition
 
-> Раньше — `cloudru-vm`: см. [«Переименование»](#переименование).
+> Команда — `evo`. Эта редакция — для тестирования внутри Cloud.ru и сбора
+> обратной связи. Раньше — `cloudru-vm`: см. [«Переименование»](#переименование).
 
 Командная строка и MCP-сервер для [Cloud.ru Evolution](https://cloud.ru):
 виртуальные машины, диски, сети, Managed Kubernetes, PostgreSQL, Object

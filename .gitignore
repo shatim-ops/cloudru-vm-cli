@@ -19,6 +19,9 @@
 *.pem
 *.key
 credentials
+credentials.yaml
+# Профиль cloud-e2e (CLOUDRU_CONFIG_DIR в workflow).
+.e2e-config/
 
 # Вывод goreleaser
 /dist/

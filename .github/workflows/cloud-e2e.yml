@@ -235,7 +235,7 @@ jobs:
             for id in $ids; do echo "::add-mask::$id"; done
             echo "осталась ВМ evo-e2e-app — удаляю (попытка $i)"
             for id in $ids; do
-              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
             done
             sleep 60
           done
@@ -243,7 +243,7 @@ jobs:
             jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-app-")) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
-            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
+            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
           done
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ evo-e2e-app ($left) — удалите её в консоли Cloud.ru"; exit 1; }
@@ -457,7 +457,7 @@ jobs:
             for id in $ids; do echo "::add-mask::$id"; done
             echo "осталась ВМ $VM — удаляю (попытка $i)"
             for id in $ids; do
-              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
             done
             sleep 60
           done
@@ -465,7 +465,7 @@ jobs:
             jq -r --arg p "fip-$VM-" '.floating_ips[]? | select(((.name // "") | startswith($p)) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
-            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
+            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
           done
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ $VM — удалите её в консоли Cloud.ru"; exit 1; }

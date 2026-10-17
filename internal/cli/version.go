@@ -9,6 +9,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
 // setBuildIdentity sets the build identity Main got from cmd/evo, with the
@@ -50,6 +51,7 @@ func resolveVersion(v, c, d string, info *debug.BuildInfo) (string, string, stri
 
 // versionInfo is the payload of "evo version --json".
 type versionInfo struct {
+	Product string `json:"product"`
 	Version string `json:"version"`
 	Commit  string `json:"commit"`
 	Date    string `json:"date"`
@@ -60,6 +62,7 @@ type versionInfo struct {
 
 func currentVersion() versionInfo {
 	return versionInfo{
+		Product: product.Name,
 		Version: version,
 		Commit:  commit,
 		Date:    date,
@@ -74,8 +77,8 @@ func printVersion(w io.Writer, jsonMode bool, v versionInfo) error {
 	if jsonMode {
 		return output.NewWithWriter(w, output.ModeJSON, false).JSON(v)
 	}
-	_, err := fmt.Fprintf(w, i18n.T("evo %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
-		"evo %s\n  коммит:  %s\n  собран:  %s\n  go:      %s\n  os/arch: %s/%s\n"),
-		v.Version, v.Commit, v.Date, v.Go, v.OS, v.Arch)
+	_, err := fmt.Fprintf(w, i18n.T("%s (evo) %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
+		"%s (evo) %s\n  коммит:  %s\n  собран:  %s\n  go:      %s\n  os/arch: %s/%s\n"),
+		v.Product, v.Version, v.Commit, v.Date, v.Go, v.OS, v.Arch)
 	return err
 }

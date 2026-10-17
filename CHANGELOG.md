@@ -9,6 +9,7 @@
 
 ### Изменено поведение
 
+- Продукт называется **Cloud.ru Evolution CLI CREW edition**: так он назван в `evo --help`, `evo version` (и в поле `product` у `--json`), в `serverInfo.title` MCP и в названии релиза. Команда `evo`, переменные `CLOUDRU_*`, каталог `~/.config/evo`, `.evo.yaml` и имя MCP-сервера (`evo`) не изменились.
 - MCP по HTTP: `POST /mcp` принимает только `Content-Type: application/json`, иначе `415`. Раньше страница в браузере на другом loopback-порту при `--auth none` могла простым `text/plain`-запросом без CORS вызвать изменяющий инструмент.
 - `k8s_kubectl` в любом транспорте отклоняет (`USAGE`) флаги, которые подменяют кластер или учётные данные kubeconfig evo (`--server`/`-s`, `--kubeconfig`, `--token`, `--client-key`, `--insecure-skip-tls-verify` и другие). Раньше по stdio `get … --server=…` без подтверждения отправлял токен кластера на другой сервер.
 - kubectl и helm запускаются без `EVOLUTION_SERVICE_ACCOUNT_KEY_*` в окружении, как и без `CLOUDRU_*`.
