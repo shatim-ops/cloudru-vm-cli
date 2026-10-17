@@ -98,7 +98,9 @@ jobs:
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     # Лог публичный: вывод evo идёт через .github/scripts/redact.sed (UUID →
     # <id>, IPv4 → <ip>, имена групп безопасности и подсетей → <name>),
-    # найденные значения ещё и маскируются.
+    # найденные значения ещё и маскируются. Порядок: jq, потом маска, потом
+    # обрезка — маска может съесть кавычку JSON, а обрезка до неё разрезала
+    # бы UUID или IP.
     defaults:
       run:
         shell: bash -eo pipefail {0}
@@ -235,7 +237,7 @@ jobs:
             for id in $ids; do echo "::add-mask::$id"; done
             echo "осталась ВМ evo-e2e-app — удаляю (попытка $i)"
             for id in $ids; do
-              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring)}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | cut -c1-260 || true
             done
             sleep 60
           done
@@ -243,7 +245,7 @@ jobs:
             jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-app-")) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
-            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
+            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring)}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | cut -c1-260 || true
           done
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ evo-e2e-app ($left) — удалите её в консоли Cloud.ru"; exit 1; }
@@ -457,7 +459,7 @@ jobs:
             for id in $ids; do echo "::add-mask::$id"; done
             echo "осталась ВМ $VM — удаляю (попытка $i)"
             for id in $ids; do
-              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring)}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | cut -c1-260 || true
             done
             sleep 60
           done
@@ -465,7 +467,7 @@ jobs:
             jq -r --arg p "fip-$VM-" '.floating_ips[]? | select(((.name // "") | startswith($p)) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
-            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | jq -c "{status, error: ((.error // null) | tostring | .[0:200])}" 2>/dev/null || true
+            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring)}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | cut -c1-260 || true
           done
           left=$(vms)
           [ -z "$left" ] || { echo "::error::после прогона осталась ВМ $VM — удалите её в консоли Cloud.ru"; exit 1; }
@@ -533,8 +535,8 @@ jobs:
             jq -c '[.[] | {name, state}]' <<<"$list"
             [ "$(jq length <<<"$list")" = 0 ] && { echo "ВМ evo-e2e-* нет"; exit 0; }
             for id in $(jq -r '.[].id' <<<"$list"); do
-              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | redact |
-                jq -c '{status, error: ((.error // null) | if . == null then null else tostring | .[0:300] end), message: ((.message // null) | if . == null then null else tostring | .[0:200] end)}' 2>/dev/null || true
+              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 |
+                jq -c '{status, error: ((.error // null) | if . == null then null else tostring end), message: ((.message // null) | if . == null then null else tostring end)}' 2>/dev/null | redact | cut -c1-560 || true
             done
             echo "попытка $i: жду 60 с"
             sleep 60
@@ -681,7 +683,7 @@ jobs:
             jq '{version, master_count, kube_api_internet, warnings}' || true
           evo --json --yes k8s create --name "$CLUSTER" --zone "$ZONE" --master-count 1 > "$RUNNER_TEMP/create.json"
           id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json")
-          [ -n "$id" ] || { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" "$RUNNER_TEMP/create.json" | jq -c '{status, error}'; echo "::error::k8s create без cluster_id"; exit 1; }
+          [ -n "$id" ] || { jq -c '{status, error}' "$RUNNER_TEMP/create.json" | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; echo "::error::k8s create без cluster_id"; exit 1; }
           echo "::add-mask::$id"
           echo "CLUSTER_ID=$id" >> "$GITHUB_ENV"
           jq '{status}' "$RUNNER_TEMP/create.json"
