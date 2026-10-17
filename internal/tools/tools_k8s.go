@@ -462,7 +462,18 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	// nodes (release audit, L-08 follow-up).
 	zoneRef := stringArg(args, "zone")
 	if zoneRef == "" {
-		zoneRef = clusterZoneID(ctx, cli, clusterID)
+		// Not the product's default zone when the cluster's is unreadable:
+		// that is how the pool would land away from the control plane.
+		zid, zerr := clusterZoneID(ctx, cli, clusterID)
+		if zerr != nil {
+			return errResult(fmt.Errorf("read the zone of cluster %s: %w (or pass zone)", clusterID, zerr)), true
+		}
+		if zid == "" {
+			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("cluster %s does not report its zone (controlPlane.zones is empty)", clusterID),
+				"Pass zone: the availability zone of the cluster's control plane (k8s_get).")), true
+		}
+		zoneRef = zid
 	}
 	zone, err := s.k8sZone(ctx, pc, zoneRef)
 	if err != nil {
@@ -591,6 +602,9 @@ func (s *Registry) k8sZone(ctx context.Context, pc *mk8s.ProductConfig, ref stri
 		return k8sZoneRef{}, clierrors.New(clierrors.CodeUsage,
 			fmt.Sprintf("zone %s is not offered for Managed Kubernetes", z.name), hint)
 	case z.mk8sID == "":
+		// The product lists no zones: the compute ID is sent as is. A wrong
+		// one is a 400 before anything is created, while no zones at all
+		// puts the masters in the API's default zone (L-08).
 		z.mk8sID = z.computeID
 	case z.computeID == "":
 		z.computeID = z.mk8sID
@@ -655,19 +669,20 @@ func (s *Registry) k8sVIPSubnet(ctx context.Context, pid, subnetID string, zone 
 }
 
 // clusterZoneID is the zone ID of the cluster's control plane
-// (controlPlane.zones[0] of GET /v3/clusters/{id}), "" when unknown.
-func clusterZoneID(ctx context.Context, cli *mk8s.Client, clusterID string) string {
+// (controlPlane.zones[0] of GET /v3/clusters/{id}), "" when the cluster
+// does not list one.
+func clusterZoneID(ctx context.Context, cli *mk8s.Client, clusterID string) (string, error) {
 	m, err := cli.GetCluster(ctx, clusterID)
 	if err != nil {
-		return ""
+		return "", err
 	}
 	cp, _ := m["controlPlane"].(map[string]any)
 	zones, _ := cp["zones"].([]any)
 	if len(zones) == 0 {
-		return ""
+		return "", nil
 	}
 	z, _ := zones[0].(string)
-	return z
+	return z, nil
 }
 
 // k8sNodesSubnet is the subnet of a node pool: nodes_subnet_id as given

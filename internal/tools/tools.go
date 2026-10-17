@@ -477,7 +477,7 @@ func (s *Registry) registerTools() {
 				"image":         strProp("Container image URI from Artifact Registry of this project (or a public registry of another project), linux/amd64, e.g. <registry>.cr.cloud.ru/<repository>:<tag>. The app must listen on 0.0.0.0:$PORT."),
 				"cpu":           strProp("CPU request, e.g. '0.1', '1' (default 0.1)."),
 				"memory":        strProp("Memory request, e.g. '256Mi', '1Gi' (default 256Mi)."),
-				"port":          intProp("Container port the app listens on (default 8080). Reserved by the platform and refused: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091."),
+				"port":          intProp("Container port the app listens on (default 8080). Reserved by the platform and refused: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091, 9092."),
 				"privileged":    boolProp("Run the container in privileged mode, as root (default false: it runs as UID 1000). Only for images that must run as root; the preview says so."),
 				"public":        boolPropTrue("Expose a public URL (default true)."),
 				"min_instances": intProp("Minimum instances (default 0 = scale to zero); at most max_instances."),
@@ -2486,6 +2486,7 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 // finishes (release audit, A-005, L-11).
 func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRec *state.DeploymentRecord, keepFIP bool) string {
 	now := time.Now()
+	recorded := false
 	stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
 		marked := false
 		for _, d := range sf.Deployments {
@@ -2506,22 +2507,27 @@ func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRe
 			sf.UpsertDeployment(state.DeploymentRecord{ID: target.ID, VMID: target.ID, Status: "destroying",
 				FloatingIPID: fipRec.FloatingIPID, VMIP: fipRec.VMIP, ProjectID: projectID, CreatedAt: now, UpdatedAt: now})
 		}
+		recorded = marked || keepFIP
 		return nil
 	})
 	msg := fmt.Sprintf("VM %s: Cloud.ru accepted the delete, but the VM is still listed, so the deletion is not confirmed; "+
 		"its floating IP and port rules are kept for now", target.ID)
-	if stateErr != nil {
+	hint := fmt.Sprintf("Check it with vm_get %s, then call destroy with vm_id %s again: once the VM is gone it releases the floating IP and closes the ports.", target.ID, target.ID)
+	switch {
+	case stateErr != nil:
 		msg += fmt.Sprintf(" (WARNING: the local state was not updated: %v)", stateErr)
-	} else {
+	case recorded:
 		msg += " and its local record stays (status destroying)"
+	default:
+		// Nothing recorded here and no FIP found: a re-run after the VM is
+		// gone would be VM_NOT_FOUND, there is nothing left to clean up.
+		hint = fmt.Sprintf("Check it with vm_get %s: once it is VM_NOT_FOUND the deletion is done, nothing else needs a destroy.", target.ID)
 	}
 	fields := map[string]any{"status": "partial", "vm_id": target.ID, "name": target.Name}
 	if keepFIP {
 		fields["floating_ip"] = "kept until the VM is gone: " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	}
-	return errAnswer(clierrors.New(clierrors.CodeAPIError, msg,
-		fmt.Sprintf("Check it with vm_get %s, then call destroy with vm_id %s again: once the VM is gone it releases the floating IP and closes the ports.", target.ID, target.ID)),
-		fields)
+	return errAnswer(clierrors.New(clierrors.CodeAPIError, msg, hint), fields)
 }
 
 // provisionNoPublicIP is the answer of a provision whose VM is active but

@@ -100,6 +100,8 @@ func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"cl-1","done":false}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/v3/clusters/cl-1":
 		_, _ = io.WriteString(rec, `{"id":"cl-1","controlPlane":{"zones":["mk-az1"]}}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/v3/clusters/cl-nozone":
+		_, _ = io.WriteString(rec, `{"id":"cl-nozone","controlPlane":{"zones":[]}}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v3/nodePools":
 		_, _ = io.WriteString(rec, `{"id":"op-np","resourceId":"np-1","done":false}`)
 	case r.URL.Path == "/v2/targetGroups/tg-1":
@@ -355,6 +357,7 @@ func TestCaDeploy_ValidatesAndPreviewsEverything(t *testing.T) {
 		{"port": float64(80)},
 		{"port": float64(1024)},
 		{"port": float64(9090)},
+		{"port": float64(9092)},
 		{"port": float64(8012)},
 		{"port": float64(70000)},
 		{"min_instances": float64(3), "max_instances": float64(1)},
@@ -542,6 +545,27 @@ func TestK8sAddNodePool_ClusterZoneSubnet(t *testing.T) {
 	}
 	wantReason(t, "nodes subnet of another zone", m, text, "CONFIG_INVALID")
 	if f.postCount() != posts {
+		t.Error("refused call sent a POST")
+	}
+}
+
+// Ревью Grok по #89: зона кластера не прочиталась (ошибка GetCluster или
+// пустой controlPlane.zones) — пул уходил в зону по умолчанию продукта,
+// мимо плоскости управления (L-08). Теперь отказ до POST.
+func TestK8sAddNodePool_ClusterZoneUnknownRefused(t *testing.T) {
+	f := &raAPI{}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	for _, c := range []struct{ cluster, reason string }{
+		{"cl-missing", "NOT_FOUND"},
+		{"cl-nozone", "CONFIG_INVALID"},
+	} {
+		m, text, isErr := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": c.cluster, "security_group_id": "sg-1", "confirmed": true})
+		if !isErr {
+			t.Fatalf("%s: pool created without the cluster's zone: %s", c.cluster, text)
+		}
+		wantReason(t, c.cluster, m, text, c.reason)
+	}
+	if f.postCount() != 0 {
 		t.Error("refused call sent a POST")
 	}
 }

@@ -60,9 +60,10 @@ func (s *Registry) handleCaGet(ctx context.Context, args map[string]any) (string
 var caNameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
 // caReservedPorts are the ports Container Apps reserves besides 1–1024
-// (docs, «Создать домен» / container-domain-create: «8008, 8012, 8013,
-// 8112, 8022, 9090, 9091 и порты от 1 до 1024 зарезервированы»).
-var caReservedPorts = []int{8008, 8012, 8013, 8022, 8112, 9090, 9091}
+// (docs, guides__additionalports: «8008, 8012, 8013, 8112, 8022, 9090,
+// 9091, 9092 и порты от 1 до 1024 зарезервированы»; container-domain-create
+// lists the same without 9092, so 9092 is refused too).
+var caReservedPorts = []int{8008, 8012, 8013, 8022, 8112, 9090, 9091, 9092}
 
 // caDeployReq builds the create request of ca_deploy and checks what needs
 // no API, before the confirmation gate: an RFC 1123 name, a port the
@@ -92,7 +93,7 @@ func caDeployReq(args map[string]any) (containerapp.CreateContainerReq, error) {
 		// (root) without a word in the preview; the platform reserves them.
 		return containerapp.CreateContainerReq{}, clierrors.New(clierrors.CodeUsage,
 			fmt.Sprintf("port %d is reserved by Container Apps", port),
-			"Reserved: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091. Pick another one, e.g. 8080 (the default); the app must listen on 0.0.0.0:$PORT.")
+			"Reserved: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091, 9092. Pick another one, e.g. 8080 (the default); the app must listen on 0.0.0.0:$PORT.")
 	}
 	public := true
 	if v, ok := args["public"].(bool); ok {

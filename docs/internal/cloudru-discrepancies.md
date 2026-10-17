@@ -567,7 +567,7 @@ API» — ответ неверен независимо от документа
 
 #### DB-17. Kafka: кластер в `DEPLOYING` не удаляется — 500
 Ошибка API · подтверждено вживую (живой прогон 17.10, CRD-B13)
-- **Живое:** `DELETE` кластера в `DEPLOYING` → 500 «call to paas engine [DeleteEvolutionKafka] failed: … failed to get delete meta» (4 из 4); повторный `DELETE` во время удаления → 500 FailedPrecondition. Создание при этом идёт 37–39 мин (DB-10), всё это время ошибочно созданный кластер оплачивается.
+- **Живое:** `DELETE` кластера в `DEPLOYING` → 500 «call to paas engine [DeleteEvolutionKafka] failed: … failed to get delete meta» (4 из 4); повторный `DELETE` во время удаления → 500 FailedPrecondition. Создание при этом идёт 37–39 мин (DB-10), всё это время ошибочно созданный кластер, вероятно, оплачивается (тарификацию кластера в `DEPLOYING` прогон не проверял).
 - **Просим:** 409 «нельзя удалить во время создания» или отмена создания; один код с Redis (DB-19).
 
 #### DB-18. Kafka: имя кластера не уникально, `subnet_ids` в ответе пуст
@@ -678,6 +678,7 @@ API» — ответ неверен независимо от документа
 - **Квота AI Agents:** «RAM 20 ГБ» ([ограничения](https://cloud.ru/docs/ai-agents/ug/topics/overview__limitations)) и «Объём VRAM 20 ГБ» ([квоты Evolution](https://cloud.ru/docs/evolution/overview/topics/quotas)).
 - **Аудит:** логи проекта видят администратор и пользователь проекта ([роли](https://cloud.ru/docs/audit-logging/ug/topics/roles), [FAQ](https://cloud.ru/docs/audit-logging/ug/topics/faq__general__logs-access)) — и «доступ только администратору организации», «обратитесь в поддержку» ([краткие логи](https://cloud.ru/docs/audit-logging/ug/topics/guides__logs__get-short-logs)); см. AUD-1.
 - **Прочее:** MCP-гайд Container Apps просит роль «Администратор пользователей» (`platform.project.iam-admin`) для создания контейнеров; траблшутинг Terraform на 401 советует «проверить API-ключ», хотя провайдер работает на ключе доступа ([troubleshooting](https://cloud.ru/docs/terraform-evolution/ug/topics/troubleshooting/troubleshooting)); сервисные аккаунты «создаются в рамках проектов» ([service_accounts](https://cloud.ru/docs/console_api/ug/topics/guides__service_accounts)) и бывают уровня «Организация» ([создание SA](https://cloud.ru/docs/console_api/ug/topics/guides__service_accounts_create)).
+- **Порты Container Apps:** [дополнительные порты](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__additionalports) резервируют 8008, 8012, 8013, 8112, 8022, 9090, 9091, 9092 и 1–1024; [создать контейнер](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__container-domain-create) — тот же список без 9092 (см. CAP-2). Отказывает ли API на 9092, прогон не проверял: evo отказывает до запроса.
 - **Влияние:** пользователь копирует блок `env` или роль из одной страницы и получает отказ в другом инструменте.
 - **Просим:** одно имя переменных и ролей на платформе; согласовать страницы.
 
