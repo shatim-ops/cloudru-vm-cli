@@ -55,3 +55,83 @@ func TestQAr3_Deploy_LostBootFIPAnswer(t *testing.T) {
 		t.Fatalf("FIP %q создан (ответ потерян), ВМ нет — FIP не освобождён и не записан; вывод:\n%s", cloud.fips[0].Name, out.String())
 	}
 }
+
+// Ревью Fable 17.10: Ctrl-C во время POST boot-FIP (ctx отменён), а
+// платформа адрес создала — поиск по имени идёт мимо отменённого ctx, FIP
+// находится и освобождается, а не остаётся платным без записи.
+type cancelledBootFIPCloud struct {
+	lostBootFIPCloud
+	cancel context.CancelFunc
+}
+
+func (c *cancelledBootFIPCloud) CreateFloatingIP(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	c.fips = append(c.fips, &provision.FloatingIP{ID: "fip-cancelled", Name: req.Name, IPAddress: "203.0.113.8", State: "available"})
+	c.cancel()
+	return nil, ctx.Err()
+}
+func (c *cancelledBootFIPCloud) ListFloatingIPs(ctx context.Context, _ string) ([]*provision.FloatingIP, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	return c.fips, nil
+}
+
+func TestDeploy_BootFIPFoundAfterCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cloud := &cancelledBootFIPCloud{cancel: cancel}
+	dir := t.TempDir()
+	var out bytes.Buffer
+	e := &Engine{Config: config.Config{ProjectID: "p", ImageID: "img"}, Cloud: cloud,
+		Printer: output.NewWithWriter(&out, output.ModePlain, false), StateDir: dir, Timings: fastTimings}
+	_, _ = e.provisionVM(ctx, DeployOptions{Flavor: "flavor", NonInteractive: true, Yes: true}, &state.File{Version: 1},
+		state.DefaultPath(dir), &compose.Project{Hash: "h"}, "az")
+	if len(cloud.released) != 1 || cloud.released[0] != "fip-cancelled" {
+		t.Fatalf("FIP, созданный до Ctrl-C, не освобождён: %v; вывод:\n%s", cloud.released, out.String())
+	}
+}
+
+// Ревью Grok на #85: при Ctrl-C сервер может создать FIP чуть позже —
+// поиск повторяется и находит его со второго раза; если не нашёл —
+// предупреждение с именем адреса.
+type lateBootFIPCloud struct {
+	cancelledBootFIPCloud
+	lists int
+	never bool
+}
+
+func (c *lateBootFIPCloud) CreateFloatingIP(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	c.fips = append(c.fips, &provision.FloatingIP{ID: "fip-late", Name: req.Name, IPAddress: "203.0.113.9", State: "available"})
+	c.cancel()
+	return nil, ctx.Err()
+}
+func (c *lateBootFIPCloud) ListFloatingIPs(ctx context.Context, _ string) ([]*provision.FloatingIP, error) {
+	c.lists++
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if c.never || c.lists < 2 {
+		return nil, nil
+	}
+	return c.fips, nil
+}
+
+func TestDeploy_BootFIPLateAfterCancel(t *testing.T) {
+	for _, never := range []bool{false, true} {
+		ctx, cancel := context.WithCancel(context.Background())
+		cloud := &lateBootFIPCloud{cancelledBootFIPCloud: cancelledBootFIPCloud{cancel: cancel}, never: never}
+		dir := t.TempDir()
+		var out bytes.Buffer
+		e := &Engine{Config: config.Config{ProjectID: "p", ImageID: "img"}, Cloud: cloud,
+			Printer: output.NewWithWriter(&out, output.ModePlain, false), StateDir: dir, Timings: fastTimings}
+		_, _ = e.provisionVM(ctx, DeployOptions{Flavor: "flavor", NonInteractive: true, Yes: true}, &state.File{Version: 1},
+			state.DefaultPath(dir), &compose.Project{Hash: "h"}, "az")
+		cancel()
+		switch {
+		case !never && (len(cloud.released) != 1 || cloud.released[0] != "fip-late"):
+			t.Errorf("FIP, появившийся со второго поиска, не освобождён: %v (поисков %d)", cloud.released, cloud.lists)
+		case never && (cloud.lists != 3 || !strings.Contains(out.String(), "evo vpc fips")):
+			t.Errorf("не найден: поисков %d, вывод:\n%s", cloud.lists, out.String())
+		}
+	}
+}

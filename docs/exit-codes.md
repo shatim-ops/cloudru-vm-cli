@@ -7,7 +7,7 @@
 | Код | Значение | Типичные причины (внутренний код ошибки) |
 |---|---|---|
 | `0` | успех; также `--dry-run` | |
-| `1` | прочая ошибка, в том числе неизвестная команда или флаг | `USAGE`, `SSH_TIMEOUT`, `SSH_AUTH_FAILED`, `VM_PROVISION_FAILED`, `COMPOSE_INVALID`, `COMPOSE_NOT_FOUND`, `API_UNREACHABLE`, `STATE_CORRUPTED` (битый или более новый state), `STATE_LOCKED` (в каталоге уже идёт `deploy`/`destroy`); `verify`: сервис не отвечает (`UNHEALTHY`) |
+| `1` | прочая ошибка, в том числе неизвестная команда или флаг | `USAGE`, `SSH_TIMEOUT`, `SSH_AUTH_FAILED`, `SSH_HOST_KEY_CHANGED` (ключ хоста ВМ не совпал с записанным в known_hosts проекта), `VM_PROVISION_FAILED`, `COMPOSE_INVALID`, `COMPOSE_NOT_FOUND`, `API_UNREACHABLE`, `STATE_CORRUPTED` (битый или более новый state), `STATE_LOCKED` (в каталоге уже идёт `deploy`/`destroy`); `verify`: сервис не отвечает (`UNHEALTHY`) |
 | `2` | ошибка аутентификации или конфигурации | `AUTH_REQUIRED` (нет ключа), `AUTH_FAILED` (IAM отверг ключ), `AUTH_EXPIRED`, `CONFIG_INVALID` (нет профиля, битый YAML, не задан `MCP_BEARER_TOKEN`) |
 | `3` | нужно подтверждение, а его нет | `CONFIRMATION_REQUIRED`: нет терминала и нет `--yes`, `--non-interactive`, ответ не «y» |
 | `4` | объект не найден | `VM_NOT_FOUND`, `NOT_FOUND` |
