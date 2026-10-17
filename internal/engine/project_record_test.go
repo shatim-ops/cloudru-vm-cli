@@ -18,7 +18,7 @@ const projectA = "00000000-0000-0000-0000-00000000000a"
 // A new deployment records the project its VM was created in.
 func TestDeploy_RecordsProject(t *testing.T) {
 	eng, dir := newTestEngine(t, &mockCloudAPI{}, newMockDeployer())
-	opts := DeployOptions{ComposeFile: writeComposeFile(t, dir), Flavor: "small", Region: "ru-moscow-1", NonInteractive: true, Yes: true}
+	opts := DeployOptions{ComposeFile: writeComposeFile(t, dir), Flavor: "small", Region: "az-1", NonInteractive: true, Yes: true}
 	if err := eng.Deploy(context.Background(), opts); err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}

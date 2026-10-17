@@ -466,7 +466,7 @@ func TestDeploy_NewDeploy(t *testing.T) {
 	opts := DeployOptions{
 		ComposeFile:    composePath,
 		Flavor:         "small",
-		Region:         "ru-moscow-1",
+		Region:         "az-1",
 		NonInteractive: true,
 		Yes:            true,
 	}
@@ -556,7 +556,7 @@ func TestDeploy_UpdateDeploy(t *testing.T) {
 				VMID:        "vm-existing",
 				VMIP:        "127.0.0.1",
 				VMFlavor:    "small",
-				Region:      "ru-moscow-1",
+				Region:      "az-1",
 				Status:      "running",
 				SSHUser:     "user1",
 				ComposeHash: "oldhash-different-from-current",
@@ -572,7 +572,7 @@ func TestDeploy_UpdateDeploy(t *testing.T) {
 	opts := DeployOptions{
 		ComposeFile:    composePath,
 		Flavor:         "small",
-		Region:         "ru-moscow-1",
+		Region:         "az-1",
 		NonInteractive: true,
 		Yes:            true,
 	}
@@ -629,7 +629,7 @@ func TestDeploy_NoChanges(t *testing.T) {
 				VMID:        "vm-existing",
 				VMIP:        "127.0.0.1",
 				VMFlavor:    "small",
-				Region:      "ru-moscow-1",
+				Region:      "az-1",
 				Status:      "running",
 				SSHUser:     "user1",
 				ComposeHash: composeHash(),
@@ -645,7 +645,7 @@ func TestDeploy_NoChanges(t *testing.T) {
 	opts := DeployOptions{
 		ComposeFile:    composePath,
 		Flavor:         "small",
-		Region:         "ru-moscow-1",
+		Region:         "az-1",
 		NonInteractive: true,
 		Yes:            true,
 	}
@@ -684,7 +684,7 @@ func TestDeploy_ForceRedeploy(t *testing.T) {
 				VMID:        "vm-existing",
 				VMIP:        "127.0.0.1",
 				VMFlavor:    "small",
-				Region:      "ru-moscow-1",
+				Region:      "az-1",
 				Status:      "running",
 				SSHUser:     "user1",
 				ComposeHash: composeHash(),
@@ -700,7 +700,7 @@ func TestDeploy_ForceRedeploy(t *testing.T) {
 	opts := DeployOptions{
 		ComposeFile:    composePath,
 		Flavor:         "small",
-		Region:         "ru-moscow-1",
+		Region:         "az-1",
 		Force:          true,
 		NonInteractive: true,
 		Yes:            true,

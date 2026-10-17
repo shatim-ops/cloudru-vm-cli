@@ -20,7 +20,7 @@ func TestDeploy_JSONPrintsResultObject(t *testing.T) {
 
 	composePath := writeComposeFile(t, tmpDir)
 	err := eng.Deploy(context.Background(), DeployOptions{ComposeFile: composePath, Flavor: "small",
-		Region: "ru-moscow-1", NonInteractive: true, Yes: true})
+		Region: "az-1", NonInteractive: true, Yes: true})
 	if err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestDeploy_JSONPrintsResultObject(t *testing.T) {
 	// Повтор без изменений compose — {"status":"unchanged"}, а не пусто.
 	out.Reset()
 	if err := eng.Deploy(context.Background(), DeployOptions{ComposeFile: composePath, Flavor: "small",
-		Region: "ru-moscow-1", NonInteractive: true, Yes: true}); err != nil {
+		Region: "az-1", NonInteractive: true, Yes: true}); err != nil {
 		t.Fatalf("Deploy (повтор): %v", err)
 	}
 	if !strings.Contains(out.String(), `"status": "unchanged"`) {

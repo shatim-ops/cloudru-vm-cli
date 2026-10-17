@@ -1,11 +1,16 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -20,6 +25,7 @@ type otherZoneCloud struct {
 	subnets   []*provision.Subnet
 	groups    []*provision.SecurityGroup
 	zones     []*provision.AvailabilityZone
+	sgErr     error
 	mutations []string
 }
 
@@ -33,7 +39,7 @@ func (c *otherZoneCloud) ListSubnets(context.Context, string) ([]*provision.Subn
 	return c.subnets, nil
 }
 func (c *otherZoneCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
-	return c.groups, nil
+	return c.groups, c.sgErr
 }
 func (*otherZoneCloud) ListSecurityGroupRules(context.Context, string) ([]*provision.SGRule, error) {
 	return nil, nil
@@ -128,5 +134,53 @@ func TestProvision_TakesZoneSubnetAndGroup(t *testing.T) {
 	ifc := cloud.createReq.Interfaces[0]
 	if ifc.SubnetID != "sn-3" || len(ifc.SecurityGroups) != 1 || ifc.SecurityGroups[0] != "sg-3" {
 		t.Errorf("интерфейс %+v", ifc)
+	}
+}
+
+// Ревью Fable на v1.0: явный subnet_id не из проекта или из другой зоны,
+// имя зоны в region, нечитаемый список групп — отказ до любых изменений.
+func TestProvision_ExplicitSubnetZoneNameAndGroupListRefused(t *testing.T) {
+	subnets := []*provision.Subnet{
+		{ID: "sn-1", Name: "Default_ru.AZ-1", AvailabilityZoneID: "z1", Default: true},
+		{ID: "sn-3", Name: "Default_ru.AZ-3", AvailabilityZoneID: "z", Default: true},
+	}
+	groups := []*provision.SecurityGroup{{ID: "sg-3", Name: "SSH-access_ru.AZ-3", AvailabilityZoneID: "z", Default: true}}
+	for name, tc := range map[string]struct {
+		args  map[string]any
+		sgErr error
+		want  string
+	}{
+		"subnet_id не из проекта":  {map[string]any{"subnet_id": "sn-x"}, nil, "subnet sn-x is not in the project"},
+		"subnet_id другой зоны":    {map[string]any{"subnet_id": "sn-1"}, nil, "subnet Default_ru.AZ-1 is not in zone ru.AZ-3"},
+		"имя зоны в region":        {map[string]any{"_region": "ru.AZ-3"}, nil, "zone name"},
+		"список групп не прочитан": {nil, errors.New("connection reset"), "list security groups"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}}, subnets: subnets, groups: groups, sgErr: tc.sgErr}
+			region := "z"
+			args := map[string]any{"name": "web", "confirmed": true}
+			for k, v := range tc.args {
+				if k == "_region" {
+					region = v.(string)
+					continue
+				}
+				args[k] = v
+			}
+			r := New(func(map[string]any) (*engine.Engine, error) {
+				return &engine.Engine{
+					Config: config.Config{ProjectID: "p", Region: region, ImageID: "img-1", KeyID: "k", Secret: "s"},
+					Auth:   staticToken{}, Cloud: cloud,
+					Printer:  output.NewWithWriter(&bytes.Buffer{}, output.ModeText, false),
+					StateDir: t.TempDir(), SSHKeyPEM: []byte("key"), SSHPubKey: "ssh-ed25519 AAAA test",
+				}, nil
+			})
+			text, isErr := r.handlers["provision"](context.Background(), args)
+			if !isErr || !strings.Contains(text, tc.want) {
+				t.Errorf("ответ: %s", text)
+			}
+			if len(cloud.mutations) > 0 {
+				t.Errorf("до отказа облако изменено: %v", cloud.mutations)
+			}
+		})
 	}
 }

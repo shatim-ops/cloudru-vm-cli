@@ -114,9 +114,14 @@ func (*noGroupCloud) GetVM(_ context.Context, id string) (*provision.VM, error) 
 	return &provision.VM{ID: id, Status: "running"}, nil
 }
 
-// provision с ports, когда группа безопасности не нашлась: ВМ создана,
-// порты не открыты, ответ это говорит.
-func TestProvision_PortsWithoutSecurityGroup(t *testing.T) {
+// provision, когда в проекте нет групп безопасности: отказ до создания
+// ВМ, как у deploy (ревью Fable на v1.0) — ВМ без группы платная и
+// недоступна по SSH.
+func (*noGroupCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return nil, nil
+}
+
+func TestProvision_NoSecurityGroupRefused(t *testing.T) {
 	cloud := &noGroupCloud{cancelCloud: cancelCloud{cancel: func() {}}}
 	dir := t.TempDir()
 	r := New(func(map[string]any) (*engine.Engine, error) {
@@ -131,22 +136,7 @@ func TestProvision_PortsWithoutSecurityGroup(t *testing.T) {
 	})
 	text, isErr := r.handlers["provision"](context.Background(), map[string]any{
 		"name": "web", "confirmed": true, "no_public_ip": true, "ports": []any{"80", "53/udp"}})
-	if isErr {
-		t.Fatalf("ошибка: %s", text)
-	}
-	var res map[string]any
-	_ = json.Unmarshal([]byte(text), &res)
-	if res["status"] != "ok" || cloud.creates != 1 || len(cloud.createReq.Interfaces) != 1 || len(cloud.createReq.Interfaces[0].SecurityGroups) != 0 {
-		t.Fatalf("ответ %s, creates %d, req %+v", text, cloud.creates, cloud.createReq.Interfaces)
-	}
-	msg, _ := res["message"].(string)
-	if !strings.Contains(msg, "Ports: no security group was resolved for the VM, so ports 80,53/udp were not opened — open them with open_ports.") {
-		t.Errorf("message: %q", msg)
-	}
-	if _, has := res["ports"]; has {
-		t.Errorf("ports в ответе, хотя ничего не открыто: %v", res["ports"])
-	}
-	if rec := stateHasVM(t, dir, "vm-made"); rec.SecurityGroupID != "" || len(rec.OpenedRules) != 0 {
-		t.Errorf("state: %+v", rec)
+	if !isErr || !strings.Contains(text, "CONFIG_INVALID") || cloud.creates != 0 {
+		t.Fatalf("ответ %s, creates %d", text, cloud.creates)
 	}
 }
