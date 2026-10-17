@@ -857,6 +857,11 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		if err != nil {
 			return errResult(err), true
 		}
+		// The confirmed call refuses a job of another project: the preview
+		// does so before the question (Cursor review of PR #89).
+		if err := s.checkJobProject(job); err != nil {
+			return errResult(err), true
+		}
 		var res []map[string]any
 		for _, st := range job.Steps {
 			rid := firstNonEmptyStr(job.Outputs[st.Key], st.ResourceID)

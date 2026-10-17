@@ -308,6 +308,25 @@ func TestAudit_DestroyTargetedUnconfirmedIsPartial(t *testing.T) {
 	}
 }
 
+// Ревью Cursor по #89: release_ip=false и удаление не подтвердилось —
+// подсказка повтора сохраняет release_ip=false, иначе повтор с умолчанием
+// release_ip=true освободил бы адрес, который просили оставить.
+func TestAudit_DestroyUnconfirmedKeepsReleaseIPFalseInHint(t *testing.T) {
+	cloud := &stuckTargetCloud{}
+	r, dir := targetRegistry(t, cloud)
+	withRule(t, dir)
+	m, text, isErr := callNamed(t, r, "destroy", map[string]any{"vm_id": "vm-1", "confirmed": true, "release_ip": false})
+	if !isErr || m["status"] != "partial" {
+		t.Fatalf("want partial, got %s", text)
+	}
+	if h, _ := m["hint"].(string); !strings.Contains(h, "release_ip=false") {
+		t.Errorf("hint = %q, want the re-run with release_ip=false", h)
+	}
+	if cloud.fipTries != 0 {
+		t.Errorf("FIP touched: %d tries", cloud.fipTries)
+	}
+}
+
 type goneRuleCloud struct{ *goneCloud }
 
 func (*goneRuleCloud) DeleteSecurityGroupRule(context.Context, string, string) error { return nil }

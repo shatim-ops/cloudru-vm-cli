@@ -2318,7 +2318,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		// (destroying, with the FIP) and nothing else is released until a
 		// re-run sees the VM gone; the answer is partial, not ok (release
 		// audit, A-005, L-11).
-		return destroyUnconfirmed(statePath, projectID, target, &fipRec, releaseIP && hasFIP), true
+		return destroyUnconfirmed(statePath, projectID, target, &fipRec, releaseIP && hasFIP, !releaseIP && hasFIP), true
 	}
 
 	// The floating IP first, as the CLI destroy does: it stays attached until
@@ -2484,7 +2484,11 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 // destroying, with the floating IP to release: neither the FIP nor the
 // port rules are touched while the VM may still exist, and the re-run
 // finishes (release audit, A-005, L-11).
-func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRec *state.DeploymentRecord, keepFIP bool) string {
+// keepAsked: the caller passed release_ip=false and the VM has a floating
+// IP; the re-run the hint names must say so too, or its default
+// release_ip=true would release the address the user kept (Cursor review of
+// PR #89).
+func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRec *state.DeploymentRecord, keepFIP, keepAsked bool) string {
 	now := time.Now()
 	recorded := false
 	stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
@@ -2513,6 +2517,9 @@ func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRe
 	msg := fmt.Sprintf("VM %s: Cloud.ru accepted the delete, but the VM is still listed, so the deletion is not confirmed; "+
 		"its floating IP and port rules are kept for now", target.ID)
 	hint := fmt.Sprintf("Check it with vm_get %s, then call destroy with vm_id %s again: once the VM is gone it releases the floating IP and closes the ports.", target.ID, target.ID)
+	if keepAsked {
+		hint = fmt.Sprintf("Check it with vm_get %s, then call destroy with vm_id %s and release_ip=false again: once the VM is gone it closes the ports and keeps the floating IP.", target.ID, target.ID)
+	}
 	switch {
 	case stateErr != nil:
 		msg += fmt.Sprintf(" (WARNING: the local state was not updated: %v)", stateErr)

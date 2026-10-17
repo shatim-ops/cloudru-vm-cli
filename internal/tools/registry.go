@@ -211,7 +211,8 @@ func groupOf(name string) string {
 // projectTools call a project-scoped API on every call: a list or a create
 // of the project (project_id in the query or the body, or the project in the
 // path: monitoring, audit), or resources addressed by name or path inside
-// the project (Container Apps, Secret Manager). Without a project they
+// the project (Container Apps, Secret Manager), and the mk8s catalogues
+// (projectId is required there). Without a project they
 // answer CONFIG_INVALID before any request (release audit, R-06): the API
 // said 422 "query.project_id: Field required", and that was API_ERROR,
 // exit 5. Tools addressing a resource by its id, catalogues (zones,
@@ -225,6 +226,10 @@ var projectTools = map[string]bool{
 	"deploy_plan": true,
 	"vpc_list":    true, "vpc_create": true, "vpc_route_create": true,
 	"k8s_list": true, "k8s_plan": true, "k8s_create": true,
+	// mk8s catalogues take projectId too: GET /v3/addons without it is a
+	// live 400, the spec requires it on /v3/addons and productConfiguration
+	// (Cursor review of PR #89).
+	"k8s_options": true, "k8s_addons": true, "k8s_addon_versions": true, "k8s_add_addon": true,
 	"ca_list": true, "ca_get": true, "ca_deploy": true, "ca_delete": true, "ca_logs": true, "ca_start": true, "ca_stop": true,
 	"iam_service_accounts": true,
 	"pg_list":              true, "pg_create": true, "kafka_list": true, "kafka_create": true, "redis_list": true, "redis_create": true,
