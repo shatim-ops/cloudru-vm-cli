@@ -567,8 +567,12 @@ jobs:
             echo "освобождаю floating IP"
             evo --yes tools call release_floating_ip --arg id="$id" --json | jq -c '{status}' || true
           done
-          left=$(evo tools call list_floating_ips --json | jq '[.floating_ips[]? | select((.name // "") | startswith("fip-evo-e2e-"))] | length')
-          echo "FIP fip-evo-e2e-* осталось: $left"
+          fips=$(evo tools call list_floating_ips --json)
+          left=$(jq '[.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-")) and .state != "error_deleting")] | length' <<<"$fips")
+          stuck=$(jq '[.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-")) and .state == "error_deleting")] | length' <<<"$fips")
+          echo "FIP fip-evo-e2e-* осталось: $left, в error_deleting: $stuck"
+          # error_deleting через API не снять: повторное удаление — 422 (реестр NET-7).
+          [ "$stuck" = 0 ] || echo "::warning::FIP fip-evo-e2e-* в error_deleting ($stuck): через API не удаляется — уберите в консоли Cloud.ru или через поддержку"
           [ "$left" = 0 ] || { echo "::error::остались FIP fip-evo-e2e-*"; exit 1; }
 
       # Диски evo-* без ВМ (загрузочные после destroy, реестр CMP-11):

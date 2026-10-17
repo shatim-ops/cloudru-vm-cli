@@ -29,7 +29,7 @@ func TestAvailabilityZone_Closed(t *testing.T) {
 	err := ClosedZoneError(zones, "z1")
 	var ce *clierrors.CLIError
 	if !asCLI(err, &ce) || ce.Code != clierrors.CodeConfigInvalid || !strings.Contains(ce.Message, "ru.AZ-1") ||
-		!strings.Contains(ce.Hint, "ru.AZ-2, ru.AZ-3") {
+		!strings.Contains(ce.Hint, "ru.AZ-2, ru.AZ-3") || !strings.Contains(ce.Hint, "evo list-zones") {
 		t.Errorf("closed zone error: %v", err)
 	}
 	for _, id := range []string{"z2", "z3", "unknown"} {
@@ -55,4 +55,17 @@ func asCLI(err error, target **clierrors.CLIError) bool {
 		*target = ce
 	}
 	return ok
+}
+
+// FIP в error_deleting без привязки (NET-7): не свободен — его нельзя ни
+// привязать, ни удалить. Без состояния — по привязке, как раньше.
+func TestFloatingIP_AvailableStates(t *testing.T) {
+	for state, want := range map[string]bool{
+		"available": true, "": true, "in_use": false, "error_deleting": false,
+		"error": false, "deleting": false, "creating": false,
+	} {
+		if got := (FloatingIP{State: state}).Available(); got != want {
+			t.Errorf("%q: %v, want %v", state, got, want)
+		}
+	}
 }

@@ -32,11 +32,13 @@ func ClosedZoneError(zones []*AvailabilityZone, zoneID string) error {
 	if !zone.Closed() {
 		return nil
 	}
-	hint := i18n.T("Pick another zone with 'evo init' or --region (evo list-zones shows which are open).",
-		"Выберите другую зону ('evo init' или --region); открытые зоны показывает 'evo list-zones'.")
+	// --region and the MCP region take the zone ID, so the hint points to
+	// evo list-zones for it (review Grok on #83).
+	hint := i18n.T("Pick another zone with 'evo init', or pass its ID from 'evo list-zones' as --region.",
+		"Выберите другую зону: 'evo init' или --region с её ID из 'evo list-zones'.")
 	if len(open) > 0 {
-		hint = i18n.Tf("Pick an open zone (%s) with 'evo init' or --region.",
-			"Выберите открытую зону (%s): 'evo init' или --region.", strings.Join(open, ", "))
+		hint = i18n.Tf("Pick an open zone (%s) with 'evo init', or pass its ID from 'evo list-zones' as --region.",
+			"Выберите открытую зону (%s): 'evo init' или --region с её ID из 'evo list-zones'.", strings.Join(open, ", "))
 	}
 	return clierrors.New(clierrors.CodeConfigInvalid,
 		i18n.Tf("zone %s is closed for new resources (the zone list marks it enabled=false); nothing was created",
