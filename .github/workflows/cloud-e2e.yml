@@ -165,7 +165,7 @@ jobs:
       - name: deploy --dry-run (ничего не создаёт)
         working-directory: e2e-app
         run: |
-          evo deploy --dry-run 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g"
+          evo deploy --dry-run 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g; s/(безопасности|подсеть|подсети) (Default|SSH-access|default)_(ru\.AZ-[0-9])/\1 @@\2_\3/g; s/(безопасности|подсеть|подсети) (для|в|во|не|нет|по|с|из|и|у|к|на|новой|ВМ|зоны|зоне)([ ,;.)]|$)/\1 @@\2\3/g; s/(безопасности|подсеть|подсети) ([^@ ,;()][^ ,;()]*)/\1 <name>/g; s/@@//g"
           [ ! -s .evo/state.json ] || ! jq -e '.deployments | length > 0' .evo/state.json
 
       # Группа безопасности зоны общая: правило для порта 80 могло быть в
@@ -177,7 +177,7 @@ jobs:
       - name: deploy --yes
         working-directory: e2e-app
         run: |
-          evo deploy --yes 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g"
+          evo deploy --yes 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g; s/(безопасности|подсеть|подсети) (Default|SSH-access|default)_(ru\.AZ-[0-9])/\1 @@\2_\3/g; s/(безопасности|подсеть|подсети) (для|в|во|не|нет|по|с|из|и|у|к|на|новой|ВМ|зоны|зоне)([ ,;.)]|$)/\1 @@\2\3/g; s/(безопасности|подсеть|подсети) ([^@ ,;()][^ ,;()]*)/\1 <name>/g; s/@@//g"
 
       - name: Группа и правила deploy в state
         # и после упавшего deploy: ВМ и правила могли создаться, проверка
@@ -196,7 +196,7 @@ jobs:
       - name: verify и HTTP снаружи
         working-directory: e2e-app
         run: |
-          evo verify 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g"
+          evo verify 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g; s/(безопасности|подсеть|подсети) (Default|SSH-access|default)_(ru\.AZ-[0-9])/\1 @@\2_\3/g; s/(безопасности|подсеть|подсети) (для|в|во|не|нет|по|с|из|и|у|к|на|новой|ВМ|зоны|зоне)([ ,;.)]|$)/\1 @@\2\3/g; s/(безопасности|подсеть|подсети) ([^@ ,;()][^ ,;()]*)/\1 <name>/g; s/@@//g"
           ip=$(jq -r '.deployments[0].vm_ip' .evo/state.json)
           curl -fsS --max-time 15 "http://$ip/" | grep -qi nginx
 
@@ -207,7 +207,7 @@ jobs:
           timeout --preserve-status -s INT 150 evo logs -f > logs.txt 2>&1
           rc=$?
           set -e
-          tail -5 logs.txt | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g"
+          tail -5 logs.txt | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g; s/(безопасности|подсеть|подсети) (Default|SSH-access|default)_(ru\.AZ-[0-9])/\1 @@\2_\3/g; s/(безопасности|подсеть|подсети) (для|в|во|не|нет|по|с|из|и|у|к|на|новой|ВМ|зоны|зоне)([ ,;.)]|$)/\1 @@\2\3/g; s/(безопасности|подсеть|подсети) ([^@ ,;()][^ ,;()]*)/\1 <name>/g; s/@@//g"
           [ "$rc" = 130 ] || { echo "::error::logs -f: код $rc, ожидался 130"; exit 1; }
 
       - name: destroy --yes (всегда)
@@ -215,7 +215,7 @@ jobs:
         run: |
           cd e2e-app 2>/dev/null && [ -f .evo/state.json ] || { echo "нечего удалять"; exit 0; }
           # destroy сам ждёт до 10 мин, пока ВМ в creating станет удаляемой.
-          for _ in 1 2; do evo destroy --yes 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g" && break; sleep 30; done
+          for _ in 1 2; do evo destroy --yes 2>&1 | sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\\.){3}[0-9]{1,3}/<ip>/g; s/(безопасности|подсеть|подсети) (Default|SSH-access|default)_(ru\.AZ-[0-9])/\1 @@\2_\3/g; s/(безопасности|подсеть|подсети) (для|в|во|не|нет|по|с|из|и|у|к|на|новой|ВМ|зоны|зоне)([ ,;.)]|$)/\1 @@\2\3/g; s/(безопасности|подсеть|подсети) ([^@ ,;()][^ ,;()]*)/\1 <name>/g; s/@@//g" && break; sleep 30; done
           jq -e '.deployments | length == 0' .evo/state.json
 
       # Страховка: ВМ evo-e2e-app и её floating IP («fip-evo-e2e-app-…») не
@@ -524,7 +524,7 @@ jobs:
 
       - name: ВМ evo-e2e-*
         run: |
-          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g"; }
+          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g; s/(безопасности|подсеть|подсети) (Default|SSH-access|default)_(ru\.AZ-[0-9])/\1 @@\2_\3/g; s/(безопасности|подсеть|подсети) (для|в|во|не|нет|по|с|из|и|у|к|на|новой|ВМ|зоны|зоне)([ ,;.)]|$)/\1 @@\2\3/g; s/(безопасности|подсеть|подсети) ([^@ ,;()][^ ,;()]*)/\1 <name>/g; s/@@//g"; }
           vms() { evo tools call vm_list --json | jq -c '[.vms[]? | select((.name // "") | startswith("evo-e2e-")) | {id, name, state: (.state // .status)}]'; }
           for i in $(seq 1 15); do
             list=$(vms)
@@ -720,7 +720,7 @@ jobs:
       # «Warning:» перед JSON отрезаются, разбирается JSON с первой «{».
       - name: evo k8s kubectl вживую (узлы)
         run: |
-          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g"; }
+          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g; s/(безопасности|подсеть|подсети) (Default|SSH-access|default)_(ru\.AZ-[0-9])/\1 @@\2_\3/g; s/(безопасности|подсеть|подсети) (для|в|во|не|нет|по|с|из|и|у|к|на|новой|ВМ|зоны|зоне)([ ,;.)]|$)/\1 @@\2\3/g; s/(безопасности|подсеть|подсети) ([^@ ,;()][^ ,;()]*)/\1 <name>/g; s/@@//g"; }
           kubectl version --client=true 2>/dev/null | head -1 || { echo "::error::нет kubectl на раннере"; exit 1; }
           evo --json k8s kubectl "$CLUSTER_ID" get nodes -o json 2>"$RUNNER_TEMP/kerr" > "$RUNNER_TEMP/nodes.json" ||
             { echo "::error::kubectl: $(tail -c 300 "$RUNNER_TEMP/kerr" | tr '\n' ' ' | redact)"; exit 1; }
@@ -736,7 +736,7 @@ jobs:
       # например cert-manager-startupapicheck, не учитываются).
       - name: add-addon cert-manager и его поды (до 25 мин)
         run: |
-          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g"; }
+          redact() { sed -E "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g; s/(безопасности|подсеть|подсети) (Default|SSH-access|default)_(ru\.AZ-[0-9])/\1 @@\2_\3/g; s/(безопасности|подсеть|подсети) (для|в|во|не|нет|по|с|из|и|у|к|на|новой|ВМ|зоны|зоне)([ ,;.)]|$)/\1 @@\2\3/g; s/(безопасности|подсеть|подсети) ([^@ ,;()][^ ,;()]*)/\1 <name>/g; s/@@//g"; }
           evo --json --yes k8s add-addon "$CLUSTER_ID" "$ADDON" > "$RUNNER_TEMP/addon.json" || {
             jq -c '{status, error, reason}' "$RUNNER_TEMP/addon.json" 2>/dev/null | redact; echo "::error::add-addon"; exit 1; }
           jq -c '{status, version, namespace, operation: (.operation_id != null), cluster_addon: (.cluster_addon_id != null), addon_status, warnings}' "$RUNNER_TEMP/addon.json" | redact
