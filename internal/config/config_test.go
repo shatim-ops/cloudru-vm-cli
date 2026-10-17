@@ -17,7 +17,7 @@ import (
 func isolate(t *testing.T) string {
 	t.Helper()
 	for _, kv := range os.Environ() {
-		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "CLOUDRU_") {
+		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "CLOUDRU_") || strings.HasPrefix(k, "EVOLUTION_") {
 			t.Setenv(k, "")
 		}
 	}
@@ -132,6 +132,45 @@ func TestResolve_EnvCredentialsOverrideProfileAsAPair(t *testing.T) {
 	}
 	if cfg.KeyID != "env-key" || cfg.Secret != "env-secret" {
 		t.Errorf("env pair not used: %q", cfg.KeyID)
+	}
+}
+
+// Блок env из MCP-гайда Cloud.ru (CLOUDRU_KEY_SECRET) и переменные, которые
+// AI Agents передаёт MCP-серверу (EVOLUTION_*): ключ и проект берутся;
+// CLOUDRU_SECRET и CLOUDRU_PROJECT_ID важнее.
+func TestResolve_CloudRuEnvAliases(t *testing.T) {
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{})
+	t.Setenv("CLOUDRU_KEY_ID", "env-key")
+	t.Setenv("CLOUDRU_KEY_SECRET", "guide-secret")
+	cfg, err := resolveConfig(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KeyID != "env-key" || cfg.Secret != "guide-secret" {
+		t.Errorf("CLOUDRU_KEY_SECRET not taken: key %q", cfg.KeyID)
+	}
+	t.Setenv("CLOUDRU_SECRET", "main-secret")
+	if cfg, _ = resolveConfig(Options{}); cfg.Secret != "main-secret" {
+		t.Error("CLOUDRU_SECRET must win over CLOUDRU_KEY_SECRET")
+	}
+
+	isolate(t)
+	saveFakeProfile(t, "default", Profile{})
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_ID", "agent-key")
+	t.Setenv("EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET", "agent-secret")
+	t.Setenv("EVOLUTION_PROJECT_ID", "00000000-0000-0000-0000-0000000000e1")
+	cfg, err = resolveConfig(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KeyID != "agent-key" || cfg.Secret != "agent-secret" || cfg.ProjectID != "00000000-0000-0000-0000-0000000000e1" {
+		t.Errorf("EVOLUTION_* not taken: key %q project %q", cfg.KeyID, cfg.ProjectID)
+	}
+	t.Setenv("CLOUDRU_KEY_ID", "env-key")
+	t.Setenv("CLOUDRU_PROJECT_ID", "00000000-0000-0000-0000-0000000000c1")
+	if cfg, _ = resolveConfig(Options{}); cfg.KeyID != "env-key" || cfg.Secret != "" || cfg.ProjectID != "00000000-0000-0000-0000-0000000000c1" {
+		t.Errorf("CLOUDRU_* must win, as a pair: key %q secret set=%v project %q", cfg.KeyID, cfg.Secret != "", cfg.ProjectID)
 	}
 }
 

@@ -44,6 +44,7 @@
 
 ### Добавлено
 
+- Ключ и проект из переменных, которые используют Cloud.ru: `CLOUDRU_KEY_SECRET` (из MCP-гайда Cloud.ru; `CLOUDRU_SECRET` важнее) и `EVOLUTION_SERVICE_ACCOUNT_KEY_ID` / `_SECRET`, `EVOLUTION_PROJECT_ID` (их AI Agents передаёт MCP-серверу; `CLOUDRU_*` важнее).
 - Каталог образов: `evo image list [запрос]`, `evo image get <имя|UUID>`; MCP `image_list`, `image_get` по имени.
 - `evo vm create --image <имя|UUID>`, `--meta поле=значение` (`поле=-` — из stdin без эха, `поле=@файл`), `--port`; MCP `provision`: `image`, `image_metadata`, `ports`.
 - `image:` и `image_metadata:` в `.evo.yaml`, `evo deploy --image`, `evo init --image`.

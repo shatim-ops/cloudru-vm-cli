@@ -143,6 +143,9 @@ var envMapping = []struct {
 	envVar string
 	field  string
 }{
+	// AI Agents passes the project as EVOLUTION_PROJECT_ID (docs «Переменные
+	// MCP-сервера»); CLOUDRU_PROJECT_ID, applied later, wins.
+	{"EVOLUTION_PROJECT_ID", "ProjectID"},
 	{"CLOUDRU_PROJECT_ID", "ProjectID"},
 	{"CLOUDRU_REGION", "Region"},
 	{"CLOUDRU_FLAVOR", "Flavor"},
@@ -208,6 +211,9 @@ func resolve(opts Options) (Config, map[string]string, error) {
 		from := ProjectFileName
 		if origins["ProjectID"] == OriginEnv {
 			from = "CLOUDRU_PROJECT_ID"
+			if os.Getenv("CLOUDRU_PROJECT_ID") == "" {
+				from = "EVOLUTION_PROJECT_ID"
+			}
 		}
 		if _, flagged := opts.Flags["ProjectID"]; !flagged {
 			cfg.Warnings = append(cfg.Warnings, i18n.Tf(
@@ -262,12 +268,23 @@ func pickImage(cfg *Config, origins map[string]string) error {
 
 // applyEnvCredentials takes the key pair from the environment. The pair is
 // taken as a whole: mixing an env key ID with a profile secret would only
-// produce a confusing IAM rejection.
+// produce a confusing IAM rejection. The secret is CLOUDRU_SECRET, else
+// CLOUDRU_KEY_SECRET — the name of the Cloud.ru MCP guide (Container Apps,
+// guides__mcp-server), whose env block colleagues copy. Without either
+// CLOUDRU_ variable the pair AI Agents passes to an MCP server is taken:
+// EVOLUTION_SERVICE_ACCOUNT_KEY_ID and _SECRET.
 func applyEnvCredentials(cfg *Config, origins map[string]string) error {
 	// Values pasted from a .env file often carry "\r" or spaces; IAM would
 	// reject the key with no hint why.
 	keyID := strings.TrimSpace(os.Getenv("CLOUDRU_KEY_ID"))
 	secret := strings.TrimSpace(os.Getenv("CLOUDRU_SECRET"))
+	if secret == "" {
+		secret = strings.TrimSpace(os.Getenv("CLOUDRU_KEY_SECRET"))
+	}
+	if keyID == "" && secret == "" {
+		keyID = strings.TrimSpace(os.Getenv("EVOLUTION_SERVICE_ACCOUNT_KEY_ID"))
+		secret = strings.TrimSpace(os.Getenv("EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET"))
+	}
 	if keyID != "" || secret != "" {
 		cfg.KeyID, cfg.Secret = keyID, secret
 		origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
