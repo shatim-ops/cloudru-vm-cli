@@ -104,3 +104,22 @@ func TestSelectImage_AvailableOwnAndUnknown(t *testing.T) {
 func (*projectViewCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
 	return nil, errNoPriceAPI
 }
+
+// Зона с enabled=false (ru.AZ-1, 17.10.2026): плана нет — deploy_apply
+// получил бы 422 wrong_az уже после одобрения и созданного FIP.
+type closedZoneCloud struct{ *projectViewCloud }
+
+func (closedZoneCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
+	closed := false
+	return []*provision.AvailabilityZone{
+		{ID: "00000000-0000-0000-0000-00000000a001", Name: "ru.AZ-1", Enabled: &closed},
+		{ID: "00000000-0000-0000-0000-00000000a002", Name: "ru.AZ-2"},
+	}, nil
+}
+
+func TestResolve_ClosedZoneRefused(t *testing.T) {
+	plan, err := Resolve(context.Background(), closedZoneCloud{newProjectViewCloud()}, "proj-1", Params{Zone: "ru.AZ-1"})
+	if plan != nil || clierrors.Reason(err) != clierrors.CodeConfigInvalid || !strings.Contains(err.Error(), "ru.AZ-1") {
+		t.Fatalf("plan %v, err %v", plan != nil, err)
+	}
+}

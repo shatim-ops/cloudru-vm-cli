@@ -9,6 +9,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/mk8s"
 )
 
@@ -261,7 +262,7 @@ func (s *Registry) handleK8sPlan(ctx context.Context, args map[string]any) (stri
 		"cluster_sa_id":     req.IdentityConfiguration.ClusterSaID,
 		"kube_api_internet": req.NetworkConfiguration.KubeApiInternet,
 		"warnings":          warnings,
-		"note":              "Read-only plan. On the user's approval call k8s_create with the same args + confirmed=true. Cluster creation is async (~10-20 min); poll k8s_get. Add workers with k8s_add_nodepool (TODO) or via kubeconfig.",
+		"note":              "Read-only plan. On the user's approval call k8s_create with the same args + confirmed=true. Cluster creation is async (5-10 min per the docs, 7-12 seen live); poll k8s_get. Add workers with k8s_add_nodepool.",
 	}), false
 }
 
@@ -292,7 +293,7 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 		"cluster_id":   op.ResourceID,
 		"operation_id": op.ID,
 		"name":         req.Name,
-		"note":         "Cluster is provisioning (async, ~10-20 min). Poll k8s_get with this cluster_id until status is running, then k8s_kubeconfig.",
+		"note":         "Cluster is provisioning (async, about 10 min). Poll k8s_get with this cluster_id until status is running, then k8s_kubeconfig.",
 	}), false
 }
 
@@ -373,13 +374,20 @@ func (s *Registry) handleK8sDelete(ctx context.Context, args map[string]any) (st
 	return toJSON(map[string]any{"status": "deleting", "cluster_id": id, "operation_id": op.ID}), false
 }
 
-// handleK8sNodePools lists node pools of a cluster.
+// handleK8sNodePools lists node pools of a cluster. The API has no list
+// across clusters: GET /v3/nodePools requires clusterId (the tool used to
+// call it without one and got API_ERROR, cloud-e2e readonly #23).
 func (s *Registry) handleK8sNodePools(ctx context.Context, args map[string]any) (string, bool) {
+	clusterID := stringArg(args, "cluster_id")
+	if clusterID == "" {
+		return errResult(clierrors.New(clierrors.CodeUsage, "cluster_id is required: the API lists node pools of one cluster",
+			"Find the cluster ID with k8s_list (evo k8s list).")), true
+	}
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
 		return errResult(err), true
 	}
-	nps, err := cli.ListNodePools(ctx, stringArg(args, "cluster_id"))
+	nps, err := cli.ListNodePools(ctx, clusterID)
 	if err != nil {
 		return errResult(err), true
 	}

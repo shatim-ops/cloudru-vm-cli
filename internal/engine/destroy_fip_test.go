@@ -165,3 +165,39 @@ func TestDestroy_DeletionWaitUsesTimings(t *testing.T) {
 		t.Errorf("released FIPs = %v", cloud.deletedFIPs)
 	}
 }
+
+// A record of another project whose VM the active key does not see: the
+// 404 of DELETE /vms/{id} (no project in it) does not prove the VM is
+// gone, and "already deleted" would drop the record of a billed VM.
+// destroy refuses and keeps the record (ревью Fable, A2). A key that sees
+// the record's project still deletes there (TestDestroy_UsesRecordedProject).
+func TestDestroy_RecordOfAnotherProject404Refused(t *testing.T) {
+	rec := runningRecord()
+	rec.ProjectID = "p-other"
+	eng, cloud, _ := destroyFixture(t, rec)
+	eng.Config.ProjectID = "p-active"
+	cloud.deleteVMFn = func(context.Context, string) error {
+		return clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
+	}
+	err := eng.Destroy(context.Background(), DestroyOptions{Force: true})
+	var ce *clerrors.CLIError
+	if !stderrors.As(err, &ce) || ce.Code != clerrors.CodeConfigInvalid || !strings.Contains(ce.Message, "p-other") ||
+		!strings.Contains(ce.Hint, "evo project use p-other") {
+		t.Fatalf("Destroy = %v (hint %q)", err, hintOf(err))
+	}
+	if a := readActive(t, eng.StateDir); a == nil || a.Status != "running" || a.ProjectID != "p-other" || a.FloatingIPID != "fip-9" {
+		t.Errorf("record after refusal = %+v, want unchanged", a)
+	}
+	if len(cloud.deletedFIPs) != 0 {
+		t.Errorf("FIPs released: %v", cloud.deletedFIPs)
+	}
+
+	// In the record's project the same 404 means the VM is gone.
+	eng.Config.ProjectID = "p-other"
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("Destroy in the record's project: %v", err)
+	}
+	if a := readActive(t, eng.StateDir); a != nil {
+		t.Errorf("deployment left in state: %+v", a)
+	}
+}

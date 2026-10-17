@@ -67,7 +67,7 @@ var commandExamples = map[string]string{
 	"evo k8s addon-versions": `  evo k8s addon-versions cert-manager
   evo k8s addon-versions cert-manager --full --json | jq '.releases[0].configuration_schema'`,
 	"evo k8s add-addon": `  evo k8s add-addon <cluster-id> cert-manager --dry-run
-  evo k8s add-addon <cluster-id> cert-manager --version v1.14.0 --config settings.json`,
+  evo k8s add-addon <cluster-id> cert-manager --config settings.json`,
 	"evo pg list": `  evo pg list`,
 	"evo pg create": `  evo pg create app-db --dry-run
   evo pg create app-db --cpu 2 --ram 4`,

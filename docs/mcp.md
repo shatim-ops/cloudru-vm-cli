@@ -296,7 +296,9 @@ not available to the project») до резервирования floating IP и
   определить не удалось, перечислено в `not_checked`; требование, которое
   точно не выполнено, — отказ `USAGE` до подтверждения. `config` — объект
   JSON по схеме версии (строка с объектом JSON тоже принимается; Cloud.ru
-  подставляет `{{clusterID}}` и `{{clusterName}}`). Ответ —
+  подставляет `{{clusterID}}`, `{{clusterName}}`, `{{productInstanceID}}`,
+  `{{nodeCIDR}}`, `{{serviceCIDR}}`; без `config` API берёт последнюю
+  конфигурацию плагина в кластере). Ответ —
   `status: "installing"`, `operation_id` и/или `cluster_addon_id`;
   установка асинхронная, `note` называет следующий шаг: `k8s_kubectl`
   `get pods -n <namespace>` (или `-A`, если API не дал годного namespace)

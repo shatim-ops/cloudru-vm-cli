@@ -1,6 +1,7 @@
 package provision
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/url"
 	"strconv"
@@ -140,6 +141,25 @@ type Subnet struct {
 	AvailabilityZoneID string `json:"availability_zone_id"`
 	SubnetAddress      string `json:"subnet_address,omitempty"`
 	VPCID              string `json:"vpc_id,omitempty"`
+	// Default: the zone's main subnet (PublicSubnetListItemResponse.default).
+	Default bool `json:"default,omitempty"`
+	// RoutedNetwork: a routed subnet; a floating IP binds only to an
+	// interface in one (docs, «Публичные IP-адреса», ограничения).
+	RoutedNetwork bool `json:"routed_network,omitempty"`
+	// DefaultGateway: DHCP answers from it (udp 67), so a closed egress
+	// must still allow it.
+	DefaultGateway string `json:"default_gateway,omitempty"`
+	// DNSServers is nil when the answer has no dns_servers field, empty
+	// when the subnet has none: then a VM resolves no names (docs,
+	// troubleshooting «Temporary failure in name resolution»).
+	DNSServers *[]any `json:"dns_servers,omitempty"`
+	State      string `json:"state,omitempty"` // created, error, creating…
+	Type       string `json:"type,omitempty"`  // regular, vpc, technical, zone_technical
+}
+
+// NoDNS reports a subnet the API lists with an empty dns_servers.
+func (s *Subnet) NoDNS() bool {
+	return s != nil && s.DNSServers != nil && len(*s.DNSServers) == 0
 }
 
 // UnmarshalJSON reads the zone from the documented nested
@@ -166,10 +186,12 @@ func (s *Subnet) UnmarshalJSON(b []byte) error {
 // The documented list response has no rules, only their counts: read them
 // with ListSecurityGroupRules.
 type SecurityGroup struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	AvailabilityZoneID string   `json:"availability_zone_id,omitempty"`
-	Rules              []SGRule `json:"rules,omitempty"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	AvailabilityZoneID string `json:"availability_zone_id,omitempty"`
+	// Default: the zone's default group (API field "default").
+	Default bool     `json:"default,omitempty"`
+	Rules   []SGRule `json:"rules,omitempty"`
 }
 
 // UnmarshalJSON reads the zone from the nested availability_zone{id}, as
@@ -216,6 +238,11 @@ type DiskType struct {
 type AvailabilityZone struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Enabled false: the zone takes no new resources (Closed). Nil when
+	// the answer has no field.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Default: the zone the console offers first.
+	Default bool `json:"default,omitempty"`
 }
 
 // Flavor represents a VM sizing tier.
@@ -423,19 +450,46 @@ type FloatingIP struct {
 	State     string          `json:"state"`
 	Interface json.RawMessage `json:"interface,omitempty"`
 	VM        json.RawMessage `json:"vm,omitempty"`
+	// NATGateway: the SNAT gateway the address belongs to
+	// (PublicFloatingIpResponse.nat_gateway). Such an address is the
+	// gateway's: it cannot be released on its own (DELETE answers 422
+	// floating_ip_address_is_used_by_nat_gateway; docs, «Публичные
+	// IP-адреса», FAQ).
+	NATGateway json.RawMessage `json:"nat_gateway,omitempty"`
 }
+
+// BoundTo reports whether the answer names VM vmID as the address's: in
+// vm, or in the interface it is attached to. The shape of both is not
+// documented, so the ID is looked for as a JSON string in either.
+func (f FloatingIP) BoundTo(vmID string) bool {
+	if vmID == "" {
+		return false
+	}
+	q := []byte(strconv.Quote(vmID))
+	return bytes.Contains(f.VM, q) || bytes.Contains(f.Interface, q)
+}
+
+// OnNATGateway reports an address bound to a SNAT gateway.
+func (f FloatingIP) OnNATGateway() bool { return !isEmptyRaw(f.NATGateway) }
 
 // Available reports whether this floating IP can be attached to a new VM.
 // Mirrors the Python reference: state=="available", or no interface/vm bound
-// (some tenants omit the state field on the list endpoint).
+// (some tenants omit the state field on the list endpoint). An address of a
+// SNAT gateway is in use whatever its state. Any other state is not free
+// either (FloatingIpState: in_use, creating, attaching, detaching, updating,
+// deleting, error*): an address stuck in error_deleting has no binding but
+// can be neither attached nor deleted (cloud-e2e 17.10.2026, register NET-7).
 func (f FloatingIP) Available() bool {
-	if f.State == "available" {
-		return true
-	}
-	if f.State == "in_use" {
+	if f.OnNATGateway() {
 		return false
 	}
-	return isEmptyRaw(f.Interface) && isEmptyRaw(f.VM)
+	switch f.State {
+	case "available":
+		return true
+	case "":
+		return isEmptyRaw(f.Interface) && isEmptyRaw(f.VM)
+	}
+	return false
 }
 
 func isEmptyRaw(r json.RawMessage) bool {

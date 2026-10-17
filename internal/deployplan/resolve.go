@@ -69,6 +69,9 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if !uuidRe.MatchString(zone.ID) {
 		return nil, fmt.Errorf("could not resolve availability zone %q to a UUID", zoneInput)
 	}
+	if err := provision.ClosedZoneError(zones, zone.ID); err != nil {
+		return nil, err
+	}
 
 	// --- Flavor ---
 	flavors, err := cloud.ListFlavors(ctx)
@@ -124,15 +127,26 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if err != nil {
 		return nil, fmt.Errorf("list subnets: %w", err)
 	}
-	subnetID := pickSubnet(subnets, zone.ID, zone.Name)
-	if subnetID == "" {
+	subnet := pickSubnet(subnets, zone.ID, zone.Name)
+	if subnet == nil {
 		return nil, fmt.Errorf("no subnet found for project/zone %s — create a network+subnet in the Cloud.ru console first", zone.Name)
 	}
+	subnetID := subnet.ID
+	if subnet.NoDNS() {
+		warnings = append(warnings, fmt.Sprintf("subnet %s has no DNS servers: the VM will not resolve names — Docker and images will not download; add a DNS server to the subnet in the Cloud.ru console", subnet.Name))
+	}
 
-	// --- Security group (zone-name-matched, then default, then first) ---
+	// --- Security group (the default group of the zone, then the first by name) ---
 	sgID := ""
 	if sgs, e := cloud.ListSecurityGroups(ctx, projectID); e == nil {
-		sgID = pickSecurityGroup(sgs, zone.Name)
+		if i := provision.PickSecurityGroup(sgs, zone.ID, zone.Name); i >= 0 {
+			sgID = sgs[i].ID
+			// The rules a new VM needs (ingress TCP 22, system egress):
+			// a warning in the plan, before anything is billed.
+			if rules, re := provision.GroupRules(ctx, cloud, sgs[i]); re == nil {
+				warnings = append(warnings, provision.CheckVMGroupRules(rules, subnet.DefaultGateway).Warnings(sgs[i].Name)...)
+			}
+		}
 	}
 	if sgID == "" {
 		warnings = append(warnings, "no security group resolved — VM will use the project default")
@@ -165,7 +179,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 
 	vm := VMSpec{
 		Name:   name,
-		Flavor: FlavorSpec{ID: flavor.ID, Name: flavor.Name, VCPUs: flavor.VCPUs, RAMGB: flavor.RAMGB},
+		Flavor: FlavorSpec{ID: flavor.ID, Name: flavor.Name, VCPUs: flavor.VCPUs, RAMGB: flavor.RAMGB, FreeTier: flavor.FreeTier},
 		Image:  RefSpec{ID: image.ID, Name: image.Name},
 		Zone:   RefSpec{ID: zone.ID, Name: zone.Name},
 		Disk:   DiskSpec{SizeGB: diskGB, Type: diskName, TypeID: diskID},
@@ -388,45 +402,13 @@ func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostn
 	return filled.PasswordFields, static, login, keyName, nil, nil
 }
 
-// pickSubnet matches by zone ID, then by a name containing the zone name
-// (the API leaves availability_zone_id empty), then takes the only subnet.
-// A subnet of another zone does not boot the VM, so no blind "first one".
-func pickSubnet(subnets []*provision.Subnet, zoneID, zoneName string) string {
-	for _, s := range subnets {
-		if s.AvailabilityZoneID != "" && s.AvailabilityZoneID == zoneID {
-			return s.ID
-		}
+// pickSubnet is the subnet deploy takes (provision.PickSubnet: the zone's
+// main subnet, then a routed one, then the API order); nil when none fits.
+func pickSubnet(subnets []*provision.Subnet, zoneID, zoneName string) *provision.Subnet {
+	if i := provision.PickSubnet(subnets, zoneID, zoneName); i >= 0 {
+		return subnets[i]
 	}
-	if zoneName != "" {
-		for _, s := range subnets {
-			if strings.Contains(s.Name, zoneName) {
-				return s.ID
-			}
-		}
-	}
-	if len(subnets) == 1 {
-		return subnets[0].ID
-	}
-	return ""
-}
-
-func pickSecurityGroup(sgs []*provision.SecurityGroup, zoneName string) string {
-	if zoneName != "" {
-		for _, sg := range sgs {
-			if strings.Contains(sg.Name, zoneName) {
-				return sg.ID
-			}
-		}
-	}
-	for _, sg := range sgs {
-		if strings.EqualFold(sg.Name, "default") {
-			return sg.ID
-		}
-	}
-	if len(sgs) > 0 {
-		return sgs[0].ID
-	}
-	return ""
+	return nil
 }
 
 func firstNonEmpty(vals ...string) string {

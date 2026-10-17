@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
@@ -39,14 +41,23 @@ func (s *Registry) adminGET(ctx context.Context, rawurl string) (map[string]any,
 	data, _ := io.ReadAll(resp.Body)
 	var m map[string]any
 	if e := json.Unmarshal(data, &m); e != nil {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(data[:min(len(data), 300)]))
+		return nil, &adminHTTPError{Status: resp.StatusCode, Msg: string(data[:min(len(data), 300)])}
 	}
 	if resp.StatusCode != 200 {
 		msg, _ := m["message"].(string)
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
+		return nil, &adminHTTPError{Status: resp.StatusCode, Msg: msg}
 	}
 	return m, nil
 }
+
+// adminHTTPError is an answer of the API other than 200 (or not JSON): the
+// API was reached and refused, unlike a network error.
+type adminHTTPError struct {
+	Status int
+	Msg    string
+}
+
+func (e *adminHTTPError) Error() string { return fmt.Sprintf("HTTP %d: %s", e.Status, e.Msg) }
 
 // projectID returns the configured project id.
 func (s *Registry) projectID(ctx context.Context) string {
@@ -84,9 +95,33 @@ func (s *Registry) handleIamServiceAccounts(ctx context.Context, args map[string
 	return toJSON(map[string]any{"service_accounts": out}), false
 }
 
-// handleOrgProjects lists projects the caller can see.
+// orgProjectsNote is the note of org_projects when the Organization API
+// refuses the list: the same case and wording as 'evo project list'.
+const orgProjectsNote = "unknown (the Organization API does not list projects for this key)"
+
+// handleOrgProjects lists projects the caller can see. A key the
+// Organization API does not list projects for (a project-level service
+// account: 400 "user not found", 14.10.2026) is not a failure — the key
+// works in its project. As 'evo project list' does (QA r3 C3), the answer
+// is then projects: null, the active project and a note, not an error
+// (it was NOT_FOUND, exit 4, from "user not found" in the message). Only
+// 400/403/404 are that case: a 401, a 429 or a 5xx is a failure of the
+// call (orgHTTPError), not a property of the key.
 func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (string, bool) {
 	m, err := s.adminGET(ctx, "https://organization.api.cloud.ru/v3/projects")
+	var he *adminHTTPError
+	if errors.As(err, &he) && he.Status != http.StatusBadRequest && he.Status != http.StatusForbidden && he.Status != http.StatusNotFound {
+		return errResult(orgHTTPError(he)), true
+	}
+	if errors.As(err, &he) {
+		return toJSON(map[string]any{
+			"projects":    nil,
+			"active":      s.projectID(ctx),
+			"note":        orgProjectsNote,
+			"http_status": he.Status,
+			"hint":        "Not an error: the key works in the active project (whoami). Pass project_id where a tool takes one.",
+		}), false
+	}
 	if err != nil {
 		return errResult(err), true
 	}
@@ -103,6 +138,20 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 		})
 	}
 	return toJSON(map[string]any{"projects": out}), false
+}
+
+// orgHTTPError gives an answer of the Organization API its reason: 401 —
+// AUTH_FAILED, 429 — API_RATE_LIMITED, the rest — API_ERROR (not
+// NOT_FOUND from a "not found" in the body).
+func orgHTTPError(he *adminHTTPError) error {
+	code, hint := clierrors.CodeAPIError, "Cloud.ru Organization API failed; retry later. The key still works in the active project (whoami)."
+	switch {
+	case he.Status == http.StatusUnauthorized:
+		code, hint = clierrors.CodeAuthFailed, "Check the key (evo whoami); re-create it in the Cloud.ru console if it was revoked."
+	case he.Status == http.StatusTooManyRequests:
+		code, hint = clierrors.CodeAPIRateLimited, "Too many requests; retry in a minute."
+	}
+	return clierrors.Wrap(code, "Organization API: "+he.Error(), hint, he)
 }
 
 // handleOrgQuotas lists quota usages (limits vs usage) — useful for capacity

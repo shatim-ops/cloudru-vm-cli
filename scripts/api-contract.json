@@ -54,7 +54,7 @@
         {"method": "GET", "path": "/api/v1/subnets", "code": "internal/provision/discovery.go:163", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
          "reads": ["items[].id", "items[].name", "items[].availability_zone.id", "items[].subnet_address", "items[].vpc_id", "total"]},
         {"method": "GET", "path": "/api/v1/security-groups", "code": "internal/provision/discovery.go:168", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
-         "reads": ["items[].id", "items[].name", "items[].availability_zone.id", "items[].rules", "total"]},
+         "reads": ["items[].id", "items[].name", "items[].availability_zone.id", "items[].default", "items[].rules", "total"]},
         {"method": "GET", "path": "/api/v1/disks", "code": "internal/provision/disk.go:29", "query": ["project_id"],
          "reads": ["items[].id", "items[].name", "items[].size", "items[].state", "items[].bootable", "items[].disk_type.name"],
          "enums": {"items[].state": ["available", "in_use"]}},

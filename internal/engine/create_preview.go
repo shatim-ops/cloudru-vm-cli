@@ -57,6 +57,9 @@ type CreatePreview struct {
 	// CostNote says where Cost comes from (the price-calculation API, or
 	// the rate card: an estimate), or why there is none.
 	CostNote string `json:"cost_note,omitempty"`
+	// NetworkCheck: what the CLI found wrong with the VM's subnet and
+	// security group (CompletePreview); the MCP preview stays offline.
+	NetworkCheck *NetworkCheck `json:"network_check,omitempty"`
 }
 
 // PreviewParam is one key parameter of a CreatePreview.
@@ -145,6 +148,11 @@ func (p *CreatePreview) priceFromAPI(ctx context.Context, cloud provision.CloudA
 // must not hold the question back for long.
 const previewLookupTimeout = 20 * time.Second
 
+// networkCheckTimeout bounds the network check of the preview on its own,
+// after the price: a slow rules list must not leave the preview without a
+// price (ревью Fable, A7).
+const networkCheckTimeout = 5 * time.Second
+
 // CompletePreview fills what a tool leaves out of its preview so as not to
 // reach the cloud (the MCP preview of provision never does): the configured
 // project, zone names, the flavor auto picks with its size, the image name
@@ -174,6 +182,7 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 	if (!needZone && p.VM == nil) || e.Auth == nil || e.Cloud == nil {
 		return nil
 	}
+	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, previewLookupTimeout)
 	defer cancel()
 	tok, err := e.Auth.Token(ctx)
@@ -199,7 +208,7 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 		if id, err := PickVMFlavor(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name)); err == nil {
 			for _, f := range flavors {
 				if f.ID == id {
-					vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB}
+					vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB, FreeTier: f.FreeTier}
 					break
 				}
 			}
@@ -236,6 +245,9 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 	}
 	p.priceFromAPI(ctx, e.Cloud, marketplace)
 	priced = true
+	nctx, ncancel := context.WithTimeout(parent, networkCheckTimeout)
+	defer ncancel()
+	p.NetworkCheck = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
 	return nil
 }
 
@@ -404,6 +416,9 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 			i18n.T(": the call will fail without it", ": без этого команда завершится ошибкой"))
 	}
 	lines = append(lines, createCostLines(p)...)
+	for _, w := range p.NetworkCheck.lines() {
+		lines = append(lines, previewLabel("warning", "внимание")+w)
+	}
 
 	return confirm.Preview{Action: action, Summary: createSummary(p, zoneName), Lines: lines}
 }

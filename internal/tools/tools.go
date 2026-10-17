@@ -293,7 +293,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_create",
-			Description: "STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in ~10-20 min (poll k8s_get). Accepts the same args as k8s_plan.",
+			Description: "STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in about 10 min (5-10 per the docs; poll k8s_get). Accepts the same args as k8s_plan.",
 			InputSchema: objSchema(map[string]any{
 				"product": strProp("What the cluster is for."), "name": strProp("Cluster name."),
 				"version": strProp("Kubernetes version."), "flavor": strProp("Control-plane flavor name."),
@@ -323,8 +323,8 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_nodepools",
-			Description: "List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only.",
-			InputSchema: objSchema(map[string]any{"cluster_id": strProp("Cluster UUID (filter).")}),
+			Description: "List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only. The API has no list across clusters: get cluster_id from k8s_list.",
+			InputSchema: objSchema(map[string]any{"cluster_id": strProp("Cluster UUID (from k8s_list). Required.")}, "cluster_id"),
 		},
 		{
 			Name:        "k8s_add_nodepool",
@@ -367,7 +367,7 @@ func (s *Registry) registerTools() {
 				"cluster_id":   strProp("Cluster UUID (from k8s_list)."),
 				"name":         strProp("Addon name from k8s_addons."),
 				"version":      strProp("Release version: the app version from k8s_addon_versions. The API installs by app version and picks the addon_version itself, so an addon_version is accepted only when it is the newest of its app version. Default: newest ACTIVE."),
-				"config":       map[string]any{"type": "object", "description": "Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}} and {{clusterName}} in it. Default: the addon's defaults."},
+				"config":       map[string]any{"type": "object", "description": "Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}}, {{clusterName}}, {{productInstanceID}}, {{nodeCIDR}} and {{serviceCIDR}} in it. Default: the API reuses the addon's last configuration in the cluster (the addon's defaults on a first install)."},
 				"resolve_mode": strProp("What to do with objects of the addon already in the cluster (installed by hand): NONE keeps them, the install may then fail; OVERWRITE resets them to the recommended values. Default NONE."),
 				"confirmed":    confirmedProp(),
 			}, "cluster_id", "name"),
@@ -417,7 +417,7 @@ func (s *Registry) registerTools() {
 			Description: "Create a block-storage disk. Pass attach_to=<VM name/uuid> to create it in that VM's zone and (with confirmed) attach it in one step — disks must be in the SAME zone as the VM. NB: attaching adds a NEW block device; it does NOT grow the VM's existing filesystem (you then partition/format/mount it on the VM). Resizing the boot disk in place is NOT available via this API (console-only). Mutation (billable): requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"name":      strProp("Disk name."),
-				"size_gb":   intProp("Disk size in GB (required)."),
+				"size_gb":   intProp("Disk size in GB (required; max 16384)."),
 				"disk_type": strProp("Disk type name (e.g. from list_disk_types) or UUID. Default: an SSD type."),
 				"attach_to": strProp("VM name or UUID to create-in-zone and auto-attach to (e.g. 'vm-712c44')."),
 				"zone":      strProp("Availability zone name or UUID (alternative to attach_to; default: configured region)."),
@@ -444,10 +444,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "disk_resize",
-			Description: "Grow a disk in place via PUT /disks/{id} (up to 65536 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead). Mutation: requires confirmed=true.",
+			Description: "Grow a disk in place via PUT /disks/{id} (up to 16384 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead). Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   strProp("Disk UUID (from disk_list)."),
-				"size_gb":   intProp("New size in GB (must be larger than current; max 65536)."),
+				"size_gb":   intProp("New size in GB (must be larger than current; max 16384)."),
 				"confirmed": confirmedProp(),
 			}, "disk_id", "size_gb"),
 		},
@@ -474,10 +474,10 @@ func (s *Registry) registerTools() {
 			Description: "Deploy (create+run) a Container App from a container image — serverless, scales to zero when idle. REQUIRES confirmed=true after the user approves. Async: returns operation_id; use ca_get for status + public URL. Ideal for stateless web services/APIs without managing a VM.",
 			InputSchema: objSchema(map[string]any{
 				"name":          strProp("Container app name (RFC1123, unique)."),
-				"image":         strProp("Container image URI, e.g. docker.io/library/nginx:latest or helloworld.cr.cloud.ru/... ."),
+				"image":         strProp("Container image URI from Artifact Registry of this project (or a public registry of another project), linux/amd64, e.g. <registry>.cr.cloud.ru/<repository>:<tag>. The app must listen on 0.0.0.0:$PORT."),
 				"cpu":           strProp("CPU request, e.g. '0.1', '1' (default 0.1)."),
 				"memory":        strProp("Memory request, e.g. '256Mi', '1Gi' (default 256Mi)."),
-				"port":          intProp("Container port the app listens on (default 8080)."),
+				"port":          intProp("Container port the app listens on (default 8080). Ports 8008, 8012, 8013, 8022, 8112, 9090-9092 are reserved. A port of 1024 or below makes evo run the container in privileged mode (as root): by default it runs as UID 1000, which cannot bind such a port."),
 				"public":        boolPropTrue("Expose a public URL (default true)."),
 				"min_instances": intProp("Minimum instances (default 0 = scale to zero)."),
 				"max_instances": intProp("Maximum instances (default 1)."),
@@ -513,7 +513,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "org_projects",
-			Description: "List Cloud.ru projects visible to the caller (id, name, status, org unit). Read-only.",
+			Description: "List Cloud.ru projects visible to the caller (id, name, status, org unit). Read-only. A key the Organization API lists no projects for (a project-level service account) is not an error: the answer is projects: null, the active project and a note.",
 			InputSchema: objSchema(nil),
 		},
 		{
@@ -523,7 +523,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "release_floating_ip",
-			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first). Mutation: requires confirmed=true after the user approves.",
+			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: nat_delete). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":         strProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required."),
 				"ip_address": strProp("Floating IP address, e.g. '213.171.25.19' (alternative to id)."),
@@ -537,7 +537,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "snat_create",
-			Description: "Create a SNAT gateway so a private subnet's nodes reach the internet (outbound egress). Zone-level: defaults to the configured region; override with 'zone' (name) or 'availability_zone_id'. Without confirmed=true this returns a preview only. Mutation (billable): requires confirmed=true after the user approves. NOTE: this is NOT part of k8s_create — mk8s clusters come up without egress; create a SNAT gateway in the cluster's node zone if workloads need to pull public images.",
+			Description: "Create a public SNAT gateway: outbound internet for every ROUTED subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out directly). One gateway per zone; it gets a public IP that counts against the public-IP quota and is released only with the gateway. Zone-level: defaults to the configured region; override with 'zone' (name) or 'availability_zone_id'. Without confirmed=true this returns a preview only. Mutation (billable): requires confirmed=true after the user approves. NOTE: this is NOT part of k8s_create — mk8s clusters come up without egress; create a SNAT gateway in the cluster's node zone if workloads need to pull public images.",
 			InputSchema: objSchema(map[string]any{
 				"name":                 strProp("Name for the SNAT gateway (required)."),
 				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-2'). Optional; resolved to a UUID. Defaults to the configured region."),
@@ -600,7 +600,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_delete",
-			Description: "Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data. Mutation (async): requires confirmed=true after the user approves.",
+			Description: "Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":         strProp("Cluster UUID (from pg_list). Required (alias: cluster_id)."),
 				"cluster_id": strProp("Alias for id."),
@@ -633,11 +633,14 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "kafka_specs",
 			Description: "List Managed Kafka flavor specifications (id, cpu, memory_gb, min_storage_gb, min/max_brokers) for a version. Read-only. Use to choose specification_id for kafka_create.",
-			InputSchema: objSchema(map[string]any{"version_id": strProp("Version UUID (from kafka_versions); optional — defaults to latest.")}),
+			InputSchema: objSchema(map[string]any{
+				"version_id": strProp("Version UUID (from kafka_versions); optional — defaults to latest."),
+				"zone":       strProp("Availability zone, name (ru.AZ-2) or UUID; optional — defaults to the configured region, else ru.AZ-2. The API needs a zone."),
+			}),
 		},
 		{
 			Name:        "kafka_create",
-			Description: "Create a Managed Kafka cluster. Resolves version (latest), specification (by specification_id or cpu+ram), subnet (first project subnet), storage & brokers (spec minimum). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll kafka_operation.",
+			Description: "Create a Managed Kafka cluster. Resolves version (latest), subnet (the main subnet of the configured zone, else of the first zone that has one, ru.AZ-2 first) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram), storage & brokers (spec minimum). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll kafka_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name (2-63 chars). Required."),
 				"version_id":       strProp("Kafka version UUID (from kafka_versions). Optional; default = latest."),
@@ -682,11 +685,14 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "redis_specs",
 			Description: "List Managed Redis flavor specifications (id, cpu, memory_gb, deployment_mode, min_storage_gb) for a version. Read-only. Use to choose specification_id for redis_create.",
-			InputSchema: objSchema(map[string]any{"version_id": strProp("Version UUID (from redis_versions); optional — defaults to latest.")}),
+			InputSchema: objSchema(map[string]any{
+				"version_id": strProp("Version UUID (from redis_versions); optional — defaults to latest."),
+				"zone":       strProp("Availability zone, name (ru.AZ-2) or UUID; optional — defaults to the configured region, else ru.AZ-2. The API needs a zone."),
+			}),
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster. Resolves version (latest), specification (by specification_id or cpu+ram), subnet. type STANDALONE (default) or MASTER_REPLICA. Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
+			Description: "Create a Managed Redis cluster. Resolves version (latest), subnet (as kafka_create) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram). type MASTER_REPLICA (default: a master and two replicas, all in the subnet's zone — Single-AZ; the API has rejected STANDALONE). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name. Required."),
 				"version_id":       strProp("Redis version UUID (from redis_versions). Optional; default = latest."),
@@ -695,8 +701,8 @@ func (s *Registry) registerTools() {
 				"ram":              intProp("RAM GB — with cpu."),
 				"storage_gb":       intProp("Disk size GB. Optional; default = spec minimum."),
 				"shards":           intProp("Shard count 1-8 (default 1)."),
-				"replicas":         intProp("Replica count (default 0)."),
-				"type":             strProp("STANDALONE (default) or MASTER_REPLICA."),
+				"replicas":         intProp("Hosts per shard, the master included — the API's replicas field (default 3 = a master and two replicas; MASTER_REPLICA takes at least 3)."),
+				"type":             strProp("MASTER_REPLICA (default) or STANDALONE (rejected by the API so far)."),
 				"description":      strProp("Optional description."),
 				"confirmed":        confirmedProp(),
 			}, "name"),
@@ -1103,10 +1109,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "audit_events",
-			Description: "Audit Logging — who did what in the project (read-only): control-plane events (create/delete/modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource, time. Use to answer 'what happened on the stand / who deleted X / recent changes'. Paginated via next_page_token. NB: needs audit logging enabled on the project ('project not found' otherwise).",
+			Description: "Audit Logging — who did what in the project (read-only): control-plane events (create/delete/modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource, time. Use to answer 'what happened on the stand / who deleted X / recent changes'. Paginated via next_page_token. NB: access to audit logs is enabled by Cloud.ru support; until then the API answers 401 and the tool says audit is not enabled for the project.",
 			InputSchema: objSchema(map[string]any{
 				"since":      strProp("Look-back window: 30m, 1h, 3h… (default 1h; keep short — API recommends ≤30min for chatty projects)."),
-				"page_size":  intProp("Max events per page (default 100)."),
+				"page_size":  intProp("Max events per page (default 100, at most 500)."),
 				"page_token": strProp("Continuation token from a previous call's next_page_token (optional)."),
 			}),
 		},
@@ -1202,7 +1208,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_get",
-			Description: "Download an S3 object. Returns text inline (utf-8) when small & valid, else base64. Read-only.",
+			Description: "Download an S3 object up to 10 MiB (a larger one is refused with USAGE: use an S3 client or the console). Returns text inline (utf-8) when small & valid, else base64. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"bucket": strProp("Bucket name. Required."),
 				"key":    strProp("Object key. Required."),
@@ -1233,8 +1239,8 @@ func (s *Registry) registerTools() {
 			Name:        "s3_bucket_create",
 			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"bucket":    strProp("New bucket name (globally-unique, lowercase). Required."),
-				"region":    strProp("Region (optional; defaults to the configured S3 region, e.g. ru-central-1)."),
+				"bucket":    strProp("New bucket name: 3-63 lowercase letters, digits, dots and hyphens, unique within the tenant. Required."),
+				"region":    strProp("Region: only ru-central-1 is accepted (the API answers 'unexpected region' otherwise). Optional; default: the configured S3 region."),
 				"confirmed": confirmedProp(),
 			}, "bucket"),
 		},
@@ -1642,11 +1648,12 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 
 	// Resolve a subnet + security group for the network interface. Omitting the
 	// interfaces section makes the create API 500 — the request MUST carry an
-	// explicit interface (subnet + SG). Prefer a subnet/SG in the target zone.
-	// The subnet/SG availability_zone_id is empty in the API — match by NAME
-	// containing the zone name (e.g. "ru.AZ-2"), mirroring deploy_apply. Picking
-	// by the (empty) az id defaults to the FIRST SG, which is usually the WRONG
-	// zone (e.g. an AZ-1 SG on an AZ-2 VM) → the VM fails to boot (error_creating).
+	// explicit interface (subnet + SG). The subnet and the group are the
+	// zone's (by the nested availability_zone id, else by a name containing
+	// the zone name), as deploy picks them. A subnet or a group of another
+	// zone keeps the VM from booting (error_creating) while the boot FIP and
+	// the VM are billed, so a zone without them is refused here, before
+	// anything is created — CONFIG_INVALID, as deploy.
 	zoneName := ""
 	if zones, e := eng.Cloud.ListAvailabilityZones(ctx); e == nil {
 		for _, z := range zones {
@@ -1654,6 +1661,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				zoneName = z.Name
 				break
 			}
+		}
+		if err := provision.ClosedZoneError(zones, region); err != nil {
+			return errResult(err), true
 		}
 	}
 	subnets, err := eng.Cloud.ListSubnets(ctx, projectID)
@@ -1663,30 +1673,46 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	if len(subnets) == 0 {
 		return errResult(fmt.Errorf("no subnets in project — cannot attach a network interface")), true
 	}
-	subnetID := subnets[0].ID
-	if zoneName != "" {
-		for _, sn := range subnets {
-			if strings.Contains(sn.Name, zoneName) {
-				subnetID = sn.ID
-				break
+	// subnet_id as given; else the zone's main subnet, then a routed one
+	// (provision.PickSubnet, as deploy).
+	var subnet *provision.Subnet
+	subnetID := stringArg(args, "subnet_id")
+	if subnetID != "" {
+		for _, s := range subnets {
+			if s.ID == subnetID {
+				subnet = s
 			}
 		}
+	} else if i := provision.PickSubnet(subnets, region, zoneName); i >= 0 {
+		subnet = subnets[i]
+		subnetID = subnet.ID
+	} else {
+		return errResult(engine.NoSubnetError(zoneName, region)), true
 	}
-	if v := stringArg(args, "subnet_id"); v != "" {
-		subnetID = v
+	var netWarnings []string
+	gateway := ""
+	if subnet != nil {
+		gateway = subnet.DefaultGateway
+		if subnet.NoDNS() {
+			netWarnings = append(netWarnings, "subnet "+subnet.Name+" has no DNS servers: the VM will not resolve names — Docker and images will not download; add a DNS server to the subnet in the Cloud.ru console")
+		}
 	}
+	// The zone's default group (provision.PickSecurityGroup, as deploy).
+	// Groups only in other zones: refused, as the subnet. When the list
+	// fails or is empty, the VM goes without a group, as before.
 	var sgIDs []string
 	if sgs, e := eng.Cloud.ListSecurityGroups(ctx, projectID); e == nil && len(sgs) > 0 {
-		chosen := sgs[0].ID
-		if zoneName != "" {
-			for _, g := range sgs {
-				if strings.Contains(g.Name, zoneName) {
-					chosen = g.ID
-					break
-				}
-			}
+		i := provision.PickSecurityGroup(sgs, region, zoneName)
+		if i < 0 {
+			return errResult(engine.NoSecurityGroupError(zoneName, region)), true
 		}
-		sgIDs = []string{chosen}
+		chosen := sgs[i]
+		sgIDs = []string{chosen.ID}
+		// What a new VM needs from its group (ingress TCP 22, system
+		// egress): in the answer, the VM is created either way.
+		if rules, re := provision.GroupRules(ctx, eng.Cloud, chosen); re == nil {
+			netWarnings = append(netWarnings, provision.CheckVMGroupRules(rules, gateway).Warnings(chosen.Name)...)
+		}
 	}
 
 	// no_public_ip → a private VM: interface type "regular", no floating IP.
@@ -1716,7 +1742,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		ImageMetadata:      imgMeta,
 		Disks: []provision.DiskReq{
 			{
-				Name:         vmName + "-boot",
+				Name:         provision.FitName(vmName, "-boot"),
 				Size:         diskSize,
 				DiskTypeName: "SSD",
 			},
@@ -1890,6 +1916,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					"disk_gb":  diskSize,
 					"message":  msg,
 				}
+				if len(netWarnings) > 0 {
+					res["warnings"] = netWarnings
+				}
 				if opened != nil {
 					res["ports"] = opened
 				}
@@ -1976,7 +2005,7 @@ func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string,
 		Follow:  false,
 	}
 	if err := eng.Logs(ctx, opts); err != nil {
-		return buf.String() + "\n" + err.Error(), true
+		return errAnswer(err, map[string]any{"log": buf.String()}), true
 	}
 	return buf.String(), false
 }
@@ -2046,7 +2075,18 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	// a delete; "no VM matching" left the record for status to show forever.
 	alreadyGone := false
 	if target == nil {
-		if vmID != "" && recordedVM(statePath, vmID) {
+		recorded, recProject := false, ""
+		if vmID != "" {
+			recorded, recProject = recordedVM(statePath, vmID)
+		}
+		// A record of another project: GET /vms/{id} carries no project, so
+		// its 404 does not prove the VM is gone (ревью Fable на #81).
+		if recorded && recProject != "" && eng.Config.ProjectID != "" && recProject != eng.Config.ProjectID {
+			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("VM %s is recorded for another project than the active one; nothing was deleted and its record is kept", vmID),
+				"Switch to the record's project ('evo project use <id>' or CLOUDRU_PROJECT_ID) and call destroy again.")), true
+		}
+		if recorded {
 			_, gerr := eng.Cloud.GetVM(ctx, vmID)
 			var ce *clierrors.CLIError
 			switch {
@@ -2090,11 +2130,19 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	}
 	if releaseIP && fipRec.FloatingIPID == "" && fipRec.VMIP == "" && target.Name != "" {
 		if fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID); e == nil {
-			var named []*provision.FloatingIP
+			// Named exactly for this VM (not "web-2" for "web"); of several
+			// such, the one the answer binds to this VM.
+			var named, bound []*provision.FloatingIP
 			for _, f := range fips {
-				if strings.HasPrefix(f.Name, "fip-"+target.Name+"-") {
+				if provision.IsBootFIPOf(f.Name, target.Name) {
 					named = append(named, f)
+					if f.BoundTo(target.ID) {
+						bound = append(bound, f)
+					}
 				}
+			}
+			if len(named) != 1 {
+				named = bound
 			}
 			if len(named) == 1 {
 				fipRec.FloatingIPID, fipRec.VMIP = named[0].ID, named[0].IPAddress
@@ -2203,17 +2251,19 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 }
 
 // recordedVM reports whether the local state has a deployment of vmID.
-func recordedVM(statePath, vmID string) bool {
+// recordedVM reports whether the state records the VM, and the project of
+// its record ("" when the record has none).
+func recordedVM(statePath, vmID string) (bool, string) {
 	sf, err := state.Read(statePath)
 	if err != nil {
-		return false
+		return false, ""
 	}
 	for _, d := range sf.Deployments {
 		if d.VMID == vmID {
-			return true
+			return true, d.ProjectID
 		}
 	}
-	return false
+	return false, ""
 }
 
 func (s *Registry) handleListZones(ctx context.Context, args map[string]any) (string, bool) {

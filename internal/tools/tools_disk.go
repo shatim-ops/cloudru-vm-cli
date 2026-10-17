@@ -79,6 +79,9 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	if name == "" || sizeGB <= 0 {
 		return usageResult(fmt.Errorf("'name' and 'size_gb' (>0) are required")), true
 	}
+	if sizeGB > provision.MaxDiskGB {
+		return usageResult(fmt.Errorf("size_gb %d is over the disk maximum of %d GB", sizeGB, provision.MaxDiskGB)), true
+	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return errResult(err), true
@@ -222,6 +225,9 @@ func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (s
 	sizeGB := intArg(args, "size_gb", 0)
 	if diskID == "" || sizeGB <= 0 {
 		return usageResult(fmt.Errorf("'disk_id' and 'size_gb' (>0, larger than current) are required")), true
+	}
+	if sizeGB > provision.MaxDiskGB {
+		return usageResult(fmt.Errorf("size_gb %d is over the disk maximum of %d GB", sizeGB, provision.MaxDiskGB)), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

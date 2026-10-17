@@ -66,6 +66,14 @@ func (e *Engine) CheckCloud(ctx context.Context, rec *state.DeploymentRecord) Cl
 	if e.Auth == nil || e.Cloud == nil {
 		return notChecked(fmt.Errorf("%s", i18n.T("no Cloud.ru client", "нет клиента Cloud.ru")))
 	}
+	// GET /vms/{id} carries no project: for a record of another project a
+	// 404 would read as "deleted outside evo" while the VM lives there
+	// (ревью Fable на #81) — and destroy by vm_id would then drop the
+	// record and release the floating IP of a live VM.
+	if rec.ProjectID != "" && e.Config.ProjectID != "" && rec.ProjectID != e.Config.ProjectID {
+		return notChecked(clerrors.New(clerrors.CodeConfigInvalid,
+			i18n.T("the record is from another project than the active one", "запись из другого проекта, чем активный"), ""))
+	}
 	timeout := e.timings().StatusRefreshTimeout
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

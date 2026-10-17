@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -453,7 +452,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		ImageMetadata:      imgMeta,
 		Disks: []provision.DiskReq{
 			{
-				Name:         vmName + "-boot",
+				Name:         provision.FitName(vmName, "-boot"),
 				Size:         diskSize,
 				DiskTypeName: diskType.Name,
 			},
@@ -864,7 +863,7 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 // a quota rejection: the IP would fail after boot too, and the VM would be
 // billed with no way in, so that is an error before anything is created.
 func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName string) (*provision.FloatingIP, error) {
-	name := "fip-" + vmName + "-" + strconv.FormatInt(time.Now().Unix(), 36)
+	name := provision.BootFIPName(vmName, time.Now())
 	fip, err := e.Cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
 		Name:               name,
 		ProjectID:          projectID,

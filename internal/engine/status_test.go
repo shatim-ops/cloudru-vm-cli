@@ -207,3 +207,19 @@ func TestStatus_JSONCloudFields(t *testing.T) {
 		})
 	}
 }
+
+// Запись другого проекта: GET /vms/{id} проекта не несёт, и его 404 не
+// значит «удалена» — облако не спрашивается (ревью Fable на #81).
+func TestStatus_RecordOfAnotherProject(t *testing.T) {
+	cloud := &mockCloudAPI{getVMFn: func(context.Context, string) (*provision.VM, error) {
+		t.Error("GET for a record of another project")
+		return nil, clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
+	}}
+	eng, out, _, _ := statusEngine(t, cloud, output.ModePlain)
+	eng.Config.ProjectID = "p-active"
+	rec := &state.DeploymentRecord{VMID: "vm-1", ProjectID: "p-other"}
+	c := eng.CheckCloud(context.Background(), rec)
+	if c.Checked || c.NotFound || c.Reason != clerrors.CodeConfigInvalid || !strings.Contains(c.Error, "another project") {
+		t.Errorf("check: %+v (%s)", c, out)
+	}
+}

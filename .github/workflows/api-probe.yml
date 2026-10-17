@@ -4,13 +4,16 @@ name: api-probe
 # спецификациями (docs/internal/api-contract.md) не смогла решить по
 # документации, — форму ответов IAM и аудита, поведение limit=200, имена
 # параметров camelCase/snake_case, вложенные поля зоны и IP, каталог образов,
-# расчёт цены и каталог плагинов mk8s. Ничего не создаёт и не удаляет: всё —
+# расчёт цены, каталог плагинов mk8s, списки и спецификации Kafka/Redis,
+# группы узлов mk8s, диски evo без ВМ, признаки подсетей, SNAT-шлюзы и их
+# адреса, имена claims токена. Ничего не создаёт и не удаляет: всё —
 # GET, кроме POST price-calculation, который только считает стоимость.
 #
 # Репозиторий публичный, лог виден всем: печатаются только коды HTTP, имена
-# полей и количества — никаких значений, ID, адресов и токенов. Исключение —
+# полей, количества и признаки — никаких значений, ID, адресов и токенов. Исключение —
 # имена образов общего каталога Cloud.ru: они публичны (видны любому
-# клиенту); образы проекта — только счётчики.
+# клиенту); образы проекта — только счётчики. И ещё текст ошибки API
+# (message, grpc-message) — до 160 символов, ID в нём замаскированы.
 #
 # Секреты — те же, что у cloud-e2e: CLOUDRU_KEY_ID, CLOUDRU_SECRET,
 # CLOUDRU_PROJECT_ID.
@@ -55,11 +58,14 @@ jobs:
 
           # probe NAME URL JQ — печатает код HTTP и результат JQ по телу
           # (только имена полей и числа).
+          # Лог публичный: в тексте ошибок API могут быть ID и адреса —
+          # всё, что печатают пробы, проходит через redact.
+          redact() { sed -E 's/[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g'; }
           probe() {
             local name=$1 url=$2 filter=$3 r c b
             r=$(curl -sS -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "$url" || true)
             c=${r##*$'\n'}; b=${r%$'\n'*}
-            printf '%-28s http=%s %s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c "$filter" 2>/dev/null || echo 'не JSON')"
+            printf '%-28s http=%s %s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c "$filter" 2>/dev/null || echo 'не JSON')" | redact
           }
           shape='{top: keys, total: (.total // null), n: ([.[] | arrays | length] | first // null)}'
           item='[.[] | arrays | .[0] // empty | keys] | first // null'
@@ -87,7 +93,7 @@ jobs:
           probe fip_states            "$C/floating-ips?$P&limit=100" '[.[] | arrays | .[] | .state] | unique'
           probe vm_states             "$C/vms?$P&limit=100" '[.[] | arrays | .[] | .status // .state] | unique'
 
-          echo "== группы безопасности: SSH и исходящий трафик (имена и признаки, без ID)"
+          echo "== группы безопасности: SSH и исходящий трафик (зона и признаки, без имён и ID)"
           # deploy ждёт SSH (tcp 22) и выход ВМ к метаданным и DHCP (документация
           # «Группы безопасности», ограничения с 07.2026). e2e 16.10: ВМ активна,
           # SSH нет — какая из групп это допускает.
@@ -97,7 +103,7 @@ jobs:
           sgs=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/security-groups?$P&limit=100" || true)
           for id in $(printf '%s' "$sgs" | jq -r '[.[] | arrays | .[] | .id] | .[]' 2>/dev/null); do
             echo "::add-mask::$id"
-            name=$(printf '%s' "$sgs" | jq -r --arg id "$id" '[.[] | arrays | .[] | select(.id == $id) | ((.name // "?") + " / " + ((.availability_zone.name // .availability_zone // "?") | tostring))] | first')
+            name=$(printf '%s' "$sgs" | jq -r --arg id "$id" '[.[] | arrays | .[] | select(.id == $id) | ("zone " + ((.availability_zone.name // .availability_zone // "?") | tostring) + ", default=" + ((.default // false) | tostring) + ", ssh-access-name=" + (((.name // "") | ascii_downcase | startswith("ssh-access_")) | tostring))] | first')
             rules=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/security-groups/$id/rules?limit=100" || true)
             printf '%-40s %s\n' "$name" "$(printf '%s' "$rules" | jq -c "$covers"' [.[] | arrays | .[]] as $r | {
               rules: ($r | length),
@@ -107,6 +113,32 @@ jobs:
               egress_world: any($r[]; .direction == "egress" and ((.remote_ip_prefix // "0.0.0.0/0") == "0.0.0.0/0")),
               egress_metadata: any($r[]; .direction == "egress" and ((.remote_ip_prefix // "0.0.0.0/0") | test("^(0\\.0\\.0\\.0/0|169\\.254\\.169\\.254/32)$")))}' 2>/dev/null || echo 'не JSON')"
           done
+
+          # Реестр CMP-11 / P-D1: удаляет ли destroy (DELETE ВМ без тела)
+          # загрузочный диск. Только признаки и счётчики, без имён и ID.
+          echo "== диски: остались ли без ВМ диски evo (evo-…, …-boot)"
+          probe disks_by_attachment   "$C/disks?$P&limit=100" '[.[] | arrays | .[] | {evo: ((.name // "") | startswith("evo-")), boot_name: ((.name // "") | endswith("-boot")), bootable: .bootable, attached: (((.vms // .attachments // []) | length) > 0), state}] | group_by(.) | map(.[0] + {n: length})'
+          probe disks_evo_detached    "$C/disks?$P&limit=100" '{total: (.total // null), evo_detached: ([.[] | arrays | .[] | select(((.name // "") | startswith("evo-")) and (((.vms // .attachments // []) | length) == 0))] | length)}'
+
+          # Выбор подсети evo (default → routed_network) и предупреждение о
+          # подсети без DNS (реестр NET-5, OPS-3; P-D4). Имена зон публичны.
+          echo "== подсети: признаки default, routed_network, dns_servers по зонам"
+          probe subnet_flags          "$C/subnets?$P&limit=100" '[.[] | arrays | .[] | {zone: (.availability_zone.name // "?"), has_default: has("default"), default: .default, has_routed: has("routed_network"), routed: .routed_network, has_dns: has("dns_servers"), dns_n: ((.dns_servers // []) | length), type: (.type // null), state: (.state // null), default_name: ((.name // "") | test("^Default"))}] | group_by(.) | map(.[0] + {n: length})'
+
+          # Адрес SNAT-шлюза в списке FIP (реестр NET-6, P-D5) и шлюзы по зонам
+          # (compute /api/v1/nat-gateways — SNAT Evolution, документация «Шлюзы»).
+          echo "== SNAT: шлюзы по зонам и их адреса в списке floating IP"
+          probe nat_by_zone           "$C/nat-gateways?$P&limit=100" '{total: (.total // null), zones: ([.[] | arrays | .[] | (.availability_zone.name // "?")] | group_by(.) | map({(.[0]): length}) | add), types: ([.[] | arrays | .[] | (.nat_type // "?")] | unique), states: ([.[] | arrays | .[] | (.state // "?")] | unique), with_fip: ([.[] | arrays | .[] | select(.floating_ip != null)] | length)}'
+          probe fip_nat_flags         "$C/floating-ips?$P&limit=100" '[.[] | arrays | .[] | {state, has_nat_key: has("nat_gateway"), nat: (.nat_gateway != null), iface: (.interface != null), vm: (.vm != null)}] | group_by(.) | map(.[0] + {n: length})'
+
+          # Есть ли в токене SA claims project_id и customer_id (платформа H1):
+          # только имена ключей и признаки, без значений.
+          echo "== токен: имена claims (без значений)"
+          p=$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
+          while [ $(( ${#p} % 4 )) -ne 0 ]; do p="$p="; done
+          claims=$(printf '%s' "$p" | base64 -d 2>/dev/null || true)
+          echo "token_claims: $(printf '%s' "$claims" | jq -c --arg p "$PROJECT" '{keys: keys, project_id_matches: (.project_id == $p), has_customer_id: has("customer_id"), ttl_s: (if (.exp | type) == "number" and (.iat | type) == "number" then .exp - .iat else null end)}' 2>/dev/null || echo 'не JWT')"
+          unset p claims
 
           echo "== grpc-gateway: projectId (спецификация) против project_id (сейчас)"
           probe vpc_snake             "https://vpc.api.cloud.ru/v1/vpcs?project_id=$PROJECT" "$shape"
@@ -119,6 +151,8 @@ jobs:
           end=$(date -u +%Y-%m-%dT%H:%M:%SZ); start=$(date -u -d '-3 hours' +%Y-%m-%dT%H:%M:%SZ)
           probe audit_limit           "https://audit.api.cloud.ru/events/list/$PROJECT?start=$start&end=$end&limit=5" "$shape"
           probe audit_pagesize        "https://audit.api.cloud.ru/events/list/$PROJECT?start=$start&end=$end&pageSize=5" "$shape"
+          # evo шлёт limit (по умолчанию 100) и на 401 отвечает «аудит не включён».
+          probe audit_limit100        "https://audit.api.cloud.ru/events/list/$PROJECT?start=$start&end=$end&limit=100" '{top: (if type == "object" then keys else type end), code: (.code // null), message: ((.message // null) | if . == null then null else tostring | .[0:160] end)}'
 
           echo "== IAM и Organization"
           probe iam_service_accounts  "https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId=$PROJECT" "$shape"
@@ -135,6 +169,12 @@ jobs:
           probe images_ru_os          "$C/images?limit=100" "[.items[] | select(.project_id == null) | select(((.name // \"\") + \" \" + (.display_name // \"\")) | test(\"$ru\"; \"i\")) | {name, display_name, type, min_disk, need_gpu: ((.min_gpu // 0) > 0), zones: [.availability_zones[]? | select(.enabled) | .availability_zone_name], fields: [.image_metadata[]?.field_type]}]"
           probe images_marketplace    "$C/images?type=marketplace&limit=100" '{total, items: [.items[] | select(.project_id == null) | {name, display_name}]}'
           probe images_public         "$C/images?type=public&limit=100" '{total, names: [.items[] | select(.project_id == null) | .name]}'
+          # e2e 17.10, ru.AZ-1: создание ВМ из ubuntu-22.04 — 422 wrong_az
+          # («Availability zone with this id is not found»), floating IP той
+          # же зоны создан. Проверяем, готов ли образ в зоне и что видно у зон.
+          probe zones_items           "$C/availability-zones" '[(.items? // .)[] | {name, enabled, default, keys: keys}]'
+          probe images_ubuntu_zones   "$C/images?limit=200" '[.items[] | select(.project_id == null) | select((.name // "") | test("ubuntu"; "i")) | {name, zones: [.availability_zones[]? | {z: .availability_zone_name, state, enabled}]}]'
+          probe fip_e2e_states        "$C/floating-ips?$P&limit=100" '[.[] | arrays | .[] | select((.name // "") | startswith("fip-evo-e2e-")) | {state, zone: (.availability_zone.name // .availability_zone_name // null), iface: (.interface != null), keys: keys}]'
           probe images_private_proj   "$C/images?$P&type=private&limit=100" "{total, ru_os: ([.items[] | select(((.name // \"\") + \" \" + (.display_name // \"\")) | test(\"$ru\"; \"i\"))] | length)}"
           probe images_project_types  "$C/images?$P&limit=100" '{total, types: ([.items[].type] | group_by(.) | map({(.[0]): length}) | add)}'
 
@@ -177,7 +217,7 @@ jobs:
             r=$(jq -n --arg f "$flavor" --arg i "$image" --arg d "$disk" '{total_count: 1, flavor_id: $f, disks: [{disk_type_id: $d, size: 20}], floating_ips: [{floating_ip_action: "new", count: 1}]} + (if $i == "" then {} else {image_id: $i} end)' |
               curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- -w '\n%{http_code}' "$C/projects/$PROJECT/price-calculation" || true)
             c=${r##*$'\n'}; b=${r%$'\n'*}
-            printf '%-28s http=%s %s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c 'if type == "object" then {keys: keys, image_charged: ((.image // 0) > 0), mkp_image_charged: ((.mkp_image // 0) > 0), custom_image_charged: ((.custom_image_size // 0) > 0), total_positive: ((.total_price_month // 0) > 0), detail: (.detail | if type == "array" then [.[] | .msg? // .] elif . == null then null else (tostring | .[0:160]) end), message: ((.message // null) | if . == null then null else tostring | .[0:160] end)} else {raw: (tostring | .[0:160])} end' 2>/dev/null || printf 'не JSON: %.160s' "$b")"
+            printf '%-28s http=%s %s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c 'if type == "object" then {keys: keys, image_charged: ((.image // 0) > 0), mkp_image_charged: ((.mkp_image // 0) > 0), custom_image_charged: ((.custom_image_size // 0) > 0), total_positive: ((.total_price_month // 0) > 0), detail: (.detail | if type == "array" then [.[] | .msg? // .] elif . == null then null else (tostring | .[0:160]) end), message: ((.message // null) | if . == null then null else tostring | .[0:160] end)} else {raw: (tostring | .[0:160])} end' 2>/dev/null || printf 'не JSON: %.160s' "$b")" | redact
           }
           [ -z "$flavor" ] || echo "::add-mask::$flavor"
           [ -z "$disk" ] || echo "::add-mask::$disk"
@@ -217,3 +257,63 @@ jobs:
           probe addon_raw_traefik     "$M/v3/addons/traefik?projectId=$PROJECT" "[$rel | .[0:2][] | {appVersion, addonVersion, addonNamespace, mode}]"
           probe cluster_addons        "$M/v3/clusterAddons?projectId=$PROJECT" "{top: (if type == \"object\" then keys else type end), n: ((.clusterAddons // .items // []) | length)}"
           probe clusters_count        "$M/v3/clusters?projectId=$PROJECT" '{n: ((.clusters // .items // []) | length)}'
+
+          # probeh NAME URL JQ — как probe, плюс заголовок grpc-message: у
+          # grpc-gateway (dbaas, mk8s) ответ 4xx бывает с пустым телом, а
+          # причина — только в нём. Сообщения API — до 160 символов; ID в них
+          # замаскированы (::add-mask:: выше по ходу).
+          probeh() {
+            local name=$1 url=$2 filter=$3 r c b h g
+            h=$(mktemp)
+            r=$(curl -sS -D "$h" -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "$url" || true)
+            c=${r##*$'\n'}; b=${r%$'\n'*}
+            g=$(awk 'tolower($1) == "grpc-message:" { sub(/^[^:]*:[ ]*/, ""); sub(/\r$/, ""); print; exit }' "$h" || true)
+            rm -f "$h"
+            printf '%-28s http=%s %s grpc=%.160s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c "$filter" 2>/dev/null || echo 'не JSON')" "${g:--}" | redact
+          }
+          msg='message: ((.message // null) | if . == null then null else tostring | .[0:160] end)'
+          dlist="if type == \"object\" then {top: keys, n: ((.clusters // null) | if . == null then null else length end), next: ((.next_page_token // \"\") != \"\"), $msg} else {type: type} end"
+          dspecs="if type == \"object\" then {top: keys, n: ((.specifications // null) | if . == null then null else length end), item: ((.specifications // [])[0] // null | if . == null then null else keys end), $msg} else {type: type} end"
+          dvers='{n: ((.versions // []) | length), item: ((.versions // [])[0] // null | if . == null then null else keys end)}'
+
+          # cloud-e2e readonly #23: kafka_list, kafka_specs, redis_list,
+          # redis_specs — API_ERROR (статус не записан), *_versions — 200.
+          # Было: список с page_size=1000, спецификации без
+          # availability_zone_id (профиль без --region). Стало: page_size=100
+          # + next_page_token, зона — регион или ru.AZ-2 (evo ≥ ветки tails).
+          echo "== dbaas: Kafka и Redis — список кластеров и спецификации, как их зовёт evo"
+          az=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/availability-zones" | jq -r '[(.items? // .)[] | select(.name == "ru.AZ-2") | .id][0] // empty' 2>/dev/null || true)
+          [ -z "$az" ] || echo "::add-mask::$az"
+          echo "zone ru.AZ-2: $([ -n "$az" ] && echo найдена || echo 'не найдена')"
+          for svc in kafka redis; do
+            D="https://$svc.api.cloud.ru/v1"
+            pt=""; [ "$svc" = kafka ] && pt="product_type=kafka&"
+            probeh "${svc}_versions"            "$D/versions?${pt%&}" "$dvers"
+            ver=$(curl -sS -H "Authorization: Bearer $TOKEN" "$D/versions?${pt%&}" | jq -r '(.versions // [])[-1].id // empty' 2>/dev/null || true)
+            [ -z "$ver" ] || echo "::add-mask::$ver"
+            probeh "${svc}_list_ps1000"         "$D/clusters?${pt}$P&page_size=1000" "$dlist"
+            probeh "${svc}_list_ps100"          "$D/clusters?${pt}$P&page_size=100" "$dlist"
+            probeh "${svc}_list_ps10"           "$D/clusters?${pt}$P&page_size=10" "$dlist"
+            probeh "${svc}_list_nopagesize"     "$D/clusters?${pt}$P" "$dlist"
+            probeh "${svc}_list_camel"          "$D/clusters?${pt}projectId=$PROJECT&page_size=100" "$dlist"
+            probeh "${svc}_list_item_keys"      "$D/clusters?${pt}$P&page_size=100" '[(.clusters // [])[0] // empty | keys] | first // null'
+            probeh "${svc}_specs_noaz"          "$D/specifications?version_id=$ver" "$dspecs"
+            probeh "${svc}_specs_az"            "$D/specifications?version_id=$ver&availability_zone_id=$az" "$dspecs"
+            probeh "${svc}_specs_az_nover"      "$D/specifications?availability_zone_id=$az" "$dspecs"
+          done
+          probeh kafka_list_noproduct         "https://kafka.api.cloud.ru/v1/clusters?$P&page_size=100" "$dlist"
+
+          # k8s_nodepools без cluster_id звал GET /v3/nodePools без параметров
+          # (API_ERROR в readonly #23); в спецификации clusterId — required.
+          echo "== mk8s: группы узлов без кластера и с кластером"
+          nlist='if type == "object" then {top: keys, n: ((.nodePools // null) | if . == null then null else length end), next: ((.nextPageToken // "") != ""), item: ((.nodePools // [])[0] // null | if . == null then null else keys end), '"$msg"'} else {type: type} end'
+          probeh nodepools_no_params          "$M/v3/nodePools" "$nlist"
+          probeh nodepools_project_only       "$M/v3/nodePools?projectId=$PROJECT" "$nlist"
+          cid=$(curl -sS -H "Authorization: Bearer $TOKEN" "$M/v3/clusters?projectId=$PROJECT" | jq -r '(.clusters // .items // [])[0].id // empty' 2>/dev/null || true)
+          if [ -n "$cid" ]; then
+            echo "::add-mask::$cid"
+            probeh nodepools_cluster          "$M/v3/nodePools?clusterId=$cid&pageSize=100" "$nlist"
+          else
+            echo "nodepools_cluster: кластеров в проекте нет — запрос с clusterId пропущен"
+          fi
+          probeh nodepools_unknown_cluster    "$M/v3/nodePools?clusterId=00000000-0000-4000-8000-000000000000" "$nlist"

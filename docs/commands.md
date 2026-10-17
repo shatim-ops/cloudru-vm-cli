@@ -763,7 +763,7 @@ evo disk create <name> [flags]
       --attach-to string   ВМ (имя или UUID): диск создаётся в её зоне и сразу к ней подключается
       --disk-type string   Тип диска: имя или UUID (список: evo disk types). По умолчанию — SSD
   -h, --help               Справка по create
-      --size-gb int        Размер диска, ГБ (обязательный)
+      --size-gb int        Размер диска, ГБ (обязательный; не больше 16384)
       --zone string        Зона доступности: имя или UUID, вместо --attach-to (по умолчанию — зона из --region или профиля)
 ```
 
@@ -928,7 +928,7 @@ evo disk list [flags]
 ```text
 Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ).
 
-Увеличить диск на месте, до 65536 ГБ. Только рост: уменьшение и диски бесплатного уровня облако отклоняет (бесплатный загрузочный диск не увеличить — пересоздайте ВМ с платным диском). После увеличения расширьте раздел и файловую систему на ВМ (growpart и resize2fs).
+Увеличить диск на месте, до 16384 ГБ (16 ТБ). Только рост: уменьшение и диски бесплатного уровня облако отклоняет (бесплатный загрузочный диск не увеличить — пересоздайте ВМ с платным диском). После увеличения расширьте раздел и файловую систему на ВМ (growpart и resize2fs).
 
 Вызывает инструмент disk_resize (подробнее: 'evo tools describe disk_resize').
 
@@ -943,7 +943,7 @@ evo disk resize <disk-id> [flags]
 
 ```
   -h, --help          Справка по resize
-      --size-gb int   Новый размер, ГБ: больше текущего, не больше 65536
+      --size-gb int   Новый размер, ГБ: больше текущего, не больше 16384
 ```
 
 ### Options inherited from parent commands
@@ -1199,11 +1199,12 @@ evo image list [query] [flags]
 Создать .evo.yaml для этого проекта.
 
 Зона доступности и загрузочный образ берутся из API Cloud.ru (нужен ключ
-доступа). На терминале их выбирают из нумерованного списка. ru.AZ-2 стоит
-первой и выбрана по умолчанию (15.10.2026 в ru.AZ-1 ВМ не создавались); с
---non-interactive или без терминала берутся ru.AZ-2 (если её нет — первая
-зона) и самый новый обычный образ Ubuntu (если его нет — Debian), выбор
-печатается. --image задаёт образ по имени (регистр не важен) или UUID: имя
+доступа). На терминале их выбирают из нумерованного списка. Первыми идут
+зоны, где у проекта есть подсеть (в другую deploy ВМ не подключит; в новом
+проекте подсеть есть только в ru.AZ-1): ru.AZ-2, если подсеть есть в ней
+(15.10.2026 в ru.AZ-1 ВМ не создавались), иначе зона основной подсети
+проекта. С --non-interactive или без терминала берутся первая зона и самый
+новый обычный образ Ubuntu (если его нет — Debian), выбор печатается. --image задаёт образ по имени (регистр не важен) или UUID: имя
 пишется в .evo.yaml так, как в каталоге (image:), UUID — как image_id:.
 deploy нужен Ubuntu или Debian: образы Astra Linux, Альт и РЕД ОС
 отклоняются (ВМ из них создаёт evo vm create).
@@ -1226,7 +1227,7 @@ evo init [flags]
 ```
   -h, --help              Справка по init
       --image string      Загрузочный образ по имени или UUID (evo image list) вместо самого нового Ubuntu
-      --non-interactive   Без вопросов взять ru.AZ-2 (если её нет — первую зону) и предпочтительный образ
+      --non-interactive   Без вопросов взять первую зону (ru.AZ-2, если в ней есть подсеть проекта) и предпочтительный образ
 ```
 
 ### Options inherited from parent commands
@@ -1281,7 +1282,7 @@ evo k8s [flags]
 * [evo k8s addon-versions](#evo-k8s-addon-versions)	 - Версии плагина: режим поддержки, требования к кластеру, схема настроек
 * [evo k8s addons](#evo-k8s-addons)	 - Каталог плагинов Kubernetes: поиск по имени и описанию, категория, платность
 * [evo k8s apply](#evo-k8s-apply)	 - Применить манифест Kubernetes (как kubectl apply -f -)
-* [evo k8s create](#evo-k8s-create)	 - Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут)
+* [evo k8s create](#evo-k8s-create)	 - Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут)
 * [evo k8s delete](#evo-k8s-delete)	 - Удалить кластер Managed Kubernetes (асинхронно)
 * [evo k8s get](#evo-k8s-get)	 - Кластер Managed Kubernetes по ID
 * [evo k8s helm](#evo-k8s-helm)	 - Helm в кластере: install, upgrade, uninstall, list, status
@@ -1317,13 +1318,13 @@ evo k8s add-addon <cluster-id> <name> [flags]
 
 ```
   evo k8s add-addon <cluster-id> cert-manager --dry-run
-  evo k8s add-addon <cluster-id> cert-manager --version v1.14.0 --config settings.json
+  evo k8s add-addon <cluster-id> cert-manager --config settings.json
 ```
 
 ### Options
 
 ```
-      --config string         A file with the value ('-' reads stdin until EOF: Ctrl-D on a terminal). Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}} and {{clusterName}} in it. Default: the addon's defaults.
+      --config string         A file with the value ('-' reads stdin until EOF: Ctrl-D on a terminal). Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}}, {{clusterName}}, {{productInstanceID}}, {{nodeCIDR}} and {{serviceCIDR}} in it. Default: the API reuses the addon's last configuration in the cluster (the addon's defaults on a first install).
   -h, --help                  Справка по add-addon
       --resolve-mode string   What to do with objects of the addon already in the cluster (installed by hand): NONE keeps them, the install may then fail; OVERWRITE resets them to the recommended values. Default NONE.
       --version string        Release version: the app version from k8s_addon_versions. The API installs by app version and picks the addon_version itself, so an addon_version is accepted only when it is the newest of its app version. Default: newest ACTIVE.
@@ -1549,17 +1550,17 @@ evo k8s apply <cluster-id> [flags]
 
 ## evo k8s create
 
-Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут)
+Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут)
 
 ### Synopsis
 
 ```text
-Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, 10–20 минут).
+Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут).
 
 Вызывает инструмент k8s_create (подробнее: 'evo tools describe k8s_create').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in ~10-20 min (poll k8s_get). Accepts the same args as k8s_plan.
+STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in about 10 min (5-10 per the docs; poll k8s_get). Accepts the same args as k8s_plan.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -1895,7 +1896,7 @@ evo k8s list [flags]
 Вызывает инструмент k8s_nodepools (подробнее: 'evo tools describe k8s_nodepools').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-List node pools of a Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only.
+List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only. The API has no list across clusters: get cluster_id from k8s_list.
 ```
 
 ```
@@ -2320,7 +2321,7 @@ evo pg [flags]
 * [evo pg databases](#evo-pg-databases)	 - Базы данных кластера
 * [evo pg db-create](#evo-pg-db-create)	 - Создать базу данных
 * [evo pg db-delete](#evo-pg-db-delete)	 - Удалить базу данных
-* [evo pg delete](#evo-pg-delete)	 - Удалить кластер PostgreSQL вместе с данными (асинхронно)
+* [evo pg delete](#evo-pg-delete)	 - Удалить кластер PostgreSQL вместе с данными и всеми резервными копиями (асинхронно)
 * [evo pg get](#evo-pg-get)	 - Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние
 * [evo pg list](#evo-pg-list)	 - Кластеры Managed PostgreSQL проекта
 * [evo pg operation](#evo-pg-operation)	 - Состояние асинхронной операции PostgreSQL
@@ -2614,17 +2615,17 @@ evo pg db-delete <cluster-id> <name> [flags]
 
 ## evo pg delete
 
-Удалить кластер PostgreSQL вместе с данными (асинхронно)
+Удалить кластер PostgreSQL вместе с данными и всеми резервными копиями (асинхронно)
 
 ### Synopsis
 
 ```text
-Удалить кластер PostgreSQL вместе с данными (асинхронно).
+Удалить кластер PostgreSQL вместе с данными и всеми резервными копиями (асинхронно).
 
 Вызывает инструмент pg_delete (подробнее: 'evo tools describe pg_delete').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data. Mutation (async): requires confirmed=true after the user approves.
+Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). Mutation (async): requires confirmed=true after the user approves.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3161,7 +3162,7 @@ evo s3 [flags]
 * [evo s3 bucket-create](#evo-s3-bucket-create)	 - Создать бакет
 * [evo s3 bucket-delete](#evo-s3-bucket-delete)	 - Удалить пустой бакет
 * [evo s3 buckets](#evo-s3-buckets)	 - Бакеты Object Storage
-* [evo s3 get](#evo-s3-get)	 - Скачать объект (небольшой текст — как есть, остальное — в base64)
+* [evo s3 get](#evo-s3-get)	 - Скачать объект до 10 МиБ (небольшой текст — как есть, остальное — в base64; больший объект — через S3-клиент или консоль)
 * [evo s3 ls](#evo-s3-ls)	 - Объекты бакета: ключ, размер, время изменения
 * [evo s3 put](#evo-s3-put)	 - Загрузить объект (существующий ключ перезаписывается)
 * [evo s3 rm](#evo-s3-rm)	 - Удалить объект
@@ -3191,7 +3192,7 @@ evo s3 bucket-create <bucket> [flags]
 
 ```
   -h, --help               Справка по bucket-create
-      --s3-region string   Region (optional; defaults to the configured S3 region, e.g. ru-central-1).
+      --s3-region string   Region: only ru-central-1 is accepted (the API answers 'unexpected region' otherwise). Optional; default: the configured S3 region.
 ```
 
 ### Options inherited from parent commands
@@ -3305,17 +3306,17 @@ evo s3 buckets [flags]
 
 ## evo s3 get
 
-Скачать объект (небольшой текст — как есть, остальное — в base64)
+Скачать объект до 10 МиБ (небольшой текст — как есть, остальное — в base64; больший объект — через S3-клиент или консоль)
 
 ### Synopsis
 
 ```text
-Скачать объект (небольшой текст — как есть, остальное — в base64).
+Скачать объект до 10 МиБ (небольшой текст — как есть, остальное — в base64; больший объект — через S3-клиент или консоль).
 
 Вызывает инструмент s3_get (подробнее: 'evo tools describe s3_get').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Download an S3 object. Returns text inline (utf-8) when small & valid, else base64. Read-only.
+Download an S3 object up to 10 MiB (a larger one is refused with USAGE: use an S3 client or the console). Returns text inline (utf-8) when small & valid, else base64. Read-only.
 ```
 
 ```
@@ -4484,7 +4485,7 @@ evo vpc [flags]
 * [evo vpc create](#evo-vpc-create)	 - Создать VPC (асинхронно)
 * [evo vpc delete](#evo-vpc-delete)	 - Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы)
 * [evo vpc fip-attach](#evo-vpc-fip-attach)	 - Привязать свободный floating IP к основному интерфейсу ВМ
-* [evo vpc fip-release](#evo-vpc-fip-release)	 - Освободить floating IP (адрес, занятый ВМ, не освобождается)
+* [evo vpc fip-release](#evo-vpc-fip-release)	 - Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается)
 * [evo vpc fips](#evo-vpc-fips)	 - Floating IP: адрес, состояние, свободен ли
 * [evo vpc get](#evo-vpc-get)	 - VPC по ID: все сведения
 * [evo vpc list](#evo-vpc-list)	 - Список VPC проекта
@@ -4631,17 +4632,17 @@ evo vpc fip-attach <fip> [flags]
 
 ## evo vpc fip-release
 
-Освободить floating IP (адрес, занятый ВМ, не освобождается)
+Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается)
 
 ### Synopsis
 
 ```text
-Освободить floating IP (адрес, занятый ВМ, не освобождается).
+Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается).
 
 Вызывает инструмент release_floating_ip (подробнее: 'evo tools describe release_floating_ip').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first). Mutation: requires confirmed=true after the user approves.
+Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: nat_delete). Mutation: requires confirmed=true after the user approves.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```

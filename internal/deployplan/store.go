@@ -32,6 +32,9 @@ type FlavorSpec struct {
 	Name  string `json:"name"`
 	VCPUs int    `json:"vcpus"`
 	RAMGB int    `json:"ram_gb"`
+	// FreeTier: the flavor of the free tier — the API's zero price for it
+	// is the price, not a failure (QuoteVM).
+	FreeTier bool `json:"free_tier,omitempty"`
 }
 
 // RefSpec is an id+name reference (image, zone).

@@ -190,6 +190,14 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 	if con.interactive {
 		fmt.Fprintf(con.out, i18n.T("Configuring profile %q in %s\n", "Настройка профиля %q в %s\n"), name, config.Dir())
 	}
+	// No terminal and no flag at all: nothing to change. With a stored key
+	// this used to re-save the profile unchanged and answer «Профиль
+	// сохранён» with exit 0 — in CI a forgotten --secret-stdin went
+	// unnoticed (QA r4 Q11). --project-id or --region alone still update
+	// just them with the stored key.
+	if !con.interactive && !opts.secretStdin && opts.keyID == "" && opts.projectID == "" && opts.region == "" {
+		return errNeedKey()
+	}
 
 	// Key ID.
 	keyID := opts.keyID
@@ -230,9 +238,7 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 		secret = creds.Secret
 	}
 	if keyID == "" || secret == "" {
-		return clerrors.New(clerrors.CodeConfigInvalid, i18n.T("key ID and secret are required", "нужны Key ID и секрет"),
-			i18n.T("Run 'evo configure' in a terminal, or pass --key-id and --secret-stdin",
-				"Запустите 'evo configure' в терминале или передайте --key-id и --secret-stdin"))
+		return errNeedKey()
 	}
 
 	// Check the key with IAM itself: a cached token of the same key ID
@@ -273,6 +279,13 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 		printer.Hint(i18n.Tf("Use it with --profile %s or CLOUDRU_PROFILE=%s", "Выбирается флагом --profile %s или CLOUDRU_PROFILE=%s", name, name))
 	}
 	return nil
+}
+
+// errNeedKey is the error of a configure without a key to store.
+func errNeedKey() error {
+	return clerrors.New(clerrors.CodeConfigInvalid, i18n.T("key ID and secret are required", "нужны Key ID и секрет"),
+		i18n.T("Run 'evo configure' in a terminal, or pass --key-id and --secret-stdin (--project-id or --region alone change only them)",
+			"Запустите 'evo configure' в терминале или передайте --key-id и --secret-stdin (--project-id или --region без них меняют только проект или зону)"))
 }
 
 type orgProject struct {

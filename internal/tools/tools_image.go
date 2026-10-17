@@ -177,6 +177,9 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 	fipID, fipName := "", ""
 	for _, f := range fips {
 		if f.ID == fipRef || f.IPAddress == fipRef {
+			if f.OnNATGateway() {
+				return errResult(fmt.Errorf("floating IP %q belongs to a SNAT gateway and cannot be attached to a VM", fipRef)), true
+			}
 			fipID, fipName = f.ID, f.Name
 			break
 		}
@@ -212,7 +215,7 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 	// fall back to the address's existing name, then to the VM's.
 	name := fipName
 	if name == "" {
-		name = "fip-" + detail.Name
+		name = provision.FitName("fip-"+detail.Name, "")
 	}
 	res, err := eng.Cloud.AttachFloatingIP(ctx, fipID, pid, ifaceID, name)
 	if err != nil {

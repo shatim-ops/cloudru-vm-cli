@@ -59,6 +59,46 @@ func (previewCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskTyp
 	return []*provision.DiskType{{ID: "00000000-0000-0000-0000-0000000000e6", Name: "SSD"}}, nil
 }
 
+func (previewCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
+	return []*provision.Subnet{{ID: "00000000-0000-0000-0000-0000000000d1", Name: "Default_ru.AZ-1", AvailabilityZoneID: pvZone, Default: true}}, nil
+}
+func (previewCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return []*provision.SecurityGroup{{ID: "00000000-0000-0000-0000-0000000000c1", Name: "SSH-access_ru.AZ-1", AvailabilityZoneID: pvZone, Default: true,
+		Rules: []provision.SGRule{
+			{Direction: "ingress", IPProtocol: "tcp", PortRange: "22:22", RemoteIPPrefix: "0.0.0.0/0"},
+			{Direction: "egress", IPProtocol: "any", RemoteIPPrefix: "0.0.0.0/0"},
+		}}}, nil
+}
+
+// closedNetCloud: the zone's subnet has no DNS servers and the group lets
+// only TCP 80 in.
+type closedNetCloud struct{ previewCloud }
+
+func (closedNetCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
+	none := []any{}
+	return []*provision.Subnet{{ID: "00000000-0000-0000-0000-0000000000d1", Name: "Default_ru.AZ-1", AvailabilityZoneID: pvZone, DNSServers: &none}}, nil
+}
+func (closedNetCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return []*provision.SecurityGroup{{ID: "00000000-0000-0000-0000-0000000000c1", Name: "web_ru.AZ-1", AvailabilityZoneID: pvZone,
+		Rules: []provision.SGRule{{Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0"}}}}, nil
+}
+
+// Превью evo vm create предупреждает о сети до вопроса: подсеть без DNS,
+// группа без входящего TCP 22 и без исходящего системного трафика.
+func TestVMCreatePreview_NetworkWarnings(t *testing.T) {
+	russian(t)
+	withCloud(t, closedNetCloud{})
+	_, errOut, code := execCLI(t, "vm", "create", "web")
+	if code != clerrors.ExitConfirmationRequired {
+		t.Fatalf("exit %d, want 3:\n%s", code, errOut)
+	}
+	assertHas(t, errOut, []string{
+		"внимание:   в подсети Default_ru.AZ-1 не указаны DNS-серверы",
+		"внимание:   в группе безопасности web_ru.AZ-1 нет входящего правила для TCP 22",
+		"внимание:   группа безопасности web_ru.AZ-1 не разрешает исходящий системный трафик",
+	})
+}
+
 // withPreviewCloud configures project, zone and image in the environment
 // and gives the engines of the tools a fake cloud and a token.
 func withPreviewCloud(t *testing.T) {

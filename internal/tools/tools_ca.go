@@ -82,7 +82,10 @@ func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (str
 	minI := intArg(args, "min_instances", 0)
 	maxI := intArg(args, "max_instances", 1)
 
-	// Container ports <= 1024 require privileged mode (platform rule).
+	// A port of 1024 or below cannot be bound by UID 1000, the user a
+	// container runs as unless privileged (docs, Container Apps «Среда
+	// выполнения»): privileged mode runs it as root. A Linux rule, not a
+	// documented platform one.
 	privileged := port <= 1024
 	if v, ok := args["privileged"].(bool); ok {
 		privileged = privileged || v

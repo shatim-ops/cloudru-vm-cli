@@ -3,10 +3,12 @@ package tools
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/s3"
 )
 
@@ -48,6 +50,10 @@ func (s *Registry) handleS3Ls(ctx context.Context, args map[string]any) (string,
 	return toJSON(map[string]any{"bucket": bucket, "count": len(objs), "objects": objs}), false
 }
 
+// s3GetMaxBytes bounds the object s3_get reads: the answer carries it
+// whole (base64 adds a third), and an object can be up to 5 TB.
+const s3GetMaxBytes = 10 << 20
+
 func (s *Registry) handleS3Get(ctx context.Context, args map[string]any) (string, bool) {
 	bucket := stringArg(args, "bucket")
 	key := stringArg(args, "key")
@@ -58,7 +64,13 @@ func (s *Registry) handleS3Get(ctx context.Context, args map[string]any) (string
 	if err != nil {
 		return errResult(err), true
 	}
-	data, err := cli.GetObject(ctx, bucket, key)
+	data, err := cli.GetObject(ctx, bucket, key, s3GetMaxBytes)
+	var tl *s3.TooLargeError
+	if errors.As(err, &tl) {
+		return errResult(clierrors.New(clierrors.CodeUsage,
+			fmt.Sprintf("%s/%s: %v — s3_get returns objects up to %d MiB inline", bucket, key, err, s3GetMaxBytes>>20),
+			"Download it with an S3 client (aws s3 cp, rclone; endpoint https://s3.cloud.ru, the same keys) or in the Cloud.ru console; s3_ls shows the sizes.")), true
+	}
 	if err != nil {
 		return errResult(err), true
 	}

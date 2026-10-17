@@ -24,7 +24,8 @@ type vmNetwork struct {
 	SecurityGroup   string
 }
 
-// resolveNetwork picks a subnet and a security group for the zone: by the
+// resolveNetwork picks a subnet (provision.PickSubnet: the zone's main
+// subnet, then a routed one) and a security group for the zone: by the
 // zone id the list returns nested (availability_zone.id), else by a name
 // that contains the zone name ("Default_ru.AZ-1", "SSH-access_ru.AZ-1"),
 // the same rule as the MCP vm_create path. A security group from another
@@ -39,19 +40,24 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 				break
 			}
 		}
+		if err := provision.ClosedZoneError(zones, zoneID); err != nil {
+			return n, err
+		}
 	}
 
 	subnets, err := e.Cloud.ListSubnets(ctx, projectID)
 	if err != nil {
 		return n, fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
 	}
-	if sn := pickInZone(len(subnets), func(i int) (string, string) { return subnets[i].AvailabilityZoneID, subnets[i].Name }, zoneID, n.ZoneName); sn >= 0 {
+	gateway := ""
+	if sn := provision.PickSubnet(subnets, zoneID, n.ZoneName); sn >= 0 {
 		n.SubnetID, n.SubnetName = subnets[sn].ID, subnets[sn].Name
+		gateway = subnets[sn].DefaultGateway
+		if subnets[sn].NoDNS() {
+			e.Printer.Warning(subnetNoDNSWarning(subnets[sn].Name))
+		}
 	} else {
-		return n, clerrors.New(clerrors.CodeConfigInvalid,
-			i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(n.ZoneName, zoneID)),
-			i18n.T("Create a network and a subnet in this zone in the Cloud.ru console, or pick another zone with 'evo init'.",
-				"Создайте сеть и подсеть в этой зоне в консоли Cloud.ru или выберите другую зону ('evo init')."))
+		return n, NoSubnetError(n.ZoneName, zoneID)
 	}
 
 	sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID)
@@ -69,10 +75,11 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 			if g.AvailabilityZoneID != "" && g.AvailabilityZoneID != zoneID {
 				return n, clerrors.New(clerrors.CodeConfigInvalid,
 					i18n.Tf("security group %q from security_group is not in zone %s", "группа безопасности %q из security_group не в зоне %s", want, zoneText(n.ZoneName, zoneID)),
-					i18n.T("Name a group of this zone in security_group, or remove the key: evo then takes the zone's Default group.",
-						"Укажите в security_group группу этой зоны или уберите ключ: тогда evo возьмёт группу Default зоны."))
+					i18n.T("Name a group of this zone in security_group, or remove the key: evo then takes the zone's default group (SSH-access_<zone>).",
+						"Укажите в security_group группу этой зоны или уберите ключ: тогда evo возьмёт группу зоны по умолчанию (SSH-access_<зона>)."))
 			}
 			n.SecurityGroupID, n.SecurityGroup = g.ID, g.Name
+			e.warnGroupRules(ctx, g, gateway)
 			return n, nil
 		}
 		return n, clerrors.New(clerrors.CodeConfigInvalid,
@@ -80,46 +87,158 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 			i18n.T("Check the name with 'evo tools call list_security_groups', or remove security_group from .evo.yaml.",
 				"Проверьте имя ('evo tools call list_security_groups') или уберите security_group из .evo.yaml."))
 	}
-	if g := pickGroup(sgs, zoneID, n.ZoneName); g >= 0 {
+	if g := provision.PickSecurityGroup(sgs, zoneID, n.ZoneName); g >= 0 {
 		n.SecurityGroupID, n.SecurityGroup = sgs[g].ID, sgs[g].Name
-		if others := zoneGroups(sgs, zoneID, n.ZoneName); len(others) > 1 && !isDefaultGroup(sgs[g].Name, n.ZoneName) {
-			e.Printer.Warning(i18n.Tf("several security groups in zone %s (%s), none is Default: took %s; deploy opens the compose ports in it. Set security_group in .evo.yaml to choose",
-				"в зоне %s несколько групп безопасности (%s), группы Default нет: взята %s, в ней deploy откроет порты compose. Выбрать другую — security_group в .evo.yaml",
+		if others := zoneGroups(sgs, zoneID, n.ZoneName); len(others) > 1 && !provision.IsDefaultGroup(sgs[g], n.ZoneName) {
+			e.Printer.Warning(i18n.Tf("several security groups in zone %s (%s), none is the zone's default group: took %s; deploy opens the compose ports in it. Set security_group in .evo.yaml to choose",
+				"в зоне %s несколько групп безопасности (%s), группы по умолчанию среди них нет: взята %s, в ней deploy откроет порты compose. Выбрать другую — security_group в .evo.yaml",
 				zoneText(n.ZoneName, zoneID), strings.Join(others, ", "), sgs[g].Name))
 		}
+		e.warnGroupRules(ctx, sgs[g], gateway)
 	} else {
-		return n, clerrors.New(clerrors.CodeConfigInvalid,
-			i18n.Tf("no security group for zone %s in the project", "в проекте нет группы безопасности для зоны %s", zoneText(n.ZoneName, zoneID)),
-			i18n.T("Create a security group whose name contains the zone name (e.g. 'web_ru.AZ-1') in the Cloud.ru console.",
-				"Создайте в консоли Cloud.ru группу безопасности, в имени которой есть имя зоны (например, 'web_ru.AZ-1')."))
+		return n, NoSecurityGroupError(n.ZoneName, zoneID)
 	}
 	return n, nil
 }
 
-// pickGroup picks the security group for a new VM among the zone's groups:
-// the zone's default group ("Default_ru.AZ-2", "default") first, then the
-// only one, then the first by name (case-insensitive). The API order is not a choice: it put
-// port 80 for 0.0.0.0/0 into another service's group (QA r4 Q3), and a
-// re-deploy after a reordering would take a different group.
-func pickGroup(sgs []*provision.SecurityGroup, zoneID, zoneName string) int {
-	best := -1
-	for i, g := range sgs {
-		if !inZone(g.AvailabilityZoneID, g.Name, zoneID, zoneName) {
-			continue
+// NoSubnetError: the project has no subnet in the VM's zone. A subnet of
+// another zone keeps the VM from booting (error_creating) while its boot
+// FIP is billed, so deploy and the MCP provision refuse before creating
+// anything.
+func NoSubnetError(zoneName, zoneID string) error {
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(zoneName, zoneID)),
+		i18n.T("Create a network and a subnet in this zone in the Cloud.ru console, or pick another zone with 'evo init'.",
+			"Создайте сеть и подсеть в этой зоне в консоли Cloud.ru или выберите другую зону ('evo init')."))
+}
+
+// NoSecurityGroupError: the project has groups, none in the VM's zone; a
+// group of another zone keeps the VM from booting.
+func NoSecurityGroupError(zoneName, zoneID string) error {
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("no security group for zone %s in the project", "в проекте нет группы безопасности для зоны %s", zoneText(zoneName, zoneID)),
+		i18n.T("Create a security group whose name contains the zone name (e.g. 'web_ru.AZ-1') in the Cloud.ru console.",
+			"Создайте в консоли Cloud.ru группу безопасности, в имени которой есть имя зоны (например, 'web_ru.AZ-1')."))
+}
+
+// warnGroupRules warns, before the preview, when the VM's group lacks what
+// a new VM needs (provision.CheckVMGroupRules): ingress tcp 22 — else SSH
+// never comes up and deploy waits for it in vain while the VM is billed —
+// and egress system traffic — else the VM gets no IP and cloud-init does
+// not run. The rules come from the list answer, else from the rules list;
+// when neither can be read, there is no warning. A warning, not a refusal:
+// the group may be meant for it (a bastion, a VPN).
+func (e *Engine) warnGroupRules(ctx context.Context, g *provision.SecurityGroup, gateway string) {
+	rules, err := provision.GroupRules(ctx, e.Cloud, g)
+	if err != nil {
+		return
+	}
+	gaps := provision.CheckVMGroupRules(rules, gateway)
+	if gaps.NoSSH {
+		e.Printer.Warning(groupNoSSHWarning(g.Name) + i18n.T(" (security_group in .evo.yaml); without SSH deploy cannot install Docker",
+			" (security_group в .evo.yaml); без SSH deploy не установит Docker"))
+	}
+	if gaps.NoSystemEgress {
+		e.Printer.Warning(groupNoEgressWarning(g.Name))
+	}
+}
+
+func groupNoSSHWarning(name string) string {
+	return i18n.Tf("security group %s has no ingress rule for TCP 22: SSH to the VM will not come up. Add an ingress TCP 22 rule in the Cloud.ru console or choose another group",
+		"в группе безопасности %s нет входящего правила для TCP 22: SSH к ВМ не поднимется. Добавьте входящее правило TCP 22 в консоли Cloud.ru или выберите другую группу", name)
+}
+
+func groupNoEgressWarning(name string) string {
+	return i18n.Tf("security group %s does not allow the VM's system egress (the metadata service 169.254.169.254/32 and UDP 67 to the subnet gateway): the VM gets no IP by DHCP and cloud-init does not run. Allow all egress, or these two rules (Cloud.ru docs, security groups, limitations)",
+		"группа безопасности %s не разрешает исходящий системный трафик ВМ (сервис метаданных 169.254.169.254/32 и UDP 67 до шлюза подсети): ВМ не получит IP по DHCP, cloud-init не запустится. Разрешите весь исходящий трафик или эти два правила (документация Cloud.ru, «Группы безопасности», ограничения)", name)
+}
+
+// NetworkCheck is what the preview of a VM found wrong with the network
+// the call will pick (the same choice as provision): a subnet without DNS
+// servers, a security group without ingress TCP 22 or system egress.
+// Warnings, not refusals.
+type NetworkCheck struct {
+	Subnet         string `json:"subnet,omitempty"`
+	SubnetNoDNS    bool   `json:"subnet_no_dns,omitempty"`
+	SecurityGroup  string `json:"security_group,omitempty"`
+	NoSSHIngress   bool   `json:"no_ssh_ingress,omitempty"`
+	NoSystemEgress bool   `json:"no_system_egress,omitempty"`
+}
+
+// checkNetwork resolves the subnet and the group as provision does (the
+// zone's main subnet or subnet_id; the zone's default group) and checks
+// them; nil when nothing is wrong or nothing could be read.
+func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, subnetID string) *NetworkCheck {
+	if projectID == "" || zoneID == "" {
+		return nil
+	}
+	var c NetworkCheck
+	gateway := ""
+	if subnets, err := e.Cloud.ListSubnets(ctx, projectID); err == nil && len(subnets) > 0 {
+		var sn *provision.Subnet
+		if i := provision.PickSubnet(subnets, zoneID, zoneName); i >= 0 {
+			sn = subnets[i]
 		}
-		switch {
-		case best < 0:
-			best = i
-		case isDefaultGroup(g.Name, zoneName) && !isDefaultGroup(sgs[best].Name, zoneName):
-			best = i
-		case isDefaultGroup(g.Name, zoneName) == isDefaultGroup(sgs[best].Name, zoneName) && strings.ToLower(g.Name) < strings.ToLower(sgs[best].Name):
-			best = i
+		if subnetID != "" {
+			sn = nil
+			for _, s := range subnets {
+				if s.ID == subnetID {
+					sn = s
+				}
+			}
+		}
+		if sn != nil {
+			gateway = sn.DefaultGateway
+			if sn.NoDNS() {
+				c.Subnet, c.SubnetNoDNS = sn.Name, true
+			}
 		}
 	}
-	if best < 0 && len(sgs) == 1 {
-		return 0
+	// No subnet or group in the zone: provision refuses (NoSubnetError,
+	// NoSecurityGroupError), so there is nothing to warn about here.
+	if g := pickGroup(ctx, e, projectID, zoneID, zoneName); g != nil {
+		if rules, err := provision.GroupRules(ctx, e.Cloud, g); err == nil {
+			gaps := provision.CheckVMGroupRules(rules, gateway)
+			if gaps.NoSSH || gaps.NoSystemEgress {
+				c.SecurityGroup, c.NoSSHIngress, c.NoSystemEgress = g.Name, gaps.NoSSH, gaps.NoSystemEgress
+			}
+		}
 	}
-	return best
+	if c == (NetworkCheck{}) {
+		return nil
+	}
+	return &c
+}
+
+// pickGroup is the zone's group provision takes; nil when the list
+// fails or no group is in the zone.
+func pickGroup(ctx context.Context, e *Engine, projectID, zoneID, zoneName string) *provision.SecurityGroup {
+	sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID)
+	if err != nil {
+		return nil
+	}
+	if i := provision.PickSecurityGroup(sgs, zoneID, zoneName); i >= 0 {
+		return sgs[i]
+	}
+	return nil
+}
+
+// lines words the check for the preview.
+func (c *NetworkCheck) lines() []string {
+	if c == nil {
+		return nil
+	}
+	var out []string
+	if c.SubnetNoDNS {
+		out = append(out, subnetNoDNSWarning(c.Subnet))
+	}
+	if c.NoSSHIngress {
+		out = append(out, groupNoSSHWarning(c.SecurityGroup))
+	}
+	if c.NoSystemEgress {
+		out = append(out, groupNoEgressWarning(c.SecurityGroup))
+	}
+	return out
 }
 
 // zoneGroups lists the names of the zone's groups, for the warning.
@@ -139,41 +258,13 @@ func inZone(itemZoneID, name, zoneID, zoneName string) bool {
 	return (itemZoneID != "" && itemZoneID == zoneID) || (zoneName != "" && strings.Contains(name, zoneName))
 }
 
-// isDefaultGroup reports a zone's default group: "Default_ru.AZ-2" (the
-// console's name for it) or "default". Not any "default…" prefix:
-// "DefaultWeb" or "default-ssh" are someone's groups. Without the zone name
-// any "default_<zone>" counts.
-func isDefaultGroup(name, zoneName string) bool {
-	n, z := strings.ToLower(name), strings.ToLower(zoneName)
-	if n == "default" {
-		return true
-	}
-	if z == "" {
-		return strings.HasPrefix(n, "default_")
-	}
-	return n == "default_"+z
-}
-
-// pickInZone returns the index of the item in the zone: by zone ID, then by
-// a name containing the zone name, then the only item if there is exactly
-// one. -1 when nothing fits.
-func pickInZone(count int, at func(int) (zoneID, name string), zoneID, zoneName string) int {
-	for i := 0; i < count; i++ {
-		if id, _ := at(i); id != "" && id == zoneID {
-			return i
-		}
-	}
-	if zoneName != "" {
-		for i := 0; i < count; i++ {
-			if _, name := at(i); strings.Contains(name, zoneName) {
-				return i
-			}
-		}
-	}
-	if count == 1 {
-		return 0
-	}
-	return -1
+// subnetNoDNSWarning: a subnet without DNS servers leaves the VM unable to
+// resolve names (docs, troubleshooting «Temporary failure in name
+// resolution»): apt, Docker and image pulls fail. A warning, not a refusal:
+// the user may resolve names otherwise.
+func subnetNoDNSWarning(name string) string {
+	return i18n.Tf("subnet %s has no DNS servers: the VM will not resolve names — Docker and images will not download. Add a DNS server to the subnet in the Cloud.ru console",
+		"в подсети %s не указаны DNS-серверы: ВМ не будет разрешать имена — Docker и образы не скачаются. Добавьте DNS-сервер в настройках подсети в консоли Cloud.ru", name)
 }
 
 func zoneText(name, id string) string {

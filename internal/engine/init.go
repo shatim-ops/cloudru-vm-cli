@@ -30,9 +30,9 @@ type InitOptions struct {
 // Init writes a project config with an availability zone and a boot image
 // taken from the Cloud.ru API, not from a list baked into the binary: zone
 // and image UUIDs differ between tenants and change over time. Without a
-// terminal (or with NonInteractive) it takes the preferred zone (else the
-// first) and the newest plain Ubuntu (else Debian) image and prints what it
-// chose.
+// terminal (or with NonInteractive) it takes the first zone of initZones
+// (one with a subnet of the project, ru.AZ-2 first) and the newest plain
+// Ubuntu (else Debian) image and prints what it chose.
 func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	if _, err := os.Stat(opts.Path); err == nil {
 		e.Printer.Warning(opts.Path + i18n.T(" already exists. Skipping.", " уже существует, файл не изменён."))
@@ -87,7 +87,16 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 
 	interactive := !opts.NonInteractive && confirm.StdinIsTTY()
 
-	zones = preferredZoneFirst(zones)
+	if open := provision.OpenZones(zones); len(open) < len(zones) {
+		for _, z := range zones {
+			if z.Closed() {
+				e.Printer.Warning(i18n.Tf("zone %s is closed for new resources (enabled=false in the zone list) and is not offered",
+					"зона %s закрыта для новых ресурсов (в списке зон enabled=false) и не предлагается", z.Name))
+			}
+		}
+		zones = open
+	}
+	zones = e.initZones(ctx, zones)
 	zoneNames := make([]string, len(zones))
 	for i, z := range zones {
 		zoneNames[i] = z.Name
@@ -140,15 +149,67 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 // ru.AZ-2 passed every one; the API lists ru.AZ-1 first.
 const preferredZone = "ru.AZ-2"
 
-// preferredZoneFirst moves preferredZone to the front, keeping the order of
+// PreferredZoneFirst moves preferredZone to the front, keeping the order of
 // the rest; zones without it are returned as they are.
-func preferredZoneFirst(zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
+func PreferredZoneFirst(zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
 	for i, z := range zones {
 		if z.Name == preferredZone {
 			out := make([]*provision.AvailabilityZone, 0, len(zones))
 			out = append(out, z)
 			out = append(out, zones[:i]...)
 			return append(out, zones[i+1:]...)
+		}
+	}
+	return zones
+}
+
+// initZones orders the zones for init: first a zone where the project has
+// a subnet — deploy cannot plug a VM in elsewhere, and a new project has
+// one only in ru.AZ-1 (docs, «Подсети»: Default_ru.AZ-1 is created
+// automatically). Among them ru.AZ-2 (preferredZone) if it has one, else a
+// zone with the project's main subnet (the API's default flag), else the
+// first; then the other zones. It says why when preferredZone is not
+// first, and warns when no zone has a subnet. Without a project or the
+// subnet list the order is PreferredZoneFirst.
+func (e *Engine) initZones(ctx context.Context, zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
+	zones = PreferredZoneFirst(zones)
+	if e.Config.ProjectID == "" {
+		return zones
+	}
+	subnets, err := e.Cloud.ListSubnets(ctx, e.Config.ProjectID)
+	if err != nil {
+		return zones
+	}
+	rank := func(z *provision.AvailabilityZone) int {
+		has, main := false, false
+		for _, s := range subnets {
+			if provision.SubnetInZone(s, z.ID, z.Name) {
+				has, main = true, main || s.Default
+			}
+		}
+		switch {
+		case has && z.Name == preferredZone:
+			return 0
+		case has && main:
+			return 1
+		case has:
+			return 2
+		}
+		return 3
+	}
+	sort.SliceStable(zones, func(i, j int) bool { return rank(zones[i]) < rank(zones[j]) })
+	switch {
+	case len(zones) == 0:
+	case rank(zones[0]) == 3:
+		e.Printer.Warning(i18n.T("the project has no subnet in any zone: deploy cannot plug a VM in. Create a subnet in the Cloud.ru console (Network → Subnets), then run 'evo init' again",
+			"в проекте нет подсети ни в одной зоне: deploy не сможет подключить ВМ к сети. Создайте подсеть в консоли Cloud.ru (Сеть → Подсети) и повторите 'evo init'"))
+	case zones[0].Name != preferredZone:
+		for _, z := range zones {
+			if z.Name == preferredZone {
+				e.Printer.Hint(i18n.Tf("%s is not offered first: the project has no subnet there; %s has one",
+					"%s не предлагается первой: в ней нет подсети проекта; подсеть есть в %s", preferredZone, zones[0].Name))
+				break
+			}
 		}
 	}
 	return zones
@@ -180,8 +241,8 @@ compose_file: docker-compose.yml
 timeout: 600
 
 # Группа безопасности (имя или UUID), в которой deploy откроет порты compose.
-# Без неё берётся группа Default зоны, иначе первая по имени — с предупреждением.
-# security_group: Default_ru.AZ-2
+# Без неё берётся группа зоны по умолчанию (SSH-access_<зона>), иначе первая по имени — с предупреждением.
+# security_group: SSH-access_ru.AZ-2
 
 # UUID проекта Cloud.ru (обязателен; console.cloud.ru или CLOUDRU_PROJECT_ID)
 %s
@@ -210,8 +271,8 @@ compose_file: docker-compose.yml
 timeout: 600
 
 # Security group (name or UUID) deploy opens the compose ports in. Without it:
-# the zone's Default group, else the first by name, with a warning.
-# security_group: Default_ru.AZ-2
+# the zone's default group (SSH-access_<zone>), else the first by name, with a warning.
+# security_group: SSH-access_ru.AZ-2
 
 # Cloud.ru project UUID (required; console.cloud.ru or CLOUDRU_PROJECT_ID)
 %s

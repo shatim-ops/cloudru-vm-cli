@@ -148,18 +148,59 @@ func (c *Client) doOperation(ctx context.Context, method, path string, query url
 	return &op, nil
 }
 
-// ListClusters lists clusters. extra carries per-service query params (Kafka
-// needs product_type=kafka; both take project_id — added here).
+// listPageSize is the page_size of ListClusters. The specifications
+// (openapi-kafka.yaml, openapi-redis.yaml) name no range; Redis rejects
+// page_size<=0. cloud-e2e readonly #23 got API_ERROR from the Kafka and
+// Redis lists with page_size=1000 (the HTTP status was not logged; an
+// out-of-range page_size is a suspect, not a proven cause), so a page is
+// kept to a common maximum and the rest is read by next_page_token, which
+// the old code ignored.
+const listPageSize = 100
+
+// maxListPages bounds the page loop against a server that never ends it.
+const maxListPages = 50
+
+// ListClusters lists clusters, following next_page_token. extra carries
+// per-service query params (Kafka needs product_type=kafka; both take
+// project_id — added here).
 func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[string]any, error) {
-	q := url.Values{}
-	for k, v := range extra {
-		q[k] = v
+	var all []map[string]any
+	seen := map[string]bool{}
+	token := ""
+	for i := 0; i < maxListPages; i++ {
+		q := url.Values{}
+		for k, v := range extra {
+			q[k] = v
+		}
+		if c.projectID != "" {
+			q.Set("project_id", c.projectID)
+		}
+		q.Set("page_size", strconv.Itoa(listPageSize))
+		if token != "" {
+			q.Set("page_token", token)
+		}
+		data, status, err := c.do(ctx, http.MethodGet, "/v1/clusters", q, nil)
+		if err != nil {
+			return nil, err
+		}
+		if status < 200 || status >= 300 {
+			return nil, apiError(status, data)
+		}
+		var page struct {
+			Clusters      []map[string]any `json:"clusters"`
+			NextPageToken string           `json:"next_page_token"`
+		}
+		if err := json.Unmarshal(data, &page); err != nil {
+			return nil, fmt.Errorf("parse clusters: %w", err)
+		}
+		all = append(all, page.Clusters...)
+		if page.NextPageToken == "" || seen[page.NextPageToken] {
+			break
+		}
+		seen[page.NextPageToken] = true
+		token = page.NextPageToken
 	}
-	if c.projectID != "" {
-		q.Set("project_id", c.projectID)
-	}
-	q.Set("page_size", "1000") // Redis list rejects page_size<=0
-	return c.getList(ctx, "/v1/clusters", q, "clusters")
+	return all, nil
 }
 
 // GetCluster returns one cluster by id.
@@ -202,7 +243,7 @@ func (c *Client) ListVersions(ctx context.Context, extra url.Values) ([]map[stri
 
 // ListSpecifications lists flavor specs for a version in an availability zone.
 // The API REQUIRES availability_zone_id (a UUID) despite the spec marking it
-// optional.
+// optional: callers resolve one (tools.dbaasZone) instead of leaving it out.
 func (c *Client) ListSpecifications(ctx context.Context, versionID, azID string) ([]map[string]any, error) {
 	q := url.Values{}
 	if versionID != "" {

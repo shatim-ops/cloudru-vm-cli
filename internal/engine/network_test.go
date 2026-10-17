@@ -1,10 +1,14 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -76,6 +80,106 @@ func TestResolveNetwork_NoSubnetInZone(t *testing.T) {
 	}
 }
 
+// Зона с enabled=false в списке зон не принимает ВМ (422 wrong_az): отказ
+// до подсетей и групп, с открытыми зонами в подсказке.
+func TestResolveNetwork_ClosedZone(t *testing.T) {
+	closed := false
+	cloud := &mockCloudAPI{
+		listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
+			return []*provision.AvailabilityZone{{ID: "z1", Name: "ru.AZ-1", Enabled: &closed}, {ID: "z2", Name: "ru.AZ-2"}}, nil
+		},
+		listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
+			t.Error("подсети читаются после отказа")
+			return nil, nil
+		},
+	}
+	eng, _ := newTestEngine(t, cloud, newMockDeployer())
+	_, err := eng.resolveNetwork(context.Background(), "p", "z1")
+	var ce *clerrors.CLIError
+	if !errors.As(err, &ce) || ce.Code != clerrors.CodeConfigInvalid || !strings.Contains(ce.Hint, "ru.AZ-2") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// Основная подсеть зоны (признак default из API) — раньше первой по порядку;
+// подсеть без DNS-серверов берётся, но с предупреждением: ВМ не разрешит
+// имена (документация, «Temporary failure in name resolution»).
+func TestResolveNetwork_SubnetDefaultAndDNSWarning(t *testing.T) {
+	empty := []any{}
+	cloud := &mockCloudAPI{
+		listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
+			return []*provision.AvailabilityZone{{ID: "z2", Name: "ru.AZ-2"}}, nil
+		},
+		listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
+			return []*provision.Subnet{
+				{ID: "sn-a", Name: "app", AvailabilityZoneID: "z2"},
+				{ID: "sn-main", Name: "main", AvailabilityZoneID: "z2", Default: true, DNSServers: &empty},
+			}, nil
+		},
+		listSecurityGroupsFn: func(context.Context, string) ([]*provision.SecurityGroup, error) {
+			return []*provision.SecurityGroup{{ID: "sg", Name: "SSH-access_ru.AZ-2", AvailabilityZoneID: "z2"}}, nil
+		},
+	}
+	eng, _ := newTestEngine(t, cloud, newMockDeployer())
+	var buf bytes.Buffer
+	eng.Printer = output.NewWithWriter(&buf, output.ModePlain, false)
+	n, err := eng.resolveNetwork(context.Background(), "p", "z2")
+	if err != nil || n.SubnetID != "sn-main" {
+		t.Fatalf("subnet = %q, %v; want the zone's main subnet", n.SubnetID, err)
+	}
+	if !strings.Contains(buf.String(), "DNS") {
+		t.Errorf("no DNS warning: %q", buf.String())
+	}
+}
+
+// Правила группы проверяются до превью: без входящего TCP 22 SSH не
+// поднимется, без исходящего системного трафика ВМ не получит IP (с 07.2026).
+// Предупреждение, не отказ.
+func TestResolveNetwork_GroupRulesWarning(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		rules []provision.SGRule
+		want  []string
+	}{
+		{"группа по умолчанию", []provision.SGRule{
+			{Direction: "ingress", IPProtocol: "tcp", PortRange: "22:22", RemoteIPPrefix: "0.0.0.0/0"},
+			{Direction: "egress", IPProtocol: "any", RemoteIPPrefix: "0.0.0.0/0"},
+		}, nil},
+		{"только порт 80", []provision.SGRule{
+			{Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0"},
+		}, []string{"TCP 22", "169.254.169.254"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cloud := &mockCloudAPI{
+				listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
+					return []*provision.AvailabilityZone{{ID: "z2", Name: "ru.AZ-2"}}, nil
+				},
+				listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
+					return []*provision.Subnet{{ID: "sn", Name: "main", AvailabilityZoneID: "z2"}}, nil
+				},
+				listSecurityGroupsFn: func(context.Context, string) ([]*provision.SecurityGroup, error) {
+					return []*provision.SecurityGroup{{ID: "sg", Name: "SSH-access_ru.AZ-2", AvailabilityZoneID: "z2", Rules: tc.rules}}, nil
+				},
+			}
+			eng, _ := newTestEngine(t, cloud, newMockDeployer())
+			var buf bytes.Buffer
+			eng.Printer = output.NewWithWriter(&buf, output.ModePlain, false)
+			if _, err := eng.resolveNetwork(context.Background(), "p", "z2"); err != nil {
+				t.Fatal(err)
+			}
+			out := buf.String()
+			if tc.want == nil && out != "" {
+				t.Errorf("unexpected warning: %q", out)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("no %q in %q", w, out)
+				}
+			}
+		})
+	}
+}
+
 func TestRandomPassword_HasEveryClass(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		p := randomPassword(16)
@@ -113,7 +217,17 @@ func TestResolveNetwork_SecurityGroupChoice(t *testing.T) {
 		wantErr          bool
 	}{
 		{"Default зоны, а не первая по порядку", "", groups, "sg-def", false},
-		{"без Default — первая по имени", "", []*provision.SecurityGroup{groups[2], groups[0]}, "sg-other", false},
+		// Группа зоны по умолчанию у Cloud.ru — SSH-access_<зона> (документация
+		// «Группы безопасности»), а не чужая группа, первая по алфавиту:
+		// 16.10.2026 deploy открывал порты в inspector-fileserver-sg.
+		{"SSH-access_<зона> — группа по умолчанию", "", []*provision.SecurityGroup{groups[2], groups[0]}, "sg-ssh", false},
+		// Признак default из API сильнее имён.
+		{"признак default из API", "", []*provision.SecurityGroup{
+			groups[0], groups[1], {ID: "sg-flag", Name: "web", AvailabilityZoneID: "z2", Default: true},
+		}, "sg-flag", false},
+		{"без группы по умолчанию — первая по имени", "", []*provision.SecurityGroup{
+			{ID: "sg-web", Name: "web", AvailabilityZoneID: "z2"}, groups[0],
+		}, "sg-other", false},
 		{"security_group по имени", "SSH-access_ru.AZ-2", groups, "sg-ssh", false},
 		{"security_group по UUID", "sg-other", groups, "sg-other", false},
 		{"security_group, которой нет", "nope", groups, "", true},

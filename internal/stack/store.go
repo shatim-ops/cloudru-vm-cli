@@ -55,7 +55,7 @@ type VPCSpec struct {
 	Description string `json:"description,omitempty"`
 }
 
-// K8sSpec creates a Managed Kubernetes cluster (billable, ~10-20 min). Async;
+// K8sSpec creates a Managed Kubernetes cluster (billable, about 10 min). Async;
 // readiness = k8s_get status RUNNING. cluster_sa_id/subnet auto-resolve.
 type K8sSpec struct {
 	Name            string `json:"name"`

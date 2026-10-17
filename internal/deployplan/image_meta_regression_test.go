@@ -14,6 +14,8 @@ type metaCloud struct {
 	fields    []provision.ImageMetadataField
 	cancel    context.CancelFunc
 	createReq provision.CreateVMRequest
+	// rules of the group; nil — the default group's (TCP 22 in, all out).
+	rules []*provision.SGRule
 }
 
 func (*metaCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
@@ -36,6 +38,15 @@ func (*metaCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, err
 }
 func (*metaCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
 	return []*provision.SecurityGroup{{ID: "sg-1", Name: "SSH-access_ru.AZ-2"}}, nil
+}
+func (m *metaCloud) ListSecurityGroupRules(context.Context, string) ([]*provision.SGRule, error) {
+	if m.rules != nil {
+		return m.rules, nil
+	}
+	return []*provision.SGRule{
+		{Direction: "ingress", IPProtocol: "tcp", PortRange: "22:22", RemoteIPPrefix: "0.0.0.0/0"},
+		{Direction: "egress", IPProtocol: "any", RemoteIPPrefix: "0.0.0.0/0"},
+	}, nil
 }
 func (*metaCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
 	return nil, nil

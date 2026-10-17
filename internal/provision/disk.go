@@ -95,8 +95,12 @@ func (a *CloudRuAdapter) diskAction(ctx context.Context, action, diskID, vmID, p
 	return m, nil
 }
 
+// MaxDiskGB is the largest disk: 16 TB (docs, «Диски», ограничения;
+// maximum 16384 of size in PublicDiskCreateRequest/UpdateRequest).
+const MaxDiskGB = 16384
+
 // ResizeDisk grows a disk to sizeGB via PUT /api/v1/disks/{id} {size}. The API
-// caps size at 65536 GB and forbids SHRINK and free-tier resize (returns 422).
+// caps size at MaxDiskGB and forbids SHRINK and free-tier resize (returns 422).
 func (a *CloudRuAdapter) ResizeDisk(ctx context.Context, diskID string, sizeGB int, projectID string) (map[string]any, error) {
 	body, err := json.Marshal(map[string]int{"size": sizeGB})
 	if err != nil {
