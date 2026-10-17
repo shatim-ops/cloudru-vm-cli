@@ -9,7 +9,7 @@ import (
 
 // vpcClient builds an authenticated VPC client (standalone → newEngine token is enough).
 func (s *Registry) vpcClient(ctx context.Context) (*vpc.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

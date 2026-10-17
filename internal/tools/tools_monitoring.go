@@ -13,7 +13,7 @@ import (
 
 // monitoringClient builds an authenticated Service Monitoring client.
 func (s *Registry) monitoringClient(ctx context.Context) (*monitoring.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

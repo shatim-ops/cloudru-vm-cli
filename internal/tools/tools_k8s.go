@@ -17,7 +17,7 @@ import (
 // k8sClient builds an authenticated mk8s client and returns it together with
 // the service-account id (from the IAM token's `sub` claim) used as clusterSaId.
 func (s *Registry) k8sClient(ctx context.Context) (*mk8s.Client, string, string, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, "", "", err
 	}

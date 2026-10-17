@@ -21,7 +21,7 @@ import (
 // authedEngine builds an engine and sets a fresh bearer token on its cloud
 // client, so any handler can make Cloud.ru API calls.
 func (s *Registry) authedEngine(ctx context.Context, overrides map[string]any) (*engine.Engine, error) {
-	eng, err := s.newEngine(overrides)
+	eng, err := s.engineFor(ctx, overrides)
 	if err != nil {
 		return nil, err
 	}

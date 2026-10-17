@@ -11,7 +11,7 @@ import (
 
 // dnsClient builds an authenticated Evolution DNS client (standalone → newEngine token).
 func (s *Registry) dnsClient(ctx context.Context) (*dns.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

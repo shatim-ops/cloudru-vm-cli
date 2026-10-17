@@ -13,7 +13,7 @@ import (
 
 // caClient builds an authenticated Container Apps client.
 func (s *Registry) caClient(ctx context.Context) (*containerapp.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

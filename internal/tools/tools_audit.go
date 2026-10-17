@@ -9,7 +9,7 @@ import (
 
 // auditClient builds an authenticated Audit Logging client.
 func (s *Registry) auditClient(ctx context.Context) (*audit.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

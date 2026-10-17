@@ -11,7 +11,7 @@ import (
 
 // certClient builds an authenticated Certificate Manager client.
 func (s *Registry) certClient(ctx context.Context) (*certmanager.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

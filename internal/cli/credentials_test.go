@@ -458,6 +458,46 @@ func TestDoctor(t *testing.T) {
 	}
 }
 
+// Релизный аудит, R-06: без проекта doctor не «ок» с кодом 0 и не пишет
+// «project_id из default»: проверка project_id — ошибка, код 2, как у
+// команд, которым нужен проект. vm list без проекта — тоже код 2, и в
+// облако запрос не уходит.
+func TestDoctor_NoProjectIsAConfigError(t *testing.T) {
+	setupCLI(t)
+	saveProfile(t, "default", "")
+	code, stdout, _ := runCLI(t, "", "--json", "doctor")
+	if code != clerrors.ExitAuth {
+		t.Errorf("no project: exit %d, want %d\n%s", code, clerrors.ExitAuth, stdout)
+	}
+	var got struct {
+		OK     bool          `json:"ok"`
+		Checks []doctorCheck `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("not JSON: %q", stdout)
+	}
+	found := false
+	for _, c := range got.Checks {
+		switch c.Name {
+		case "config":
+			if strings.Contains(c.Detail, "project_id from") || !strings.Contains(c.Detail, "project_id not set") {
+				t.Errorf("config check: %q", c.Detail)
+			}
+		case "project_id":
+			found = c.Status == checkFail && strings.Contains(c.Detail, "evo configure --project-id")
+		}
+	}
+	if !found || got.OK {
+		t.Errorf("no failed project_id check: %+v", got)
+	}
+
+	newProcess()
+	code, _, stderr := runCLI(t, "", "--json", "vm", "list")
+	if code != clerrors.ExitAuth || !strings.Contains(stderr, `"reason":"CONFIG_INVALID"`) || !strings.Contains(stderr, "no project is set") {
+		t.Errorf("vm list without a project: exit %d: %s", code, stderr)
+	}
+}
+
 func TestDoctor_UnreachableAPIIsExitOne(t *testing.T) {
 	setupCLI(t)
 	saveProfile(t, "default", "p-1")

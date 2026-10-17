@@ -10,7 +10,7 @@ import (
 
 // arClient builds an authenticated Artifact Registry client.
 func (s *Registry) arClient(ctx context.Context) (*artifact.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

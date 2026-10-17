@@ -19,7 +19,7 @@ import (
 // and returns the decoded JSON. Used for the read-only IAM / Organization
 // admin endpoints (they share the same IAM bearer token).
 func (s *Registry) adminGET(ctx context.Context, rawurl string) (map[string]any, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
