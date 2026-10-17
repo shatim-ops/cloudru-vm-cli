@@ -137,7 +137,7 @@
          "reads": ["id", "resource_id", "done", "error.message"]},
         {"method": "DELETE", "path": "/v2/networkLoadBalancers/{id}", "code": "internal/nlb/client.go:165", "reads": ["id", "done"]},
         {"method": "GET", "path": "/v2/targetGroups", "code": "internal/nlb/client.go:171", "query": ["project_id"], "reads": ["target_groups[].id", "target_groups[].name", "target_groups[].status", "target_groups[].vpc_id"]},
-        {"method": "GET", "path": "/v2/targetGroups/{id}", "code": "internal/nlb/client.go:175", "reads": ["id", "status"]},
+        {"method": "GET", "path": "/v2/targetGroups/{id}", "code": "internal/nlb/client.go:175", "reads": ["id", "status", "vpc_id", "target_vms[].zone_id", "target_vms[].zone_name"]},
         {"method": "POST", "path": "/v2/targetGroups", "code": "internal/nlb/client.go:179", "body": ["project_id", "name", "target_vm_specs[].id", "target_vm_specs[].interface_id"], "reads": ["id", "resource_id", "done"]},
         {"method": "DELETE", "path": "/v2/targetGroups/{id}", "code": "internal/nlb/client.go:183", "reads": ["id", "done"]},
         {"method": "GET", "path": "/v2/operations/{operation_id}", "code": "internal/nlb/client.go:193", "query": ["id"], "reads": ["id", "resource_id", "done", "error.code", "error.message"]}

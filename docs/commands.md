@@ -1582,13 +1582,13 @@ evo k8s create [flags]
       --flavor string          Control-plane flavor name.
   -h, --help                   Справка по create
       --kube-api-internet      Publish kube-apiserver to the internet. To turn off: --kube-api-internet=false (по умолчанию true)
-      --master-count int       1, 3 or 5.
+      --master-count int       1, 3 or 5 (default 1).
       --name string            Cluster name.
       --product string         What the cluster is for.
       --ram-gb int             Control-plane RAM GB.
-      --subnet-id string       Control-plane VIP subnet UUID.
+      --subnet-id string       Control-plane VIP subnet UUID, of the cluster's zone.
       --version string         Kubernetes version.
-      --zone string            Zone name.
+      --zone string            Zone name or UUID (as in k8s_plan).
 ```
 
 ### Options inherited from parent commands
@@ -2000,13 +2000,13 @@ evo k8s plan [flags]
       --flavor string          Control-plane flavor name (see k8s_options); overrides cpu/ram_gb.
   -h, --help                   Справка по plan
       --kube-api-internet      Publish kube-apiserver to the internet. To turn off: --kube-api-internet=false (по умолчанию true)
-      --master-count int       Control-plane node count: 1, 3 or 5 (default 1).
+      --master-count int       Control-plane node count: 1, 3 or 5 (default 1); any other value is refused.
       --name string            Cluster name (3-60; default k8s-<product>).
       --product string         What the cluster is for (used for the name).
       --ram-gb int             Control-plane RAM GB for auto flavor pick (default 4).
-      --subnet-id string       Subnet UUID for the control-plane private VIP (default: auto zone-matched).
+      --subnet-id string       Subnet UUID for the control-plane private VIP, of the cluster's zone (default: the zone's main subnet). A subnet of another zone is refused.
       --version string         Kubernetes version, e.g. v1.34.6 (default: newest STABLE; see k8s_options).
-      --zone string            Availability zone name, e.g. ru.AZ-2 (default from productConfiguration).
+      --zone string            Availability zone of the control plane, name or UUID, e.g. ru.AZ-2 (default: the zone of subnet_id, else the default of productConfiguration).
 ```
 
 ### Options inherited from parent commands

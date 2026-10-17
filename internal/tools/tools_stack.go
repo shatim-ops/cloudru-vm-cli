@@ -8,6 +8,9 @@ import (
 	"sync"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/images"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 )
 
@@ -453,6 +456,17 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	if err != nil {
 		return errResult(err), true
 	}
+	var vmNote map[string]any
+	if m.VM != nil {
+		if vmNote, err = s.normalizeStackVM(ctx, m.VM); err != nil {
+			return errResult(err), true
+		}
+	}
+	if m.K8s != nil && m.K8s.MasterCount != 0 {
+		if err := k8sArgsError(map[string]any{"master_count": m.K8s.MasterCount}); err != nil {
+			return errResult(err), true
+		}
+	}
 	job := stack.Plan(m)
 	if eng, e := s.newEngine(nil); e == nil && eng != nil {
 		job.ProjectID = eng.Config.ProjectID
@@ -478,6 +492,9 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	if len(s3Notes) > 0 {
 		out["s3"] = s3Notes
 	}
+	if vmNote != nil {
+		out["vm"] = vmNote
+	}
 	// Warn if a prior job for this stack name still holds resources — applying now
 	// would create duplicates (double billing). Point the user at stack_destroy.
 	if orphans := stack.FindResourcefulJobs(m.Name, job.ID); len(orphans) > 0 {
@@ -485,6 +502,62 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		out["existing_jobs"] = orphans
 	}
 	return toJSON(out), false
+}
+
+// normalizeStackVM resolves the image and the zone of the stack's VM at
+// plan time and writes their UUIDs into the manifest: vm.image (name or
+// UUID, as provision's image), else the server's CLOUDRU_IMAGE_ID; vm.zone
+// (name or UUID), else CLOUDRU_REGION. A missing, unknown or closed one is
+// refused here, before anything is created: the vm step used to fail
+// after the earlier steps were live (release audit, L-36). Returns what
+// the plan shows for the VM.
+func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[string]any, error) {
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("validate vm: %w", err)
+	}
+	imageRef := firstNonEmptyStr(vm.Image, eng.Config.ImageID, eng.Config.Image)
+	if imageRef == "" {
+		return nil, clierrors.New(clierrors.CodeUsage,
+			"manifest vm.image is required: the image of the VM, by name or UUID",
+			"Set vm.image, e.g. \"Ubuntu-24.04\" (image_list); the server has no CLOUDRU_IMAGE_ID (an image UUID) to default to.")
+	}
+	cat := images.Catalog{Cloud: eng.Cloud, ProjectID: eng.Config.ProjectID}
+	img, err := cat.Get(ctx, imageRef)
+	if err != nil {
+		return nil, fmt.Errorf("vm.image %q: %w", imageRef, err)
+	}
+	if img.NotInProject {
+		return nil, images.NotInProjectError(img.Name)
+	}
+
+	zoneRef := firstNonEmptyStr(vm.Zone, eng.Config.Region)
+	if zoneRef == "" {
+		return nil, clierrors.New(clierrors.CodeUsage,
+			"manifest vm.zone is required: the availability zone of the VM, by name or UUID",
+			"Set vm.zone, e.g. \"ru.AZ-1\" (list_zones); the server has no CLOUDRU_REGION (a zone UUID) to default to.")
+	}
+	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("validate vm.zone: list availability zones: %w", err)
+	}
+	var zone *provision.AvailabilityZone
+	for _, z := range zones {
+		if z.ID == zoneRef || strings.EqualFold(z.Name, zoneRef) {
+			zone = z
+			break
+		}
+	}
+	if zone == nil {
+		return nil, clierrors.New(clierrors.CodeUsage, fmt.Sprintf("vm.zone %q: availability zone not found", zoneRef),
+			"See list_zones (evo list-zones) for the zone names.")
+	}
+	if err := provision.ClosedZoneError(zones, zone.ID); err != nil {
+		return nil, err
+	}
+	vm.Image, vm.Zone = img.ID, zone.ID
+	return map[string]any{"image": firstNonEmptyStr(img.Name, img.ID), "image_id": img.ID,
+		"zone": firstNonEmptyStr(zone.Name, zone.ID)}, nil
 }
 
 // normalizeManifest validates a stack manifest and fills in safe defaults BEFORE
@@ -791,10 +864,13 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	// Reverse teardown of what was created. 404/not-found is idempotent success.
 	// The code (VM_NOT_FOUND, NOT_FOUND) is checked too: in the CLI the
 	// message is in the language of the CLI.
-	var deleted, failed []string
+	// deleting: async deletions the cloud accepted but has not finished
+	// (status "deleting" with an operation): Postgres takes ~5 min, so the
+	// answer must not read as if it were gone already (release audit, L-37).
+	var deleted, deleting, failed []string
 	del := func(label, tool string, dargs map[string]any) {
 		dargs["confirmed"] = true
-		if _, e := s.callTool(ctx, tool, dargs); e != nil {
+		if res, e := s.callTool(ctx, tool, dargs); e != nil {
 			msg := e.Error()
 			if strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") || strings.Contains(strings.ToLower(msg), "not found") {
 				deleted = append(deleted, label+" (already gone)")
@@ -803,6 +879,9 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 			}
 		} else {
 			deleted = append(deleted, label)
+			if st, _ := res["status"].(string); st == "deleting" {
+				deleting = append(deleting, label)
+			}
 		}
 	}
 	if id := job.Outputs["dns"]; id != "" {
@@ -859,5 +938,10 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	if e := job.Save(); e != nil {
 		failed = append(failed, "persist job: "+e.Error())
 	}
-	return toJSON(map[string]any{"status": job.Status, "deleted": deleted, "failed": failed}), len(failed) > 0
+	out := map[string]any{"status": job.Status, "deleted": deleted, "failed": failed}
+	if len(deleting) > 0 {
+		out["deleting"] = deleting
+		out["note"] = "Deletion accepted; the resources in 'deleting' are still being removed by the cloud (minutes; Postgres ~5 min). Check them with pg_list, k8s_list, lb_list and the like before reusing their names."
+	}
+	return toJSON(out), len(failed) > 0
 }

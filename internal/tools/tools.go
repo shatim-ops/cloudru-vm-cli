@@ -284,9 +284,9 @@ func (s *Registry) registerTools() {
 				"flavor":            strProp("Control-plane flavor name (see k8s_options); overrides cpu/ram_gb."),
 				"cpu":               intProp("Control-plane vCPUs for auto flavor pick (default 2)."),
 				"ram_gb":            intProp("Control-plane RAM GB for auto flavor pick (default 4)."),
-				"master_count":      intProp("Control-plane node count: 1, 3 or 5 (default 1)."),
-				"zone":              strProp("Availability zone name, e.g. ru.AZ-2 (default from productConfiguration)."),
-				"subnet_id":         strProp("Subnet UUID for the control-plane private VIP (default: auto zone-matched)."),
+				"master_count":      intProp("Control-plane node count: 1, 3 or 5 (default 1); any other value is refused."),
+				"zone":              strProp("Availability zone of the control plane, name or UUID, e.g. ru.AZ-2 (default: the zone of subnet_id, else the default of productConfiguration)."),
+				"subnet_id":         strProp("Subnet UUID for the control-plane private VIP, of the cluster's zone (default: the zone's main subnet). A subnet of another zone is refused."),
 				"cluster_sa_id":     strProp("Cluster service-account UUID (default: the agent's own service account)."),
 				"kube_api_internet": boolPropTrue("Publish kube-apiserver to the internet (default true)."),
 			}),
@@ -298,8 +298,8 @@ func (s *Registry) registerTools() {
 				"product": strProp("What the cluster is for."), "name": strProp("Cluster name."),
 				"version": strProp("Kubernetes version."), "flavor": strProp("Control-plane flavor name."),
 				"cpu": intProp("Control-plane vCPUs."), "ram_gb": intProp("Control-plane RAM GB."),
-				"master_count": intProp("1, 3 or 5."), "zone": strProp("Zone name."),
-				"subnet_id": strProp("Control-plane VIP subnet UUID."), "cluster_sa_id": strProp("Cluster service-account UUID."),
+				"master_count": intProp("1, 3 or 5 (default 1)."), "zone": strProp("Zone name or UUID (as in k8s_plan)."),
+				"subnet_id": strProp("Control-plane VIP subnet UUID, of the cluster's zone."), "cluster_sa_id": strProp("Cluster service-account UUID."),
 				"kube_api_internet": boolPropTrue("Publish kube-apiserver to the internet (default true)."),
 				"confirmed":         confirmedProp(),
 			}),
@@ -471,16 +471,17 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ca_deploy",
-			Description: "Deploy (create+run) a Container App from a container image — serverless, scales to zero when idle. REQUIRES confirmed=true after the user approves. Async: returns operation_id; use ca_get for status + public URL. Ideal for stateless web services/APIs without managing a VM.",
+			Description: "Deploy (create+run) a Container App from a container image — serverless, scales to zero when idle. REQUIRES confirmed=true after the user approves; the preview (will_create) lists every setting, including whether the container runs as root. The name, port and instance counts are checked before the gate. Async: returns operation_id; use ca_get for status + public URL. Ideal for stateless web services/APIs without managing a VM.",
 			InputSchema: objSchema(map[string]any{
-				"name":          strProp("Container app name (RFC1123, unique)."),
+				"name":          strProp("Container app name: an RFC 1123 label (lowercase letters, digits and '-', 1-63 characters), unique."),
 				"image":         strProp("Container image URI from Artifact Registry of this project (or a public registry of another project), linux/amd64, e.g. <registry>.cr.cloud.ru/<repository>:<tag>. The app must listen on 0.0.0.0:$PORT."),
 				"cpu":           strProp("CPU request, e.g. '0.1', '1' (default 0.1)."),
 				"memory":        strProp("Memory request, e.g. '256Mi', '1Gi' (default 256Mi)."),
-				"port":          intProp("Container port the app listens on (default 8080). Ports 8008, 8012, 8013, 8022, 8112, 9090-9092 are reserved. A port of 1024 or below makes evo run the container in privileged mode (as root): by default it runs as UID 1000, which cannot bind such a port."),
+				"port":          intProp("Container port the app listens on (default 8080). Reserved by the platform and refused: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091."),
+				"privileged":    boolProp("Run the container in privileged mode, as root (default false: it runs as UID 1000). Only for images that must run as root; the preview says so."),
 				"public":        boolPropTrue("Expose a public URL (default true)."),
-				"min_instances": intProp("Minimum instances (default 0 = scale to zero)."),
-				"max_instances": intProp("Maximum instances (default 1)."),
+				"min_instances": intProp("Minimum instances (default 0 = scale to zero); at most max_instances."),
+				"max_instances": intProp("Maximum instances (default 1, at least 1)."),
 				"env":           map[string]any{"type": "object", "description": "Environment variables as a name→value object.", "additionalProperties": map[string]any{"type": "string"}},
 				"description":   strProp("Optional description."),
 				"confirmed":     confirmedProp(),
@@ -835,7 +836,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "lb_create",
-			Description: "Create an L4 load balancer fronting a target group. Resolves vpc_id (from the target group), subnet (first project subnet) and builds a rule with a listener (port→target_port) + TCP health check. external=true (default) allocates a public IP. Without confirmed=true returns a preview only. Mutation (BILLABLE, async): requires confirmed=true. Poll lb_operation.",
+			Description: "Create an L4 load balancer fronting a target group. Resolves vpc_id (from the target group), the zone (zone, else the zone of subnet_id, else of the target group's VMs, else the configured region; none is refused) and the subnet (the zone's main subnet of that VPC), and builds a rule with a listener (port→target_port) + TCP health check. external=true (default) allocates a public IP. Without confirmed=true returns a preview only. Mutation (BILLABLE, async): requires confirmed=true. Poll lb_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":            strProp("Load balancer name. Required."),
 				"target_group_id": strProp("Target group UUID (from tg_list/tg_create) to balance traffic to. Required."),
@@ -844,7 +845,8 @@ func (s *Registry) registerTools() {
 				"hc_port":         intProp("Health-check port. Default = target_port."),
 				"external":        boolPropTrue("Allocate a public IP (default true). Set false for an internal-only balancer."),
 				"vpc_id":          strProp("VPC UUID. Optional; default = the target group's VPC."),
-				"subnet_id":       strProp("Subnet UUID for the balancer's AZ. Optional; default = first project subnet."),
+				"zone":            strProp("Availability zone the balancer serves, name or UUID (see list_zones). Optional; default = the zone of subnet_id, else of the target group's VMs, else the configured region."),
+				"subnet_id":       strProp("Subnet UUID for the balancer's AZ. Optional; default = the zone's main subnet in the balancer's VPC."),
 				"confirmed":       confirmedProp(),
 			}, "name", "target_group_id", "port"),
 		},
@@ -1050,7 +1052,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ar_create",
-			Description: "Create an Artifact Registry registry (async); refuses a name an existing registry has (ar_list). type=DOCKER (default), DEBIAN, RPM, GENERIC, or PYPI. Mutation (BILLABLE): requires confirmed=true after the user approves. Poll ar_operation; then push images via docker login to <registry>.cr.cloud.ru.",
+			Description: "Create an Artifact Registry registry (async); refuses a name an existing registry has (ar_list). registry_type=DOCKER (default), DEBIAN, RPM, GENERIC or PYPI. Mutation (BILLABLE): requires confirmed=true after the user approves. Poll ar_operation; then push images via docker login to <registry>.cr.cloud.ru.",
 			InputSchema: objSchema(map[string]any{
 				"name":          strProp("Registry name. Required."),
 				"registry_type": strProp("Registry type: DOCKER (default), DEBIAN, RPM, GENERIC, PYPI."),
@@ -1257,14 +1259,14 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_plan",
-			Description: "Plan a multi-resource STACK from ONE declarative manifest. Use this for ANY multi-service deploy instead of calling pg_create/k8s_create/provision/tg_create/… yourself — the engine runs the whole chain server-side so your context stays small. Returns a job_id AND a rate-card cost estimate (show it to the user, get explicit approval, THEN stack_apply). Read-only (creates nothing). manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]}. (container-apps: not yet — needs a registry image.)",
+			Description: "Plan a multi-resource STACK from ONE declarative manifest. Use this for ANY multi-service deploy instead of calling pg_create/k8s_create/provision/tg_create/… yourself — the engine runs the whole chain server-side so your context stays small. Returns a job_id AND a rate-card cost estimate (show it to the user, get explicit approval, THEN stack_apply). Read-only (creates nothing). manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor,image,zone}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]}. vm.image (name or UUID, see image_list) and vm.zone (name like ru.AZ-1 or UUID, see list_zones) default to the server's CLOUDRU_IMAGE_ID and CLOUDRU_REGION; stack_plan resolves both and refuses a stack with a VM when either is missing or unknown, before anything is created. (container-apps: not yet — needs a registry image.)",
 			InputSchema: objSchema(map[string]any{
 				"manifest": map[string]any{"type": "object", "description": "Declarative stack spec (see description)."},
 			}, "manifest"),
 		},
 		{
 			Name:        "stack_apply",
-			Description: "Apply a planned stack (from stack_plan). BILLABLE mutation: requires confirmed=true after the user approved the cost. Returns immediately with a compact status; the engine runs the deploy across cranks — poll stack_status(job_id) until status=done. You do NOT orchestrate the resources yourself.",
+			Description: "Apply a planned stack (from stack_plan). BILLABLE mutation: requires confirmed=true after the user approved the cost. The call starts the steps that are ready and returns a compact status; it can block for minutes, because a VM step (provision) waits for the VM to become active (~3 min seen live) while the async resources (Postgres, Kafka, Redis, k8s, NLB) only start. Then poll stack_status(job_id) until status=done. You do NOT orchestrate the resources yourself.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id from stack_plan. Required."),
 				"confirmed": confirmedProp(),
@@ -1280,7 +1282,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_destroy",
-			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the user approved.",
+			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the user approved. status=destroyed means every deletion was accepted: the VM, secrets and S3 objects are gone, while the async resources listed in 'deleting' (Postgres, Kafka, Redis, k8s, NLB, …) are still being deleted by the cloud for minutes (Postgres ~5 min seen live) — check them with pg_list, k8s_list and the like.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id. Required."),
 				"confirmed": confirmedProp(),
@@ -1601,12 +1603,12 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	}
 
 	if eng.ImageRef() == "" {
-		return usageResult(fmt.Errorf("image (name or UUID) or image_id is required (or CLOUDRU_IMAGE_ID)")), true
+		return usageResult(fmt.Errorf("image (name or UUID) or image_id (UUID) is required; the server has no CLOUDRU_IMAGE_ID (an image UUID) to default to")), true
 	}
 
 	region := eng.Config.Region
 	if region == "" {
-		return usageResult(fmt.Errorf("region (availability zone) is required")), true
+		return usageResult(fmt.Errorf("region (availability zone UUID, see list_zones) is required; the server has no CLOUDRU_REGION to default to")), true
 	}
 
 	vmName := stringArg(args, "name")
