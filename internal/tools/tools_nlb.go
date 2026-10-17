@@ -220,12 +220,13 @@ func (s *Registry) handleTgDelete(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from tg_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("tg_delete deletes target group %s. Call again with confirmed=true.", id)}), true
-	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("tg_delete deletes target group %s. Call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetTargetGroup(ctx, id) })
 	}
 	op, err := cli.DeleteTargetGroup(ctx, id)
 	if err != nil {
@@ -261,9 +262,17 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	if e != nil {
 		return errResult(fmt.Errorf("read target group %s: %w", tgID, e)), true
 	}
+	tgVPC, _ := tg["vpc_id"].(string)
 	vpcID := stringArg(args, "vpc_id")
+	if vpcID != "" && tgVPC != "" && vpcID != tgVPC {
+		// The balancer shares its target group's VPC (release audit
+		// re-run, N-01).
+		return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+			fmt.Sprintf("target group %s is in VPC %s, not in vpc_id %s; nothing was created", tgID, tgVPC, vpcID),
+			"Omit vpc_id (the balancer takes its target group's VPC) or pass a target group of that VPC.")), true
+	}
 	if vpcID == "" {
-		vpcID, _ = tg["vpc_id"].(string)
+		vpcID = tgVPC
 	}
 	if vpcID == "" {
 		return errResult(fmt.Errorf("could not resolve vpc_id — pass it explicitly")), true
@@ -427,7 +436,7 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 		// without the field (Grok review of PR #89, the class of L-26).
 		if subnet.VPCID != "" && vpcID != "" && subnet.VPCID != vpcID {
 			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
-				fmt.Sprintf("subnet %s is not in VPC %s of the target group; nothing was created", subnetID, vpcID),
+				fmt.Sprintf("subnet %s is not in VPC %s of the balancer; nothing was created", subnetID, vpcID),
 				"Pass a subnet of that VPC (vpc_subnets), or omit subnet_id.")
 		}
 		if from != "subnet_id" && !provision.SubnetInZone(subnet, zone.ID, zone.Name) {
@@ -457,12 +466,13 @@ func (s *Registry) handleLbDelete(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from lb_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("lb_delete deletes load balancer %s. Call again with confirmed=true.", id)}), true
-	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("lb_delete deletes load balancer %s. Call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetNLB(ctx, id) })
 	}
 	op, err := cli.DeleteNLB(ctx, id)
 	if err != nil {

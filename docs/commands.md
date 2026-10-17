@@ -1389,7 +1389,7 @@ evo k8s add-nodepool <cluster-id> [flags]
       --nodes-subnet-id string     Subnet UUID for worker nodes (default auto zone-matched).
       --ram-gb int                 Node RAM GB for auto flavor (default 4).
       --security-group-id string   Security group UUID for nodes (default auto zone-matched SSH-access).
-      --zone string                Zone name (default from productConfiguration).
+      --zone string                Zone name (default: the zone of the cluster's control plane; refused when the cluster does not report it).
 ```
 
 ### Options inherited from parent commands

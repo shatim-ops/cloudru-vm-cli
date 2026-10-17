@@ -337,7 +337,7 @@ func (s *Registry) registerTools() {
 				"cpu":               intProp("Node vCPUs for auto flavor (default 2)."),
 				"ram_gb":            intProp("Node RAM GB for auto flavor (default 4)."),
 				"disk_gb":           intProp("Node disk GB, min 10 (default 20)."),
-				"zone":              strProp("Zone name (default from productConfiguration)."),
+				"zone":              strProp("Zone name (default: the zone of the cluster's control plane; refused when the cluster does not report it)."),
 				"nodes_subnet_id":   strProp("Subnet UUID for worker nodes (default auto zone-matched)."),
 				"security_group_id": strProp("Security group UUID for nodes (default auto zone-matched SSH-access)."),
 				"confirmed":         confirmedProp(),
@@ -1274,7 +1274,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_status",
-			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], outputs{postgres,vm,tg,lb,lb_external_ip,…}}. For a job started by stack_apply, each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs.lb_external_ip etc.) or status=error. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
+			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}}. For a job started by stack_apply, each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs; lb_external_ip is there only for a balancer with a public address) or status=error. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":       strProp("Job id. Required."),
 				"wait_seconds": intProp("How long this call may block while advancing (default 90, max 240). Fewer calls for a long deploy."),

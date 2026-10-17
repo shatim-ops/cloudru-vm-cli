@@ -247,7 +247,7 @@
 |---|---|---|---|
 | `stack_plan` | нет | `manifest` | Plan a multi-resource STACK from ONE declarative manifest. |
 | `stack_apply` | да | `job_id` | Apply a planned stack (from stack_plan). |
-| `stack_status` | нет | `job_id` | Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], outputs{postgres,vm,tg,lb,lb_external_ip,…}}. |
+| `stack_status` | нет | `job_id` | Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public … |
 | `stack_destroy` | удаляет | `job_id` | Tear down every resource in a stack (reverse order, idempotent). |
 
 ## vm

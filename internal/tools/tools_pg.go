@@ -9,6 +9,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/postgresql"
 )
 
@@ -451,12 +452,18 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(fmt.Errorf("create cluster: %w", err)), true
 	}
-	return toJSON(map[string]any{
+	out := map[string]any{
 		"status":       "creating",
 		"operation_id": op.ID,
 		"created":      willCreate,
 		"note":         "Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; then pg_list/pg_get for status READY.",
-	}), false
+	}
+	if op.ResourceID != "" {
+		out["cluster_id"] = op.ResourceID // release audit re-run, N-07
+	} else {
+		out["note"] = "Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; pg_list shows the cluster's id by its name, then pg_get for status READY."
+	}
+	return toJSON(out), false
 }
 
 func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (string, bool) {
@@ -477,6 +484,18 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {
+		msg := fmt.Sprintf("delete cluster: %v", err)
+		switch {
+		case strings.Contains(msg, "force flag"):
+			// A FAILED cluster: the public API takes no force (`?force=true`
+			// is 415 at the gateway, register CRD-19; release audit re-run,
+			// N-13).
+			return errResult(clierrors.New(clierrors.CodeAPIError, msg,
+				"Cloud.ru deletes a FAILED cluster only with force, which its public API does not accept: delete it in the Cloud.ru console or ask support.")), true
+		case strings.Contains(msg, "FailedPrecondition"):
+			return errResult(clierrors.New(clierrors.CodeAPIError, msg,
+				"The cluster is still being created (DEPLOYING): Cloud.ru deletes it once it is READY or FAILED. Check it with pg_get, then call pg_delete again.")), true
+		}
 		return errResult(fmt.Errorf("delete cluster: %w", err)), true
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id) until done=true."}), false

@@ -851,7 +851,34 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		return usageResult(fmt.Errorf("'job_id' is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_destroy PERMANENTLY deletes all resources in this stack. Call again with confirmed=true."}), true
+		// The preview names what goes: each step's resource as the job
+		// knows it (release audit, R-04, re-run N-11).
+		job, err := stack.LoadJob(id)
+		if err != nil {
+			return errResult(err), true
+		}
+		var res []map[string]any
+		for _, st := range job.Steps {
+			rid := firstNonEmptyStr(job.Outputs[st.Key], st.ResourceID)
+			if rid == "" && !stepMayHaveCreated(st) {
+				continue
+			}
+			row := map[string]any{"step": st.Key, "status": st.Status}
+			if rid != "" {
+				row["id"] = rid
+			}
+			if st.FindName != "" {
+				row["name"] = st.FindName
+			}
+			res = append(res, row)
+		}
+		out := map[string]any{"status": "confirmation_required",
+			"message":   fmt.Sprintf("stack_destroy PERMANENTLY deletes the %d resource(s) of stack %s listed in resources. Call again with confirmed=true.", len(res), id),
+			"resources": res}
+		if len(res) == 0 {
+			out["message"] = fmt.Sprintf("stack %s has created nothing yet; stack_destroy only marks it destroyed. Call again with confirmed=true.", id)
+		}
+		return toJSON(out), true
 	}
 	unlock, err := s.lockJob(id)
 	if err != nil {

@@ -1,6 +1,9 @@
 package tools
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // deletePreview is the confirmation answer of a *_delete tool: one GET of
 // the resource names what goes — its name and status next to the ID the
@@ -21,9 +24,17 @@ func deletePreview(message, id string, get func() (map[string]any, error)) (stri
 	if name != "" {
 		label = fmt.Sprintf("%s (%s)", name, id)
 	}
-	return toJSON(map[string]any{
+	out := map[string]any{
 		"status":  "confirmation_required",
 		"message": fmt.Sprintf(message, label),
 		"target":  map[string]any{"id": id, "name": name, "status": status},
-	}), true
+	}
+	// Cloud.ru refuses to delete a DBaaS cluster that is still being
+	// created (400/500 FailedPrecondition, register DB-17, CRD-B15): said
+	// before the confirmation, not after (release audit re-run, N-09).
+	switch strings.ToUpper(status) {
+	case "DEPLOYING", "CREATING", "PROVISIONING":
+		out["warning"] = fmt.Sprintf("it is still being created (%s): Cloud.ru may refuse the delete until it is ready or failed", status)
+	}
+	return toJSON(out), true
 }

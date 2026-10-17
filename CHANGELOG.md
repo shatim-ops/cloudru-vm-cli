@@ -17,11 +17,13 @@
   - аргумент инструмента не того типа (`"confirmed": "true"`, `"size_gb": "20"`) — `USAGE` с именем поля, а не молчаливое значение по умолчанию;
   - MCP: неизвестный инструмент — ошибка JSON-RPC -32602; схема `bearer` в `Authorization` — без учёта регистра; отказ по лимиту одновременных вызовов — новый код `SERVER_BUSY` вместо `API_RATE_LIMITED`;
   - `k8s_kubectl` отклоняет `--kuberc`; kubectl и helm под evo запускаются с `KUBERC=off`;
-  - `evo vm delete` / `destroy vm_id=|name=`: превью называет ВМ (id, имя, зона, состояние, адрес), floating IP и правила портов; несуществующая ВМ — код 4 уже на превью; имя нескольких ВМ — `USAGE` со списком кандидатов. Превью `k8s_delete`, `pg_delete`, `kafka_delete`, `redis_delete`, `ar_delete` называет ресурс;
+  - `evo vm delete` / `destroy vm_id=|name=`: превью называет ВМ (id, имя, зона, состояние, адрес), floating IP и правила портов; несуществующая ВМ — код 4 уже на превью; имя нескольких ВМ — `USAGE` со списком кандидатов. Превью `k8s_delete`, `pg_delete`, `kafka_delete`, `redis_delete`, `ar_delete`, `lb_delete`, `tg_delete`, `vpc_delete`, `snat_delete` называет ресурс (несуществующий — ошибка на превью, кластер в создании — предупреждение); превью `stack_destroy` перечисляет ресурсы стека;
   - `destroy` / `evo vm delete`: удаление не подтвердилось — код 5, у MCP `status: partial`; запись, floating IP и правила портов остаются до повторного удаления; подтверждения ждём 2 мин вместо 30 с;
   - `provision` (`evo vm create`): floating IP не привязался — `status: partial`, код 5, без строки SSH; FIP записан, его освобождает `destroy`;
   - `kafka_create`, `redis_create`, `pg_create`, `ar_create` отказывают (`USAGE`), если имя занято, — второй платный ресурс не создаётся; стек не подхватывает чужой ресурс с тем же именем;
   - `pg_create`, `kafka_create`, `redis_create` без подходящей спецификации — `USAGE` со списком спецификаций (раньше код 0); `pg_create` проверяет `instances` по спецификации; брокеров Kafka по умолчанию — минимум спецификации, иначе 1 с предупреждением;
+  - `lb_create`: `vpc_id` не той VPC, что у группы целей, — `CONFIG_INVALID` до запроса;
+  - `pg_operation` (и другие `*_operation` с `wait_seconds`): ожидание истекло, операция не завершена — `still_running: true` и подсказка; `pg_create` возвращает `cluster_id`, когда API его дал; `pg_delete` кластера в создании или в `FAILED` — подсказка, что делать (в `FAILED` Cloud.ru удаляет только из консоли);
   - `ca_deploy`: имя, зарезервированные порты (1–1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091, 9092) и `min/max_instances` проверяются до подтверждения; порт ≤ 1024 больше не включает режим root молча — для root нужен явный `privileged=true`; превью показывает все параметры;
   - `k8s plan/create`: `--master-count` кроме 1, 3, 5 — `USAGE` (раньше молча 1);
   - `deploy_plan` берёт зону, флейвор и образ из настроек, как `evo deploy`; без зоны предупреждает о ru.AZ-2;

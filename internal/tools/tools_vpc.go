@@ -90,12 +90,13 @@ func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (st
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from vpc_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first. Call again with confirmed=true.", id)}), true
-	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first. Call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetVPC(ctx, id) })
 	}
 	op, err := cli.DeleteVPC(ctx, id)
 	if err != nil {

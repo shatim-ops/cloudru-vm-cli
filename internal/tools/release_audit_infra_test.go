@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -522,6 +523,40 @@ func TestStackDestroy_ReportsAsyncDeletions(t *testing.T) {
 	}
 }
 
+// R-04 (повторная приемка, N-11): превью stack_destroy перечисляет ресурсы
+// стека, превью tg_delete и lb_delete называют ресурс по GET, а ID, которого
+// нет, — ошибка до подтверждения.
+func TestDeletePreviews_NameTheResource(t *testing.T) {
+	stackHome(t)
+	r := newTestServer()
+	j := planJob(t, `{"name":"x","postgres":{"name":"p"},"secrets":[{"path":"a","value":"b"}]}`)
+	for _, st := range j.Steps {
+		if st.Key == "postgres" {
+			st.Status = "done"
+		}
+	}
+	j.Outputs["postgres"] = "pg-1"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	got := callTool(t, r.handleStackDestroy, map[string]any{"job_id": j.ID})
+	res, _ := got["resources"].([]any)
+	if got["status"] != "confirmation_required" || len(res) != 1 || !strings.Contains(fmt.Sprint(res[0]), "pg-1") {
+		t.Errorf("stack_destroy preview: %v", got)
+	}
+
+	f := &raAPI{targetVMs: `{"id":"vm-1"}`}
+	rr := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	if _, text, _ := callNamed(t, rr, "tg_delete", map[string]any{"id": "tg-1"}); !strings.Contains(text, "tg (tg-1)") {
+		t.Errorf("tg_delete preview does not name the group: %s", text)
+	}
+	m, text, _ := callNamed(t, rr, "lb_delete", map[string]any{"id": "lb-missing"})
+	if strings.Contains(text, "confirmation_required") {
+		t.Fatalf("lb_delete preview of a missing balancer: %s", text)
+	}
+	wantReason(t, "lb_delete missing", m, text, "NOT_FOUND")
+}
+
 // Продолжение L-08 для групп узлов: зона по умолчанию была зоной продукта
 // (ru.AZ-2), а подсеть — первой в проекте из любой зоны. Теперь зона —
 // зона мастеров кластера, подсеть — из неё, чужая — CONFIG_INVALID.
@@ -581,6 +616,25 @@ func TestLbCreate_SubnetOfAnotherVPCRefused(t *testing.T) {
 		t.Fatalf("subnet of another VPC accepted: %s", text)
 	}
 	wantReason(t, "subnet of another VPC", m, text, "CONFIG_INVALID")
+	if f.postCount() != 0 {
+		t.Error("refused call sent a POST")
+	}
+}
+
+// Повторная приемка #90, N-01: vpc_id не той VPC, что у группы целей,
+// отказывал текстом про подсеть; теперь отказ про сам vpc_id до запроса.
+func TestLbCreate_VPCOfAnotherTargetGroupRefused(t *testing.T) {
+	f := &raAPI{targetVMs: `{"id":"vm-1","interface_id":"if-1","vpc_id":"vpc-1","zone_id":"` + raAZ1 + `","zone_name":"ru.AZ-1"}`}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	m, text, isErr := callNamed(t, r, "lb_create", map[string]any{"name": "web", "target_group_id": "tg-1", "port": float64(80),
+		"vpc_id": "vpc-other", "confirmed": true})
+	if !isErr {
+		t.Fatalf("vpc_id of another VPC accepted: %s", text)
+	}
+	wantReason(t, "vpc_id of another VPC", m, text, "CONFIG_INVALID")
+	if !strings.Contains(text, "target group tg-1 is in VPC vpc-1") {
+		t.Errorf("refusal does not name the target group's VPC: %s", text)
+	}
 	if f.postCount() != 0 {
 		t.Error("refused call sent a POST")
 	}
