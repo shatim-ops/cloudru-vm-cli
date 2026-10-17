@@ -537,7 +537,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	if onNAT {
 		return toJSON(map[string]any{
 			"status":  "refused",
-			"message": fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (nat_delete); not released", fipIP, fipID),
+			"message": fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (snat_delete); not released", fipIP, fipID),
 		}), true
 	}
 

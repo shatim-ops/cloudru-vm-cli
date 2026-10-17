@@ -197,6 +197,9 @@ func newRootCmd() *cobra.Command {
 				"на ВМ и управление ресурсами облака: ВМ, диски, сети, Kubernetes, PostgreSQL,\n"+
 				"Object Storage, секреты.\n\n"+
 				"Сообщения по-английски: EVO_LANG=en."),
+		// evo --version prints what 'evo version' prints (benchmark: every
+		// CLI there has the flag).
+		Version: currentVersion().Version,
 		// Errors are printed once, by run(): as text or, with --json, as
 		// {"error": {...}} on stderr.
 		SilenceUsage:  true,
@@ -215,6 +218,10 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 
+	var versionText strings.Builder
+	_ = printVersion(&versionText, false, currentVersion())
+	cmd.SetVersionTemplate(versionText.String())
+	cmd.Flags().Bool("version", false, i18n.T("Print the version (as 'evo version')", "Версия (как 'evo version')"))
 	cmd.PersistentFlags().BoolVar(&flagJSON, "json", false, i18n.T("Output in JSON format", "Вывод в формате JSON"))
 	cmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, i18n.T("Enable verbose logging", "Подробный журнал"))
 	cmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, i18n.T("Disable colored output", "Без цвета"))

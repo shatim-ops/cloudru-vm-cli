@@ -14,16 +14,6 @@ import (
 
 const kafkaHost = "https://kafka.api.cloud.ru"
 
-// firstArg returns the first non-empty string arg among keys.
-func firstArg(args map[string]any, keys ...string) string {
-	for _, k := range keys {
-		if v := stringArg(args, k); v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 func boolArg(args map[string]any, key string, def bool) bool {
 	if v, ok := args[key].(bool); ok {
 		return v
@@ -209,7 +199,7 @@ func (s *Registry) handleKafkaList(ctx context.Context, args map[string]any) (st
 }
 
 func (s *Registry) handleKafkaGet(ctx context.Context, args map[string]any) (string, bool) {
-	id := firstArg(args, "cluster_id", "id")
+	id := stringArg(args, "cluster_id")
 	if id == "" {
 		return usageResult(fmt.Errorf("'cluster_id' is required (from kafka_list)")), true
 	}
@@ -349,7 +339,7 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 }
 
 func (s *Registry) handleKafkaDelete(ctx context.Context, args map[string]any) (string, bool) {
-	id := firstArg(args, "cluster_id", "id")
+	id := stringArg(args, "cluster_id")
 	if id == "" {
 		return usageResult(fmt.Errorf("'cluster_id' is required (from kafka_list)")), true
 	}

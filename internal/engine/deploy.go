@@ -423,8 +423,8 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	if sshUser == "" {
 		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
 			i18n.Tf("image %s declares no login user", "в образе %s не задан пользователь для входа", imageID),
-			i18n.T("Choose a Linux image whose metadata has a 'name' field (evo list-images), e.g. Ubuntu-24.04.",
-				"Выберите образ Linux, в метаданных которого есть поле 'name' (evo list-images), например Ubuntu-24.04."))
+			i18n.T("Choose a Linux image whose metadata has a 'name' field (evo image list), e.g. Ubuntu-24.04.",
+				"Выберите образ Linux, в метаданных которого есть поле 'name' (evo image list), например Ubuntu-24.04."))
 	}
 
 	diskType, err := e.resolveDiskType(ctx, projectID, defaultDiskTypeName)

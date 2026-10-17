@@ -9,6 +9,9 @@
 
 ### Изменено поведение
 
+- MCP и `evo tools call`: аргумент, которого нет в схеме инструмента, — `USAGE` до обработчика со списком аргументов (раньше молча игнорировался: `destroy {"vm": …}` уходил в «удалить текущее развёртывание»); значения полей с `enum` — без учёта регистра, чужое — `USAGE`. У DNS-инструментов `type` — `public`/`private` (раньше `Private` молча означал публичную зону).
+- MCP `deploy` и `destroy` (текущее развёртывание): ошибка — по общему контракту (`status`, `reason`, `error`, `hint`, `log`), а не текст или поле `error` с префиксом кода.
+- `cert_issue_le.dns_names` — массив строк в схеме; `kafka_create`/`redis_create` — `subnet_id` и `dns_zone_create` — `name` описаны в схемах; недокументированные `id` у `kafka_*`/`redis_*` и `privileged` у `ca_deploy` убраны (root для порта ≤ 1024 — как раньше, сам).
 - Зона, которую API отдаёт с `enabled: false`: `deploy`, `deploy --dry-run`, `vm create`, MCP `provision` и `deploy_plan` отказывают `CONFIG_INVALID` до резервирования floating IP и создания ВМ, с открытыми зонами в подсказке. `evo init` такую зону не предлагает и предупреждает, а в `evo list-zones` есть колонка «Новые ресурсы» (открыта или закрыта). Раньше ВМ получала 422 `wrong_az`, а созданный floating IP оставался в проекте.
 - `deploy` и MCP `provision`: имя зоны в `region` (`ru.AZ-2` вместо ID) — `CONFIG_INVALID` с ID зоны в подсказке до создания; раньше API отказывал уже после резервирования floating IP.
 - MCP `provision`: явный `subnet_id`, которого нет в проекте или который из другой зоны (по зоне из API, а без неё — по имени зоны в имени подсети), — `CONFIG_INVALID` до создания. `provision` и `deploy_plan`: нет группы безопасности в зоне или список групп не прочитан — отказ, как у `deploy` (раньше ВМ создавалась без группы и была недоступна по SSH). `deploy_plan` по-прежнему принимает зону и по имени, и по ID.
@@ -46,6 +49,7 @@
 
 ### Добавлено
 
+- `evo --version` — то же, что `evo version`.
 - Ключ и проект из переменных, которые используют Cloud.ru: `CLOUDRU_KEY_SECRET` (из MCP-гайда Cloud.ru; `CLOUDRU_SECRET` важнее) и `EVOLUTION_SERVICE_ACCOUNT_KEY_ID` / `_SECRET`, `EVOLUTION_PROJECT_ID` (их AI Agents передаёт MCP-серверу; `CLOUDRU_*` важнее, устаревшая `CLOUDRU_API_KEY` — слабее их всех). `evo doctor` называет такие переменные в источнике ключа; ключ из `EVOLUTION_*` с проектом не из `EVOLUTION_PROJECT_ID` — предупреждение с источником проекта.
 - Каталог образов: `evo image list [запрос]`, `evo image get <имя|UUID>`; MCP `image_list`, `image_get` по имени.
 - `evo vm create --image <имя|UUID>`, `--meta поле=значение` (`поле=-` — из stdin без эха, `поле=@файл`), `--port`; MCP `provision`: `image`, `image_metadata`, `ports`.

@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,9 +69,11 @@ func TestProvision_NoUndeclaredDryRun(t *testing.T) {
 	if _, ok := tl.InputSchema["properties"].(map[string]any)["dry_run"]; ok {
 		t.Fatal("dry_run is declared now: drop this test, test the declared behaviour")
 	}
-	_, _ = r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true, "dry_run": true})
-	if cloud.creates != 1 {
-		t.Fatalf("creates = %d, want 1: an undeclared argument changed the call", cloud.creates)
+	// An undeclared argument is refused before the cloud (release QA,
+	// D-mcp 4), not silently taken or ignored.
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true, "dry_run": true})
+	if !isErr || !strings.Contains(text, "USAGE") || !strings.Contains(text, "dry_run") || cloud.creates != 0 {
+		t.Fatalf("creates = %d, answer %s: an undeclared argument must be refused", cloud.creates, text)
 	}
 }
 
