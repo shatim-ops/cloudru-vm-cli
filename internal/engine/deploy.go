@@ -872,18 +872,13 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 	if (err != nil || fip == nil || fip.ID == "") && !provision.IsQuotaError(err) {
 		// The create may have reached the cloud with its answer lost: then
 		// the FIP exists under this unique name. Taken as the boot FIP, it is
-		// recorded and released like one, not left billed (QA r3 R7). The
-		// lookup outlives a Ctrl-C during the POST (ctx cancelled): the
-		// address the platform made is found and released, not lost.
-		lctx, lcancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		fips, lerr := e.Cloud.ListFloatingIPs(lctx, projectID)
-		lcancel()
-		if lerr == nil {
-			for _, f := range fips {
-				if f.Name == name && f.ID != "" {
-					return f, nil
-				}
-			}
+		// recorded and released like one, not left billed (QA r3 R7).
+		if f := e.findBootFIP(ctx, projectID, name); f != nil {
+			return f, nil
+		}
+		if ctx.Err() != nil && !provision.IsQuotaError(err) {
+			e.Printer.Warning(i18n.Tf("reserving floating IP %s was interrupted: the platform may still create it; check 'evo vpc fips' and release it ('evo vpc fip-release') if it is there",
+				"резервирование floating IP %s прервано: платформа ещё может его создать; проверьте 'evo vpc fips' и освободите его ('evo vpc fip-release'), если он там есть", name))
 		}
 	}
 	if err != nil || fip == nil || fip.ID == "" {
@@ -902,6 +897,38 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 		return nil, nil
 	}
 	return fip, nil
+}
+
+// findBootFIP looks the boot FIP up by its unique name after a failed
+// create. The lookup outlives a Ctrl-C during the POST (ctx cancelled), and
+// then tries three times: the server may create the address a moment after
+// the client hung up (review Grok on #85).
+func (e *Engine) findBootFIP(ctx context.Context, projectID, name string) *provision.FloatingIP {
+	lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	attempts := 1
+	if ctx.Err() != nil {
+		attempts = 3
+	}
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			select {
+			case <-lctx.Done():
+				return nil
+			case <-time.After(e.timings().FIPRetryInterval):
+			}
+		}
+		fips, err := e.Cloud.ListFloatingIPs(lctx, projectID)
+		if err != nil {
+			continue
+		}
+		for _, f := range fips {
+			if f.Name == name && f.ID != "" {
+				return f
+			}
+		}
+	}
+	return nil
 }
 
 // releaseBootFIP deletes a boot FIP whose VM was not created or was deleted.
