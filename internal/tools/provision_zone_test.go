@@ -60,6 +60,9 @@ func TestProvision_NoSubnetOrGroupInZoneRefusedBeforeAnyMutation(t *testing.T) {
 	}{
 		"нет подсети в зоне": {subnetsAZ1, nil, "no subnet for zone ru.AZ-3"},
 		"нет группы в зоне":  {subnetsAZ3, groupsAZ1, "no security group for zone ru.AZ-3"},
+		// Единственная подсеть проекта — в чужой зоне (ревью Grok на #83).
+		"единственная подсеть чужой зоны": {subnetsAZ1[:1], groupsAZ1, "no subnet for zone ru.AZ-3"},
+		"единственная группа чужой зоны":  {subnetsAZ3, groupsAZ1[:1], "no security group for zone ru.AZ-3"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}}, subnets: tc.subnets, groups: tc.groups}

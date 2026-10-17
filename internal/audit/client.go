@@ -84,6 +84,11 @@ func apiError(status int, body []byte) error {
 			i18n.T("Check the role of the service account in the Cloud.ru console; if it has access, audit logs are enabled by Cloud.ru support.",
 				"Проверьте роль сервисного аккаунта в консоли Cloud.ru; если права есть — доступ к аудит-логам включает поддержка Cloud.ru."))
 	}
+	if status == http.StatusTooManyRequests {
+		return clierrors.New(clierrors.CodeAPIRateLimited,
+			i18n.Tf("audit API rate limit (audit API %d)", "превышена частота запросов к аудиту (audit API %d)", status),
+			i18n.T("Retry in a minute.", "Повторите через минуту."))
+	}
 	if status == http.StatusUnauthorized {
 		return clierrors.New(clierrors.CodeAPIError,
 			i18n.Tf("audit logging is not enabled for the project (audit API %d)", "аудит не включён для проекта (audit API %d)", status),

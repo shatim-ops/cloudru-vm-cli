@@ -60,6 +60,11 @@ func TestPickSubnet(t *testing.T) {
 		t.Errorf("by name: %d", i)
 	}
 	if i := PickSubnet(byName[:1], "z9", "ru.AZ-9"); i != 0 {
-		t.Errorf("the only subnet of the project: %d", i)
+		t.Errorf("the only subnet of the project, zone unknown: %d", i)
+	}
+	// Единственная подсеть проекта чужой зоны не берётся: новый проект с
+	// одной Default_ru.AZ-1 и .evo.yaml на ru.AZ-2 (ревью Grok на #83).
+	if i := PickSubnet(subnets[3:4], "z2", "ru.AZ-2"); i != -1 {
+		t.Errorf("the only subnet of another zone taken: %d", i)
 	}
 }

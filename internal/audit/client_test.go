@@ -75,3 +75,16 @@ func TestList_403NamesTheRole(t *testing.T) {
 		t.Errorf("error = %#v", err)
 	}
 }
+
+// 429 — частота запросов, а не «аудит не включён» (ревью Qwen на #83).
+func TestList_429IsRateLimited(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+	_, err := New("tok", "p", srv.URL).List(context.Background(), ListOptions{})
+	var ce *clierrors.CLIError
+	if !errors.As(err, &ce) || ce.Code != clierrors.CodeAPIRateLimited {
+		t.Errorf("error = %#v", err)
+	}
+}

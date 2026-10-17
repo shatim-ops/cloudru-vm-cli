@@ -6,9 +6,10 @@ import "strings"
 // one the API marks as the zone's main subnet (default), then a routed
 // one (a floating IP binds only there), then the API order. Technical
 // subnets and those not in a usable state come last. The only subnet of
-// the project is taken when none is in the zone. A subnet of another zone
-// does not boot the VM, so there is no blind "first one". -1 when nothing
-// fits.
+// the project is taken when none is in the zone only if its zone is
+// unknown: a subnet of another zone does not boot the VM (error_creating
+// with a paid floating IP), so there is no blind "first one". -1 when
+// nothing fits.
 func PickSubnet(subnets []*Subnet, zoneID, zoneName string) int {
 	best := -1
 	for i, s := range subnets {
@@ -19,7 +20,7 @@ func PickSubnet(subnets []*Subnet, zoneID, zoneName string) int {
 			best = i
 		}
 	}
-	if best < 0 && len(subnets) == 1 {
+	if best < 0 && len(subnets) == 1 && subnets[0].AvailabilityZoneID == "" {
 		return 0
 	}
 	return best

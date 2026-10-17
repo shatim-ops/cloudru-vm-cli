@@ -49,7 +49,9 @@ func PickSecurityGroup(sgs []*SecurityGroup, zoneID, zoneName string) int {
 			best = i
 		}
 	}
-	if best < 0 && len(sgs) == 1 {
+	// The only group of the project, when none is in the zone, only if its
+	// zone is unknown: a group of another zone does not boot the VM.
+	if best < 0 && len(sgs) == 1 && sgs[0].AvailabilityZoneID == "" {
 		return 0
 	}
 	return best

@@ -40,7 +40,12 @@ func TestPickSecurityGroup(t *testing.T) {
 	if i := PickSecurityGroup(sgs, "z3", "ru.AZ-3"); i != -1 {
 		t.Errorf("no group in the zone: %d", i)
 	}
-	if i := PickSecurityGroup(sgs[:1], "z3", "ru.AZ-3"); i != 0 {
-		t.Errorf("the only group of the project: %d", i)
+	// Единственная группа проекта чужой зоны не берётся (ревью Grok на #83);
+	// единственная без зоны — берётся.
+	if i := PickSecurityGroup(sgs[:1], "z3", "ru.AZ-3"); i != -1 {
+		t.Errorf("the only group of another zone taken: %d", i)
+	}
+	if i := PickSecurityGroup([]*SecurityGroup{{ID: "x", Name: "web"}}, "z3", "ru.AZ-3"); i != 0 {
+		t.Errorf("the only group without a zone: %d", i)
 	}
 }

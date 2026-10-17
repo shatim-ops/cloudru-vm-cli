@@ -701,7 +701,7 @@ func (s *Registry) registerTools() {
 				"ram":              intProp("RAM GB — with cpu."),
 				"storage_gb":       intProp("Disk size GB. Optional; default = spec minimum."),
 				"shards":           intProp("Shard count 1-8 (default 1)."),
-				"replicas":         intProp("Replica count (default 3; MASTER_REPLICA takes at least 3)."),
+				"replicas":         intProp("Hosts per shard, the master included — the API's replicas field (default 3 = a master and two replicas; MASTER_REPLICA takes at least 3)."),
 				"type":             strProp("MASTER_REPLICA (default) or STANDALONE (rejected by the API so far)."),
 				"description":      strProp("Optional description."),
 				"confirmed":        confirmedProp(),
