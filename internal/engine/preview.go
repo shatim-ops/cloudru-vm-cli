@@ -227,7 +227,14 @@ func redeployPreview(rec *state.DeploymentRecord, project, from string) confirm.
 		previewLabel("project", "проект") + projectText(project, from),
 		i18n.T("upload the compose file to the existing VM and run 'docker compose up -d'",
 			"загрузить compose-файл на существующую ВМ и выполнить 'docker compose up -d'"),
-		i18n.T("no new resources are created", "новые ресурсы не создаются"),
+	}
+	creates := []string{}
+	if needsFloatingIP(rec) {
+		lines = append(lines, i18n.T("the VM has no public IP: a floating IP is created and attached to it (billed); destroy releases it",
+			"у ВМ нет внешнего IP: будет создан и привязан floating IP (тарифицируется); destroy его освободит"))
+		creates = append(creates, "floating_ip")
+	} else {
+		lines = append(lines, i18n.T("no new resources are created", "новые ресурсы не создаются"))
 	}
 	if rec.SecurityGroupID != "" {
 		lines = append(lines, i18n.Tf("ports of the compose file not yet open are opened in security group %s"+
@@ -239,7 +246,7 @@ func redeployPreview(rec *state.DeploymentRecord, project, from string) confirm.
 		Action:  "deploy",
 		Summary: i18n.Tf("update VM %s (%s)", "обновить ВМ %s (%s)", rec.VMID, rec.VMIP),
 		Lines:   lines,
-		Details: map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": []string{}},
+		Details: map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": creates},
 	}
 }
 

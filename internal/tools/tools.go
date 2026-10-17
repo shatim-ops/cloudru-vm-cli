@@ -2088,6 +2088,8 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			"status":     "confirmation_required",
 			"message":    "deleting a specific VM requires confirmed=true. Get the user's approval, then call again with confirmed=true.",
 			"project_id": s.projectID(ctx),
+			"floating_ip": "released if evo made it for this VM (recorded here, or named fip-<id>, fip-<name>-…, <name>-fip); " +
+				"any other address on the VM is kept unless release_ip=true",
 		}), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
@@ -2147,9 +2149,11 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	// one boot FIP named for it. The list's flat floating_ip field is often
 	// empty (BACKLOG [04]), which used to leave the FIP billed (QA H4).
 	fipRec := state.DeploymentRecord{VMID: target.ID}
+	recordedHere := false
 	if sf, err := state.Read(statePath); err == nil {
 		for _, d := range sf.Deployments {
 			if d.VMID == target.ID {
+				recordedHere = true
 				if d.FloatingIPID != "" {
 					fipRec.FloatingIPID = d.FloatingIPID
 				}
@@ -2160,12 +2164,32 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			}
 		}
 	}
-	if fipRec.VMIP == "" {
-		fipRec.VMIP = firstNonEmptyStr(target.FloatingIP, target.PublicIP)
-	}
 	releaseIP := true
 	if v, ok := args["release_ip"].(bool); ok {
 		releaseIP = v
+	}
+	_, releaseAsked := args["release_ip"]
+	explicitRelease := releaseAsked && releaseIP
+	keptFIP := ""
+	if fipRec.VMIP == "" {
+		addr := firstNonEmptyStr(target.FloatingIP, target.PublicIP)
+		// An address found only on a VM this directory did not record is
+		// released when evo made it; one the user reserved stays unless
+		// release_ip=true was asked for (release QA, B-lifecycle 5).
+		if addr != "" && !recordedHere && !explicitRelease && releaseIP {
+			evoMade := false
+			if fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID); e == nil {
+				for _, f := range fips {
+					if f.IPAddress == addr && provision.IsEvoFIPOf(f.Name, target.ID, target.Name) {
+						evoMade = true
+					}
+				}
+			}
+			if !evoMade {
+				keptFIP, addr = addr, ""
+			}
+		}
+		fipRec.VMIP = addr
 	}
 	if releaseIP && fipRec.FloatingIPID == "" && fipRec.VMIP == "" && target.Name != "" {
 		if fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID); e == nil {
@@ -2173,7 +2197,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			// such, the one the answer binds to this VM.
 			var named, bound []*provision.FloatingIP
 			for _, f := range fips {
-				if provision.IsBootFIPOf(f.Name, target.Name) {
+				if provision.IsEvoFIPOf(f.Name, target.ID, target.Name) {
 					named = append(named, f)
 					if f.BoundTo(target.ID) {
 						bound = append(bound, f)
@@ -2212,6 +2236,9 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	msg := "VM deleted"
 	if alreadyGone {
 		msg = "VM already deleted (not found in the cloud); its local record is cleaned up"
+	}
+	if keptFIP != "" {
+		msg += "; floating IP " + keptFIP + " kept: evo did not make it (release it with release_floating_ip, or call destroy with release_ip=true)"
 	}
 	fipLeft := false
 	if releaseIP && hasFIP {

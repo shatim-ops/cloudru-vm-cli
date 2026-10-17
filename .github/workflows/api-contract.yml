@@ -15,14 +15,9 @@ on:
     paths:
       - "scripts/api-contract*"
       - "scripts/cloudru-specs.py"
-      - "internal/provision/**"
-      - "internal/**/client.go"
-      - "internal/mk8s/**"
-      - "internal/auth/iam.go"
-      # Часть запросов собирают обработчики MCP (тела redis/dns, admin,
-      # billing) — опись ссылается на эти файлы.
-      - "internal/tools/**"
-      - "internal/cli/configure.go"
+      # Сверка покрытия читает весь internal/**/*.go: новый запрос в любом
+      # пакете без записи в описи валит проверку.
+      - "internal/**/*.go"
 
 concurrency:
   group: api-contract-${{ github.ref }}
@@ -42,6 +37,15 @@ jobs:
 
       - name: Зависимости
         run: python3 -m pip install --quiet pyyaml
+
+      # Без спецификаций: каждый путь API из internal/**/*.go есть в описи.
+      # Идёт до скачивания, чтобы не пропускаться, когда cloud.ru/docs
+      # недоступен.
+      - name: Опись покрывает код
+        run: |
+          python3 scripts/api-contract-check.py --code-only > "$RUNNER_TEMP/coverage.txt" || status=$?
+          grep -v '^\[ok' "$RUNNER_TEMP/coverage.txt" || true
+          exit "${status:-0}"
 
       - name: Спецификации Cloud.ru
         id: specs

@@ -87,3 +87,18 @@ func IsBootFIPOf(name, vmName string) bool {
 	}
 	return true
 }
+
+// IsEvoFIPOf reports a floating IP evo made for the VM: deploy's
+// "fip-<vm id>" after boot, provision's and deploy's BootFIPName, and
+// deploy_apply's "<vm name>-fip". destroy releases an address it finds only
+// on the VM when it is one of these: another address on the VM may be one
+// the user reserved (release QA, B-lifecycle 5).
+func IsEvoFIPOf(fipName, vmID, vmName string) bool {
+	if fipName == "" {
+		return false
+	}
+	if vmID != "" && fipName == "fip-"+vmID {
+		return true
+	}
+	return vmName != "" && (IsBootFIPOf(fipName, vmName) || fipName == FitName(vmName, "-fip"))
+}

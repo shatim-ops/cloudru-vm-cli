@@ -76,6 +76,16 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			i18n.Tf("deployment %s is being destroyed", "развёртывание %s в процессе удаления", existing.ID),
 			i18n.T("Run 'evo destroy' to finish it, then deploy again.", "Завершите удаление командой 'evo destroy', затем разверните заново."))
 	}
+	// A VM that went to error_creating is not reused: it never boots, and a
+	// re-run would give it a billed floating IP and retry SSH in a loop
+	// (release QA, B-lifecycle 4; register CMP-9: such a VM is deleted
+	// through the API).
+	if !isNewDeploy && existing.Status == "error" {
+		return clerrors.New(clerrors.CodeVMProvisionFailed,
+			i18n.Tf("VM %s of this deployment is in an error state", "ВМ %s этого развёртывания в состоянии ошибки", existing.VMID),
+			i18n.T("Delete it with 'evo destroy', then deploy again (in another zone if it repeats).",
+				"Удалите её командой 'evo destroy' и разверните заново (если повторится — в другой зоне)."))
+	}
 	// One directory holds one deployment: never send this compose file to
 	// a VM of another project, nor open its ports there.
 	if !isNewDeploy && existing.ProjectID != "" && e.Config.ProjectID != "" && existing.ProjectID != e.Config.ProjectID {
@@ -98,14 +108,26 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		return nil
 	}
 	if !isNewDeploy && opts.DryRun {
-		// Updating an existing VM creates nothing billable, so it is not
-		// gated; --dry-run still must not touch it. It stops before step 2,
-		// which prints the compose warnings: print them here.
+		// --dry-run must not touch the VM. It stops before step 2, which
+		// prints the compose warnings: print them here.
 		for _, w := range project.Warnings {
 			e.Printer.Warning(w)
 		}
 		_, err := confirm.Ask(ctx, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing)), e.confirmOptions(false, true, false))
 		return err
+	}
+	// Updating an existing VM creates nothing billable and is not gated —
+	// unless it has no public IP (a private VM of provision or a stack, a
+	// FIP that failed before): then deploy makes a billed floating IP, and
+	// that needs consent as a new VM does (release QA, B-lifecycle 1).
+	if !isNewDeploy && needsFloatingIP(existing) {
+		proceed, err := confirm.Ask(ctx, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing)), e.confirmOptions(opts.Yes, false, opts.NonInteractive))
+		if err != nil {
+			return err
+		}
+		if !proceed {
+			return nil
+		}
 	}
 
 	// An existing VM needs the key for SSH from here on; a new one gets it
@@ -1054,6 +1076,12 @@ func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRec
 	if err != nil {
 		e.Printer.Warning(i18n.Tf("floating IP: %v", "floating IP не назначен: %v", err))
 	}
+}
+
+// needsFloatingIP: the record has neither an address nor a recorded floating
+// IP, so a re-run creates one (recoverFloatingIP).
+func needsFloatingIP(rec *state.DeploymentRecord) bool {
+	return rec.VMIP == "" && rec.FloatingIPID == "" && rec.VMID != ""
 }
 
 // waitForSSH retries SSH connection until the VM is reachable.

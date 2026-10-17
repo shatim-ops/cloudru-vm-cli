@@ -16,6 +16,20 @@ values and HTTP statuses the code relies on. For each request it reports:
   enum          every enum value the code compares against is in the spec
   status        every HTTP status the code handles specially is documented
 
+It also reads the Go code (internal/**/*.go, tests excluded) for the API
+paths it requests — string literals starting with /api/, /v1/, /v2/, /v3/,
+/events/ or an https URL on *.cloud.ru, with the `+` chain that follows —
+and reports:
+
+  code-uncovered   a path (and method, when the call site names it) the
+                   code requests that no contract entry has: `error`
+  contract-unused  a contract entry no code requests: `warn`
+  code-ref         the entry's "code" file:line is not the call site: `info`
+
+Literals that are no request, and templates whose segment is picked at run
+time, go to "code_coverage" in the contract (ignore / expand, with a
+reason). --code-only runs just this part and needs no specs.
+
 Findings are `error` (the request contradicts the spec), `warn` (the spec
 says nothing, or the code reads a field the spec does not have) or `info`.
 Each request may carry "accepted": {"<finding id>": "<why>"} for known,
@@ -25,7 +39,8 @@ unaccepted error remains, so a changed spec that breaks a request shows up
 in CI.
 
 Usage: python3 scripts/api-contract-check.py [--specs .cache/cloudru-specs]
-           [--contract scripts/api-contract.json] [--markdown]
+           [--contract scripts/api-contract.json] [--root .] [--code-only]
+           [--markdown]
 """
 import argparse
 import fnmatch
@@ -282,16 +297,299 @@ def check_request(spec, req):
     return out
 
 
+# --- code coverage: every request the Go code makes is in the contract ---
+#
+# The contract is written by hand, so a request added to the code without an
+# entry was never checked against a spec. code_sites() reads the string
+# literals of internal/**/*.go (tests excluded) that look like API paths —
+# "/api/…", "/v1/…", "/v2/…", "/v3/…", "/events/…" or an https URL on
+# *.cloud.ru — with the `"lit" + expr + "lit"` chain that follows them, and
+# check_coverage() reports each one that no request of the contract has
+# (`error`, fails the run). A literal that is no request, or a template whose
+# segment is chosen at run time, is listed in the contract's "code_coverage":
+# "ignore" (with a reason) or "expand" (the concrete paths it stands for,
+# each of which must then be in the contract).
+
+CODE_PREFIXES = ("/api/", "/v1/", "/v2/", "/v3/", "/events/")
+CLOUD_URL_RE = re.compile(r"^https://([a-z0-9-]+\.)*cloud\.ru(/|$|\?)")
+HTTP_METHOD_RE = re.compile(r"\bhttp\.Method(Get|Post|Put|Patch|Delete)\b")
+# Helpers of the clients that always GET (dns/dbaas getList/getObject, mk8s
+# pages, compute listAll/listRaw/listProjectScoped, tools adminGET).
+GET_HELPER_RE = re.compile(r"\b(getList|getObject|pages|listRaw|listProjectScoped|listAll|adminGET)\s*(\[[^\]]*\])?\s*\(")
+PATH_HELPER_RE = re.compile(r'^func (\w+)\([^)]*\) string \{ return ("(?:/api/|/v[0-9]/|/events/)[^\n]*?) \}$', re.M)
+FMT_VERB_RE = re.compile(r"%[-+# 0-9.]*[sdvq]")
+HOLE = "\x00"  # a non-literal operand of a concatenation
+
+
+def go_tokens(src):
+    """A minimal Go lexer: yields (kind, value, offset) with kind str, nl,
+    id or op; comments are skipped (a multi-line one counts as a newline)."""
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c == "\n":
+            yield ("nl", c, i)
+            i += 1
+        elif c in " \t\r":
+            i += 1
+        elif src.startswith("//", i):
+            j = src.find("\n", i)
+            i = n if j < 0 else j
+        elif src.startswith("/*", i):
+            j = src.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            if "\n" in src[i:j]:
+                yield ("nl", "\n", i)
+            i = j
+        elif c == '"':
+            j = i + 1
+            while j < n and src[j] not in '"\n':
+                j += 2 if src[j] == "\\" else 1
+            yield ("str", src[i + 1:j], i)
+            i = j + 1
+        elif c == "`":
+            j = src.find("`", i + 1)
+            j = n if j < 0 else j
+            yield ("str", src[i + 1:j], i)
+            i = j + 1
+        elif c == "'":
+            j = i + 1
+            while j < n and src[j] not in "'\n":
+                j += 2 if src[j] == "\\" else 1
+            yield ("op", "rune", i)
+            i = j + 1
+        elif c.isalnum() or c == "_":
+            j = i
+            while j < n and (src[j].isalnum() or src[j] == "_"):
+                j += 1
+            yield ("id", src[i:j], i)
+            i = j
+        else:
+            yield ("op", c, i)
+            i += 1
+
+
+def skip_call(toks, k):
+    """Index after the balanced (...) that starts at toks[k]."""
+    depth = 0
+    while k < len(toks):
+        if toks[k][:2] == ("op", "("):
+            depth += 1
+        elif toks[k][:2] == ("op", ")"):
+            depth -= 1
+            if depth == 0:
+                return k + 1
+        k += 1
+    return k
+
+
+def concat_chain(toks, k, head=None):
+    """The text of `"lit" + expr + "lit"…` starting at toks[k], a non-literal
+    operand replaced by HOLE; returns (text, index of the token after it).
+    With head, the chain starts with that text and toks[k] is the token
+    after it (a call of a path helper)."""
+    if head is None:
+        parts = [toks[k][1]]
+        k += 1
+    else:
+        parts = [head]
+    while k < len(toks) and toks[k][:2] == ("op", "+"):
+        k += 1
+        while k < len(toks) and toks[k][0] == "nl":
+            k += 1
+        if k < len(toks) and toks[k][0] == "str":
+            parts.append(toks[k][1])
+            k += 1
+            continue
+        depth = 0
+        while k < len(toks):
+            kind, v, _ = toks[k]
+            if kind == "op" and v in "([{":
+                depth += 1
+            elif kind == "op" and v in ")]}":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif depth == 0 and (kind == "nl" or (kind == "op" and v in "+,;")):
+                break
+            k += 1
+        parts.append(HOLE)
+    return "".join(parts), k
+
+
+def path_key(p):
+    """Compare form of a path: no query, every parameter ({name}, %s, a
+    concatenated value) as {}."""
+    p = p.split("?", 1)[0]
+    p = FMT_VERB_RE.sub("{}", p)
+    p = re.sub(r"\{[^}]*\}", "{}", p)
+    return p.replace(HOLE, "{}")
+
+
+def code_sites(root):
+    """Every API path literal of the Go code: file, line, path, host and the
+    method when it is cheap to tell — http.MethodX in the statement, a GET
+    helper in it, or the only http.MethodX of the rest of the function."""
+    out = []
+    base = os.path.join(root, "internal")
+    for dirpath, dirs, files in os.walk(base):
+        dirs.sort()
+        for fn in sorted(files):
+            if not fn.endswith(".go") or fn.endswith("_test.go"):
+                continue
+            full = os.path.join(dirpath, fn)
+            rel = os.path.relpath(full, root).replace(os.sep, "/")
+            src = open(full, encoding="utf-8").read()
+            lines = src.split("\n")
+            toks = list(go_tokens(src))
+            # One-line path helpers, `func certPath(id string) string {
+            # return "/v1/certificate/" + url.PathEscape(id) }`: their calls
+            # start a path too (certPath(id)+":renew"), the literal in the
+            # helper itself is no request.
+            helpers = {}
+            for m in PATH_HELPER_RE.finditer(src):
+                htoks = list(go_tokens(m.group(2)))
+                helpers[m.group(1)] = concat_chain(htoks, 0)[0]
+            k = 0
+            while k < len(toks):
+                kind, val, off = toks[k]
+                if kind == "id" and val in helpers and k + 1 < len(toks) and toks[k + 1][:2] == ("op", "(") \
+                        and not (k > 0 and toks[k - 1][:2] == ("id", "func")):
+                    text, end = concat_chain(toks, skip_call(toks, k + 1), head=helpers[val])
+                    is_url = False
+                elif kind == "str" and (val.startswith(CODE_PREFIXES) or CLOUD_URL_RE.match(val)):
+                    if any(PATH_HELPER_RE.match(ln) for ln in lines[src.count("\n", 0, off):][:1]):
+                        k += 1
+                        continue
+                    text, end = concat_chain(toks, k)
+                    is_url = CLOUD_URL_RE.match(val) is not None
+                else:
+                    k += 1
+                    continue
+                host = ""
+                if is_url:
+                    host = re.split(r"[/?]", val[len("https://"):], maxsplit=1)[0]
+                    text = text[len("https://") + len(host):]
+                    if not text.split("?", 1)[0].strip("/"):
+                        k = end  # a base URL, not a request
+                        continue
+                first = src.count("\n", 0, off) + 1
+                last = src.count("\n", 0, toks[end - 1][2]) + 1
+                stmt = "\n".join(lines[first - 1:last])
+                method = None
+                found = set(HTTP_METHOD_RE.findall(stmt))
+                if len(found) == 1:
+                    method = found.pop().upper()
+                elif not found and GET_HELPER_RE.search(stmt):
+                    method = "GET"
+                elif not found and lines[first - 1].startswith("\t"):
+                    rest = []
+                    for ln in lines[last:]:
+                        if ln.startswith("}"):
+                            break
+                        rest.append(ln)
+                    found = set(HTTP_METHOD_RE.findall("\n".join(rest)))
+                    if len(found) == 1:
+                        method = found.pop().upper()
+                out.append({"file": rel, "line": first, "host": host,
+                            "raw": text.replace(HOLE, "{…}"), "path": path_key(text), "method": method})
+                k = end
+    return out
+
+
+def check_coverage(contract, root):
+    """Rows (service, where, code, level, id, text) of the coverage check, and
+    the code sites of each contract request: {(method, path_key): [file:line]}."""
+    cov = contract.get("code_coverage") or {}
+    known = {}
+    for svc in contract["services"]:
+        for req in svc["requests"]:
+            known.setdefault((req["method"], path_key(req["path"])), []).append(svc["name"])
+    known_paths = {p for _, p in known}
+    used = {}
+    rows = []
+
+    def rule_for(site, rules):
+        for r in rules:
+            if fnmatch.fnmatch(site["file"], r["file"]) and path_key(r["path"]) == site["path"] \
+                    and (not r.get("method") or r["method"] == site["method"]):
+                return r
+        return None
+
+    for site in code_sites(root):
+        where = f"{site['file']}:{site['line']}"
+        shown = (site["method"] or "?") + " " + (("https://" + site["host"]) if site["host"] else "") + site["raw"]
+        if rule_for(site, cov.get("ignore") or []):
+            continue
+        exp = rule_for(site, cov.get("expand") or [])
+        paths = [path_key(p) for p in exp["to"]] if exp else [site["path"]]
+        for p in paths:
+            if site["method"]:
+                hit = (site["method"], p) in known
+                if hit:
+                    used.setdefault((site["method"], p), []).append(where)
+            else:
+                hit = p in known_paths
+                for key in known:
+                    if key[1] == p:
+                        used.setdefault(key, []).append(where)
+            if not hit:
+                what = f"{site['method']} {p}" if site["method"] else p
+                rows.append(("code", shown, where, "error", "code-uncovered",
+                             f"код обращается к {what}, а в описи такого запроса нет — добавьте его в scripts/api-contract.json "
+                             "(или в code_coverage.ignore/expand с причиной)"))
+    return rows, used
+
+
+def check_code_ref(req, used):
+    """Findings on how the request is tied to the code: no call site found
+    (a stale entry?), or a "code" reference that points elsewhere."""
+    sites = used.get((req["method"], path_key(req["path"])), [])
+    if not sites:
+        return [["warn", "contract-unused", "в коде не найден запрос с таким путём и методом — запись устарела?"]]
+    ref = req.get("code", "")
+    if ref and ref not in sites and not any(ref.split(":")[0] == s.split(":")[0] for s in sites):
+        return [["info", "code-ref", f"ссылка code={ref} не указывает на вызов; вызовы: {', '.join(sorted(set(sites)))}"]]
+    if ref and ref not in sites:
+        return [["info", "code-ref", f"строка в code={ref} устарела; вызовы: {', '.join(sorted(set(sites)))}"]]
+    return []
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--specs", default=".cache/cloudru-specs")
     ap.add_argument("--contract", default=os.path.join(os.path.dirname(__file__), "api-contract.json"))
+    ap.add_argument("--root", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir),
+                    help="repository root whose internal/**/*.go is checked for requests missing from the contract")
+    ap.add_argument("--code-only", action="store_true",
+                    help="only check that every request of the code is in the contract (no specs needed)")
     ap.add_argument("--markdown", action="store_true", help="print a markdown table instead of plain lines")
     args = ap.parse_args()
 
     contract = json.load(open(args.contract, encoding="utf-8"))
-    rows, failed = [], 0
+    rows, used = check_coverage(contract, args.root)
+    failed = sum(1 for r in rows if r[3] == "error")
+
+    def emit(svc, req, findings):
+        nonlocal failed
+        accepted = req.get("accepted") or {}
+        where = f"{req['method']} {req['path']}"
+        if not findings:
+            rows.append((svc["name"], where, req.get("code", ""), "ok", "", ""))
+        for level, fid, text in findings:
+            if fid in accepted or any(fnmatch.fnmatch(fid, a) for a in accepted):
+                why = accepted.get(fid) or next(v for a, v in accepted.items() if fnmatch.fnmatch(fid, a))
+                rows.append((svc["name"], where, req.get("code", ""), "accepted", fid, f"{text} — принято: {why}"))
+                continue
+            if level == "error":
+                failed += 1
+            rows.append((svc["name"], where, req.get("code", ""), level, fid, text))
+
     for svc in contract["services"]:
+        if args.code_only:
+            for req in svc["requests"]:
+                emit(svc, req, check_code_ref(req, used))
+            continue
         files = sorted(glob.glob(os.path.join(args.specs, svc["spec"])))
         if not files:
             rows.append((svc["name"], "—", "—", "error", "spec-missing", f"нет файла спецификации {svc['spec']}"))
@@ -299,19 +597,7 @@ def main():
             continue
         spec = Spec(files[0])
         for req in svc["requests"]:
-            accepted = req.get("accepted") or {}
-            findings = check_request(spec, req)
-            where = f"{req['method']} {req['path']}"
-            if not findings:
-                rows.append((svc["name"], where, req.get("code", ""), "ok", "", ""))
-            for level, fid, text in findings:
-                if fid in accepted or any(fnmatch.fnmatch(fid, a) for a in accepted):
-                    why = accepted.get(fid) or next(v for a, v in accepted.items() if fnmatch.fnmatch(fid, a))
-                    rows.append((svc["name"], where, req.get("code", ""), "accepted", fid, f"{text} — принято: {why}"))
-                    continue
-                if level == "error":
-                    failed += 1
-                rows.append((svc["name"], where, req.get("code", ""), level, fid, text))
+            emit(svc, req, check_code_ref(req, used) + check_request(spec, req))
 
     if args.markdown:
         print("| сервис | запрос | код | уровень | проверка | детали |")
