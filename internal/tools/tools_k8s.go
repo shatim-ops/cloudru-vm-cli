@@ -456,50 +456,33 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		return errResult(fmt.Errorf("no matching node flavor (cpu>=%d ram>=%d); see k8s_options", cpu, ram)), true
 	}
 
-	// Nodes subnet + security group: explicit, else zone-matched from compute.
-	nodesSubnetID := stringArg(args, "nodes_subnet_id")
+	// Nodes subnet + security group: explicit, else from the cluster's zone.
+	// The zone was the product's default zone and the subnet fell back to
+	// the project's first subnet of any zone — the class of L-08 for worker
+	// nodes (release audit, L-08 follow-up).
+	zoneRef := stringArg(args, "zone")
+	if zoneRef == "" {
+		zoneRef = clusterZoneID(ctx, cli, clusterID)
+	}
+	zone, err := s.k8sZone(ctx, pc, zoneRef)
+	if err != nil {
+		return errResult(err), true
+	}
+	nodesSubnetID, err := s.k8sNodesSubnet(ctx, pid, stringArg(args, "nodes_subnet_id"), zone)
+	if err != nil {
+		return errResult(err), true
+	}
 	sgID := stringArg(args, "security_group_id")
-	zoneName := firstNonEmptyStr(stringArg(args, "zone"), pc.DefaultZone)
-	if nodesSubnetID == "" || sgID == "" {
+	if sgID == "" {
 		eng, e := s.authedEngine(ctx, nil)
 		if e != nil {
 			return errResult(e), true
 		}
-		zoneID := ""
-		if zs, ze := eng.Cloud.ListAvailabilityZones(ctx); ze == nil {
-			for _, z := range zs {
-				if z.Name == zoneName {
-					zoneID = z.ID
-					break
-				}
+		if sgs, se := eng.Cloud.ListSecurityGroups(ctx, pid); se == nil {
+			if i := provision.PickSecurityGroup(sgs, zone.computeID, zone.name); i >= 0 {
+				sgID = sgs[i].ID
 			}
 		}
-		if nodesSubnetID == "" {
-			if subs, se := eng.Cloud.ListSubnets(ctx, pid); se == nil {
-				for _, sn := range subs {
-					if sn.AvailabilityZoneID == zoneID {
-						nodesSubnetID = sn.ID
-						break
-					}
-				}
-				if nodesSubnetID == "" && len(subs) > 0 {
-					nodesSubnetID = subs[0].ID
-				}
-			}
-		}
-		if sgID == "" {
-			if sgs, se := eng.Cloud.ListSecurityGroups(ctx, pid); se == nil {
-				for _, g := range sgs {
-					if zoneName != "" && strings.Contains(g.Name, zoneName) {
-						sgID = g.ID
-						break
-					}
-				}
-			}
-		}
-	}
-	if nodesSubnetID == "" {
-		return errResult(fmt.Errorf("no nodes subnet found; pass nodes_subnet_id")), true
 	}
 
 	count := intArg(args, "count", 2)
@@ -587,6 +570,16 @@ func (s *Registry) k8sZone(ctx context.Context, pc *mk8s.ProductConfig, ref stri
 			z.name = firstNonEmptyStr(z.name, mz.Name)
 		}
 	}
+	// ref may be an mk8s zone ID (controlPlane.zones of a cluster): the
+	// compute zone is then found by the name mk8s gives it.
+	if z.computeID == "" && z.name != "" {
+		for _, cz := range czones {
+			if strings.EqualFold(cz.Name, z.name) {
+				z.computeID = cz.ID
+				break
+			}
+		}
+	}
 	hint := "k8s_options lists the zones of Managed Kubernetes."
 	if len(offered) > 0 {
 		hint = "Zones of Managed Kubernetes: " + strings.Join(offered, ", ") + " (k8s_options)."
@@ -659,6 +652,57 @@ func (s *Registry) k8sVIPSubnet(ctx context.Context, pid, subnetID string, zone 
 	return "", clierrors.New(clierrors.CodeConfigInvalid,
 		fmt.Sprintf("no subnet in zone %s for the control-plane VIP; nothing was created", zone.name),
 		"Create a subnet in that zone, pass subnet_id of one, or pick another zone (k8s_options).")
+}
+
+// clusterZoneID is the zone ID of the cluster's control plane
+// (controlPlane.zones[0] of GET /v3/clusters/{id}), "" when unknown.
+func clusterZoneID(ctx context.Context, cli *mk8s.Client, clusterID string) string {
+	m, err := cli.GetCluster(ctx, clusterID)
+	if err != nil {
+		return ""
+	}
+	cp, _ := m["controlPlane"].(map[string]any)
+	zones, _ := cp["zones"].([]any)
+	if len(zones) == 0 {
+		return ""
+	}
+	z, _ := zones[0].(string)
+	return z
+}
+
+// k8sNodesSubnet is the subnet of a node pool: nodes_subnet_id as given
+// (refused when it is in another zone than the pool's), else the zone's
+// main subnet; no subnet in the zone is CONFIG_INVALID instead of the
+// project's first subnet of any zone.
+func (s *Registry) k8sNodesSubnet(ctx context.Context, pid, subnetID string, zone k8sZoneRef) (string, error) {
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	subs, err := eng.Cloud.ListSubnets(ctx, pid)
+	if err != nil {
+		return "", fmt.Errorf("list subnets: %w", err)
+	}
+	if subnetID != "" {
+		for _, sn := range subs {
+			if sn.ID == subnetID {
+				if !provision.SubnetInZone(sn, zone.computeID, zone.name) {
+					return "", clierrors.New(clierrors.CodeConfigInvalid,
+						fmt.Sprintf("subnet %s is not in zone %s of the node pool; nothing was created", subnetID, zone.name),
+						"Pass a subnet of that zone (vpc_subnets), or pass zone = the subnet's zone.")
+				}
+				return subnetID, nil
+			}
+		}
+		return "", clierrors.New(clierrors.CodeConfigInvalid, fmt.Sprintf("subnet %s is not in the project", subnetID),
+			"Take a subnet ID from vpc_subnets, or omit nodes_subnet_id: the zone's main subnet is taken.")
+	}
+	if i := provision.PickSubnet(subs, zone.computeID, zone.name); i >= 0 {
+		return subs[i].ID, nil
+	}
+	return "", clierrors.New(clierrors.CodeConfigInvalid,
+		fmt.Sprintf("no subnet in zone %s for the node pool; nothing was created", zone.name),
+		"Create a subnet in that zone or pass nodes_subnet_id of one.")
 }
 
 func firstNonEmptyStr(vals ...string) string {

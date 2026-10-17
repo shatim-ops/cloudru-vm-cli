@@ -98,6 +98,10 @@ func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			"channels":[{"channel":"STABLE","availableVersions":["v1.34.6"]}]}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v3/clusters":
 		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"cl-1","done":false}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/v3/clusters/cl-1":
+		_, _ = io.WriteString(rec, `{"id":"cl-1","controlPlane":{"zones":["mk-az1"]}}`)
+	case r.Method == http.MethodPost && r.URL.Path == "/v3/nodePools":
+		_, _ = io.WriteString(rec, `{"id":"op-np","resourceId":"np-1","done":false}`)
 	case r.URL.Path == "/v2/targetGroups/tg-1":
 		_, _ = io.WriteString(rec, `{"id":"tg-1","name":"tg","vpc_id":"vpc-1","target_vms":[`+f.targetVMs+`]}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v2/networkLoadBalancers":
@@ -512,5 +516,32 @@ func TestStackDestroy_ReportsAsyncDeletions(t *testing.T) {
 	tl, _ = r.Lookup("stack_destroy")
 	if !strings.Contains(tl.Description, "deleting") {
 		t.Errorf("stack_destroy description: %s", tl.Description)
+	}
+}
+
+// Продолжение L-08 для групп узлов: зона по умолчанию была зоной продукта
+// (ru.AZ-2), а подсеть — первой в проекте из любой зоны. Теперь зона —
+// зона мастеров кластера, подсеть — из неё, чужая — CONFIG_INVALID.
+func TestK8sAddNodePool_ClusterZoneSubnet(t *testing.T) {
+	f := &raAPI{}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	args := map[string]any{"cluster_id": "cl-1", "security_group_id": "sg-1", "confirmed": true}
+	if _, text, isErr := callNamed(t, r, "k8s_add_nodepool", args); isErr {
+		t.Fatalf("k8s_add_nodepool: %s", text)
+	}
+	nc, _ := f.post("/v3/nodePools")["networkConfiguration"].(map[string]any)
+	if id := nc["nodesSubnetId"]; id != "sn-1" && id != "sn-other-vpc" {
+		t.Errorf("nodes subnet %v is not of the cluster's zone ru.AZ-1", id)
+	}
+
+	posts := f.postCount()
+	args["nodes_subnet_id"] = "sn-2"
+	m, text, isErr := callNamed(t, r, "k8s_add_nodepool", args)
+	if !isErr {
+		t.Fatalf("subnet of another zone accepted: %s", text)
+	}
+	wantReason(t, "nodes subnet of another zone", m, text, "CONFIG_INVALID")
+	if f.postCount() != posts {
+		t.Error("refused call sent a POST")
 	}
 }
