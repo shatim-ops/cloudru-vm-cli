@@ -1863,13 +1863,13 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		// the name now is another one (a 409 for a name already taken) —
 		// it is not adopted and its record is not touched; the boot FIP
 		// made for this call is released (release audit, L-01).
-		eng.ReleaseBootFIP(bootFIP, projectID)
+		fipErr := eng.ReleaseBootFIP(bootFIP, projectID)
 		if provision.IsNameTaken(err) {
-			return errResult(clierrors.Wrap(clierrors.CodeUsage,
-				fmt.Sprintf("a VM named %s already exists in this project (Cloud.ru answered 409); nothing was created", vmName),
-				fmt.Sprintf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.", vmName, vmName), err)), true
+			return fipLeftAnswer(clierrors.Wrap(clierrors.CodeUsage,
+				fmt.Sprintf("a VM named %s already exists in this project (Cloud.ru answered 409); no VM was created", vmName),
+				fmt.Sprintf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.", vmName, vmName), err), bootFIP, fipErr), true
 		}
-		return errResult(fmt.Errorf("create VM: %w", err)), true
+		return fipLeftAnswer(fmt.Errorf("create VM: %w", err), bootFIP, fipErr), true
 	}
 	if err != nil {
 		// The VM can exist although the call failed (timeout, cancel, a
@@ -1880,8 +1880,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
 				map[string]any{"vm_id": found.ID}), true
 		}
-		eng.ReleaseBootFIP(bootFIP, projectID)
-		return errResult(fmt.Errorf("create VM: %w", err)), true
+		return fipLeftAnswer(fmt.Errorf("create VM: %w", err), bootFIP, eng.ReleaseBootFIP(bootFIP, projectID)), true
 	}
 	// Recorded at once, as the CLI deploy does: a hard stop during the wait
 	// below (kill, OOM) must not leave the VM and its boot FIP billed with no
@@ -2477,6 +2476,17 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 	return toJSON(out)
 }
 
+// fipLeftAnswer is the error answer of a provision whose VM was not created:
+// with the boot floating IP that could not be released named in it — it is
+// billed and recorded nowhere (final audit; Qwen review of PR #89).
+func fipLeftAnswer(err error, fip *provision.FloatingIP, fipErr error) string {
+	if fipErr == nil || fip == nil {
+		return errResult(err)
+	}
+	return errAnswer(fmt.Errorf("%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — release it with release_floating_ip",
+		err, fip.IPAddress, fip.ID, fipErr), map[string]any{"floating_ip_id": fip.ID, "floating_ip": fip.IPAddress})
+}
+
 // destroyUnconfirmed answers destroy vm_id=/name= whose delete Cloud.ru
 // accepted while the VM is still listed after the wait: status partial, an
 // error (API_ERROR, exit 5: the outcome is Cloud.ru's, as the CLI destroy's
@@ -2516,9 +2526,9 @@ func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRe
 	})
 	msg := fmt.Sprintf("VM %s: Cloud.ru accepted the delete, but the VM is still listed, so the deletion is not confirmed; "+
 		"its floating IP and port rules are kept for now", target.ID)
-	hint := fmt.Sprintf("Check it with vm_get %s, then call destroy with vm_id %s again: once the VM is gone it releases the floating IP and closes the ports.", target.ID, target.ID)
+	hint := fmt.Sprintf("While the VM exists, it and its floating IP are billed. Check it with vm_get %s, then call destroy with vm_id %s again: once the VM is gone it releases the floating IP and closes the ports.", target.ID, target.ID)
 	if keepAsked {
-		hint = fmt.Sprintf("Check it with vm_get %s, then call destroy with vm_id %s and release_ip=false again: once the VM is gone it closes the ports and keeps the floating IP.", target.ID, target.ID)
+		hint = fmt.Sprintf("While the VM exists, it is billed. Check it with vm_get %s, then call destroy with vm_id %s and release_ip=false again: once the VM is gone it closes the ports and keeps the floating IP.", target.ID, target.ID)
 	}
 	switch {
 	case stateErr != nil:

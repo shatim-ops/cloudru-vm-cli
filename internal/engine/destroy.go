@@ -215,8 +215,8 @@ func deletionUnconfirmed(vmID string, waited time.Duration) error {
 	return clerrors.Wrap(clerrors.CodeAPIError,
 		i18n.Tf("Cloud.ru accepted the deletion of VM %s, but the VM is still there after %s; its floating IP and port rules are kept, and the deployment record stays (destroying)",
 			"Cloud.ru принял удаление ВМ %s, но через %s она всё ещё есть; её floating IP и правила портов оставлены, запись о развёртывании сохранена (destroying)", vmID, waited),
-		i18n.Tf("Check it with 'evo vm get %s' and re-run 'evo destroy': once the VM is gone it releases the floating IP and closes the ports.",
-			"Проверьте её: 'evo vm get %s' — и повторите 'evo destroy': когда ВМ не станет, он освободит floating IP и закроет порты.", vmID),
+		i18n.Tf("While the VM exists, it and its floating IP are billed. Check it with 'evo vm get %s' and re-run 'evo destroy': once the VM is gone it releases the floating IP and closes the ports.",
+			"Пока ВМ существует, она и её floating IP оплачиваются. Проверьте её: 'evo vm get %s' — и повторите 'evo destroy': когда ВМ не станет, он освободит floating IP и закроет порты.", vmID),
 		ErrDeletionUnconfirmed)
 }
 

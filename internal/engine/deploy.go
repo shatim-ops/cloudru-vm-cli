@@ -525,7 +525,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		// the name is another (a 409 for a name already taken). It is not
 		// adopted or recorded over; the boot FIP is released (release
 		// audit, L-01).
-		e.releaseBootFIP(bootFIP, projectID)
+		_ = e.releaseBootFIP(bootFIP, projectID) // the warning is printed
 		if provision.IsNameTaken(createErr) {
 			return state.DeploymentRecord{}, clerrors.Wrap(clerrors.CodeConfigInvalid,
 				i18n.Tf("a VM named %s already exists in the project (Cloud.ru answered 409); nothing was created",
@@ -542,7 +542,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		// both below instead of releasing the FIP and forgetting the VM.
 		vm = provision.FindCreatedVM(e.Cloud, projectID, vmName, createStart)
 		if vm == nil {
-			e.releaseBootFIP(bootFIP, projectID)
+			_ = e.releaseBootFIP(bootFIP, projectID) // the warning is printed
 			return state.DeploymentRecord{}, createErr
 		}
 	}
@@ -973,16 +973,18 @@ func (e *Engine) findBootFIP(ctx context.Context, projectID, name string) *provi
 }
 
 // releaseBootFIP deletes a boot FIP whose VM was not created or was deleted.
-func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) {
+func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) error {
 	if fip == nil {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := e.Cloud.DeleteFloatingIP(ctx, fip.ID, projectID); err != nil {
 		e.Printer.Warning(i18n.Tf("floating IP %s (%s) was not released: %v; delete it in the Cloud.ru console",
 			"floating IP %s (%s) не освобождён: %v; удалите его в консоли Cloud.ru", fip.IPAddress, fip.ID, err))
+		return err
 	}
+	return nil
 }
 
 // waitBootFIP waits for the FIP attached at creation to be in use. If the
@@ -1436,9 +1438,11 @@ func (e *Engine) WaitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmI
 	return e.waitBootFIP(ctx, fip, vmID, projectID)
 }
 
-// ReleaseBootFIP: see CreateBootFIP.
-func (e *Engine) ReleaseBootFIP(fip *provision.FloatingIP, projectID string) {
-	e.releaseBootFIP(fip, projectID)
+// ReleaseBootFIP: see CreateBootFIP. The error says the FIP was NOT
+// released and is billed: the MCP answer names it, where the warning would
+// reach only the server's stderr (final audit; Qwen review of PR #89).
+func (e *Engine) ReleaseBootFIP(fip *provision.FloatingIP, projectID string) error {
+	return e.releaseBootFIP(fip, projectID)
 }
 
 // waitVMGone polls until the VM is not found, ctx ends or

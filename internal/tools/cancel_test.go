@@ -33,6 +33,7 @@ type cancelCloud struct {
 	createReq   provision.CreateVMRequest
 	createErr   error
 	fipErr      error
+	fipDelErr   error
 	deletedFIPs []string
 }
 
@@ -46,6 +47,9 @@ func (*cancelCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, 
 	return nil, nil
 }
 func (c *cancelCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
+	if c.fipDelErr != nil {
+		return c.fipDelErr
+	}
 	c.deletedFIPs = append(c.deletedFIPs, id)
 	return nil
 }

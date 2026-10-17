@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -129,6 +130,19 @@ func TestAudit_Provision_RejectedCreateReleasesBootFIP(t *testing.T) {
 	}
 	if sf, err := state.Read(state.DefaultPath(dir)); err == nil && len(sf.Deployments) != 0 {
 		t.Errorf("state records %+v", sf.Deployments)
+	}
+}
+
+// Финальный аудит, ревью Qwen: отказ create и сбой освобождения
+// загрузочного FIP — ответ называет адрес (он оплачивается и нигде не
+// записан); раньше предупреждение уходило только в stderr сервера.
+func TestAudit_Provision_UnreleasedBootFIPIsNamed(t *testing.T) {
+	cloud := &nameTakenCloud{cancelCloud{createErr: clerrors.Wrap(clerrors.CodeAPIError, "API returned status 422", "",
+		&provision.StatusError{Status: 422, Body: `{"code":"wrong_image"}`}), fipDelErr: errors.New("API 503: unavailable")}}
+	r, _ := fastRegistry(t, cloud, provisionCfg)
+	m, text, isErr := callNamed(t, r, "provision", map[string]any{"name": "web", "confirmed": true})
+	if !isErr || m["reason"] != "API_ERROR" || m["floating_ip_id"] != "fip-boot" || !strings.Contains(text, "release_floating_ip") {
+		t.Fatalf("answer = %s", text)
 	}
 }
 
