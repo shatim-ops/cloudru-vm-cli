@@ -254,7 +254,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
-				"protocol":       strProp("Protocol: tcp (default) or udp."),
+				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
 				"cidr":           strProp("Source CIDR (default 0.0.0.0/0 = anywhere)."),
 				"confirmed":      confirmedProp(),
 			}, "security_group"),

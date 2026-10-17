@@ -108,6 +108,7 @@
   - `disk_create attach_to=…` ждёт, пока диск станет доступен; не удалось — `status: partial` и подсказка `disk_attach`;
   - `security_group:` из `.evo.yaml` учитывается в `deploy`;
   - `dns_record_create` принимает тип записи в любом регистре;
+  - `open_ports`: протокол — только `tcp` или `udp` (`USAGE` иначе); открытый tcp-порт не считается открытым для udp;
   - `k8s_helm`: неизвестный action, нехватка release/chart и относительный `repo_url` — `USAGE` до обращения к облаку;
   - `org_projects` без активного проекта подсказывает, где взять UUID; ошибка `evo configure` не повторяет код в тексте; ошибки `logs` и `destroy` без пустого поля `log`.
 - Повторный `evo deploy` на ВМ без внешнего IP (частная ВМ `provision`/стека, прошлый сбой floating IP) создавал платный floating IP без подтверждения, а `--dry-run` писал «новые ресурсы не создаются». Теперь превью говорит о floating IP, нужен `--yes` или согласие.

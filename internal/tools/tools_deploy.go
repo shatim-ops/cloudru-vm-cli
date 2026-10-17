@@ -494,8 +494,10 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 	existing := map[string]bool{}
 	if rules, e := eng.Cloud.ListSecurityGroupRules(ctx, target.ID); e == nil {
 		for _, r := range rules {
+			// Keyed by protocol too: an open tcp port is not an open udp
+			// one (release audit, L-25).
 			if r.Direction == "ingress" && r.PortRange != "" {
-				existing[r.PortRange] = true
+				existing[r.IPProtocol+" "+r.PortRange] = true
 			}
 		}
 	}
@@ -503,7 +505,7 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 	var opened, skipped, failed []string
 	for _, p := range ports {
 		pr := fmt.Sprintf("%d:%d", p, p)
-		if existing[pr] {
+		if existing[proto+" "+pr] {
 			skipped = append(skipped, strconv.Itoa(p))
 			continue
 		}
