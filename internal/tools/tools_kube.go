@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -182,6 +183,13 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	case "list":
 	default:
 		return usageResult(fmt.Errorf("unknown action %q (install|upgrade|uninstall|list|status)", action)), true
+	}
+	// helm itself refused a relative repo_url ("non-absolute URLs"), and
+	// that read as an API error (release audit, A-003).
+	if raw := stringArg(args, "repo_url"); raw != "" {
+		if u, err := url.Parse(raw); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "oci") {
+			return usageResult(fmt.Errorf("'repo_url' must be an absolute https://, http:// or oci:// URL, got %q", raw)), true
+		}
 	}
 	mutating := map[string]bool{"install": true, "upgrade": true, "uninstall": true, "delete": true}
 	if mutating[action] {

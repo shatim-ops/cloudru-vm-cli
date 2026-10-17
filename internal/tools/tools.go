@@ -2854,8 +2854,8 @@ func errResult(err error) string { return errAnswer(err, nil) }
 // from internal/errors:
 //   - the code of the CLIError in the chain (its hint goes to "hint");
 //   - else the "CODE: " prefix of the message ("USAGE: …");
-//   - else NOT_FOUND when the answer says something was not found, and
-//     API_ERROR otherwise.
+//   - else the reason uncodedReason finds: API_ERROR only for an answer of
+//     an API, USAGE for a local refusal (release audit, A-003).
 //
 // "error" is the message without the leading "CODE: ": the code is in
 // "reason". Context added before the code stays as it is ("create VM:
@@ -2887,10 +2887,7 @@ func errAnswer(err error, fields map[string]any) string {
 	}
 	res["error"] = msg
 	if reason == "" {
-		reason = clierrors.CodeAPIError
-		if strings.Contains(strings.ToLower(toJSON(res)), "not found") {
-			reason = clierrors.CodeNotFound
-		}
+		reason = uncodedReason(err, res)
 	}
 	res["reason"] = reason
 	return toJSON(res)

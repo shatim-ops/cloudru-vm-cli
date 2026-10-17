@@ -72,7 +72,9 @@ func run(ctx context.Context, kubeconfig, stdin string, timeout time.Duration, n
 	}
 	out, err := cmd.CombinedOutput()
 	if cctx.Err() == context.DeadlineExceeded {
-		return string(out), fmt.Errorf("%s timed out after %s", name, timeout)
+		// Wrapped: the tool answer reads it as the cluster not answering
+		// in time (API_UNREACHABLE), not as a refused call.
+		return string(out), fmt.Errorf("%s timed out after %s: %w", name, timeout, context.DeadlineExceeded)
 	}
 	return string(out), err
 }
