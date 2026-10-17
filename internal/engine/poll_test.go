@@ -17,7 +17,7 @@ func TestDeploy_FirstVMPollIsImmediate(t *testing.T) {
 	eng.Timings.VMPollTimeout = 2 * time.Second
 	start := time.Now()
 	err := eng.Deploy(context.Background(), DeployOptions{ComposeFile: writeComposeFile(t, dir), Flavor: "small",
-		Region: "ru-moscow-1", NonInteractive: true, Yes: true})
+		Region: "az-1", NonInteractive: true, Yes: true})
 	if err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}

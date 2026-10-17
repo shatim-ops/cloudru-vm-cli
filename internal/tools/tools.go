@@ -1508,6 +1508,21 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 	return toJSON(result), false
 }
 
+// subnetNamesOtherZone: a subnet the API gave without its zone whose name
+// carries another zone's name ("Default_ru.AZ-1" for a VM in ru.AZ-3) — the
+// same name rule as provision.PickSubnet (review Grok on #86).
+func subnetNamesOtherZone(s *provision.Subnet, zoneID string, zones []*provision.AvailabilityZone) bool {
+	if s.AvailabilityZoneID != "" {
+		return false
+	}
+	for _, z := range zones {
+		if z.ID != zoneID && z.Name != "" && strings.Contains(s.Name, z.Name) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (string, bool) {
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
@@ -1655,12 +1670,17 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// the VM are billed, so a zone without them is refused here, before
 	// anything is created — CONFIG_INVALID, as deploy.
 	zoneName := ""
-	if zones, e := eng.Cloud.ListAvailabilityZones(ctx); e == nil {
+	var zones []*provision.AvailabilityZone
+	if zs, e := eng.Cloud.ListAvailabilityZones(ctx); e == nil {
+		zones = zs
 		for _, z := range zones {
 			if z.ID == region {
 				zoneName = z.Name
 				break
 			}
+		}
+		if err := provision.ZoneRefError(zones, region); err != nil {
+			return errResult(err), true
 		}
 		if err := provision.ClosedZoneError(zones, region); err != nil {
 			return errResult(err), true
@@ -1683,6 +1703,18 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				subnet = s
 			}
 		}
+		// A subnet the project does not have, or one of another zone, keeps
+		// the VM from booting while it and its boot FIP are billed.
+		if subnet == nil {
+			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("subnet %s is not in the project", subnetID),
+				"Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet is taken.")), true
+		}
+		if subnet.AvailabilityZoneID != "" && subnet.AvailabilityZoneID != region || subnetNamesOtherZone(subnet, region, zones) {
+			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("subnet %s is not in zone %s", subnet.Name, firstNonEmptyStr(zoneName, region)),
+				"Take a subnet of this zone (vpc_subnets), or omit subnet_id: the zone's main subnet is taken.")), true
+		}
 	} else if i := provision.PickSubnet(subnets, region, zoneName); i >= 0 {
 		subnet = subnets[i]
 		subnetID = subnet.ID
@@ -1698,10 +1730,14 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}
 	}
 	// The zone's default group (provision.PickSecurityGroup, as deploy).
-	// Groups only in other zones: refused, as the subnet. When the list
-	// fails or is empty, the VM goes without a group, as before.
+	// Groups only in other zones, none at all or an unreadable list:
+	// refused, as deploy — a VM without a group is billed and unreachable.
 	var sgIDs []string
-	if sgs, e := eng.Cloud.ListSecurityGroups(ctx, projectID); e == nil && len(sgs) > 0 {
+	sgs, sgErr := eng.Cloud.ListSecurityGroups(ctx, projectID)
+	if sgErr != nil {
+		return errResult(fmt.Errorf("list security groups: %w", sgErr)), true
+	}
+	{
 		i := provision.PickSecurityGroup(sgs, region, zoneName)
 		if i < 0 {
 			return errResult(engine.NoSecurityGroupError(zoneName, region)), true
@@ -1886,15 +1922,12 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				// deploy, the rules recorded for destroy.
 				var opened *sgrules.OpenResult
 				portsNote := ""
+				// sgIDs always holds the zone's group: provision refuses without one.
 				if len(tcpPorts)+len(udpPorts) > 0 {
-					if len(sgIDs) == 0 {
-						portsNote = "no security group was resolved for the VM, so ports " + strings.Join(portLabels(tcpPorts, udpPorts), ",") + " were not opened — open them with open_ports"
-					} else {
-						res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts,
-							func(label string) string { return "evo: port " + label }, &ports)
-						opened = &res
-						portsNote = res.Note()
-					}
+					res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts,
+						func(label string) string { return "evo: port " + label }, &ports)
+					opened = &res
+					portsNote = res.Note()
 				}
 				if serr := saveState(vm.ID, "running", publicIP); serr != nil {
 					return errAnswer(fmt.Errorf("VM %s is active at %s and billed.%s", vm.ID, publicIP, notInState(vm.ID, serr)),

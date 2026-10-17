@@ -137,21 +137,25 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	}
 
 	// --- Security group (the default group of the zone, then the first by name) ---
-	sgID := ""
-	if sgs, e := cloud.ListSecurityGroups(ctx, projectID); e == nil {
-		if i := provision.PickSecurityGroup(sgs, zone.ID, zone.Name); i >= 0 {
-			sgID = sgs[i].ID
-			// The rules a new VM needs (ingress TCP 22, system egress):
-			// a warning in the plan, before anything is billed.
-			if rules, re := provision.GroupRules(ctx, cloud, sgs[i]); re == nil {
-				warnings = append(warnings, provision.CheckVMGroupRules(rules, subnet.DefaultGateway).Warnings(sgs[i].Name)...)
-			}
-		}
+	// None in the zone or an unreadable list: no plan, as deploy and
+	// provision — a VM without a group is billed and unreachable by SSH.
+	sgs, err := cloud.ListSecurityGroups(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list security groups: %w", err)
 	}
-	if sgID == "" {
-		warnings = append(warnings, "no security group resolved — VM will use the project default")
+	i := provision.PickSecurityGroup(sgs, zone.ID, zone.Name)
+	if i < 0 {
+		return nil, clierrors.New(clierrors.CodeConfigInvalid,
+			fmt.Sprintf("no security group for zone %s in the project", zone.Name),
+			"Create a security group whose name contains the zone name (e.g. 'web_"+zone.Name+"') in the Cloud.ru console, or plan in another zone.")
 	}
-	if len(p.Ports) > 0 && sgID != "" {
+	sgID := sgs[i].ID
+	// The rules a new VM needs (ingress TCP 22, system egress): a warning
+	// in the plan, before anything is billed.
+	if rules, re := provision.GroupRules(ctx, cloud, sgs[i]); re == nil {
+		warnings = append(warnings, provision.CheckVMGroupRules(rules, subnet.DefaultGateway).Warnings(sgs[i].Name)...)
+	}
+	if len(p.Ports) > 0 {
 		warnings = append(warnings, fmt.Sprintf("ports %v will be opened (ingress, 0.0.0.0/0) on the shared security group of this zone — other VMs later placed in it would share those open ports", p.Ports))
 	}
 

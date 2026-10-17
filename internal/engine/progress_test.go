@@ -49,7 +49,7 @@ func deployWithStderr(t *testing.T, mode output.Mode, wait time.Duration, auto b
 		flavor = "auto"
 	}
 	err := eng.Deploy(context.Background(), DeployOptions{ComposeFile: writeComposeFile(t, dir), Flavor: flavor,
-		Region: "ru-moscow-1", NonInteractive: true, Yes: true})
+		Region: "az-1", NonInteractive: true, Yes: true})
 	return out.String(), errOut.String(), err
 }
 

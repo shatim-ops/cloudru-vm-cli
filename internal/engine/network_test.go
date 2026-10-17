@@ -101,6 +101,26 @@ func TestResolveNetwork_ClosedZone(t *testing.T) {
 	}
 }
 
+// region — имя зоны вместо ID: отказ с ID в подсказке до подсетей и групп
+// (ревью Fable на v1.0).
+func TestResolveNetwork_ZoneNameRefused(t *testing.T) {
+	cloud := &mockCloudAPI{
+		listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
+			return []*provision.AvailabilityZone{{ID: "z2", Name: "ru.AZ-2"}}, nil
+		},
+		listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
+			t.Error("подсети читаются после отказа")
+			return nil, nil
+		},
+	}
+	eng, _ := newTestEngine(t, cloud, newMockDeployer())
+	_, err := eng.resolveNetwork(context.Background(), "p", "ru.AZ-2")
+	var ce *clerrors.CLIError
+	if !errors.As(err, &ce) || ce.Code != clerrors.CodeConfigInvalid || !strings.Contains(ce.Hint, "z2") {
+		t.Errorf("err = %v", err)
+	}
+}
+
 // Основная подсеть зоны (признак default из API) — раньше первой по порядку;
 // подсеть без DNS-серверов берётся, но с предупреждением: ВМ не разрешит
 // имена (документация, «Temporary failure in name resolution»).

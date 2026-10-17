@@ -66,7 +66,13 @@ func (*cancelCloud) ListAvailabilityZones(context.Context) ([]*provision.Availab
 func (*cancelCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
 	return []*provision.Subnet{{ID: "sn-1", Name: "default"}}, nil
 }
+
+// Группа по умолчанию есть в каждом проекте Cloud.ru: без неё provision
+// отказывает, как deploy.
 func (*cancelCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return []*provision.SecurityGroup{{ID: "sg-1", Name: "default", Default: true}}, nil
+}
+func (*cancelCloud) ListSecurityGroupRules(context.Context, string) ([]*provision.SGRule, error) {
 	return nil, nil
 }
 func (c *cancelCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {

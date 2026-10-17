@@ -123,3 +123,32 @@ func TestResolve_ClosedZoneRefused(t *testing.T) {
 		t.Fatalf("plan %v, err %v", plan != nil, err)
 	}
 }
+
+// Ревью Grok на #86: deploy_plan без группы безопасности в зоне или с
+// нечитаемым списком групп — плана нет, как у deploy и provision (ВМ без
+// группы платная и недоступна по SSH).
+type sgCloud struct {
+	*metaCloud
+	sgs []*provision.SecurityGroup
+	err error
+}
+
+func (c sgCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return c.sgs, c.err
+}
+
+func TestResolve_NoSecurityGroupRefused(t *testing.T) {
+	for name, cloud := range map[string]sgCloud{
+		"групп нет":          {metaCloud: &metaCloud{fields: ubuntu2404Fields()}},
+		"только чужая зона":  {metaCloud: &metaCloud{fields: ubuntu2404Fields()}, sgs: []*provision.SecurityGroup{{ID: "sg-1", Name: "SSH-access_ru.AZ-1", AvailabilityZoneID: "z1"}, {ID: "sg-3", Name: "web_ru.AZ-3", AvailabilityZoneID: "z3"}}},
+		"список не прочитан": {metaCloud: &metaCloud{fields: ubuntu2404Fields()}, err: errors.New("connection reset")},
+	} {
+		plan, err := Resolve(context.Background(), cloud, "proj-1", Params{Image: "Ubuntu-24.04"})
+		if plan != nil || err == nil || !strings.Contains(err.Error(), "security group") {
+			t.Errorf("%s: plan %v, err %v", name, plan != nil, err)
+		}
+		if cloud.err == nil && clierrors.Reason(err) != clierrors.CodeConfigInvalid {
+			t.Errorf("%s: reason %q", name, clierrors.Reason(err))
+		}
+	}
+}
