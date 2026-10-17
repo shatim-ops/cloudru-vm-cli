@@ -43,7 +43,7 @@ func (s *Registry) handleRedisList(ctx context.Context, args map[string]any) (st
 }
 
 func (s *Registry) handleRedisGet(ctx context.Context, args map[string]any) (string, bool) {
-	id := firstArg(args, "cluster_id", "id")
+	id := stringArg(args, "cluster_id")
 	if id == "" {
 		return usageResult(fmt.Errorf("'cluster_id' is required (from redis_list)")), true
 	}
@@ -204,7 +204,7 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 }
 
 func (s *Registry) handleRedisDelete(ctx context.Context, args map[string]any) (string, bool) {
-	id := firstArg(args, "cluster_id", "id")
+	id := stringArg(args, "cluster_id")
 	if id == "" {
 		return usageResult(fmt.Errorf("'cluster_id' is required (from redis_list)")), true
 	}

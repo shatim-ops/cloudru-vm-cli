@@ -169,6 +169,10 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		base := firstNonEmpty(p.Product, "vm")
 		name = sanitizeName(base) + "-" + time.Now().Format("20060102-1504")
 	}
+	// A name the compute API rejects: no plan (release QA, B-lifecycle).
+	if err := provision.ValidName("VM", name); err != nil {
+		return nil, err
+	}
 
 	// --- Access: image metadata fields + SSH model ---
 	metaFields, metaStatic, login, keyName, sErr, refuse := resolveAccess(ctx, cloud, image.ID, name, p)

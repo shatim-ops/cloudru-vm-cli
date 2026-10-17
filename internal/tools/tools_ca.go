@@ -87,9 +87,6 @@ func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (str
 	// выполнения»): privileged mode runs it as root. A Linux rule, not a
 	// documented platform one.
 	privileged := port <= 1024
-	if v, ok := args["privileged"].(bool); ok {
-		privileged = privileged || v
-	}
 
 	var env []containerapp.Env
 	if raw, ok := args["env"].(map[string]any); ok {

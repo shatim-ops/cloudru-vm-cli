@@ -71,19 +71,26 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		if z := existing.ZoneID(); z != "" && plan.VM.Zone.ID != "" && z != plan.VM.Zone.ID {
 			return nil, fmt.Errorf("a VM named %q already exists in another availability zone (%s); nothing was created — choose another name in deploy_plan", plan.VM.Name, z)
 		}
-		status := "running"
-		if existing.Status != "" && existing.Status != "running" && existing.Status != "active" {
-			status = existing.Status
+		// The adopted VM goes the way of a new one: waited for while it is
+		// still being made, then its floating IP, SSH and the plan's ports.
+		// Answering at once left a VM still creating without an IP and
+		// open ports (release QA, B-lifecycle 3). A stopped VM does not
+		// start by itself: it is reported as it is, with the address it
+		// already has — a new floating IP on it would only be billed.
+		switch existing.Status {
+		case "", "running", "active", "creating", "building", "starting", "pending":
+			return finishApply(ctx, cloud, plan, existing, "", start, pollTimeout,
+				"VM already existed — adopted (idempotent), nothing recreated")
 		}
-		ip, fipID, fipNote := ensureFloatingIP(ctx, cloud, plan, existing.ID)
+		ip, fipID := attachedFloatingIP(ctx, cloud, existing.ID)
 		return &ApplyResult{
 			VMID:         existing.ID,
-			Status:       status,
+			Status:       existing.Status,
 			PublicIP:     ip,
 			FloatingIPID: fipID,
 			SSH:          sshString(plan.SSH.Login, ip),
 			ElapsedSec:   int(time.Since(start).Seconds()),
-			Note:         joinNotes("VM already existed — adopted (idempotent), nothing recreated", fipNote),
+			Note:         "VM already existed — adopted (idempotent), nothing recreated; it is " + existing.Status + ": start it in the Cloud.ru console, then call deploy_apply again (or delete it with destroy)",
 		}, nil
 	}
 
@@ -164,6 +171,13 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		return nil, fmt.Errorf("create VM: %w", err)
 	}
 
+	return finishApply(ctx, cloud, plan, vm, password, start, pollTimeout, "")
+}
+
+// finishApply waits for the VM to run, then gives it its floating IP, waits
+// for SSH and opens the plan's ports — for a VM just created and for one a
+// retry adopts. note goes first in the answer's note.
+func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *provision.VM, password string, start time.Time, pollTimeout time.Duration, note string) (*ApplyResult, error) {
 	// Cancelled from here on (the MCP client went away or cancelled the
 	// call): the VM exists and is billed. The result names it, so the
 	// caller can record it in the state, together with an error that says
@@ -179,11 +193,14 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 
 	// --- Poll until running ---
 	status := "building"
+	if vm.Status == "running" || vm.Status == "active" {
+		status = "running"
+	}
 	deadline := time.After(pollTimeout)
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 poll:
-	for {
+	for status != "running" {
 		select {
 		case <-ctx.Done():
 			// The VM exists: say which, or nobody will find it.
@@ -228,7 +245,7 @@ poll:
 	// tool call stays well under the MCP timeout. ---
 	sshNote := ""
 	if ip != "" {
-		if waitForSSHPort(ctx, ip, 120*time.Second) {
+		if waitForSSHPort(ctx, ip, sshPortWait) {
 			sshNote = "SSH port 22 is open — connect now with the ssh command above."
 		} else {
 			sshNote = "VM is up but SSH port 22 was not reachable yet — wait ~1 min and retry the same ssh command. The VM is still booting; do NOT blame security groups, do NOT recreate the VM."
@@ -249,10 +266,13 @@ poll:
 		SSH:          sshString(plan.SSH.Login, ip),
 		Password:     password,
 		ElapsedSec:   int(time.Since(start).Seconds()),
-		Note:         joinNotes(fipNote, sshNote, opened.Note()),
+		Note:         joinNotes(note, fipNote, sshNote, opened.Note()),
 		Ports:        ports,
 	}, nil
 }
+
+// sshPortWait bounds the wait for port 22 after the VM runs (tests shorten it).
+var sshPortWait = 120 * time.Second
 
 // waitForSSHPort polls TCP port 22 on ip until it accepts a connection or the
 // timeout elapses. Returns true if the port became reachable.
@@ -264,12 +284,17 @@ func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration) bool 
 			return false
 		default:
 		}
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "22"), 5*time.Second)
+		step := min(5*time.Second, time.Until(deadline))
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "22"), step)
 		if err == nil {
 			_ = conn.Close()
 			return true
 		}
-		time.Sleep(5 * time.Second)
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(min(5*time.Second, max(time.Until(deadline), 0))):
+		}
 	}
 	return false
 }
@@ -281,16 +306,23 @@ func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration) bool 
 // new one. A free FIP of the user is never taken over: destroy releases the
 // deployment's FIP, and it used to release the user's reserved address with
 // it (QA r3 R9).
+// attachedFloatingIP is the floating IP already on the VM, if it can be read.
+func attachedFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID string) (ip, id string) {
+	detail, err := cloud.GetVMDetail(ctx, vmID)
+	if err != nil {
+		return "", ""
+	}
+	return detail.AttachedFloatingIP()
+}
+
 func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vmID string) (ip, fipID, note string) {
 	if !plan.Network.FloatingIP {
 		return "", "", ""
 	}
 	detail, err := cloud.GetVMDetail(ctx, vmID)
 	if err == nil {
-		for _, in := range detail.Interfaces {
-			if in.FloatingIP != nil && in.FloatingIP.IPAddress != "" {
-				return in.FloatingIP.IPAddress, in.FloatingIP.ID, "public IP attached"
-			}
+		if ip, id := detail.AttachedFloatingIP(); ip != "" {
+			return ip, id, "public IP attached"
 		}
 	}
 	// Plans written by older versions may name a FIP attached at creation.

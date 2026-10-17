@@ -85,12 +85,12 @@ UUID проекта (вида `3f2a8c1e-…`) возьмите в консоли
 
 ```console
 $ evo configure
-Configuring profile "default" in /home/me/.config/evo
-Access key ID: 7b1e…
-Secret:                                   ← не отображается
-Could not list projects (…).              ← для сервисного аккаунта это нормально
-Project ID: 3f2a8c1e-…
-Profile "default" saved to /home/me/.config/evo
+Настройка профиля "default" в /home/me/.config/evo
+Key ID: 7b1e…
+Секрет:                                   ← не отображается
+Не удалось получить список проектов (…).  ← для сервисного аккаунта это нормально
+ID проекта: 3f2a8c1e-…
+Профиль "default" сохранён в /home/me/.config/evo
 ```
 
 `configure` сначала обменивает ключ на токен — неверный ключ не сохранится.

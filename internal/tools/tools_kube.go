@@ -87,6 +87,11 @@ func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (s
 	if len(fields) > 0 {
 		verb = fields[0]
 	}
+	// Before the read-only check: "get pods --server=…" is a read verb
+	// that would send the cluster's token to another server unasked.
+	if err := kubetools.CheckConnectionFlags(fields); err != nil {
+		return usageResult(err), true
+	}
 	if !kubectlReadOnly(fields) {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return toJSON(map[string]any{

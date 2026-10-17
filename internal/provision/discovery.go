@@ -20,6 +20,19 @@ const (
 )
 
 // listProjectScoped fetches every page of a project-scoped list endpoint.
+// listRaw is listProjectScoped for answers kept as raw objects.
+func listRaw(a *CloudRuAdapter, ctx context.Context, path, projectID string) ([]map[string]any, error) {
+	items, err := listProjectScoped[map[string]any](a, ctx, path, projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, len(items))
+	for i, it := range items {
+		out[i] = *it
+	}
+	return out, nil
+}
+
 func listProjectScoped[T any](a *CloudRuAdapter, ctx context.Context, path, projectID string) ([]*T, error) {
 	q := url.Values{}
 	if projectID != "" {

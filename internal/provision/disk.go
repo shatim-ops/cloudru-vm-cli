@@ -22,26 +22,8 @@ type CreateDiskReq struct {
 
 // ListDisks lists disks (volumes) in a project.
 func (a *CloudRuAdapter) ListDisks(ctx context.Context, projectID string) ([]map[string]any, error) {
-	q := url.Values{}
-	if projectID != "" {
-		q.Set("project_id", projectID)
-	}
-	path := "/api/v1/disks"
-	if enc := q.Encode(); enc != "" {
-		path += "?" + enc
-	}
-	resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	var r struct {
-		Items []map[string]any `json:"items"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return nil, err
-	}
-	return r.Items, nil
+	// Every page: the API's default page is 50 disks (release QA, C-api 2).
+	return listRaw(a, ctx, "/api/v1/disks", projectID)
 }
 
 // CreateDisk creates a disk and returns the raw API object.

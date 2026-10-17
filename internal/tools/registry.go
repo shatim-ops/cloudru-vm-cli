@@ -67,6 +67,9 @@ func New(factory EngineFactory) *Registry {
 		t := &r.tools[i]
 		t.Group = groupOf(t.Name)
 		t.Mutating = isMutating(*t)
+		if h := r.handlers[t.Name]; h != nil {
+			r.handlers[t.Name] = checkedArgs(t.Name, t.InputSchema, h)
+		}
 		t.Handler = r.handlers[t.Name]
 	}
 	return r

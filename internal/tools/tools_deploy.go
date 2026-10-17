@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -161,6 +162,16 @@ func recordDeployment(stateDir string, plan *deployplan.Plan, res *deployplan.Ap
 		// created stay with it, so destroy still deletes them.
 		if old := sf.FindDeployment(res.VMID); old != nil {
 			rec.CreatedAt = old.CreatedAt
+			// A retry that could not read the VM's interface returns no
+			// floating IP: the one recorded before stays, else destroy
+			// could not find it and it stayed billed (release QA,
+			// B-lifecycle 2).
+			if rec.FloatingIPID == "" {
+				rec.FloatingIPID = old.FloatingIPID
+			}
+			if rec.VMIP == "" {
+				rec.VMIP = old.VMIP
+			}
 			if rec.SecurityGroupID == "" {
 				rec.SecurityGroupID = old.SecurityGroupID
 			}
@@ -220,7 +231,39 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 				"or delete the VM with destroy (vm_id %s) or in the Cloud.ru console", res.VMID, err, res.VMID)), true
 		}
 	}
-	deployplan.Delete(eng.StateDir, planID)
+	// The plan stays until the VM runs: a timeout or a VM still creating
+	// is finished by the same plan_id (the VM is adopted, its IP and ports
+	// set then); answering such a VM as a success and dropping the plan made
+	// that retry impossible (release QA, B-lifecycle 3). A VM in error does
+	// not get better: its plan goes, and the answer says to destroy it.
+	switch res.Status {
+	case "running":
+		deployplan.Delete(eng.StateDir, planID)
+	case "error":
+		deployplan.Delete(eng.StateDir, planID)
+		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
+			fmt.Sprintf("VM %s is in an error state: %s", res.VMID, res.Note),
+			fmt.Sprintf("Delete it with destroy (vm_id %s), then run deploy_plan again (in another zone if it repeats).", res.VMID)),
+			map[string]any{"vm_id": res.VMID}), true
+	case "timeout":
+		// The password is made for this create and kept nowhere: the retry
+		// adopts the VM without it, so it goes out now (Grok, PR #87).
+		fields := map[string]any{"vm_id": res.VMID, "vm_status": res.Status, "plan_id": planID}
+		hint := fmt.Sprintf("Call deploy_apply again with the same plan_id %s in a few minutes: it adopts the VM and finishes it (IP, SSH, ports); it is billed meanwhile, destroy (vm_id %s) deletes it.", planID, res.VMID)
+		if res.Password != "" {
+			fields["password"] = res.Password
+			hint += " The VM password is in this answer only: give it to the user now, the retry does not show it."
+		}
+		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
+			fmt.Sprintf("VM %s is not running yet: %s", res.VMID, res.Note), hint), fields), true
+	default:
+		// An adopted VM that is stopped (or stopping, shut off, …) does not
+		// start by itself: retrying the plan would answer the same.
+		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
+			fmt.Sprintf("VM %s is %s: %s", res.VMID, res.Status, res.Note),
+			fmt.Sprintf("Ask the user to start it in the Cloud.ru console, then call deploy_apply again with the same plan_id %s; or delete it with destroy (vm_id %s). Retrying before it runs answers the same.", planID, res.VMID)),
+			map[string]any{"vm_id": res.VMID, "vm_status": res.Status, "plan_id": planID}), true
+	}
 
 	if err := eng.EnsureSSHKey(); err != nil {
 		return errResult(err), true
@@ -537,7 +580,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	if onNAT {
 		return toJSON(map[string]any{
 			"status":  "refused",
-			"message": fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (nat_delete); not released", fipIP, fipID),
+			"message": fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (snat_delete); not released", fipIP, fipID),
 		}), true
 	}
 

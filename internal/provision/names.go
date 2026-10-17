@@ -3,15 +3,36 @@ package provision
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // MaxNameLen is the longest name of a VM, a disk or a floating IP
 // (maxLength 64 in the compute spec: PublicDiskCreateRequest,
 // PublicFloatingIpCreateRequest, VmCreateNewDiskItem).
 const MaxNameLen = 64
+
+// nameRe is the compute name pattern (PublicVmCreateRequest,
+// PublicDiskCreateRequest, PublicNATGatewayCreateRequest, …).
+var nameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9.\-_]*$`)
+
+// ValidName refuses a VM, disk, image or gateway name the compute API
+// rejects with 422 — before anything billable is made: a boot floating IP
+// created first and released after the 422 can stick in error_deleting
+// (release QA, C-api 4; register NET-7).
+func ValidName(kind, name string) error {
+	if len(name) <= MaxNameLen && nameRe.MatchString(name) {
+		return nil
+	}
+	return clierrors.New(clierrors.CodeUsage,
+		fmt.Sprintf("%s name %q is not accepted by Cloud.ru", kind, name),
+		fmt.Sprintf("Use 1-%d characters: a Latin letter first, then Latin letters, digits, '.', '-', '_'.", MaxNameLen))
+}
 
 // FitName is base+suffix within MaxNameLen: a long base is cut and gets a
 // short hash of itself, so two long names that differ only at the end do
@@ -65,4 +86,19 @@ func IsBootFIPOf(name, vmName string) bool {
 		}
 	}
 	return true
+}
+
+// IsEvoFIPOf reports a floating IP evo made for the VM: deploy's
+// "fip-<vm id>" after boot, provision's and deploy's BootFIPName, and
+// deploy_apply's "<vm name>-fip". destroy releases an address it finds only
+// on the VM when it is one of these: another address on the VM may be one
+// the user reserved (release QA, B-lifecycle 5).
+func IsEvoFIPOf(fipName, vmID, vmName string) bool {
+	if fipName == "" {
+		return false
+	}
+	if vmID != "" && fipName == "fip-"+vmID {
+		return true
+	}
+	return vmName != "" && (IsBootFIPOf(fipName, vmName) || fipName == FitName(vmName, "-fip"))
 }

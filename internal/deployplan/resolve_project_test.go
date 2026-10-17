@@ -152,3 +152,11 @@ func TestResolve_NoSecurityGroupRefused(t *testing.T) {
 		}
 	}
 }
+
+// Имя ВМ, которое compute отвергнет, — плана нет (релизный QA).
+func TestResolve_BadVMNameRefused(t *testing.T) {
+	plan, err := Resolve(context.Background(), &metaCloud{fields: ubuntu2404Fields()}, "proj-1", Params{Image: "Ubuntu-24.04", Name: "1web"})
+	if plan != nil || clierrors.Reason(err) != clierrors.CodeUsage {
+		t.Fatalf("plan %v, err %v", plan != nil, err)
+	}
+}

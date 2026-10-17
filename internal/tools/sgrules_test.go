@@ -104,10 +104,12 @@ func TestDestroyTargeted_ClosesOwnRules(t *testing.T) {
 	}
 }
 
-// deploy_apply adopting an existing VM opens nothing; the rules an earlier
-// apply recorded must stay with the record, or destroy never deletes them.
+// deploy_apply adopting an existing VM opens only the missing ports (here
+// 80 is open already); the rules an earlier apply recorded must stay with
+// the record, or destroy never deletes them.
 func TestDeployApply_AdoptKeepsRecordedRules(t *testing.T) {
-	cloud := &sgCloud{vm: &provision.VM{ID: "vm-1", Name: "wiki-1", Status: "running"}}
+	cloud := &sgCloud{vm: &provision.VM{ID: "vm-1", Name: "wiki-1", Status: "running"},
+		rules: []*provision.SGRule{{ID: "rule-80", Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0", Description: "auto: wiki port 80", State: "created"}}}
 	r, dir := sgRegistry(t, cloud)
 	created := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	writeRecords(t, dir, state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", Status: "running", SecurityGroupID: "sg-1",

@@ -64,6 +64,15 @@ func TestCompute_ListsReadEveryPage(t *testing.T) {
 			l, err := a.ListFloatingIPs(context.Background(), "p")
 			return len(l), err
 		}},
+		// Релизный QA (C-api 2): диски и NAT-шлюзы — тоже все страницы.
+		{"/api/v1/disks", 130, func(a *CloudRuAdapter) (int, error) {
+			l, err := a.ListDisks(context.Background(), "p")
+			return len(l), err
+		}},
+		{"/api/v1/nat-gateways", 55, func(a *CloudRuAdapter) (int, error) {
+			l, err := a.ListNATGateways(context.Background(), "p")
+			return len(l), err
+		}},
 	}
 	for _, c := range cases {
 		var limits []string

@@ -56,7 +56,8 @@ func (s *Registry) handleSnatList(ctx context.Context, args map[string]any) (str
 			"name":                 g["name"],
 			"nat_type":             g["nat_type"],
 			"status":               firstNonNil(g["status"], g["state"]),
-			"availability_zone_id": firstNonNil(g["availability_zone_id"], g["availability_zone_name"]),
+			"availability_zone_id": firstNonNil(g["availability_zone_id"], nested(g, "availability_zone", "id")),
+			"availability_zone":    firstNonNil(g["availability_zone_name"], nested(g, "availability_zone", "name")),
 		})
 	}
 	return toJSON(map[string]any{"nat_gateways": out}), false
@@ -68,6 +69,9 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	name := stringArg(args, "name")
 	if name == "" {
 		return usageResult(fmt.Errorf("'name' is required")), true
+	}
+	if err := provision.ValidName("SNAT gateway", name); err != nil {
+		return errResult(err), true
 	}
 	zoneID, err := s.resolveSnatZone(ctx, args)
 	if err != nil {
@@ -134,6 +138,16 @@ func firstNonNil(vals ...any) any {
 		if v != nil {
 			return v
 		}
+	}
+	return nil
+}
+
+// nested is m[key][field] of an API answer kept as a map (the compute
+// spec nests availability_zone {id, name}; snat_list read flat fields the
+// answer does not have — release QA, API inventory).
+func nested(m map[string]any, key, field string) any {
+	if o, ok := m[key].(map[string]any); ok {
+		return o[field]
 	}
 	return nil
 }

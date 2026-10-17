@@ -523,7 +523,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "release_floating_ip",
-			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: nat_delete). Mutation: requires confirmed=true after the user approves.",
+			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: snat_delete). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":         strProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required."),
 				"ip_address": strProp("Floating IP address, e.g. '213.171.25.19' (alternative to id)."),
@@ -650,6 +650,7 @@ func (s *Registry) registerTools() {
 				"storage_gib":      intProp("Disk size GiB. Optional; default = spec minimum."),
 				"brokers":          intProp("Broker count. Optional; default = spec minimum."),
 				"ui_enabled":       boolProp("Enable the Kafka UI (default false)."),
+				"subnet_id":        strProp("Subnet UUID (from vpc_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
 				"description":      strProp("Optional description."),
 				"confirmed":        confirmedProp(),
 			}, "name"),
@@ -703,6 +704,7 @@ func (s *Registry) registerTools() {
 				"shards":           intProp("Shard count 1-8 (default 1)."),
 				"replicas":         intProp("Hosts per shard, the master included — the API's replicas field (default 3 = a master and two replicas; MASTER_REPLICA takes at least 3)."),
 				"type":             strProp("MASTER_REPLICA (default) or STANDALONE (rejected by the API so far)."),
+				"subnet_id":        strProp("Subnet UUID (from vpc_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
 				"description":      strProp("Optional description."),
 				"confirmed":        confirmedProp(),
 			}, "name"),
@@ -922,7 +924,7 @@ func (s *Registry) registerTools() {
 			Description: "Get full details of one DNS zone by id (from dns_zones). Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"id":   strProp("Zone UUID (from dns_zones). Required."),
-				"type": strProp("Zone visibility: 'public' (default) or 'private' — must match the zone."),
+				"type": enumProp("Zone visibility: 'public' (default) or 'private' — must match the zone.", "public", "private"),
 			}, "id"),
 		},
 		{
@@ -930,7 +932,8 @@ func (s *Registry) registerTools() {
 			Description: "Create a DNS zone. type=public (default) or private. A public zone needs domain-ownership delegation (returns a validation record) to serve traffic; a private zone is internal. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"domain":      strProp("Zone FQDN, e.g. 'example.com.' (required)."),
-				"type":        strProp("Zone visibility: 'public' (default) or 'private'."),
+				"name":        strProp("Zone display name. Optional; default = domain."),
+				"type":        enumProp("Zone visibility: 'public' (default) or 'private'.", "public", "private"),
 				"description": strProp("Optional zone description."),
 				"confirmed":   confirmedProp(),
 			}, "domain"),
@@ -940,7 +943,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete a DNS zone by id (from dns_zones) AND its records (async). type must match the zone (public|private). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("Zone UUID (from dns_zones). Required."),
-				"type":      strProp("Zone visibility: 'public' (default) or 'private' — must match the zone."),
+				"type":      enumProp("Zone visibility: 'public' (default) or 'private' — must match the zone.", "public", "private"),
 				"confirmed": confirmedProp(),
 			}, "id"),
 		},
@@ -954,7 +957,7 @@ func (s *Registry) registerTools() {
 			Description: "List resource records of a DNS zone (id, name, type, values, ttl). Read-only. Pass the zone's type (public|private).",
 			InputSchema: objSchema(map[string]any{
 				"zone_id": strProp("Zone UUID (from dns_zones). Required."),
-				"type":    strProp("Zone visibility: 'public' (default) or 'private' — must match the zone."),
+				"type":    enumProp("Zone visibility: 'public' (default) or 'private' — must match the zone.", "public", "private"),
 			}, "zone_id"),
 		},
 		{
@@ -962,7 +965,7 @@ func (s *Registry) registerTools() {
 			Description: "Get one DNS record by id (from dns_records). Read-only. Pass the zone's type (public|private).",
 			InputSchema: objSchema(map[string]any{
 				"record_id": strProp("Record UUID (from dns_records). Required."),
-				"type":      strProp("Zone visibility: 'public' (default) or 'private'."),
+				"type":      enumProp("Zone visibility: 'public' (default) or 'private'.", "public", "private"),
 			}, "record_id"),
 		},
 		{
@@ -975,7 +978,7 @@ func (s *Registry) registerTools() {
 				"value":       strProp("Single record value (e.g. an IP for A). Use this or 'values'."),
 				"values":      map[string]any{"type": "array", "description": "Multiple record values.", "items": map[string]any{"type": "string"}},
 				"ttl":         intProp("TTL seconds (default 300)."),
-				"type":        strProp("Zone visibility: 'public' (default) or 'private'."),
+				"type":        enumProp("Zone visibility: 'public' (default) or 'private'.", "public", "private"),
 				"confirmed":   confirmedProp(),
 			}, "zone_id", "name", "record_type"),
 		},
@@ -984,7 +987,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete a DNS record by id (from dns_records) (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"record_id": strProp("Record UUID (from dns_records). Required."),
-				"type":      strProp("Zone visibility: 'public' (default) or 'private'."),
+				"type":      enumProp("Zone visibility: 'public' (default) or 'private'.", "public", "private"),
 				"confirmed": confirmedProp(),
 			}, "record_id"),
 		},
@@ -1137,7 +1140,7 @@ func (s *Registry) registerTools() {
 			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). This is the path for HTTPS on a site (e.g. shkrbkv.ru): issue → bind to the LB listener. ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Display name for the certificate. Required."),
-				"dns_names":   strProp("Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"] (array or comma-separated). Required."),
+				"dns_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"]. Required."},
 				"description": strProp("Optional description."),
 				"confirmed":   confirmedProp(),
 			}, "name", "dns_names"),
@@ -1500,9 +1503,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 		}
 	}
 	if deployErr != nil {
-		result["status"] = "error"
-		result["error"] = deployErr.Error()
-		return toJSON(result), true
+		return errAnswer(deployErr, result), true
 	}
 	result["status"] = "ok"
 	return toJSON(result), false
@@ -1524,6 +1525,11 @@ func subnetNamesOtherZone(s *provision.Subnet, zoneID string, zones []*provision
 }
 
 func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (string, bool) {
+	if name := stringArg(args, "name"); name != "" {
+		if err := provision.ValidName("VM", name); err != nil {
+			return errResult(err), true
+		}
+	}
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
 		"flavor":     "Flavor",
@@ -2069,7 +2075,7 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 	eng.Printer = output.NewWithWriter(&buf, output.ModeText, false)
 
 	if err := eng.Destroy(ctx, engine.DestroyOptions{Force: true}); err != nil {
-		return buf.String() + "\n" + err.Error(), true
+		return errAnswer(err, map[string]any{"log": buf.String()}), true
 	}
 	return toJSON(map[string]any{"status": "ok", "log": buf.String()}), false
 }
@@ -2082,6 +2088,8 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			"status":     "confirmation_required",
 			"message":    "deleting a specific VM requires confirmed=true. Get the user's approval, then call again with confirmed=true.",
 			"project_id": s.projectID(ctx),
+			"floating_ip": "released if evo made it for this VM (recorded here, or named fip-<id>, fip-<name>-…, <name>-fip); " +
+				"any other address on the VM is kept unless release_ip=true",
 		}), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
@@ -2141,9 +2149,11 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	// one boot FIP named for it. The list's flat floating_ip field is often
 	// empty (BACKLOG [04]), which used to leave the FIP billed (QA H4).
 	fipRec := state.DeploymentRecord{VMID: target.ID}
+	recordedHere := false
 	if sf, err := state.Read(statePath); err == nil {
 		for _, d := range sf.Deployments {
 			if d.VMID == target.ID {
+				recordedHere = true
 				if d.FloatingIPID != "" {
 					fipRec.FloatingIPID = d.FloatingIPID
 				}
@@ -2154,12 +2164,34 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			}
 		}
 	}
-	if fipRec.VMIP == "" {
-		fipRec.VMIP = firstNonEmptyStr(target.FloatingIP, target.PublicIP)
-	}
 	releaseIP := true
 	if v, ok := args["release_ip"].(bool); ok {
 		releaseIP = v
+	}
+	_, releaseAsked := args["release_ip"]
+	explicitRelease := releaseAsked && releaseIP
+	keptFIP, keptWhy := "", "evo did not make it"
+	if fipRec.VMIP == "" {
+		addr := firstNonEmptyStr(target.FloatingIP, target.PublicIP)
+		// An address found only on a VM this directory did not record is
+		// released when evo made it; one the user reserved stays unless
+		// release_ip=true was asked for (release QA, B-lifecycle 5).
+		if addr != "" && !recordedHere && !explicitRelease && releaseIP {
+			evoMade := false
+			fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID)
+			for _, f := range fips {
+				if f.IPAddress == addr && provision.IsEvoFIPOf(f.Name, target.ID, target.Name) {
+					evoMade = true
+				}
+			}
+			if e != nil {
+				keptWhy = fmt.Sprintf("could not check who made it (%v)", e)
+			}
+			if !evoMade {
+				keptFIP, addr = addr, ""
+			}
+		}
+		fipRec.VMIP = addr
 	}
 	if releaseIP && fipRec.FloatingIPID == "" && fipRec.VMIP == "" && target.Name != "" {
 		if fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID); e == nil {
@@ -2167,7 +2199,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			// such, the one the answer binds to this VM.
 			var named, bound []*provision.FloatingIP
 			for _, f := range fips {
-				if provision.IsBootFIPOf(f.Name, target.Name) {
+				if provision.IsEvoFIPOf(f.Name, target.ID, target.Name) {
 					named = append(named, f)
 					if f.BoundTo(target.ID) {
 						bound = append(bound, f)
@@ -2206,6 +2238,9 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	msg := "VM deleted"
 	if alreadyGone {
 		msg = "VM already deleted (not found in the cloud); its local record is cleaned up"
+	}
+	if keptFIP != "" {
+		msg += "; floating IP " + keptFIP + " kept: " + keptWhy + " (release it with release_floating_ip, or call destroy with release_ip=true)"
 	}
 	fipLeft := false
 	if releaseIP && hasFIP {
@@ -2357,6 +2392,18 @@ func objSchema(props map[string]any, required ...string) map[string]any {
 		schema["required"] = required
 	}
 	return schema
+}
+
+// enumProp is a string property with a closed list of values; checkedArgs
+// matches them case-insensitively and refuses others.
+func enumProp(desc string, values ...string) map[string]any {
+	p := strProp(desc)
+	enum := make([]any, len(values))
+	for i, v := range values {
+		enum[i] = v
+	}
+	p["enum"] = enum
+	return p
 }
 
 func strProp(desc string) map[string]any {

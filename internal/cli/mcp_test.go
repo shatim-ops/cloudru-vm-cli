@@ -93,9 +93,11 @@ func TestMCPFactory_AllowProjectCoversToolArguments(t *testing.T) {
 		if !ok {
 			t.Fatalf("no tool %s", name)
 		}
-		text, isErr := tl.Handler(context.Background(), map[string]any{
-			"project_id": "p-b", "name": "x", "confirmed": true,
-		})
+		args := map[string]any{"project_id": "p-b", "confirmed": true}
+		if name == "provision" {
+			args["name"] = "x"
+		}
+		text, isErr := tl.Handler(context.Background(), args)
 		if !isErr || !strings.Contains(text, "p-b") || !strings.Contains(text, "not allowed") {
 			t.Errorf("%s with project_id p-b = %s (error %v), want a refusal naming p-b", name, text, isErr)
 		}

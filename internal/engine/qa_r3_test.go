@@ -135,3 +135,34 @@ func TestDeploy_BootFIPLateAfterCancel(t *testing.T) {
 		}
 	}
 }
+
+// Релизный QA (C-api 1): FIP, не привязанный при создании, привязывается
+// PUT с его собственным именем — пустое имя API отвергает (minLength 1), и
+// ВМ осталась бы без внешнего IP при платном адресе.
+type attachNameCloud struct {
+	*mockCloudAPI
+	names []string
+}
+
+// GET не отвечает: остаётся FIP из создания, с его именем.
+func (c *attachNameCloud) GetFloatingIP(context.Context, string) (*provision.FloatingIP, error) {
+	return nil, errors.New("timeout")
+}
+func (c *attachNameCloud) AttachFloatingIP(_ context.Context, _, _, _, name string) (*provision.FloatingIP, error) {
+	c.names = append(c.names, name)
+	return &provision.FloatingIP{ID: "fip-1"}, nil
+}
+
+func TestWaitBootFIP_AttachKeepsName(t *testing.T) {
+	cloud := &attachNameCloud{mockCloudAPI: &mockCloudAPI{}}
+	e := &Engine{Cloud: cloud, Printer: output.NewWithWriter(&bytes.Buffer{}, output.ModePlain, false), Timings: fastTimings}
+	for _, tc := range []struct{ fip, want string }{{"fip-evo-web-abc", "fip-evo-web-abc"}, {"", "fip-vm-1"}} {
+		cloud.names = nil
+		if _, _, err := e.waitBootFIP(context.Background(), &provision.FloatingIP{ID: "fip-1", Name: tc.fip}, "vm-1", "p"); err != nil {
+			t.Fatal(err)
+		}
+		if len(cloud.names) != 1 || cloud.names[0] != tc.want {
+			t.Errorf("FIP %q: attach names %q, want %q", tc.fip, cloud.names, tc.want)
+		}
+	}
+}

@@ -66,6 +66,9 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	if name == "" || diskID == "" {
 		return usageResult(fmt.Errorf("'name' and 'disk_id' are required")), true
 	}
+	if err := provision.ValidName("image", name); err != nil {
+		return errResult(err), true
+	}
 	req := provision.CreateImageReq{
 		Name:             name,
 		DisplayName:      stringArg(args, "display_name"),

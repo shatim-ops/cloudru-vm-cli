@@ -1,0 +1,68 @@
+package tools
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/engine"
+)
+
+// Релизный QA (D-mcp 4, 7): неизвестный аргумент — USAGE до обработчика
+// с перечнем аргументов инструмента; confirmed принимает любой; enum —
+// без учёта регистра, в написании схемы; чужое значение — USAGE.
+func TestCheckedArgs(t *testing.T) {
+	var got map[string]any
+	h := checkedArgs("dns_zone_create", objSchema(map[string]any{
+		"domain": strProp("d"),
+		"type":   enumProp("t", "public", "private"),
+	}, "domain"), func(_ context.Context, args map[string]any) (string, bool) {
+		got = args
+		return "ok", false
+	})
+	for _, tc := range []struct {
+		args map[string]any
+		err  string
+	}{
+		{map[string]any{"domain": "x.ru.", "vm": "orphan-1"}, "unknown argument(s) vm"},
+		{map[string]any{"domain": "x.ru.", "type": "internal"}, "is not one of public, private"},
+	} {
+		got = nil
+		text, isErr := h(context.Background(), tc.args)
+		if !isErr || got != nil || !strings.Contains(text, tc.err) || !strings.Contains(text, `"reason": "USAGE"`) {
+			t.Errorf("%v: %s", tc.args, text)
+		}
+	}
+	if _, isErr := h(context.Background(), map[string]any{"domain": "x.ru.", "type": "PRIVATE", "confirmed": true}); isErr || got["type"] != "private" {
+		t.Errorf("PRIVATE → %v", got)
+	}
+}
+
+// Каждый инструмент реестра проверяет аргументы по своей схеме: destroy с
+// именем параметра из disk_attach не уходит в «удалить текущее развёртывание».
+func TestRegistry_DestroyUnknownArgRefused(t *testing.T) {
+	r := New(func(map[string]any) (*engine.Engine, error) { t.Fatal("engine built"); return nil, nil })
+	tl, _ := r.Lookup("destroy")
+	text, isErr := tl.Handler(context.Background(), map[string]any{"vm": "orphan-1"})
+	if !isErr || !strings.Contains(text, "unknown argument(s) vm") || !strings.Contains(text, "vm_id") {
+		t.Errorf("destroy {vm}: %s", text)
+	}
+}
+
+// checkedArgs проверяет enum только у строк (ревью Qwen по #87): схема с
+// нестроковым enum прошла бы без проверки — такой быть не должно.
+func TestSchemas_EnumsAreStrings(t *testing.T) {
+	r := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	for _, tl := range r.Tools() {
+		props, _ := tl.InputSchema["properties"].(map[string]any)
+		for k, p := range props {
+			pm, _ := p.(map[string]any)
+			enum, _ := pm["enum"].([]any)
+			for _, e := range enum {
+				if _, ok := e.(string); !ok {
+					t.Errorf("%s.%s: enum value %v is not a string — checkedArgs checks only string enums", tl.Name, k, e)
+				}
+			}
+		}
+	}
+}

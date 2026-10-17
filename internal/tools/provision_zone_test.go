@@ -186,3 +186,13 @@ func TestProvision_ExplicitSubnetZoneNameAndGroupListRefused(t *testing.T) {
 		})
 	}
 }
+
+// Имя, которое compute отвергнет 422, — USAGE до floating IP и ВМ (C-api 4).
+func TestProvision_BadNameRefusedBeforeAnyMutation(t *testing.T) {
+	cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}}}
+	r, _ := cancelRegistry(t, cloud)
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "1web", "confirmed": true})
+	if !isErr || !strings.Contains(text, "USAGE") || len(cloud.mutations) > 0 {
+		t.Errorf("ответ %s, изменения %v", text, cloud.mutations)
+	}
+}

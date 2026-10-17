@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"time"
 )
 
 // adoptFIPCloud: the plan's VM exists with a floating IP already attached.
@@ -88,5 +89,77 @@ func TestQAr3_Apply_AdoptChecksZoneAndState(t *testing.T) {
 	res, err := ApplyWithTimeout(context.Background(), stopped, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0)
 	if err != nil || res.Status != "stopped" {
 		t.Fatalf("stopped VM: %+v, %v; want status stopped", res, err)
+	}
+}
+
+// Релизный QA (B-lifecycle 3): подхваченная ВМ в creating — ожидание, затем
+// floating IP и порты плана, как у новой ВМ; не готова к сроку — timeout.
+type adoptCreatingCloud struct {
+	existingCloud
+	polls, fipCreates, rules int
+}
+
+func (c *adoptCreatingCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	return []*provision.VM{{ID: "vm-old", Name: "x", Status: "creating"}}, nil
+}
+func (c *adoptCreatingCloud) GetVM(_ context.Context, id string) (*provision.VM, error) {
+	c.polls++
+	if c.polls < 2 {
+		return &provision.VM{ID: id, Status: "creating"}, nil
+	}
+	return &provision.VM{ID: id, Status: "running"}, nil
+}
+func (c *adoptCreatingCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, error) {
+	return &provision.VMDetail{ID: "vm-old", Interfaces: []provision.VMInterface{{ID: "if-1", Primary: true, Type: "regular", State: "created"}}}, nil
+}
+func (c *adoptCreatingCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return nil, nil
+}
+func (c *adoptCreatingCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	c.fipCreates++
+	return &provision.FloatingIP{ID: "fip-1", IPAddress: "203.0.113.20", State: "in_use"}, nil
+}
+func (c *adoptCreatingCloud) ListSecurityGroupRules(context.Context, string) ([]*provision.SGRule, error) {
+	return nil, nil
+}
+func (c *adoptCreatingCloud) AddSecurityGroupRule(context.Context, string, string, provision.SGRule) (*provision.SGRule, error) {
+	c.rules++
+	return &provision.SGRule{ID: "r"}, nil
+}
+
+func TestQAB_Apply_AdoptCreatingVMWaitsThenFinishes(t *testing.T) {
+	old := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = old }()
+	c := &adoptCreatingCloud{}
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"},
+		Network: NetworkSpec{FloatingIP: true, SecurityGroupID: "sg-1"}, Ports: []int{80}}, time.Second)
+	if err != nil || res.Status != "running" || res.PublicIP != "203.0.113.20" || c.fipCreates != 1 || c.rules != 1 {
+		t.Fatalf("err=%v res=%+v fip=%d rules=%d", err, res, c.fipCreates, c.rules)
+	}
+}
+
+// Ревью Grok по #87: остановленной ВМ новый floating IP не создаётся —
+// он бы только оплачивался; адрес, что уже на ней, показывается.
+type stoppedFIPCloud struct {
+	zoneCloud
+	fipCreates int
+}
+
+func (c *stoppedFIPCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, error) {
+	return &provision.VMDetail{Interfaces: []provision.VMInterface{{ID: "if-1", Primary: true,
+		FloatingIP: &provision.IfaceFloatingIP{ID: "fip-9", IPAddress: "203.0.113.9"}}}}, nil
+}
+func (c *stoppedFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	c.fipCreates++
+	return &provision.FloatingIP{ID: "fip-new"}, nil
+}
+
+func TestQAB_Apply_AdoptStoppedVMCreatesNoFIP(t *testing.T) {
+	c := &stoppedFIPCloud{zoneCloud: zoneCloud{vm: &provision.VM{ID: "vm-old", Name: "x", Status: "stopped"}}}
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"},
+		Network: NetworkSpec{FloatingIP: true}}, 0)
+	if err != nil || res.Status != "stopped" || c.fipCreates != 0 || res.PublicIP != "203.0.113.9" {
+		t.Fatalf("err=%v res=%+v fipCreates=%d", err, res, c.fipCreates)
 	}
 }

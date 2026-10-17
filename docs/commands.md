@@ -6,8 +6,8 @@
 
 То же самое печатает `evo <команда> --help`; с `EVO_LANG=en` справка
 английская (решение D6, пересмотр). Заголовки разделов (Synopsis, Options)
-ставит генератор cobra/doc. Описания инструментов в деревьях `vm`, `disk` и
-других и их флаги — на английском, как в MCP. Подробнее — в
+ставит генератор cobra/doc. В деревьях `vm` и `disk` описания команд и флаги
+русские; в остальных деревьях они пока на английском, как в MCP. Подробнее — в
 [README](../README.md) и соседних файлах `docs/`.
 
 ## Содержание
@@ -146,6 +146,7 @@ Object Storage, секреты.
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
       --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
       --verbose             Подробный журнал
+      --version             Версия (как 'evo version')
   -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
 ```
 
@@ -4642,7 +4643,7 @@ evo vpc fip-attach <fip> [flags]
 Вызывает инструмент release_floating_ip (подробнее: 'evo tools describe release_floating_ip').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: nat_delete). Mutation: requires confirmed=true after the user approves.
+Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: snat_delete). Mutation: requires confirmed=true after the user approves.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```

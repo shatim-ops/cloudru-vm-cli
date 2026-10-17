@@ -11,11 +11,14 @@ func TestChildEnvDropsServerSecrets(t *testing.T) {
 		"CLOUDRU_KEY_ID=k",
 		"CLOUDRU_SECRET=s",
 		"CLOUDRU_S3_SECRET_KEY=s3",
+		"EVOLUTION_SERVICE_ACCOUNT_KEY_ID=ek",
+		"EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET=es",
+		"EVOLUTION_PROJECT_ID=p",
 		"MCP_BEARER_TOKEN=t",
 		"HOME=/home/u",
 		"HTTPS_PROXY=http://proxy:3128",
 	})
-	want := []string{"PATH=/usr/bin", "HOME=/home/u", "HTTPS_PROXY=http://proxy:3128"}
+	want := []string{"PATH=/usr/bin", "EVOLUTION_PROJECT_ID=p", "HOME=/home/u", "HTTPS_PROXY=http://proxy:3128"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("childEnv = %v, want %v", got, want)
 	}

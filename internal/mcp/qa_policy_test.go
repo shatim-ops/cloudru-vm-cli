@@ -30,6 +30,7 @@ func TestQA_HTTPParallelCalls(t *testing.T) {
 			defer wg.Done()
 			req, _ := http.NewRequest(http.MethodPost, ts.URL+"/mcp", strings.NewReader(bodies[i%len(bodies)]))
 			req.Header.Set("Authorization", "Bearer "+testToken)
+			req.Header.Set("Content-Type", "application/json")
 			if i%3 == 0 {
 				req.Header.Set("Accept", "application/json, text/event-stream")
 			}
