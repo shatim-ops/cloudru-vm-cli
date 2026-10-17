@@ -40,6 +40,9 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (
 				break
 			}
 		}
+		if err := provision.ClosedZoneError(zones, zoneID); err != nil {
+			return n, err
+		}
 	}
 
 	subnets, err := e.Cloud.ListSubnets(ctx, projectID)

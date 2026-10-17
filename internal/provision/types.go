@@ -238,6 +238,11 @@ type DiskType struct {
 type AvailabilityZone struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Enabled false: the zone takes no new resources (Closed). Nil when
+	// the answer has no field.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Default: the zone the console offers first.
+	Default bool `json:"default,omitempty"`
 }
 
 // Flavor represents a VM sizing tier.

@@ -1662,6 +1662,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				break
 			}
 		}
+		if err := provision.ClosedZoneError(zones, region); err != nil {
+			return errResult(err), true
+		}
 	}
 	subnets, err := eng.Cloud.ListSubnets(ctx, projectID)
 	if err != nil {

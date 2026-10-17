@@ -3,9 +3,11 @@ package engine
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -75,6 +77,27 @@ func TestResolveNetwork_NoSubnetInZone(t *testing.T) {
 	eng, _ := newTestEngine(t, cloud, newMockDeployer())
 	if _, err := eng.resolveNetwork(context.Background(), "p", "z3"); err == nil {
 		t.Fatal("want an error when no subnet matches the zone, a VM in another zone's subnet does not boot")
+	}
+}
+
+// Зона с enabled=false в списке зон не принимает ВМ (422 wrong_az): отказ
+// до подсетей и групп, с открытыми зонами в подсказке.
+func TestResolveNetwork_ClosedZone(t *testing.T) {
+	closed := false
+	cloud := &mockCloudAPI{
+		listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
+			return []*provision.AvailabilityZone{{ID: "z1", Name: "ru.AZ-1", Enabled: &closed}, {ID: "z2", Name: "ru.AZ-2"}}, nil
+		},
+		listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
+			t.Error("подсети читаются после отказа")
+			return nil, nil
+		},
+	}
+	eng, _ := newTestEngine(t, cloud, newMockDeployer())
+	_, err := eng.resolveNetwork(context.Background(), "p", "z1")
+	var ce *clerrors.CLIError
+	if !errors.As(err, &ce) || ce.Code != clerrors.CodeConfigInvalid || !strings.Contains(ce.Hint, "ru.AZ-2") {
+		t.Errorf("err = %v", err)
 	}
 }
 

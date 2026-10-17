@@ -87,6 +87,15 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 
 	interactive := !opts.NonInteractive && confirm.StdinIsTTY()
 
+	if open := provision.OpenZones(zones); len(open) < len(zones) {
+		for _, z := range zones {
+			if z.Closed() {
+				e.Printer.Warning(i18n.Tf("zone %s is closed for new resources (enabled=false in the zone list) and is not offered",
+					"зона %s закрыта для новых ресурсов (в списке зон enabled=false) и не предлагается", z.Name))
+			}
+		}
+		zones = open
+	}
 	zones = e.initZones(ctx, zones)
 	zoneNames := make([]string, len(zones))
 	for i, z := range zones {

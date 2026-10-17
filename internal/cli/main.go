@@ -847,10 +847,14 @@ ID зоны передаётся в deploy флагом --region или пере
 				return eng.Printer.JSON(zones)
 			}
 
-			headers := []string{"ID", i18n.T("Name", "Имя")}
+			headers := []string{"ID", i18n.T("Name", "Имя"), i18n.T("New resources", "Новые ресурсы")}
 			rows := make([][]string, len(zones))
 			for i, z := range zones {
-				rows[i] = []string{z.ID, z.Name}
+				state := i18n.T("open", "открыта")
+				if z.Closed() {
+					state = i18n.T("closed (enabled=false)", "закрыта (enabled=false)")
+				}
+				rows[i] = []string{z.ID, z.Name, state}
 			}
 			eng.Printer.Table(headers, rows)
 			return nil

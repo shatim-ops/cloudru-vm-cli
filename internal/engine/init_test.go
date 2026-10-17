@@ -127,6 +127,29 @@ func TestInit_ZoneWithSubnet(t *testing.T) {
 	}
 }
 
+// Зона с enabled=false не предлагается, даже если подсеть есть только в
+// ней (ru.AZ-1, 17.10.2026): deploy туда получил бы 422 wrong_az.
+func TestInit_ClosedZoneNotOffered(t *testing.T) {
+	eng, path, out := initEngine(t)
+	closed := false
+	eng.Cloud.(*mockCloudAPI).listAvailabilityZonesFn = func(context.Context) ([]*provision.AvailabilityZone, error) {
+		return []*provision.AvailabilityZone{{ID: "az-1-id", Name: "ru.AZ-1", Enabled: &closed}, {ID: "az-2-id", Name: "ru.AZ-2"}}, nil
+	}
+	eng.Cloud.(*mockCloudAPI).listSubnetsFn = func(context.Context, string) ([]*provision.Subnet, error) {
+		return []*provision.Subnet{{ID: "sn-1", Name: "Default_ru.AZ-1", AvailabilityZoneID: "az-1-id", Default: true}}, nil
+	}
+	if err := eng.Init(context.Background(), InitOptions{Path: path, NonInteractive: true}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "region: az-2-id") {
+		t.Errorf("config:\n%s", data)
+	}
+	if !strings.Contains(out.String(), "zone ru.AZ-1 is closed") {
+		t.Errorf("output:\n%s", out.String())
+	}
+}
+
 // Without a terminal init does not ask either.
 func TestInit_NoTTYDoesNotAsk(t *testing.T) {
 	withPromptStdin(t, strings.NewReader(""), false)

@@ -19,10 +19,14 @@ type otherZoneCloud struct {
 	cancelCloud
 	subnets   []*provision.Subnet
 	groups    []*provision.SecurityGroup
+	zones     []*provision.AvailabilityZone
 	mutations []string
 }
 
-func (*otherZoneCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
+func (c *otherZoneCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
+	if c.zones != nil {
+		return c.zones, nil
+	}
 	return []*provision.AvailabilityZone{{ID: "z", Name: "ru.AZ-3"}, {ID: "z1", Name: "ru.AZ-1"}}, nil
 }
 func (c *otherZoneCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
@@ -80,6 +84,25 @@ func TestProvision_NoSubnetOrGroupInZoneRefusedBeforeAnyMutation(t *testing.T) {
 				t.Errorf("до отказа облако изменено: %v", cloud.mutations)
 			}
 		})
+	}
+}
+
+// Зона закрыта (enabled=false, cloud-e2e 17.10.2026: FIP создан, ВМ — 422
+// wrong_az, FIP завис в error_deleting): отказ до любых изменений, хотя
+// подсеть и группа зоны есть.
+func TestProvision_ClosedZoneRefusedBeforeAnyMutation(t *testing.T) {
+	closed := false
+	cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}},
+		zones:   []*provision.AvailabilityZone{{ID: "z", Name: "ru.AZ-3", Enabled: &closed}, {ID: "z1", Name: "ru.AZ-1"}},
+		subnets: []*provision.Subnet{{ID: "sn-3", Name: "Default_ru.AZ-3", AvailabilityZoneID: "z", Default: true}},
+		groups:  []*provision.SecurityGroup{{ID: "sg-3", Name: "SSH-access_ru.AZ-3", AvailabilityZoneID: "z"}}}
+	r, _ := cancelRegistry(t, cloud)
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
+	if !isErr || !strings.Contains(text, "CONFIG_INVALID") || !strings.Contains(text, "ru.AZ-3") || !strings.Contains(text, "ru.AZ-1") {
+		t.Errorf("ответ: %s", text)
+	}
+	if len(cloud.mutations) > 0 {
+		t.Errorf("до отказа облако изменено: %v", cloud.mutations)
 	}
 }
 

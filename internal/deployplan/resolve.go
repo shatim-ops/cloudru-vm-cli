@@ -69,6 +69,9 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if !uuidRe.MatchString(zone.ID) {
 		return nil, fmt.Errorf("could not resolve availability zone %q to a UUID", zoneInput)
 	}
+	if err := provision.ClosedZoneError(zones, zone.ID); err != nil {
+		return nil, err
+	}
 
 	// --- Flavor ---
 	flavors, err := cloud.ListFlavors(ctx)
